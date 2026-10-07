@@ -1,3 +1,4 @@
+import "./customSelect";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -434,6 +435,43 @@ renderer.domElement.addEventListener("pointerup", (e) => {
 const ecg = new EcgStrip($<HTMLCanvasElement>("ecg"));
 function resize() { const w = view.clientWidth, h = view.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 new ResizeObserver(resize).observe(view);
+// ---------------------------------------------------------------- lesion marker
+/** A floating label anchored to the stenosis: a bracket on the vessel at the lesion's position, a leader line and a tag. */
+const marker = document.createElement("div");
+marker.id = "lesion"; marker.hidden = true;
+marker.innerHTML = '<i class="lz-ring"></i><i class="lz-line"></i><span class="lz-tag"></span>';
+view.append(marker);
+const lzTag = marker.querySelector(".lz-tag") as HTMLElement;
+const lzPoint = new THREE.Vector3(), lzDir = new THREE.Vector3();
+let lzClock = 0, lzText = "", lzBack = false;
+function updateMarker(dt: number) {
+  const b = S.ds > 0 || S.occ ? built.find((x) => x.seg.id === S.lesionSeg) : undefined;
+  if (!b) { marker.hidden = true; return; }
+  const r = A.cond.seg[b.seg.id], L = b.seg.length;
+  const s = Math.min(L - 7, Math.max(7, S.pos * L));
+  let i = 0;
+  for (let k = 1; k < r.s.length; k++) if (Math.abs(r.s[k] - s) < Math.abs(r.s[i] - s)) i = k;
+  lzPoint.copy(b.ctr[i]).addScaledVector(b.out[i], b.rad[i] * S.exag * 0.6);
+  vesselGroup.localToWorld(lzPoint);
+  const p = lzPoint.clone().project(camera);
+  const inView = p.z < 1 && Math.abs(p.x) < 1.05 && Math.abs(p.y) < 1.05;
+  marker.hidden = !inView;
+  if (!inView) return;
+  marker.style.transform = `translate(${((p.x + 1) / 2) * view.clientWidth}px, ${((1 - p.y) / 2) * view.clientHeight}px)`;
+  const text = `${S.occ ? "Occluded" : Math.round(S.ds * 100) + "% stenosis"} · ${b.seg.name}`;
+  if (text !== lzText) { lzText = text; lzTag.textContent = text; }
+  // dim the marker when the lesion is behind the heart or another vessel as seen from the camera
+  if ((lzClock += dt) > 0.1) {
+    lzClock = 0;
+    lzDir.copy(lzPoint).sub(camera.position);
+    const dist = lzDir.length();
+    ray.set(camera.position, lzDir.normalize());
+    const hit = ray.intersectObjects([...built.filter((x) => x !== b).map((x) => x.mesh), ...(heartMesh.visible ? [heartMesh] : [])])[0];
+    lzBack = !!hit && hit.distance < dist - 3;
+  }
+  marker.classList.toggle("back", lzBack);
+}
+
 let last = performance.now(), uiClock = 0, paintClock = 0;
 let rstate: RhythmState | null = null, circ: Circulation | null = null, mapClock = 0;
 function frame(now: number) {
@@ -450,7 +488,7 @@ function frame(now: number) {
   if (S.flow) stepParticles(dt);
   if ((paintClock += dt) > 0.1) { paintClock = 0; paintMyocardium(); }
   if ((uiClock += dt) > 0.25) { uiClock = 0; liveUi(); }
-  controls.update(); renderer.render(scene, camera);
+  controls.update(); camera.updateMatrixWorld(); updateMarker(dt); renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
 
