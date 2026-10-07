@@ -175,9 +175,8 @@ function buildVessels() {
     const placed = r.s.map((s) => projectToEpicardium(seg.curve.at(s / L), 0.6));
     const base = placed.map((q) => v3(rotateHeart(q.pos)));
     const surfN = placed.map((q) => v3(rotateHeart(q.n)));
-    const ctr: THREE.Vector3[] = [], nrm: THREE.Vector3[] = [], bin: THREE.Vector3[] = [], rad: number[] = [];
-    const d = S.hide ? r.s.map((s) => diameterAt(tree, seg, s)) : r.d; // a hidden lesion must not pinch the tube
-    const dMax = Math.max(...d) * 1000;
+    const ctr: THREE.Vector3[] = [], nrm: THREE.Vector3[] = [], bin: THREE.Vector3[] = [];
+    const dMax = Math.max(...r.d) * 1000;
     const amp = 0.22 + 0.4 * (1 - Math.min(1, dMax / 3.5)); // mm; smaller arteries meander more
     for (let i = 0; i < n; i++) {
       const s = r.s[i];
@@ -194,11 +193,6 @@ function buildVessels() {
       if (i === 0) nv = surfN[0].clone().sub(t.clone().multiplyScalar(surfN[0].dot(t))).normalize();
       else nv = nv.clone().sub(t.clone().multiplyScalar(nv.dot(t))).normalize();
       nrm.push(nv.clone()); bin.push(new THREE.Vector3().crossVectors(t, nv).normalize());
-      const s = r.s[i];
-      const flare = 1 + 0.28 * Math.exp(-s / 2.2);
-      const tip = Math.sqrt(Math.max(0, Math.min(1, (L - s) / 3.5))); // hemispherical close-off at the distal end
-      const ripple = 1 + 0.025 * Math.sin((6.283 * s) / 13.3 + ph * 1.7) + 0.015 * Math.sin((6.283 * s) / 4.1 + ph);
-      rad.push((d[i] / 2) * 1000 * flare * tip * ripple);
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(n * (M + 1) * 3), 3));
@@ -208,9 +202,21 @@ function buildVessels() {
     geo.setIndex(idx);
     const mesh = new THREE.Mesh(geo, vesselMat);
     mesh.userData.segId = seg.id; vesselGroup.add(mesh);
-    built.push({ seg, mesh, ctr, out: surfN, nrm, bin, rad, d, blocked: blockedFlags(seg) });
+    const b: Built = { seg, mesh, ctr, out: surfN, nrm, bin, rad: [], d: [], blocked: blockedFlags(seg) };
+    lumen(b); built.push(b);
   }
   shapeVessels();
+}
+/** Ring radii (mm) from the physics' lumen at each sample, with the ostial flare, tapered tip and a slight ripple. */
+function lumen(b: Built) {
+  const seg = b.seg, r = A.cond.seg[seg.id], L = seg.length, ph = hash(seg.id) * 6.283;
+  b.d = S.hide ? r.s.map((s) => diameterAt(tree, seg, s)) : r.d; // a hidden lesion must not pinch the tube
+  b.rad = r.s.map((s, i) => {
+    const flare = 1 + 0.28 * Math.exp(-s / 2.2);
+    const tip = Math.sqrt(Math.max(0, Math.min(1, (L - s) / 3.5))); // hemispherical close-off at the distal end
+    const ripple = 1 + 0.025 * Math.sin((6.283 * s) / 13.3 + ph * 1.7) + 0.015 * Math.sin((6.283 * s) / 4.1 + ph);
+    return (b.d[i] / 2) * 1000 * flare * tip * ripple;
+  });
 }
 
 function shapeVessels() {
@@ -320,7 +326,7 @@ function flush() {
     solve();
     // A stenosis adds fine samples inside its window, changing that vessel's ring count: rebuild those meshes.
     if (tree.segments.some((sg, i) => A.cond.seg[sg.id].s.length !== before[i])) { buildVessels(); initParticles(); }
-    else { for (const b of built) b.blocked = blockedFlags(b.seg); shapeVessels(); }
+    else { for (const b of built) { b.blocked = blockedFlags(b.seg); lumen(b); } shapeVessels(); }
     controlsUi();
   }
 }
