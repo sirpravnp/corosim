@@ -650,7 +650,7 @@ function shareText(): string {
   if (!p) return "";
   const bar = "█".repeat(Math.round(p.total / 10)).padEnd(10, "░");
   const how = p.call ? `${Math.round(p.distance)} mm from the lesion, called at ${Math.round(p.elapsed)} s` : "no call";
-  return `CoroSim · Find the culprit #${dayNumber(G.day)}\n${bar} ${p.total}/100\n${how}\n${location.origin}${location.pathname.replace(/\/?$/, "/")}`;
+  return `CoroSim · Find the culprit #${dayNumber(G.day)}\n${bar} ${p.total}/100\n${how}\n${location.origin}${location.pathname.replace(/index\.html$/, "").replace(/\/?$/, "/")}`;
 }
 async function share() {
   const text = shareText(), btn = $("qshare") as HTMLButtonElement;
@@ -672,8 +672,8 @@ on("qshare", share);
 /** The page at /game/ is the game version; anywhere else it is the plain simulator. The links between them are
  *  relative, so the site still works under any URL. */
 function applyMode() {
-  const game = /\/game\/?$/.test(location.pathname);
-  const root = game && location.pathname.endsWith("/") ? "../" : "./";
+  const game = /\/game(\/(index\.html)?)?$/.test(location.pathname); // /game, /game/ or /game/index.html
+  const root = game && !location.pathname.endsWith("/game") ? "../" : "./";
   ($("modeSim") as HTMLAnchorElement).href = root; ($("modeGame") as HTMLAnchorElement).href = root + "game/";
   $("quiz").hidden = !game;
   $("modeSim").classList.toggle("on", !game); $("modeGame").classList.toggle("on", game);
