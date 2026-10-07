@@ -31,27 +31,27 @@ All constants live in `src/config/`, tagged as literature-backed or assumed.
 
 ## Two versions
 
-One build, two front doors. `corosim.com` is the simulator alone; `corosim.com/#game` is the simulator with the game
-panel at the top of the right-hand rail. The switch in the masthead moves between them, and leaving the game
-mid-case quits it and restores whatever lesion and anatomy were set before.
+One build, two front doors. `corosim.com` is the simulator alone; `corosim.com/game` is "Find the culprit", the
+simulator with the game panel at the top of the right-hand rail. The switch in the masthead moves between them. The
+build writes the same page to `dist/game/index.html` (see `vite.config.ts`); in development Vite serves it at `/game`
+by its usual fallback.
 
 ## Game mode: find the culprit
 
-The simulator run backwards. "Find the culprit" draws a lesion at random and hides it:
-the vessel lumen, vessel shading, lesion marker, perfusion table and the pressure, velocity, wall-shear and flow displays
-all keep the secret, and the monitor shows only rate, cardiac output and blood pressure (the rhythm, PR and ST lines
-would read the tracing for you). You read the 12-lead, press the spot on the vessel where you think the lesion is,
-and lock in. Five cases a game, up to 100 points each: the location score is full anywhere on the lesion (within 7 mm,
-its own half-length) and falls off as a Gaussian (σ 20 mm) with distance from it *along the vessels*, so a call just
-distal to a branch is far from one just proximal, as the physiology is, but never below 25 while the call is in the
-culprit's own system (LAD, circumflex or RCA), so the right territory at the wrong level still beats the wrong artery; that score is then multiplied by
-exp(−t/150 s), t being the patient's time since the occlusion. The clock runs at 3× during a game so scores compare.
-Each reveal shows the lesion, your call, and a short debrief: what the lesion did to the tracing and why.
+The simulator run backwards, one case a day. "Find the culprit" draws the day's lesion from the date (so everyone
+gets the same case) and hides it: the vessel lumen, vessel shading, lesion marker, perfusion table and the pressure,
+velocity, wall-shear and flow displays all keep the secret, the heart does not darken, and the monitor shows only rate,
+cardiac output and blood pressure. The case can be any anatomic variant and any vessel, the nodal arteries included,
+with a complete occlusion or a tight stenosis under exertion. You read the 12-lead, press the spot on the vessel where
+you think the lesion is, and lock in.
 
-| Level | Anatomy | Lesion | Heart |
-|---|---|---|---|
-| Resident | Typical | Complete occlusion somewhere along a main artery | Ischemic muscle darkens |
-| Attending | Any variant | Any vessel, nodal arteries included; occlusion, or a tight stenosis under exertion | ECG and monitor only |
+Up to 100 points: the location score is full anywhere on the lesion (within 7 mm, its own half-length) and falls off as
+a Gaussian (σ 20 mm) with distance from it *along the vessels*, so a call just distal to a branch is far from one just
+proximal, as the physiology is, but never below 25 while the call is in the culprit's own system (LAD, circumflex or
+RCA); that score is then multiplied by exp(−t/150 s), t being the patient's time since the occlusion. The clock runs at
+3× during a case so scores compare. The reveal shows the lesion, your call, and a short debrief: what the lesion did to
+the tracing and why. The day's result is kept in the browser, so a day is played once and can be looked at again,
+and "Share your score" copies a spoiler-free line (the case number, the score, how close and how soon) to paste anywhere.
 
 Case drawing, scoring and the debrief live in `src/game.ts`; the display logic is in `src/app.ts`.
 

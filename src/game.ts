@@ -1,16 +1,15 @@
-// "Find the culprit": the simulator run backwards. A lesion is drawn at random and hidden; the player reads the
-// 12-lead and the monitor and names the vessel. Pure functions here; app.ts owns the display and the clock.
-import { buildTree, Tree, Variant, TYPICAL } from "./anatomy/tree";
+// "Find the culprit": the simulator run backwards. One case a day, the same for everyone: a lesion is drawn from the
+// date and hidden; the player reads the 12-lead and the monitor and presses where it is. Pure functions here; app.ts
+// owns the display, the clock and the record of days played.
+import { buildTree, Tree, Variant } from "./anatomy/tree";
 import { Lesion } from "./physics/network";
 
-export type Level = "resident" | "attending";
 export type Verdict = "vessel" | "territory" | "miss";
 export interface Case { variant: Variant; lesion: Lesion; exert: boolean }
 /** A spot on the tree: a vessel and a fraction of the way along it. The player's call and the lesion are both one. */
 export interface Point { segId: string; pos: number }
 export type Rng = () => number;
 
-export const ROUNDS = 5;
 export const POINTS = {
   location: 100, // a call on the lesion itself, at time zero
   freeMm: 7, // half the 14 mm lesion window: anywhere on the lesion is on the lesion
@@ -19,23 +18,31 @@ export const POINTS = {
   timeTau: 150, // s of the patient's time: the location score decays by e every tau
   speed: 3, // time scale a case runs at, so seconds since the occlusion compare between players
 };
-export const LEVELS: Record<Level, { name: string; blurb: string }> = {
-  resident: {
-    name: "Resident",
-    blurb: "Typical anatomy. A complete occlusion somewhere along one of the main arteries. The ischemic muscle darkens on the heart.",
-  },
-  attending: {
-    name: "Attending",
-    blurb: "Any anatomic variant and any vessel, the nodal arteries included; an occlusion, or a tight stenosis under exertion. The heart keeps its ischemia to itself: ECG and monitor only.",
-  },
-};
+export const EPOCH = "2026-10-07"; // the first case
 
-/** The big named arteries a first-pass player is asked about, whichever of them the variant has. */
-const RESIDENT_IDS = ["LM", "LAD", "LCX", "RCA", "D1", "OM1", "PDA_R", "PDA_L"];
-
-export function eligible(tree: Tree, level: Level): string[] {
-  const ids = tree.segments.map((s) => s.id);
-  return level === "resident" ? ids.filter((id) => RESIDENT_IDS.includes(id)) : ids;
+// ---- the day's case ----
+/** The day in the player's own calendar, as YYYY-MM-DD. */
+export function dayKey(d = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+/** Case number: days since the first case, counted from 1. */
+export function dayNumber(key: string): number {
+  const utc = (k: string) => { const [y, m, d] = k.split("-").map(Number); return Date.UTC(y, m - 1, d); };
+  return Math.round((utc(key) - utc(EPOCH)) / 86400000) + 1;
+}
+/** A generator seeded from a string (mulberry32 on an FNV-1a hash), so one date always draws one case. */
+export function seeded(key: string): Rng {
+  let h = 2166136261;
+  for (const c of key) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  let a = h >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 const pick = <T>(rng: Rng, xs: T[]): T => xs[Math.min(xs.length - 1, Math.floor(rng() * xs.length))];
@@ -57,21 +64,20 @@ export function randomVariant(rng: Rng): Variant {
   };
 }
 
-/** Draw the next case. `avoid` keeps the same vessel from coming up twice running. */
-export function drawCase(rng: Rng, level: Level, avoid = ""): Case {
-  const variant = level === "resident" ? { ...TYPICAL } : randomVariant(rng);
+/** Any variant, any vessel (the nodal arteries included); a complete occlusion, or a tight stenosis under exertion. */
+export function drawCase(rng: Rng): Case {
+  const variant = randomVariant(rng);
   const tree = buildTree(variant);
-  const ids = eligible(tree, level);
-  const pool = ids.filter((id) => id !== avoid);
-  const segId = pick(rng, pool.length ? pool : ids);
-  if (level === "resident") return { variant, lesion: { segId, pos: 0.1 + 0.3 * rng(), ds: 1, occluded: true }, exert: false };
+  const segId = pick(rng, tree.segments.map((s) => s.id));
   const occluded = rng() < 0.65;
   const pos = 0.05 + 0.85 * rng();
   return occluded
     ? { variant, lesion: { segId, pos, ds: 1, occluded: true }, exert: false }
     : { variant, lesion: { segId, pos, ds: 0.88 + 0.07 * rng(), occluded: false }, exert: true };
 }
+export const dailyCase = (key: string): Case => drawCase(seeded(key));
 
+// ---- scoring ----
 export function judge(tree: Tree, guess: string, truth: string): Verdict {
   if (guess === truth) return "vessel";
   const g = tree.byId[guess], t = tree.byId[truth];
@@ -121,8 +127,7 @@ export function score(tree: Tree, call: Point | null, lesion: Point, elapsed: nu
   return { distance, location, floored, time, total: Math.round(location * time) };
 }
 
-export const maxScore = (rounds = ROUNDS) => rounds * POINTS.location;
-
+// ---- the debrief ----
 const TERRITORY_NOTE: Record<string, string> = {
   LAD: "The LAD system supplies the anterior wall and septum, so its injury current points at V1–V4; the diagonals add I and aVL.",
   LCx: "The circumflex system supplies the lateral wall, and the inferior wall too when it is dominant, so it shows in I, aVL and V5–V6, often faintly: the lateral wall faces away from most of the twelve leads.",

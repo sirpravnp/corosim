@@ -13,8 +13,8 @@
 <header class="masthead">
   <h1>CoroSim <span class="kind" id="kind">3D Coronary Vasculature Simulator</span></h1>
   <nav class="modes" aria-label="Version">
-    <a id="modeSim" href="#" class="on">Simulator</a>
-    <a id="modeGame" href="#game">Game</a>
+    <a id="modeSim" href="./" class="on">Simulator</a>
+    <a id="modeGame" href="game/">Find the culprit</a>
   </nav>
 </header>
 
@@ -53,14 +53,10 @@
     <section id="quiz" data-phase="idle" hidden>
       <h2>Find the culprit</h2>
       <div class="q-idle">
-        <p class="glabel" style="margin-top:0">Level</p>
-        <div class="row" style="margin-top:0">
-          <button id="q_resident" class="on">Resident</button>
-          <button id="q_attending">Attending</button>
-        </div>
-        <p class="note" id="qblurb"></p>
-        <div class="row"><button id="qstart" class="primary">Start · 5 cases</button></div>
-        <p class="note">A lesion is placed at random and hidden. Read the 12-lead and the monitor, then press the spot on the vessel where you think it is. Up to 100 points a case: full on the lesion, falling with distance from it along the tree but never below 25 in the right territory, and decaying with every second of the patient's time.</p>
+        <p class="q-day" id="qday"></p>
+        <p class="note q-done" id="qdone" hidden></p>
+        <div class="row" style="margin-top:0"><button id="qstart" class="primary">Start today's case</button></div>
+        <p class="note">One case a day, the same for everyone. A lesion is placed and hidden: any anatomy, any vessel, an occlusion or a tight stenosis under exertion, and the heart keeps its ischemia to itself. Read the 12-lead and the monitor, then press the spot on the vessel where you think it is. Up to 100 points: full on the lesion, falling with distance from it along the tree but never below 25 in the right territory, and decaying with every second of the patient's time.</p>
       </div>
       <div class="q-live">
         <div class="q-status"><span id="qround"></span><span id="qclock"></span><span id="qscore"></span></div>
@@ -76,9 +72,10 @@
       <div class="q-reveal">
         <p class="q-result" id="qresult"></p>
         <p class="note" id="qwhy"></p>
-        <div class="row"><button id="qnext" class="primary">Next case</button></div>
+        <div class="row" style="margin-top:0"><button id="qshare" class="primary">Share your score</button></div>
+        <p class="note">The next case comes tomorrow.</p>
       </div>
-      <div class="row q-live"><button id="qquit">Quit game</button></div>
+      <div class="row q-live"><button id="qquit">Leave the case</button></div>
     </section>
 
     <section>

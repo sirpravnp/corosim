@@ -1,28 +1,36 @@
 import { describe, it, expect } from "vitest";
 import { buildTree, TYPICAL } from "../src/anatomy/tree";
 import { analyze } from "../src/physics/network";
-import { drawCase, eligible, explain, judge, locationScore, maxScore, randomVariant, score, timeFactor, treeDistance, POINTS, ROUNDS, Level } from "../src/game";
+import { dailyCase, dayKey, dayNumber, drawCase, explain, judge, locationScore, randomVariant, score, seeded, timeFactor, treeDistance, EPOCH, POINTS } from "../src/game";
 
 /** Seeded LCG so a failing draw is reproducible. */
 const lcg = (seed: number) => () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
-const LEVELS: Level[] = ["resident", "attending"];
 
-describe("case drawing", () => {
-  it("resident cases: typical anatomy, a complete occlusion of a main artery, proximal", () => {
-    const rng = lcg(1);
-    for (let i = 0; i < 200; i++) {
-      const c = drawCase(rng, "resident");
-      expect(c.variant).toEqual(TYPICAL);
-      expect(c.lesion.occluded).toBe(true); expect(c.exert).toBe(false);
-      expect(["LM", "LAD", "LCX", "RCA", "D1", "OM1", "PDA_R"]).toContain(c.lesion.segId);
-      expect(c.lesion.pos).toBeGreaterThanOrEqual(0.1); expect(c.lesion.pos).toBeLessThanOrEqual(0.4);
-    }
+describe("the day's case", () => {
+  it("keys the day in the player's own calendar and numbers cases from the first", () => {
+    expect(dayKey(new Date(2026, 9, 7, 23, 59))).toBe("2026-10-07");
+    expect(dayKey(new Date(2027, 0, 3, 0, 1))).toBe("2027-01-03");
+    expect(dayNumber(EPOCH)).toBe(1);
+    expect(dayNumber("2026-10-08")).toBe(2);
+    expect(dayNumber("2027-10-07")).toBe(366);
   });
-  it("attending cases: the vessel exists in the drawn variant; stenoses come with exertion", () => {
+  it("draws the same case for the same day and different cases on different days", () => {
+    expect(dailyCase("2026-10-07")).toEqual(dailyCase("2026-10-07"));
+    const keys = Array.from({ length: 60 }, (_, i) => `2026-11-${String(i % 30 + 1).padStart(2, "0")}-${Math.floor(i / 30)}`);
+    const distinct = new Set(keys.map((k) => JSON.stringify(dailyCase(k))));
+    expect(distinct.size).toBeGreaterThan(50);
+  });
+  it("seeded generators are uniform on [0, 1) and independent of each other", () => {
+    const r = seeded("x"), xs = Array.from({ length: 2000 }, r);
+    expect(Math.min(...xs)).toBeGreaterThanOrEqual(0); expect(Math.max(...xs)).toBeLessThan(1);
+    expect(xs.reduce((a, b) => a + b, 0) / xs.length).toBeCloseTo(0.5, 1);
+    expect(seeded("2026-10-07")()).not.toBe(seeded("2026-10-08")());
+  });
+  it("the vessel exists in the drawn variant; stenoses come with exertion", () => {
     const rng = lcg(2);
     let occl = 0, sten = 0;
     for (let i = 0; i < 300; i++) {
-      const c = drawCase(rng, "attending");
+      const c = drawCase(rng);
       expect(buildTree(c.variant).byId[c.lesion.segId]).toBeDefined();
       expect(c.lesion.pos).toBeGreaterThanOrEqual(0.05); expect(c.lesion.pos).toBeLessThanOrEqual(0.9);
       if (c.lesion.occluded) { occl++; expect(c.lesion.ds).toBe(1); expect(c.exert).toBe(false); }
@@ -31,24 +39,12 @@ describe("case drawing", () => {
     expect(occl).toBeGreaterThan(100); expect(sten).toBeGreaterThan(50);
   });
   it("every drawn case starves at least one bed, so there is always something to find", () => {
-    for (const level of LEVELS) {
-      const rng = lcg(3);
-      for (let i = 0; i < 60; i++) {
-        const c = drawCase(rng, level);
-        const a = analyze(buildTree(c.variant), [c.lesion], c.exert);
-        expect(Math.max(...a.cond.terminals.map((t) => t.severity))).toBeGreaterThan(0.5);
-      }
+    const rng = lcg(3);
+    for (let i = 0; i < 80; i++) {
+      const c = drawCase(rng);
+      const a = analyze(buildTree(c.variant), [c.lesion], c.exert);
+      expect(Math.max(...a.cond.terminals.map((t) => t.severity))).toBeGreaterThan(0.5);
     }
-  });
-  it("never repeats the vessel it is told to avoid", () => {
-    const rng = lcg(4);
-    for (let i = 0; i < 100; i++) expect(drawCase(rng, "resident", "LAD").lesion.segId).not.toBe("LAD");
-  });
-  it("eligibility: resident asks about the main arteries present; attending asks about every vessel", () => {
-    const t = buildTree(TYPICAL), l = buildTree({ ...TYPICAL, dominance: "left", lm: "absent" });
-    expect(eligible(t, "resident").sort()).toEqual(["D1", "LAD", "LCX", "LM", "OM1", "PDA_R", "RCA"]);
-    expect(eligible(l, "resident")).not.toContain("LM"); expect(eligible(l, "resident")).toContain("PDA_L");
-    expect(eligible(t, "attending")).toEqual(t.segments.map((s) => s.id));
   });
   it("random variants cover every dominance and left-main pattern over many draws", () => {
     const rng = lcg(5), seen = new Set<string>();
@@ -120,7 +116,6 @@ describe("scoring", () => {
     expect(off.distance).toBeCloseTo(0.2 * t.byId.LAD.length, 6);
     expect(off.total).toBeLessThan(perfect.total); expect(off.total).toBeGreaterThan(POINTS.territoryFloor);
     expect(score(t, null, lesion, 10).total).toBe(0);
-    expect(maxScore()).toBe(ROUNDS * POINTS.location);
   });
   it("the right system is never worth nothing: a PDA call on a proximal RCA lesion gets the floor, an LAD call does not", () => {
     const lesion = { segId: "RCA", pos: 0.2 };

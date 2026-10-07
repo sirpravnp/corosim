@@ -13,7 +13,7 @@ import { stepSeverity } from "./physics/ischemia";
 import { BedSite, bedSites, injuryVector, ischemicBurden, globalSeverity } from "./physics/ecgLink";
 import { EcgStrip } from "./ecgStrip";
 import { rhythmState, RhythmState } from "./physics/rhythm";
-import { Case, Level, LEVELS, POINTS, Point, ROUNDS, drawCase, explain, judge, maxScore, score } from "./game";
+import { Case, POINTS, Point, dailyCase, dayKey, dayNumber, explain, judge, score } from "./game";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const MMHG = 133.322;
@@ -521,61 +521,79 @@ function frame(now: number) {
   requestAnimationFrame(frame);
 }
 
-// ---------------------------------------------------------------- game: find the culprit
+// ---------------------------------------------------------------- game: find the culprit, one case a day
 type Phase = "idle" | "play" | "reveal";
 const G = {
-  level: "resident" as Level, phase: "idle" as Phase, round: 0, score: 0,
+  phase: "idle" as Phase, day: "", score: 0,
   clock: 0, // s of the patient's time since the occlusion
   call: null as Point | null, // where the player has pressed on the tree
   kase: null as Case | null, saved: null as null | { V: Variant; S: Partial<typeof S> },
 };
 const LESION_KEYS = ["lesionSeg", "pos", "ds", "occ", "exert", "mode", "flow", "speed"] as const;
 const LOCKED = ["m_pressure", "m_velocity", "m_wss", "flowbtn", "s1", "s3", "s6"]; // displays that would show the lesion, and the clock
+/** What the player did with a day's case, kept in this browser so the day is played once and can be looked at again. */
+interface Played { total: number; distance: number; elapsed: number; call: Point | null; cls: string; result: string; why: string }
+const STORE = "corosim.daily";
+let history: Record<string, Played> = {};
+try { history = JSON.parse(localStorage.getItem(STORE) || "{}"); } catch { history = {}; }
+const remember = (key: string, p: Played) => { history[key] = p; try { localStorage.setItem(STORE, JSON.stringify(history)); } catch { /* private window, blocked storage: the day just replays */ } };
+const dayLabel = (key: string) => { const [y, m, d] = key.split("-").map(Number); return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" }); };
 const callUi = () => {
   $("qcall").textContent = G.call ? `${tree.byId[G.call.segId].name}, ${Math.round(G.call.pos * 100)}% along` : "none yet";
   ($("qlock") as HTMLButtonElement).disabled = !G.call;
 };
 
-/** A clean slate between cases: no ischemia carried over, pressure back at baseline. */
+/** A clean slate for a case: no ischemia carried over, pressure back at baseline. */
 function resetPhysiology() {
   for (const k of Object.keys(sev)) delete sev[k];
   mapSm = solvedMap = CIRC.baseMap;
 }
-function setLevel(l: Level) {
-  G.level = l;
-  for (const k of Object.keys(LEVELS) as Level[]) $("q_" + k).classList.toggle("on", k === l);
-  $("qblurb").textContent = LEVELS[l].blurb;
+/** Into the game: remember the simulator's state and lock the displays that would give the lesion away. */
+function enterGame() {
+  if (G.saved) return;
+  G.saved = { V: { ...V }, S: Object.fromEntries(LESION_KEYS.map((k) => [k, S[k]])) };
+  // pressure and velocity colouring and the flow particles would all show where the blood stops
+  if (S.mode !== "real" && S.mode !== "anat") S.mode = "real";
+  S.flow = false; points.visible = false;
+  S.speed = POINTS.speed; // one clock for every player
+  for (const id of LOCKED) ($(id) as HTMLButtonElement).disabled = true;
+  document.body.classList.add("game");
 }
-function gameStart() {
-  if (G.phase === "idle") {
-    G.saved = { V: { ...V }, S: Object.fromEntries(LESION_KEYS.map((k) => [k, S[k]])) };
-    // pressure and velocity colouring and the flow particles would all show where the blood stops
-    if (S.mode !== "real" && S.mode !== "anat") S.mode = "real";
-    S.flow = false; points.visible = false;
-    S.speed = POINTS.speed; // one clock for every player
-    for (const id of LOCKED) ($(id) as HTMLButtonElement).disabled = true;
-    document.body.classList.add("game");
-  }
-  G.round = 0; G.score = 0;
-  gameNext();
-}
-function gameNext() {
-  const c = drawCase(Math.random, G.level, G.kase?.lesion.segId ?? S.lesionSeg);
-  G.kase = c; G.round++; G.clock = 0; G.phase = "play"; G.call = null;
+function loadCase(key: string) {
+  const c = dailyCase(key);
+  G.day = key; G.kase = c;
   Object.assign(V, c.variant); syncSelects();
   S.lesionSeg = c.lesion.segId; S.pos = c.lesion.pos; S.ds = c.lesion.ds; S.occ = !!c.lesion.occluded; S.exert = c.exert;
-  S.hide = true; S.hideIsch = G.level === "attending"; S.selected = "";
   pendingAnatomy = pendingLesion = false;
+}
+function gameStart() {
+  const key = dayKey();
+  if (history[key]) return gameReview(key);
+  enterGame(); loadCase(key);
+  G.clock = 0; G.score = 0; G.phase = "play"; G.call = null;
+  S.hide = S.hideIsch = true; S.selected = "";
   resetPhysiology(); rebuildAnatomy();
   $("pick").style.display = "none";
   callUi(); controlsUi(); liveUi();
+}
+/** A day already played: the case again, revealed, with the call and the result as they were. */
+function gameReview(key: string) {
+  const p = history[key];
+  enterGame(); loadCase(key);
+  G.clock = p.elapsed; G.score = p.total; G.phase = "reveal"; G.call = p.call;
+  S.hide = S.hideIsch = false; S.selected = G.kase!.lesion.segId;
+  resetPhysiology(); rebuildAnatomy();
+  const res = $("qresult"); res.className = "q-result " + p.cls; res.innerHTML = p.result;
+  $("qwhy").textContent = p.why;
+  $("pick").style.display = "none";
+  controlsUi(); liveUi();
 }
 function gameAnswer(giveUp: boolean) {
   if (G.phase !== "play" || !G.kase) return;
   const truth = G.kase.lesion.segId, call = giveUp ? null : G.call;
   const sc = score(tree, call, { segId: truth, pos: G.kase.lesion.pos }, G.clock);
   const verdict = call ? judge(tree, call.segId, truth) : "miss";
-  G.score += sc.total; G.phase = "reveal"; G.call = call;
+  G.score = sc.total; G.phase = "reveal"; G.call = call;
   // show the lesion: the real lumen, the shaded vessels, the marker, the darkened muscle and the perfusion table
   S.hide = S.hideIsch = false; S.selected = truth;
   buildVessels(); initParticles(); paintMyocardium();
@@ -583,23 +601,23 @@ function gameAnswer(giveUp: boolean) {
   const findings = { stUp: LEAD_ORDER.filter((l) => st[l] >= 1), stDown: LEAD_ORDER.filter((l) => st[l] <= -1), rhythm: rhythmLabel(r, rstate?.avDegree ?? 0) };
   const name = tree.byId[truth].name, chosen = call ? tree.byId[call.segId].name : "";
   const how = `${Math.round(sc.distance)} mm from the lesion along the tree, called at ${Math.round(G.clock)} s`;
-  const pts = `<span class="pts">location ${Math.round(sc.location)}${sc.floored ? " (territory floor)" : ""} × time ${sc.time.toFixed(2)} = +${sc.total}</span>`;
-  const res = $("qresult");
-  res.className = "q-result " + (sc.total >= 60 ? "vessel" : sc.total >= 20 ? "territory" : "miss");
-  res.innerHTML = !call ? `The culprit was the ${name}.`
+  const pts = `<span class="pts">location ${Math.round(sc.location)}${sc.floored ? " (territory floor)" : ""} × time ${sc.time.toFixed(2)} = ${sc.total} pts</span>`;
+  const cls = sc.total >= 60 ? "vessel" : sc.total >= 20 ? "territory" : "miss";
+  const result = !call ? `The culprit was the ${name}.`
     : verdict === "vessel" ? `On the ${name}, ${how}. ${pts}`
     : verdict === "territory" ? `Right territory, wrong branch: you called the ${chosen}, ${how}. ${pts}`
     : `Wrong territory: you called the ${chosen}, ${how}. ${pts}`;
-  if (G.round >= ROUNDS) res.innerHTML += `<br>Final score ${G.score} of ${maxScore()}.`;
-  $("qwhy").textContent = explain(tree, G.kase, findings);
-  $("qnext").textContent = G.round >= ROUNDS ? "Play again" : "Next case";
+  const why = explain(tree, G.kase, findings);
+  const res = $("qresult"); res.className = "q-result " + cls; res.innerHTML = result;
+  $("qwhy").textContent = why;
+  remember(G.day, { total: sc.total, distance: sc.distance, elapsed: G.clock, call, cls, result, why });
   $("pick").style.display = "none";
   controlsUi(); liveUi();
 }
 function gameQuit() {
   if (G.phase === "idle" || !G.saved) return;
   Object.assign(V, G.saved.V); Object.assign(S, G.saved.S); syncSelects();
-  S.hide = S.hideIsch = false; S.selected = ""; G.phase = "idle"; G.kase = null; G.call = null;
+  S.hide = S.hideIsch = false; S.selected = ""; G.phase = "idle"; G.kase = null; G.call = null; G.saved = null;
   for (const id of LOCKED) ($(id) as HTMLButtonElement).disabled = false;
   document.body.classList.remove("game");
   pendingAnatomy = pendingLesion = false;
@@ -609,30 +627,59 @@ function gameQuit() {
 }
 function gameUi() {
   $("quiz").dataset.phase = G.phase; document.body.dataset.game = G.phase;
-  if (G.phase === "idle") return;
-  $("qround").textContent = `Case ${G.round} of ${ROUNDS} · ${LEVELS[G.level].name}`;
+  if (G.phase === "idle") {
+    const key = dayKey(), p = history[key], days = Object.keys(history).length;
+    $("qday").textContent = `Case #${dayNumber(key)} · ${dayLabel(key)}`;
+    $("qdone").hidden = !p;
+    if (p) $("qdone").textContent = `Played today: ${p.total} pts. ${days} day${days === 1 ? "" : "s"} played, ${Object.values(history).reduce((a, x) => a + x.total, 0)} pts in all.`;
+    $("qstart").textContent = p ? "Look at today's case again" : "Start today's case";
+    return;
+  }
+  $("qround").textContent = `Case #${dayNumber(G.day)}`;
   $("qclock").textContent = `${G.clock.toFixed(1)} s`;
   $("qscore").textContent = `${G.score} pts`;
 }
-for (const k of Object.keys(LEVELS) as Level[]) on("q_" + k, () => setLevel(k));
 on("qstart", gameStart);
-on("qnext", () => (G.round >= ROUNDS ? gameStart() : gameNext()));
 on("qlock", () => gameAnswer(false));
 on("qreveal", () => gameAnswer(true));
 on("qquit", gameQuit);
-setLevel("resident");
+
+/** A spoiler-free line to paste anywhere: the case number, the score as a bar, how close and how soon. */
+function shareText(): string {
+  const p = history[G.day];
+  if (!p) return "";
+  const bar = "█".repeat(Math.round(p.total / 10)).padEnd(10, "░");
+  const how = p.call ? `${Math.round(p.distance)} mm from the lesion, called at ${Math.round(p.elapsed)} s` : "no call";
+  return `CoroSim · Find the culprit #${dayNumber(G.day)}\n${bar} ${p.total}/100\n${how}\n${location.origin}${location.pathname.replace(/\/?$/, "/")}`;
+}
+async function share() {
+  const text = shareText(), btn = $("qshare") as HTMLButtonElement;
+  if (!text) return;
+  const done = (label: string) => { btn.textContent = label; btn.classList.add("done"); setTimeout(() => { btn.textContent = "Share your score"; btn.classList.remove("done"); }, 2500); };
+  try {
+    if (navigator.share && /Android|iPhone|iPad/i.test(navigator.userAgent)) { await navigator.share({ text }); return done("Shared"); }
+    await navigator.clipboard.writeText(text);
+    done("Copied to clipboard");
+  } catch {
+    // the share sheet was dismissed, or the clipboard is blocked: show the text so it can be copied by hand
+    const w = window.prompt("Copy your score:", text.replaceAll("\n", " · "));
+    void w;
+  }
+}
+on("qshare", share);
 
 // ---------------------------------------------------------------- versions: the simulator alone, or with the game
-/** `#game` in the URL is the game version; anything else is the plain simulator. Leaving the game mid-case quits it. */
+/** The page at /game/ is the game version; anywhere else it is the plain simulator. The links between them are
+ *  relative, so the site still works under any URL. */
 function applyMode() {
-  const game = location.hash === "#game";
-  if (!game && G.phase !== "idle") gameQuit();
+  const game = /\/game\/?$/.test(location.pathname);
+  const root = game && location.pathname.endsWith("/") ? "../" : "./";
+  ($("modeSim") as HTMLAnchorElement).href = root; ($("modeGame") as HTMLAnchorElement).href = root + "game/";
   $("quiz").hidden = !game;
   $("modeSim").classList.toggle("on", !game); $("modeGame").classList.toggle("on", game);
   $("kind").textContent = game ? "Find the culprit · a game on the simulator" : "3D Coronary Vasculature Simulator";
   document.title = game ? "CoroSim · Find the culprit" : "CoroSim";
 }
-addEventListener("hashchange", applyMode);
 
 // Browsers restore form values on reload; force every control to match the model's starting state.
 $<HTMLInputElement>("pos").value = String(S.pos * 100);
