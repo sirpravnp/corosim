@@ -111,7 +111,23 @@ button.on, button.on:hover { background: var(--accent); border-color: var(--acce
 button.primary { border-color: var(--ink); border-width: 2px; padding: 7px 10px; }
 button.primary.on { border-color: var(--accent); }
 :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+button:disabled, button:disabled:hover { color: var(--muted); background: var(--panel); border-color: var(--rule-light); cursor: not-allowed; }
 .note { margin: 10px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+
+/* Game panel: which block shows follows the phase on the section */
+#quiz .q-live, #quiz .q-play, #quiz .q-reveal { display: none; }
+#quiz[data-phase="play"] .q-live, #quiz[data-phase="reveal"] .q-live, #quiz[data-phase="play"] .q-play, #quiz[data-phase="reveal"] .q-reveal { display: block; }
+#quiz[data-phase="play"] .row.q-live, #quiz[data-phase="reveal"] .row.q-live { display: flex; }
+#quiz:not([data-phase="idle"]) .q-idle { display: none; }
+.q-status { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 4px; font: 600 12px/1.4 var(--font-data); font-variant-numeric: tabular-nums; color: var(--muted); }
+.q-status span:first-child { color: var(--ink); }
+.q-result { margin: 6px 0 0; font-size: 14px; line-height: 1.45; font-weight: 700; }
+.q-result.vessel { color: var(--ok); } .q-result.territory { color: var(--warn); } .q-result.miss { color: var(--bad); }
+.q-result .pts { font-family: var(--font-data); font-weight: 600; color: var(--muted); }
+.q-hidden-note { display: none; margin: 0 0 4px; }
+body[data-game="play"] .q-hidden-note { display: block; }
+body.game #lesionctl, body[data-game="play"] #bedsfig { display: none; }
+body.game #anatomy { opacity: 0.45; pointer-events: none; }
 
 /* Readouts */
 table.readout { width: 100%; border-collapse: collapse; font-size: 13px; }

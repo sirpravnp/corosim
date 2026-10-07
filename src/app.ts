@@ -2,7 +2,7 @@ import "./customSelect";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import { buildTree, Tree, Variant, TYPICAL, rotateHeart, Segment } from "./anatomy/tree";
+import { buildTree, Tree, Variant, TYPICAL, rotateHeart, Segment, diameterAt } from "./anatomy/tree";
 import { meshHeart, projectToEpicardium, septalDistance, latitude, AV_GROOVE_LAT, Part, PART_NAMES } from "./anatomy/heartSurface";
 import { V3 } from "./anatomy/curve";
 import { LEADS, ST } from "./config/ecg";
@@ -13,6 +13,7 @@ import { stepSeverity } from "./physics/ischemia";
 import { BedSite, bedSites, injuryVector, ischemicBurden, globalSeverity } from "./physics/ecgLink";
 import { EcgStrip } from "./ecgStrip";
 import { rhythmState, RhythmState } from "./physics/rhythm";
+import { Case, Level, LEVELS, ROUNDS, drawCase, explain, judge, maxScore, points as scorePoints } from "./game";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const MMHG = 133.322;
@@ -23,6 +24,8 @@ const V: Variant = { ...TYPICAL };
 const S = {
   lesionSeg: "LAD", pos: 0.15, ds: 0, occ: false, exert: false, speed: 1,
   mode: "real" as Mode, heart: "solid" as HeartView, exag: 2.5, flow: false, selected: "",
+  hide: false, // game: the lesion is kept out of every display (lumen, vessel shading, marker, perfusion table)
+  hideIsch: false, // game: the myocardium does not darken either
 };
 let tree: Tree, A: Analysis, sites: BedSite[] = [];
 const sev: Record<string, number> = {}; // per-bed ischemia state (0..1), evolves in time
@@ -133,7 +136,7 @@ function paintMyocardium() {
     c.copy(PART_COLOR[hPart[i] as Part]).multiplyScalar(grain[i]);
     if (isVentricle(i)) {
       let isch = 0;
-      for (let k = 0; k < NB; k++) isch += bedW[i * NB + k] * (sev[sites[bedIdx[i * NB + k]].key] ?? 0);
+      if (!S.hideIsch) for (let k = 0; k < NB; k++) isch += bedW[i * NB + k] * (sev[sites[bedIdx[i * NB + k]].key] ?? 0);
       isch *= cover[i];
       c.lerp(DUSKY, 0.75 * isch);
       c.lerp(FAT, fatK[i] * (1 - 0.4 * isch));
@@ -150,7 +153,7 @@ function applyHeartView() {
 }
 
 // ---------------------------------------------------------------- vessels
-interface Built { seg: Segment; mesh: THREE.Mesh; ctr: THREE.Vector3[]; out: THREE.Vector3[]; nrm: THREE.Vector3[]; bin: THREE.Vector3[]; rad: number[]; blocked: boolean[] }
+interface Built { seg: Segment; mesh: THREE.Mesh; ctr: THREE.Vector3[]; out: THREE.Vector3[]; nrm: THREE.Vector3[]; bin: THREE.Vector3[]; rad: number[]; d: number[]; blocked: boolean[] }
 let built: Built[] = [];
 const vesselGroup = new THREE.Group(); heartGroup.add(vesselGroup);
 const M = 22;
@@ -173,7 +176,8 @@ function buildVessels() {
     const base = placed.map((q) => v3(rotateHeart(q.pos)));
     const surfN = placed.map((q) => v3(rotateHeart(q.n)));
     const ctr: THREE.Vector3[] = [], nrm: THREE.Vector3[] = [], bin: THREE.Vector3[] = [], rad: number[] = [];
-    const dMax = Math.max(...r.d) * 1000;
+    const d = S.hide ? r.s.map((s) => diameterAt(tree, seg, s)) : r.d; // a hidden lesion must not pinch the tube
+    const dMax = Math.max(...d) * 1000;
     const amp = 0.22 + 0.4 * (1 - Math.min(1, dMax / 3.5)); // mm; smaller arteries meander more
     for (let i = 0; i < n; i++) {
       const s = r.s[i];
@@ -194,7 +198,7 @@ function buildVessels() {
       const flare = 1 + 0.28 * Math.exp(-s / 2.2);
       const tip = Math.sqrt(Math.max(0, Math.min(1, (L - s) / 3.5))); // hemispherical close-off at the distal end
       const ripple = 1 + 0.025 * Math.sin((6.283 * s) / 13.3 + ph * 1.7) + 0.015 * Math.sin((6.283 * s) / 4.1 + ph);
-      rad.push((r.d[i] / 2) * 1000 * flare * tip * ripple);
+      rad.push((d[i] / 2) * 1000 * flare * tip * ripple);
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(n * (M + 1) * 3), 3));
@@ -204,7 +208,7 @@ function buildVessels() {
     geo.setIndex(idx);
     const mesh = new THREE.Mesh(geo, vesselMat);
     mesh.userData.segId = seg.id; vesselGroup.add(mesh);
-    built.push({ seg, mesh, ctr, out: surfN, nrm, bin, rad, blocked: blockedFlags(seg) });
+    built.push({ seg, mesh, ctr, out: surfN, nrm, bin, rad, d, blocked: blockedFlags(seg) });
   }
   shapeVessels();
 }
@@ -214,14 +218,15 @@ function shapeVessels() {
   for (const b of built) {
     const r = A.cond.seg[b.seg.id], n = r.s.length;
     const pa = b.mesh.geometry.attributes.position as THREE.BufferAttribute, ca = b.mesh.geometry.attributes.color as THREE.BufferAttribute;
-    const dMax = Math.max(...r.d);
+    const dMax = Math.max(...b.d);
     for (let i = 0; i < n; i++) {
       const R = b.rad[i] * S.exag;
       const lift = R * 0.6; // arteries sit in the epicardial fat, mostly above the muscle
       const cx = b.ctr[i].x + b.out[i].x * lift, cy = b.ctr[i].y + b.out[i].y * lift, cz = b.ctr[i].z + b.out[i].z * lift;
-      if (S.mode === "real") c.copy(ARTERY).lerp(ARTERY_DEEP, 0.35 * (1 - r.d[i] / dMax) + (b.blocked[i] ? 0.45 : 0));
+      const blocked = b.blocked[i] && !S.hide;
+      if (S.mode === "real") c.copy(ARTERY).lerp(ARTERY_DEEP, 0.35 * (1 - b.d[i] / dMax) + (blocked ? 0.45 : 0));
       else if (S.mode === "anat") c.setHex(GROUP_COLOR[b.seg.group]);
-      else if (b.blocked[i]) c.copy(GRAY);
+      else if (blocked) c.copy(GRAY);
       else if (S.mode === "pressure") c.copy(ramp(VIRIDIS, (r.P[i] / MMHG - 20) / 70));
       else if (S.mode === "velocity") c.copy(ramp(MAGMA, lg(r.v[i], 0.01, 4)));
       else c.copy(ramp(MAGMA, lg(r.wss[i], 0.1, 1000)));
@@ -331,11 +336,18 @@ function controlsUi() {
   for (const m of ["real", "anat", "pressure", "velocity", "wss"]) $("m_" + m).classList.toggle("on", S.mode === m);
   for (const s of [1, 3, 6]) $("s" + s).classList.toggle("on", S.speed === s);
   const risk = A.cond.atRisk * 100;
-  $("risk").textContent = risk.toFixed(0) + "%"; $("risk").style.color = risk > 25 ? "var(--bad)" : risk > 0 ? "var(--warn)" : "var(--ok)";
-  $("ffr").textContent = S.ds > 0 && !S.occ ? A.ffr[0].toFixed(2) : "—";
-  $("ffr").style.color = A.ffr[0] < 0.8 ? "var(--bad)" : "var(--ink)";
-  $("tag").textContent = `${tree.segments.length} arteries · radius ×${S.exag} · click a vessel · drag to orbit`;
+  $("risk").textContent = S.hide ? "—" : risk.toFixed(0) + "%"; $("risk").style.color = S.hide ? "var(--muted)" : risk > 25 ? "var(--bad)" : risk > 0 ? "var(--warn)" : "var(--ok)";
+  $("ffr").textContent = S.ds > 0 && !S.occ && !S.hide ? A.ffr[0].toFixed(2) : "—";
+  $("ffr").style.color = A.ffr[0] < 0.8 && !S.hide ? "var(--bad)" : "var(--ink)";
+  $("tag").textContent = S.hide ? `${tree.segments.length} arteries · click the culprit · drag to orbit` : `${tree.segments.length} arteries · radius ×${S.exag} · click a vessel · drag to orbit`;
 }
+
+const rhythmLabel = (r: ReturnType<EcgStrip["rhythm"]>, deg: number) => {
+  const sinus = r.atrial < 60 ? "Sinus bradycardia" : r.atrial > 100 ? "Sinus tachycardia" : "Sinus rhythm";
+  return (deg === 3 ? "Complete heart block, junctional escape"
+    : deg === 2 ? `${sinus}, Mobitz I (Wenckebach)`
+    : deg === 1 ? `${sinus}, first-degree AV block` : sinus) + (r.pvc ? ", PVCs" : "");
+};
 
 const LEAD_ORDER = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"] as const;
 function liveUi() {
@@ -346,10 +358,7 @@ function liveUi() {
   $("arate").textContent = r.atrial ? Math.round(r.atrial) + " bpm" : "…";
   $("pr").textContent = deg === 3 ? "dissociated" : r.pr === null ? "…" : Math.round(r.pr * 1000) + " ms" + (deg === 2 ? " (lengthening)" : "");
   $("pr").style.color = deg >= 1 ? "var(--bad)" : "var(--ink)";
-  const sinus = r.atrial < 60 ? "Sinus bradycardia" : r.atrial > 100 ? "Sinus tachycardia" : "Sinus rhythm";
-  $("rhythm").textContent = (deg === 3 ? "Complete heart block, junctional escape"
-    : deg === 2 ? `${sinus}, Mobitz I (Wenckebach)`
-    : deg === 1 ? `${sinus}, first-degree AV block` : sinus) + (r.pvc ? ", PVCs" : "");
+  $("rhythm").textContent = rhythmLabel(r, deg);
   $("rhythm").style.color = deg >= 2 ? "var(--bad)" : deg === 1 || r.atrial < 60 || r.atrial > 100 ? "var(--warn)" : "var(--ink)";
   const up = LEAD_ORDER.filter((l) => st[l] >= 1), down = LEAD_ORDER.filter((l) => st[l] <= -1);
   $("stup").textContent = up.length ? up.join(", ") : "none"; $("stup").style.color = up.length ? "var(--bad)" : "var(--ink)";
@@ -365,12 +374,14 @@ function liveUi() {
     $("circ").style.color = $("bp").style.color;
   }
   const burden = ischemicBurden(sites, sev) * 100;
-  $("burden").textContent = burden.toFixed(0) + "%"; $("burden").style.color = burden > 10 ? "var(--bad)" : burden > 1 ? "var(--warn)" : "var(--ink)";
+  $("burden").textContent = S.hide ? "—" : burden.toFixed(0) + "%"; $("burden").style.color = S.hide ? "var(--muted)" : burden > 10 ? "var(--bad)" : burden > 1 ? "var(--warn)" : "var(--ink)";
   $("stmap").innerHTML = LEAD_ORDER.map((l) => {
     const v = st[l], cls = v >= 1 ? "up" : v <= -1 ? "down" : "";
     const txt = Math.abs(v) < 0.05 ? "0.0" : (v > 0 ? "+" : "−") + Math.abs(v).toFixed(1);
     return `<div><b>${l}</b><span class="${cls}">${txt}</span></div>`;
   }).join("");
+  gameUi();
+  if (S.hide) return; // the perfusion table names the starved beds
   const bySeg: Record<string, { ratio: number; mass: number; label: string; isch: number }> = {};
   for (const t of A.cond.terminals) {
     const b = (bySeg[t.segId] ??= { ratio: Infinity, mass: 0, label: tree.byId[t.segId].name, isch: 0 });
@@ -423,7 +434,13 @@ renderer.domElement.addEventListener("pointerup", (e) => {
     box.style.display = "block";
     box.innerHTML = `<b>${PART_NAMES[hPart[hit.face.a]]}</b>`;
   } else if (!S.selected) box.style.display = "none";
-  else {
+  else if (S.hide) {
+    // in a case, a click is an answer; flow and pressure would give the lesion away
+    const sg = tree.byId[S.selected];
+    box.style.display = "block";
+    box.innerHTML = `<b>${sg.name}</b><br>supplies ${(sg.subMass * 100).toFixed(0)}% of myocardium<br>your answer · lock it in`;
+    $<HTMLSelectElement>("guess").value = S.selected; guessChanged();
+  } else {
     const sg = tree.byId[S.selected], r2 = A.cond.seg[S.selected], n = r2.s.length;
     box.style.display = "block";
     box.innerHTML = `<b>${sg.name}</b><br>length ${sg.length.toFixed(0)} mm · Ø ${(Math.min(...r2.d) * 1e3).toFixed(1)}–${(Math.max(...r2.d) * 1e3).toFixed(1)} mm<br>inflow ${(r2.Q[0] * 6e7).toFixed(0)} ml/min<br>pressure ${(r2.P[0] / MMHG).toFixed(0)} → ${(r2.P[n - 1] / MMHG).toFixed(0)} mmHg<br>supplies ${(sg.subMass * 100).toFixed(0)}% of myocardium`;
@@ -445,7 +462,7 @@ const lzTag = marker.querySelector(".lz-tag") as HTMLElement;
 const lzPoint = new THREE.Vector3(), lzDir = new THREE.Vector3();
 let lzClock = 0, lzText = "", lzBack = false;
 function updateMarker(dt: number) {
-  const b = S.ds > 0 || S.occ ? built.find((x) => x.seg.id === S.lesionSeg) : undefined;
+  const b = (S.ds > 0 || S.occ) && !S.hide ? built.find((x) => x.seg.id === S.lesionSeg) : undefined;
   if (!b) { marker.hidden = true; return; }
   const r = A.cond.seg[b.seg.id], L = b.seg.length;
   const s = Math.min(L - 7, Math.max(7, S.pos * L));
@@ -477,6 +494,7 @@ let rstate: RhythmState | null = null, circ: Circulation | null = null, mapClock
 function frame(now: number) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   flush();
+  if (G.phase === "play") G.clock += dt * S.speed;
   for (const s of sites) sev[s.key] = stepSeverity(sev[s.key] ?? 0, target[s.key] ?? 0, dt * S.speed);
   const burden = ischemicBurden(sites, sev), g = globalSeverity(burden);
   rstate = rhythmState(sites, sev, g);
@@ -491,6 +509,100 @@ function frame(now: number) {
   controls.update(); camera.updateMatrixWorld(); updateMarker(dt); renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
+
+// ---------------------------------------------------------------- game: find the culprit
+type Phase = "idle" | "play" | "reveal";
+const G = { level: "resident" as Level, phase: "idle" as Phase, round: 0, score: 0, clock: 0, kase: null as Case | null, saved: null as null | { V: Variant; S: Partial<typeof S> } };
+const LESION_KEYS = ["lesionSeg", "pos", "ds", "occ", "exert", "mode", "flow"] as const;
+const guessSel = $<HTMLSelectElement>("guess");
+const guessChanged = () => { ($("qlock") as HTMLButtonElement).disabled = !guessSel.value; };
+const mmss = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+
+/** A clean slate between cases: no ischemia carried over, pressure back at baseline. */
+function resetPhysiology() {
+  for (const k of Object.keys(sev)) delete sev[k];
+  mapSm = solvedMap = CIRC.baseMap;
+}
+function setLevel(l: Level) {
+  G.level = l;
+  for (const k of Object.keys(LEVELS) as Level[]) $("q_" + k).classList.toggle("on", k === l);
+  $("qblurb").textContent = LEVELS[l].blurb;
+}
+function gameStart() {
+  if (G.phase === "idle") {
+    G.saved = { V: { ...V }, S: Object.fromEntries(LESION_KEYS.map((k) => [k, S[k]])) };
+    // pressure and velocity colouring and the flow particles would all show where the blood stops
+    if (S.mode !== "real" && S.mode !== "anat") S.mode = "real";
+    S.flow = false; points.visible = false;
+    for (const id of ["m_pressure", "m_velocity", "m_wss", "flowbtn"]) ($(id) as HTMLButtonElement).disabled = true;
+    document.body.classList.add("game");
+  }
+  G.round = 0; G.score = 0;
+  gameNext();
+}
+function gameNext() {
+  const c = drawCase(Math.random, G.level, G.kase?.lesion.segId ?? S.lesionSeg);
+  G.kase = c; G.round++; G.clock = 0; G.phase = "play";
+  Object.assign(V, c.variant); syncSelects();
+  S.lesionSeg = c.lesion.segId; S.pos = c.lesion.pos; S.ds = c.lesion.ds; S.occ = !!c.lesion.occluded; S.exert = c.exert;
+  S.hide = true; S.hideIsch = G.level === "attending"; S.selected = "";
+  pendingAnatomy = pendingLesion = false;
+  resetPhysiology(); rebuildAnatomy();
+  guessSel.innerHTML = `<option value="">Choose a vessel…</option>` + tree.segments.map((s) => `<option value="${s.id}">${s.name}</option>`).join("");
+  guessSel.value = ""; guessChanged();
+  $("pick").style.display = "none";
+  controlsUi(); liveUi();
+}
+function gameAnswer(giveUp: boolean) {
+  if (G.phase !== "play" || !G.kase) return;
+  const truth = G.kase.lesion.segId, guess = giveUp ? "" : guessSel.value;
+  const verdict = giveUp ? "miss" : judge(tree, guess, truth), p = scorePoints(verdict, G.clock);
+  G.score += p.total; G.phase = "reveal";
+  // show the lesion: the real lumen, the shaded vessels, the marker, the darkened muscle and the perfusion table
+  S.hide = S.hideIsch = false; S.selected = truth;
+  buildVessels(); initParticles(); paintMyocardium();
+  const st = ecg.st(), r = ecg.rhythm();
+  const findings = { stUp: LEAD_ORDER.filter((l) => st[l] >= 1), stDown: LEAD_ORDER.filter((l) => st[l] <= -1), rhythm: rhythmLabel(r, rstate?.avDegree ?? 0) };
+  const name = tree.byId[truth].name, chosen = guess ? tree.byId[guess].name : "";
+  const pts = `<span class="pts">+${p.base}${p.bonus ? ` · +${p.bonus} for speed` : ""}</span>`;
+  const res = $("qresult");
+  res.className = "q-result " + verdict;
+  res.innerHTML = giveUp ? `The culprit was the ${name}.`
+    : verdict === "vessel" ? `Correct: the ${name}. ${pts}`
+    : verdict === "territory" ? `Close: you chose the ${chosen}; the culprit was the ${name}, in the same territory. ${pts}`
+    : `Missed: you chose the ${chosen}; the culprit was the ${name}. ${pts}`;
+  if (G.round >= ROUNDS) res.innerHTML += `<br>Final score ${G.score} of ${maxScore()}.`;
+  $("qwhy").textContent = explain(tree, G.kase, findings);
+  $("qnext").textContent = G.round >= ROUNDS ? "Play again" : "Next case";
+  $("pick").style.display = "none";
+  controlsUi(); liveUi();
+}
+function gameQuit() {
+  if (G.phase === "idle" || !G.saved) return;
+  Object.assign(V, G.saved.V); Object.assign(S, G.saved.S); syncSelects();
+  S.hide = S.hideIsch = false; S.selected = ""; G.phase = "idle"; G.kase = null;
+  for (const id of ["m_pressure", "m_velocity", "m_wss", "flowbtn"]) ($(id) as HTMLButtonElement).disabled = false;
+  document.body.classList.remove("game");
+  pendingAnatomy = pendingLesion = false;
+  resetPhysiology(); rebuildAnatomy(); points.visible = S.flow;
+  $("pick").style.display = "none";
+  controlsUi(); liveUi();
+}
+function gameUi() {
+  $("quiz").dataset.phase = G.phase; document.body.dataset.game = G.phase;
+  if (G.phase === "idle") return;
+  $("qround").textContent = `Case ${G.round} of ${ROUNDS} · ${LEVELS[G.level].name}`;
+  $("qclock").textContent = mmss(G.clock);
+  $("qscore").textContent = `${G.score} pts`;
+}
+for (const k of Object.keys(LEVELS) as Level[]) on("q_" + k, () => setLevel(k));
+on("qstart", gameStart);
+on("qnext", () => (G.round >= ROUNDS ? gameStart() : gameNext()));
+on("qlock", () => gameAnswer(false));
+on("qreveal", () => gameAnswer(true));
+on("qquit", gameQuit);
+guessSel.addEventListener("change", () => { S.selected = guessSel.value; guessChanged(); shapeVessels(); });
+setLevel("resident");
 
 // Browsers restore form values on reload; force every control to match the model's starting state.
 $<HTMLInputElement>("pos").value = String(S.pos * 100);

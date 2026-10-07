@@ -39,13 +39,45 @@
       <figcaption><b>Figure 2.</b> Twelve-lead ECG at 25 mm/s and 10 mm/mV. ST shift is the sum of injury currents from every ischemic bed, each pointing out through its own patch of wall, so the lead pattern follows whichever artery is blocked. Numbers above are ST level in mm at J + 60 ms.</figcaption>
     </figure>
 
-    <figure>
+    <figure id="bedsfig">
       <div id="beds"></div>
       <figcaption><b>Table 1.</b> Perfusion of each myocardial bed (supply divided by demand) and its current ischemia.</figcaption>
     </figure>
   </section>
 
   <aside>
+    <section id="quiz" data-phase="idle">
+      <h2>Find the culprit</h2>
+      <div class="q-idle">
+        <p class="glabel" style="margin-top:0">Level</p>
+        <div class="row" style="margin-top:0">
+          <button id="q_resident" class="on">Resident</button>
+          <button id="q_attending">Attending</button>
+        </div>
+        <p class="note" id="qblurb"></p>
+        <div class="row"><button id="qstart" class="primary">Start · 5 cases</button></div>
+        <p class="note">A lesion is placed at random and hidden. Read the 12-lead and the monitor, then click the vessel you think is the culprit. 100 points for the vessel, 40 for the right territory, up to 50 more for speed.</p>
+      </div>
+      <div class="q-live">
+        <div class="q-status"><span id="qround"></span><span id="qclock"></span><span id="qscore"></span></div>
+      </div>
+      <div class="q-play">
+        <label for="guess">Culprit vessel</label>
+        <select id="guess"></select>
+        <div class="row">
+          <button id="qlock" class="primary" disabled>Lock in</button>
+          <button id="qreveal">Show me</button>
+        </div>
+        <p class="note">Click a vessel on the heart or pick it from the list. Ischemia takes about 20 s to develop; the 3× and 6× time scales below hurry the case along.</p>
+      </div>
+      <div class="q-reveal">
+        <p class="q-result" id="qresult"></p>
+        <p class="note" id="qwhy"></p>
+        <div class="row"><button id="qnext" class="primary">Next case</button></div>
+      </div>
+      <div class="row q-live"><button id="qquit">Quit game</button></div>
+    </section>
+
     <section>
       <h2>Monitor</h2>
       <table class="readout">
@@ -66,16 +98,19 @@
 
     <section>
       <h2>Lesion</h2>
-      <label for="lseg">Vessel</label>
-      <select id="lseg"></select>
-      <label for="pos">Position along the vessel <span class="val" id="posv"></span></label>
-      <input id="pos" type="range" min="5" max="95" value="15">
-      <label for="ds">Diameter stenosis <span class="val" id="dsv"></span></label>
-      <input id="ds" type="range" min="0" max="95" value="0">
-      <div class="row">
-        <button id="occ" class="primary">Occlude</button>
-        <button id="exert">Exertion (2×)</button>
+      <div id="lesionctl">
+        <label for="lseg" style="margin-top:0">Vessel</label>
+        <select id="lseg"></select>
+        <label for="pos">Position along the vessel <span class="val" id="posv"></span></label>
+        <input id="pos" type="range" min="5" max="95" value="15">
+        <label for="ds">Diameter stenosis <span class="val" id="dsv"></span></label>
+        <input id="ds" type="range" min="0" max="95" value="0">
+        <div class="row">
+          <button id="occ" class="primary">Occlude</button>
+          <button id="exert">Exertion (2×)</button>
+        </div>
       </div>
+      <p class="note q-hidden-note">The lesion is hidden while a case is running.</p>
       <p class="glabel" id="ts-l">Time scale</p>
       <div class="row" style="margin-top:0">
         <button id="s1" class="on">1×</button>
@@ -85,7 +120,7 @@
       <p class="note">Ischemia develops over about 20 s after occlusion and resolves with a time constant of about 8 s after reperfusion. Rate and AV conduction follow the territory: anterior ischemia speeds the heart; inferior ischemia, and loss of the SA- or AV-node artery, slow it and block conduction. Lost contraction and slow rates lower blood pressure, and lower pressure then perfuses every coronary bed less.</p>
     </section>
 
-    <section>
+    <section id="anatomy">
       <h2>Anatomy</h2>
       <div class="row" style="margin-top:0">
         <button id="p_typ">Typical</button>

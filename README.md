@@ -29,6 +29,21 @@ npm run build      # static site in dist/
 
 All constants live in `src/config/`, tagged as literature-backed or assumed.
 
+## Game mode: find the culprit
+
+The simulator run backwards. "Find the culprit" (top of the right-hand rail) draws a lesion at random and hides it:
+the vessel lumen, vessel shading, lesion marker, perfusion table and the pressure, velocity, wall-shear and flow displays
+all keep the secret. You read the 12-lead and the monitor, click the vessel you think is blocked (or pick it from the
+list) and lock in. Five cases a game; 100 points for the vessel, 40 for the right territory, up to 50 more for naming it
+early. Each reveal shows the lesion and a short debrief: what it did to the tracing and why.
+
+| Level | Anatomy | Lesion | Heart |
+|---|---|---|---|
+| Resident | Typical | Complete occlusion of a main artery, proximal | Ischemic muscle darkens |
+| Attending | Any variant | Any vessel, nodal arteries included; occlusion, or a tight stenosis under exertion | ECG and monitor only |
+
+Case drawing, scoring and the debrief live in `src/game.ts`; the display logic is in `src/app.ts`.
+
 ## Deploy
 
 The build is a static site with relative paths, so it works at any URL.
