@@ -56,19 +56,18 @@
         </div>
         <p class="note" id="qblurb"></p>
         <div class="row"><button id="qstart" class="primary">Start · 5 cases</button></div>
-        <p class="note">A lesion is placed at random and hidden. Read the 12-lead and the monitor, then click the vessel you think is the culprit. 100 points for the vessel, 40 for the right territory, up to 50 more for speed.</p>
+        <p class="note">A lesion is placed at random and hidden. Read the 12-lead and the monitor, then press the spot on the vessel where you think it is. Up to 100 points a case: full on the lesion, falling with distance from it along the tree, and decaying with every second of the patient's time.</p>
       </div>
       <div class="q-live">
         <div class="q-status"><span id="qround"></span><span id="qclock"></span><span id="qscore"></span></div>
       </div>
       <div class="q-play">
-        <label for="guess">Culprit vessel</label>
-        <select id="guess"></select>
-        <div class="row">
+        <div class="q-call"><span>Your call</span><b id="qcall"></b></div>
+        <div class="row" style="margin-top:0">
           <button id="qlock" class="primary" disabled>Lock in</button>
           <button id="qreveal">Show me</button>
         </div>
-        <p class="note">Click a vessel on the heart or pick it from the list. Ischemia takes about 20 s to develop; the 3× and 6× time scales below hurry the case along.</p>
+        <p class="note">Click the spot on a vessel where you think the lesion is; click again to move it. Free within 7 mm (the lesion's own half-length), then points fall off with distance along the vessels. The clock is the patient's, running at 3×; ischemia takes about 20 s of it to develop.</p>
       </div>
       <div class="q-reveal">
         <p class="q-result" id="qresult"></p>

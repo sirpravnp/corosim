@@ -13,7 +13,7 @@ import { stepSeverity } from "./physics/ischemia";
 import { BedSite, bedSites, injuryVector, ischemicBurden, globalSeverity } from "./physics/ecgLink";
 import { EcgStrip } from "./ecgStrip";
 import { rhythmState, RhythmState } from "./physics/rhythm";
-import { Case, Level, LEVELS, ROUNDS, drawCase, explain, judge, maxScore, points as scorePoints } from "./game";
+import { Case, Level, LEVELS, POINTS, Point, ROUNDS, drawCase, explain, judge, maxScore, score } from "./game";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const MMHG = 133.322;
@@ -434,12 +434,13 @@ renderer.domElement.addEventListener("pointerup", (e) => {
     box.style.display = "block";
     box.innerHTML = `<b>${PART_NAMES[hPart[hit.face.a]]}</b>`;
   } else if (!S.selected) box.style.display = "none";
-  else if (S.hide) {
-    // in a case, a click is an answer; flow and pressure would give the lesion away
-    const sg = tree.byId[S.selected];
-    box.style.display = "block";
-    box.innerHTML = `<b>${sg.name}</b><br>supplies ${(sg.subMass * 100).toFixed(0)}% of myocardium<br>your answer · lock it in`;
-    $<HTMLSelectElement>("guess").value = S.selected; guessChanged();
+  else if (G.phase === "play") {
+    // in a case the click is the call: the spot on the vessel nearest the hit
+    const b = built.find((x) => x.seg.id === S.selected)!, r = A.cond.seg[b.seg.id], q = vesselGroup.worldToLocal(hit.point.clone());
+    let i = 0, best = Infinity;
+    b.ctr.forEach((c, k) => { const d2 = q.distanceToSquared(c); if (d2 < best) { best = d2; i = k; } });
+    G.call = { segId: b.seg.id, pos: r.s[i] / b.seg.length };
+    box.style.display = "none"; callUi();
   } else {
     const sg = tree.byId[S.selected], r2 = A.cond.seg[S.selected], n = r2.s.length;
     box.style.display = "block";
@@ -452,41 +453,51 @@ renderer.domElement.addEventListener("pointerup", (e) => {
 const ecg = new EcgStrip($<HTMLCanvasElement>("ecg"));
 function resize() { const w = view.clientWidth, h = view.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 new ResizeObserver(resize).observe(view);
-// ---------------------------------------------------------------- lesion marker
-/** A floating label anchored to the stenosis: a bracket on the vessel at the lesion's position, a leader line and a tag. */
-const marker = document.createElement("div");
-marker.id = "lesion"; marker.hidden = true;
-marker.innerHTML = '<i class="lz-ring"></i><i class="lz-line"></i><span class="lz-tag"></span>';
-view.append(marker);
-const lzTag = marker.querySelector(".lz-tag") as HTMLElement;
-const lzPoint = new THREE.Vector3(), lzDir = new THREE.Vector3();
-let lzClock = 0, lzText = "", lzBack = false;
-function updateMarker(dt: number) {
-  const b = (S.ds > 0 || S.occ) && !S.hide ? built.find((x) => x.seg.id === S.lesionSeg) : undefined;
-  if (!b) { marker.hidden = true; return; }
+// ---------------------------------------------------------------- markers: the lesion, and the player's call
+/** A floating label anchored to a point on a vessel: a bracket on the vessel, a leader line and a tag. */
+interface Marker { el: HTMLElement; tag: HTMLElement; text: string; back: boolean; point: THREE.Vector3 }
+function makeMarker(id: string): Marker {
+  const el = document.createElement("div");
+  el.id = id; el.hidden = true;
+  el.innerHTML = '<i class="lz-ring"></i><i class="lz-line"></i><span class="lz-tag"></span>';
+  view.append(el);
+  return { el, tag: el.querySelector(".lz-tag") as HTMLElement, text: "", back: false, point: new THREE.Vector3() };
+}
+const lesionMarker = makeMarker("lesion"), callMarker = makeMarker("call");
+const lzDir = new THREE.Vector3();
+let lzClock = 0;
+/** `margin` keeps the anchor off the vessel's ends (the physics holds a lesion half a window in); `probe` re-tests occlusion by the heart. */
+function placeMarker(m: Marker, b: Built | undefined, pos: number, text: string, margin: number, probe: boolean) {
+  if (!b) { m.el.hidden = true; return; }
   const r = A.cond.seg[b.seg.id], L = b.seg.length;
-  const s = Math.min(L - 7, Math.max(7, S.pos * L));
+  const s = Math.min(L - margin, Math.max(margin, pos * L));
   let i = 0;
   for (let k = 1; k < r.s.length; k++) if (Math.abs(r.s[k] - s) < Math.abs(r.s[i] - s)) i = k;
-  lzPoint.copy(b.ctr[i]).addScaledVector(b.out[i], b.rad[i] * S.exag * 0.6);
-  vesselGroup.localToWorld(lzPoint);
-  const p = lzPoint.clone().project(camera);
+  m.point.copy(b.ctr[i]).addScaledVector(b.out[i], b.rad[i] * S.exag * 0.6);
+  vesselGroup.localToWorld(m.point);
+  const p = m.point.clone().project(camera);
   const inView = p.z < 1 && Math.abs(p.x) < 1.05 && Math.abs(p.y) < 1.05;
-  marker.hidden = !inView;
+  m.el.hidden = !inView;
   if (!inView) return;
-  marker.style.transform = `translate(${((p.x + 1) / 2) * view.clientWidth}px, ${((1 - p.y) / 2) * view.clientHeight}px)`;
-  const text = `${S.occ ? "Occluded" : Math.round(S.ds * 100) + "% stenosis"} · ${b.seg.name}`;
-  if (text !== lzText) { lzText = text; lzTag.textContent = text; }
-  // dim the marker when the lesion is behind the heart or another vessel as seen from the camera
-  if ((lzClock += dt) > 0.1) {
-    lzClock = 0;
-    lzDir.copy(lzPoint).sub(camera.position);
+  m.el.style.transform = `translate(${((p.x + 1) / 2) * view.clientWidth}px, ${((1 - p.y) / 2) * view.clientHeight}px)`;
+  if (text !== m.text) { m.text = text; m.tag.textContent = text; }
+  // dim the marker when its point is behind the heart or another vessel as seen from the camera
+  if (probe) {
+    lzDir.copy(m.point).sub(camera.position);
     const dist = lzDir.length();
     ray.set(camera.position, lzDir.normalize());
     const hit = ray.intersectObjects([...built.filter((x) => x !== b).map((x) => x.mesh), ...(heartMesh.visible ? [heartMesh] : [])])[0];
-    lzBack = !!hit && hit.distance < dist - 3;
+    m.back = !!hit && hit.distance < dist - 3;
   }
-  marker.classList.toggle("back", lzBack);
+  m.el.classList.toggle("back", m.back);
+}
+function updateMarkers(dt: number) {
+  const probe = (lzClock += dt) > 0.1;
+  if (probe) lzClock = 0;
+  const lb = (S.ds > 0 || S.occ) && !S.hide ? built.find((x) => x.seg.id === S.lesionSeg) : undefined;
+  placeMarker(lesionMarker, lb, S.pos, `${S.occ ? "Occluded" : Math.round(S.ds * 100) + "% stenosis"} · ${lb?.seg.name ?? ""}`, 7, probe);
+  const cb = G.call && G.phase !== "idle" ? built.find((x) => x.seg.id === G.call!.segId) : undefined;
+  placeMarker(callMarker, cb, G.call?.pos ?? 0, "Your call", 0, probe);
 }
 
 let last = performance.now(), uiClock = 0, paintClock = 0;
@@ -506,17 +517,24 @@ function frame(now: number) {
   if (S.flow) stepParticles(dt);
   if ((paintClock += dt) > 0.1) { paintClock = 0; paintMyocardium(); }
   if ((uiClock += dt) > 0.25) { uiClock = 0; liveUi(); }
-  controls.update(); camera.updateMatrixWorld(); updateMarker(dt); renderer.render(scene, camera);
+  controls.update(); camera.updateMatrixWorld(); updateMarkers(dt); renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
 
 // ---------------------------------------------------------------- game: find the culprit
 type Phase = "idle" | "play" | "reveal";
-const G = { level: "resident" as Level, phase: "idle" as Phase, round: 0, score: 0, clock: 0, kase: null as Case | null, saved: null as null | { V: Variant; S: Partial<typeof S> } };
-const LESION_KEYS = ["lesionSeg", "pos", "ds", "occ", "exert", "mode", "flow"] as const;
-const guessSel = $<HTMLSelectElement>("guess");
-const guessChanged = () => { ($("qlock") as HTMLButtonElement).disabled = !guessSel.value; };
-const mmss = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+const G = {
+  level: "resident" as Level, phase: "idle" as Phase, round: 0, score: 0,
+  clock: 0, // s of the patient's time since the occlusion
+  call: null as Point | null, // where the player has pressed on the tree
+  kase: null as Case | null, saved: null as null | { V: Variant; S: Partial<typeof S> },
+};
+const LESION_KEYS = ["lesionSeg", "pos", "ds", "occ", "exert", "mode", "flow", "speed"] as const;
+const LOCKED = ["m_pressure", "m_velocity", "m_wss", "flowbtn", "s1", "s3", "s6"]; // displays that would show the lesion, and the clock
+const callUi = () => {
+  $("qcall").textContent = G.call ? `${tree.byId[G.call.segId].name}, ${Math.round(G.call.pos * 100)}% along` : "none yet";
+  ($("qlock") as HTMLButtonElement).disabled = !G.call;
+};
 
 /** A clean slate between cases: no ischemia carried over, pressure back at baseline. */
 function resetPhysiology() {
@@ -534,7 +552,8 @@ function gameStart() {
     // pressure and velocity colouring and the flow particles would all show where the blood stops
     if (S.mode !== "real" && S.mode !== "anat") S.mode = "real";
     S.flow = false; points.visible = false;
-    for (const id of ["m_pressure", "m_velocity", "m_wss", "flowbtn"]) ($(id) as HTMLButtonElement).disabled = true;
+    S.speed = POINTS.speed; // one clock for every player
+    for (const id of LOCKED) ($(id) as HTMLButtonElement).disabled = true;
     document.body.classList.add("game");
   }
   G.round = 0; G.score = 0;
@@ -542,35 +561,35 @@ function gameStart() {
 }
 function gameNext() {
   const c = drawCase(Math.random, G.level, G.kase?.lesion.segId ?? S.lesionSeg);
-  G.kase = c; G.round++; G.clock = 0; G.phase = "play";
+  G.kase = c; G.round++; G.clock = 0; G.phase = "play"; G.call = null;
   Object.assign(V, c.variant); syncSelects();
   S.lesionSeg = c.lesion.segId; S.pos = c.lesion.pos; S.ds = c.lesion.ds; S.occ = !!c.lesion.occluded; S.exert = c.exert;
   S.hide = true; S.hideIsch = G.level === "attending"; S.selected = "";
   pendingAnatomy = pendingLesion = false;
   resetPhysiology(); rebuildAnatomy();
-  guessSel.innerHTML = `<option value="">Choose a vessel…</option>` + tree.segments.map((s) => `<option value="${s.id}">${s.name}</option>`).join("");
-  guessSel.value = ""; guessChanged();
   $("pick").style.display = "none";
-  controlsUi(); liveUi();
+  callUi(); controlsUi(); liveUi();
 }
 function gameAnswer(giveUp: boolean) {
   if (G.phase !== "play" || !G.kase) return;
-  const truth = G.kase.lesion.segId, guess = giveUp ? "" : guessSel.value;
-  const verdict = giveUp ? "miss" : judge(tree, guess, truth), p = scorePoints(verdict, G.clock);
-  G.score += p.total; G.phase = "reveal";
+  const truth = G.kase.lesion.segId, call = giveUp ? null : G.call;
+  const sc = score(tree, call, { segId: truth, pos: G.kase.lesion.pos }, G.clock);
+  const verdict = call ? judge(tree, call.segId, truth) : "miss";
+  G.score += sc.total; G.phase = "reveal"; G.call = call;
   // show the lesion: the real lumen, the shaded vessels, the marker, the darkened muscle and the perfusion table
   S.hide = S.hideIsch = false; S.selected = truth;
   buildVessels(); initParticles(); paintMyocardium();
   const st = ecg.st(), r = ecg.rhythm();
   const findings = { stUp: LEAD_ORDER.filter((l) => st[l] >= 1), stDown: LEAD_ORDER.filter((l) => st[l] <= -1), rhythm: rhythmLabel(r, rstate?.avDegree ?? 0) };
-  const name = tree.byId[truth].name, chosen = guess ? tree.byId[guess].name : "";
-  const pts = `<span class="pts">+${p.base}${p.bonus ? ` · +${p.bonus} for speed` : ""}</span>`;
+  const name = tree.byId[truth].name, chosen = call ? tree.byId[call.segId].name : "";
+  const how = `${Math.round(sc.distance)} mm from the lesion along the tree, called at ${Math.round(G.clock)} s`;
+  const pts = `<span class="pts">location ${Math.round(sc.location)} × time ${sc.time.toFixed(2)} = +${sc.total}</span>`;
   const res = $("qresult");
-  res.className = "q-result " + verdict;
-  res.innerHTML = giveUp ? `The culprit was the ${name}.`
-    : verdict === "vessel" ? `Correct: the ${name}. ${pts}`
-    : verdict === "territory" ? `Close: you chose the ${chosen}; the culprit was the ${name}, in the same territory. ${pts}`
-    : `Missed: you chose the ${chosen}; the culprit was the ${name}. ${pts}`;
+  res.className = "q-result " + (sc.total >= 60 ? "vessel" : sc.total >= 20 ? "territory" : "miss");
+  res.innerHTML = !call ? `The culprit was the ${name}.`
+    : verdict === "vessel" ? `On the ${name}, ${how}. ${pts}`
+    : verdict === "territory" ? `Right territory, wrong branch: you called the ${chosen}, ${how}. ${pts}`
+    : `Wrong territory: you called the ${chosen}, ${how}. ${pts}`;
   if (G.round >= ROUNDS) res.innerHTML += `<br>Final score ${G.score} of ${maxScore()}.`;
   $("qwhy").textContent = explain(tree, G.kase, findings);
   $("qnext").textContent = G.round >= ROUNDS ? "Play again" : "Next case";
@@ -580,8 +599,8 @@ function gameAnswer(giveUp: boolean) {
 function gameQuit() {
   if (G.phase === "idle" || !G.saved) return;
   Object.assign(V, G.saved.V); Object.assign(S, G.saved.S); syncSelects();
-  S.hide = S.hideIsch = false; S.selected = ""; G.phase = "idle"; G.kase = null;
-  for (const id of ["m_pressure", "m_velocity", "m_wss", "flowbtn"]) ($(id) as HTMLButtonElement).disabled = false;
+  S.hide = S.hideIsch = false; S.selected = ""; G.phase = "idle"; G.kase = null; G.call = null;
+  for (const id of LOCKED) ($(id) as HTMLButtonElement).disabled = false;
   document.body.classList.remove("game");
   pendingAnatomy = pendingLesion = false;
   resetPhysiology(); rebuildAnatomy(); points.visible = S.flow;
@@ -592,7 +611,7 @@ function gameUi() {
   $("quiz").dataset.phase = G.phase; document.body.dataset.game = G.phase;
   if (G.phase === "idle") return;
   $("qround").textContent = `Case ${G.round} of ${ROUNDS} · ${LEVELS[G.level].name}`;
-  $("qclock").textContent = mmss(G.clock);
+  $("qclock").textContent = `${G.clock.toFixed(1)} s`;
   $("qscore").textContent = `${G.score} pts`;
 }
 for (const k of Object.keys(LEVELS) as Level[]) on("q_" + k, () => setLevel(k));
@@ -601,7 +620,6 @@ on("qnext", () => (G.round >= ROUNDS ? gameStart() : gameNext()));
 on("qlock", () => gameAnswer(false));
 on("qreveal", () => gameAnswer(true));
 on("qquit", gameQuit);
-guessSel.addEventListener("change", () => { S.selected = guessSel.value; guessChanged(); shapeVessels(); });
 setLevel("resident");
 
 // Browsers restore form values on reload; force every control to match the model's starting state.

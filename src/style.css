@@ -123,7 +123,9 @@ button:disabled, button:disabled:hover { color: var(--muted); background: var(--
 .q-status span:first-child { color: var(--ink); }
 .q-result { margin: 6px 0 0; font-size: 14px; line-height: 1.45; font-weight: 700; }
 .q-result.vessel { color: var(--ok); } .q-result.territory { color: var(--warn); } .q-result.miss { color: var(--bad); }
-.q-result .pts { font-family: var(--font-data); font-weight: 600; color: var(--muted); }
+.q-result .pts { display: block; margin-top: 2px; font: 600 12px/1.5 var(--font-data); color: var(--muted); }
+.q-call { display: flex; justify-content: space-between; gap: 8px; margin: 0 0 8px; font-size: 13px; }
+.q-call b { font: 600 12px/1.5 var(--font-data); text-align: right; }
 .q-hidden-note { display: none; margin: 0 0 4px; }
 body[data-game="play"] .q-hidden-note { display: block; }
 body.game #lesionctl, body[data-game="play"] #bedsfig { display: none; }
@@ -156,10 +158,13 @@ table.readout td#stup, table.readout td#stdown, table.readout td#rhythm { white-
 .masthead .kind { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 .masthead .kind::before { content: "\201C"; } .masthead .kind::after { content: "\201D"; }
 
-/* Floating stenosis marker, positioned over the lesion by app.ts */
-#lesion { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 2; will-change: transform; transition: opacity .15s; }
-#lesion[hidden] { display: none; }
-#lesion.back { opacity: 0.35; }
+/* Floating markers, positioned over the lesion and over the player's call by app.ts */
+#lesion, #call { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 2; will-change: transform; transition: opacity .15s; }
+#lesion[hidden], #call[hidden] { display: none; }
+#lesion.back, #call.back { opacity: 0.35; }
+#call .lz-ring { border-style: dashed; animation: none; }
+#call .lz-line { transform: rotate(45deg); top: 13px; }
+#call .lz-tag { top: 26px; bottom: auto; color: var(--bg); background: var(--ink); }
 .lz-ring { position: absolute; left: -13px; top: -13px; width: 26px; height: 26px; border: 2px solid var(--ink); box-shadow: 0 0 0 1px var(--bg); animation: lz-pulse 1.6s ease-in-out infinite; }
 .lz-line { position: absolute; left: 13px; top: -13px; width: 20px; height: 2px; background: var(--ink); transform: rotate(-45deg); transform-origin: 0 50%; box-shadow: 0 0 0 1px var(--bg); }
 .lz-tag { position: absolute; left: 26px; bottom: 26px; white-space: nowrap; padding: 5px 8px; font: 700 11px/1 var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-ink); background: var(--accent); }

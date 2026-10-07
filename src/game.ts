@@ -6,20 +6,22 @@ import { Lesion } from "./physics/network";
 export type Level = "resident" | "attending";
 export type Verdict = "vessel" | "territory" | "miss";
 export interface Case { variant: Variant; lesion: Lesion; exert: boolean }
+/** A spot on the tree: a vessel and a fraction of the way along it. The player's call and the lesion are both one. */
+export interface Point { segId: string; pos: number }
 export type Rng = () => number;
 
 export const ROUNDS = 5;
 export const POINTS = {
-  vessel: 100, // the culprit itself
-  territory: 40, // right system (LAD, circumflex or RCA), wrong branch
-  speedBonus: 50, // on a correct vessel, scaled by how soon it was named
-  speedFullUntil: 30, // s of simulated time: ischemia is fully developed by ~20 s
-  speedZeroAt: 120,
+  location: 100, // a call on the lesion itself, at time zero
+  freeMm: 7, // half the 14 mm lesion window: anywhere on the lesion is on the lesion
+  sigmaMm: 20, // beyond that, Gaussian fall-off with distance along the tree: half credit at ~17 mm off, a tenth at ~30
+  timeTau: 150, // s of the patient's time: the location score decays by e every tau
+  speed: 3, // time scale a case runs at, so seconds since the occlusion compare between players
 };
 export const LEVELS: Record<Level, { name: string; blurb: string }> = {
   resident: {
     name: "Resident",
-    blurb: "Typical anatomy. A complete occlusion of one of the main arteries. The ischemic muscle darkens on the heart.",
+    blurb: "Typical anatomy. A complete occlusion somewhere along one of the main arteries. The ischemic muscle darkens on the heart.",
   },
   attending: {
     name: "Attending",
@@ -75,19 +77,46 @@ export function judge(tree: Tree, guess: string, truth: string): Verdict {
   return g && t && g.group === t.group ? "territory" : "miss";
 }
 
-/** Speed bonus (points) for a correct vessel named after `elapsed` s of simulated time. */
-export function speedBonus(elapsed: number): number {
-  const { speedBonus: max, speedFullUntil: a, speedZeroAt: b } = POINTS;
-  return Math.round(max * Math.min(1, Math.max(0, 1 - (elapsed - a) / (b - a))));
+/** The path from a point back to the aortic root: on each vessel, how far along it the path runs before leaving. */
+function chain(tree: Tree, p: Point): { segId: string; s: number }[] {
+  const out: { segId: string; s: number }[] = [];
+  let seg = tree.byId[p.segId], s = Math.min(1, Math.max(0, p.pos)) * seg.length;
+  for (;;) {
+    out.push({ segId: seg.id, s });
+    if (!seg.parent) return out;
+    const up = tree.byId[seg.parent];
+    s = seg.attach * up.length; seg = up;
+  }
 }
 
-export function points(verdict: Verdict, elapsed: number): { base: number; bonus: number; total: number } {
-  const base = verdict === "vessel" ? POINTS.vessel : verdict === "territory" ? POINTS.territory : 0;
-  const bonus = verdict === "vessel" ? speedBonus(elapsed) : 0;
-  return { base, bonus, total: base + bonus };
+/** Distance (mm) between two points measured along the vessels, through the aortic root when they share no vessel. */
+export function treeDistance(tree: Tree, a: Point, b: Point): number {
+  const ca = chain(tree, a), cb = chain(tree, b);
+  const onA = new Map(ca.map((e, i) => [e.segId, i]));
+  const j = cb.findIndex((e) => onA.has(e.segId));
+  if (j < 0) return ca.reduce((t, e) => t + e.s, 0) + cb.reduce((t, e) => t + e.s, 0);
+  const i = onA.get(cb[j].segId)!;
+  const below = (c: typeof ca, k: number) => c.slice(0, k).reduce((t, e) => t + e.s, 0);
+  return below(ca, i) + below(cb, j) + Math.abs(ca[i].s - cb[j].s);
 }
 
-export const maxScore = (rounds = ROUNDS) => rounds * (POINTS.vessel + POINTS.speedBonus);
+/** Location score (points) for a call `d` mm along the tree from the lesion. */
+export function locationScore(d: number): number {
+  const off = Math.max(0, d - POINTS.freeMm) / POINTS.sigmaMm;
+  return POINTS.location * Math.exp(-off * off);
+}
+
+/** Time factor (0..1) for a call made `elapsed` s of the patient's time after the occlusion. */
+export const timeFactor = (elapsed: number) => Math.exp(-Math.max(0, elapsed) / POINTS.timeTau);
+
+export interface Score { distance: number; location: number; time: number; total: number }
+export function score(tree: Tree, call: Point | null, lesion: Point, elapsed: number): Score {
+  if (!call) return { distance: Infinity, location: 0, time: timeFactor(elapsed), total: 0 };
+  const distance = treeDistance(tree, call, lesion), location = locationScore(distance), time = timeFactor(elapsed);
+  return { distance, location, time, total: Math.round(location * time) };
+}
+
+export const maxScore = (rounds = ROUNDS) => rounds * POINTS.location;
 
 const TERRITORY_NOTE: Record<string, string> = {
   LAD: "The LAD system supplies the anterior wall and septum, so its injury current points at V1–V4; the diagonals add I and aVL.",

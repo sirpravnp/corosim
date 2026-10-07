@@ -33,13 +33,16 @@ All constants live in `src/config/`, tagged as literature-backed or assumed.
 
 The simulator run backwards. "Find the culprit" (top of the right-hand rail) draws a lesion at random and hides it:
 the vessel lumen, vessel shading, lesion marker, perfusion table and the pressure, velocity, wall-shear and flow displays
-all keep the secret. You read the 12-lead and the monitor, click the vessel you think is blocked (or pick it from the
-list) and lock in. Five cases a game; 100 points for the vessel, 40 for the right territory, up to 50 more for naming it
-early. Each reveal shows the lesion and a short debrief: what it did to the tracing and why.
+all keep the secret. You read the 12-lead and the monitor, press the spot on the vessel where you think the lesion is,
+and lock in. Five cases a game, up to 100 points each: the location score is full anywhere on the lesion (within 7 mm,
+its own half-length) and falls off as a Gaussian (σ 20 mm) with distance from it *along the vessels*, so a call just
+distal to a branch is far from one just proximal, as the physiology is; that score is then multiplied by
+exp(−t/150 s), t being the patient's time since the occlusion. The clock runs at 3× during a game so scores compare.
+Each reveal shows the lesion, your call, and a short debrief: what the lesion did to the tracing and why.
 
 | Level | Anatomy | Lesion | Heart |
 |---|---|---|---|
-| Resident | Typical | Complete occlusion of a main artery, proximal | Ischemic muscle darkens |
+| Resident | Typical | Complete occlusion somewhere along a main artery | Ischemic muscle darkens |
 | Attending | Any variant | Any vessel, nodal arteries included; occlusion, or a tight stenosis under exertion | ECG and monitor only |
 
 Case drawing, scoring and the debrief live in `src/game.ts`; the display logic is in `src/app.ts`.
