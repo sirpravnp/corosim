@@ -53,9 +53,14 @@ body {
   font: 15px/1.5 var(--font-ui);
 }
 
-/* Masthead */
-.masthead { padding-block: 28px 18px; }
+/* Masthead: the title, and the switch between the two versions */
+.masthead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 12px 24px; padding-block: 28px 18px; }
 .masthead { border-bottom: 1px solid var(--rule); }
+.modes { display: flex; gap: 6px; }
+.modes a { padding: 8px 11px; font: 700 12px/1 var(--font-ui); letter-spacing: 0.04em; text-transform: uppercase; text-decoration: none; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); }
+.modes a:hover { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.modes a.on, .modes a.on:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+#quiz[hidden] { display: none; }
 .masthead h1 { margin: 0; font: 700 40px/1 var(--font-ui); letter-spacing: -0.03em; text-wrap: balance; }
 
 /* Layout */
@@ -88,7 +93,6 @@ figcaption b { color: var(--ink); font-weight: 700; letter-spacing: 0.06em; text
 /* Rail */
 aside section { padding: 14px 14px 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: 0; }
 aside h2 { margin: 0 0 12px; font: 700 11px/1 var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink); }
-aside h2::before { content: "\201C"; } aside h2::after { content: "\201D"; }
 label { display: flex; justify-content: space-between; gap: 8px; margin: 12px 0 4px; font-size: 13px; }
 label .val { font-family: var(--font-data); color: var(--muted); font-variant-numeric: tabular-nums; }
 input[type="range"] { width: 100%; height: 22px; margin: 0; accent-color: var(--range); }
@@ -124,6 +128,9 @@ button:disabled, button:disabled:hover { color: var(--muted); background: var(--
 .q-result { margin: 6px 0 0; font-size: 14px; line-height: 1.45; font-weight: 700; }
 .q-result.vessel { color: var(--ok); } .q-result.territory { color: var(--warn); } .q-result.miss { color: var(--bad); }
 .q-result .pts { display: block; margin-top: 2px; font: 600 12px/1.5 var(--font-data); color: var(--muted); }
+#qshare.done, #qshare.done:hover { background: var(--panel); border-color: var(--rule); color: var(--muted); cursor: default; }
+.q-day { margin: 0 0 8px; font: 600 12px/1.5 var(--font-data); }
+.q-done { margin: 0 0 10px; color: var(--ink); }
 .q-call { display: flex; justify-content: space-between; gap: 8px; margin: 0 0 8px; font-size: 13px; }
 .q-call b { font: 600 12px/1.5 var(--font-data); text-align: right; }
 .q-hidden-note { display: none; margin: 0 0 4px; }
@@ -156,7 +163,6 @@ table.readout td#stup, table.readout td#stdown, table.readout td#rhythm { white-
 
 .masthead h1 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
 .masthead .kind { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
-.masthead .kind::before { content: "\201C"; } .masthead .kind::after { content: "\201D"; }
 
 /* Floating markers, positioned over the lesion and over the player's call by app.ts */
 #lesion, #call { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 2; will-change: transform; transition: opacity .15s; }
