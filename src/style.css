@@ -1,0 +1,125 @@
+/* Layout: an instrument console. The 3D heart and the 12-lead are the two working displays on the left;
+   readouts and controls sit in a right-hand rail, monitor first. Cool clinical neutrals, one teal accent
+   taken from cath-lab equipment, and the ECG drawn on real paper in both themes. */
+:root {
+  --bg: #eceff1;          /* room */
+  --panel: #f8fafb;       /* console surfaces */
+  --stage: #dfe4e7;       /* behind the 3D heart */
+  --stage-2: #f3f5f6;
+  --ink: #161b1f;
+  --muted: #5d6b74;
+  --rule: #c3ccd2;
+  --rule-light: #dde3e7;
+  --accent: #0f6e72;      /* teal: selection, active controls, focus */
+  --accent-ink: #ffffff;
+  --link: #0f6e72;
+  --ok: #2e7d43;
+  --warn: #9a6512;
+  --bad: #b3261e;
+  --down: #1f4f86;
+  --bar-track: #e3e8eb;
+  --font-ui: "Public Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101417; --panel: #161c20; --stage: #0b0f12; --stage-2: #1b2328;
+    --ink: #e2e7ea; --muted: #8d9aa3; --rule: #2d363c; --rule-light: #222a2f;
+    --accent: #3fb2b5; --accent-ink: #061314; --link: #63c4c6;
+    --ok: #5cbf74; --warn: #e0a447; --bad: #f07067; --down: #7fb0ec; --bar-track: #232c32;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101417; --panel: #161c20; --stage: #0b0f12; --stage-2: #1b2328;
+  --ink: #e2e7ea; --muted: #8d9aa3; --rule: #2d363c; --rule-light: #222a2f;
+  --accent: #3fb2b5; --accent-ink: #061314; --link: #63c4c6;
+  --ok: #5cbf74; --warn: #e0a447; --bad: #f07067; --down: #7fb0ec; --bar-track: #232c32;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--bg); }
+body {
+  margin: 0 auto;
+  max-width: 1320px;
+  padding-inline: 20px;
+  padding-block: 0 48px;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.5 var(--font-ui);
+}
+
+/* Masthead */
+.masthead { padding-block: 22px 14px; border-bottom: 1px solid var(--rule); }
+.masthead h1 { margin: 0; font: 600 22px/1.2 var(--font-ui); letter-spacing: -0.01em; text-wrap: balance; }
+
+/* Layout */
+main { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 24px; margin-top: 20px; align-items: start; }
+@media (max-width: 980px) { main { grid-template-columns: minmax(0, 1fr); } }
+main > section, aside { min-width: 0; display: grid; gap: 20px; }
+
+/* Displays */
+figure { margin: 0; padding: 12px; background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; min-width: 0; }
+figcaption { margin-top: 10px; font-size: 13px; line-height: 1.5; color: var(--muted); max-width: 72ch; }
+figcaption b { color: var(--ink); font-weight: 600; }
+.viewport { position: relative; height: 580px; overflow: hidden; border-radius: 2px; background: radial-gradient(ellipse at 50% 38%, var(--stage-2) 0%, var(--stage) 100%); }
+.viewport canvas { display: block; width: 100%; height: 100%; }
+#tag { position: absolute; left: 10px; top: 8px; font: 12px var(--font-data); color: var(--muted); pointer-events: none; }
+#legend { position: absolute; left: 10px; bottom: 10px; width: 220px; font: 11px/1.3 var(--font-data); color: var(--ink); pointer-events: none; }
+#bar { height: 8px; border-radius: 1px; margin-bottom: 3px; }
+.lg { display: flex; justify-content: space-between; gap: 6px; }
+#pick { display: none; position: absolute; right: 10px; top: 10px; max-width: 250px; padding: 8px 10px; font: 12px/1.55 var(--font-data); color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-left: 3px solid var(--accent); }
+#ecg { display: block; width: 100%; height: 300px; border: 1px solid #e3b3ad; }
+
+/* ST map under the ECG: one cell per lead */
+.stmap { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); margin-top: 8px; border: 1px solid var(--rule); }
+.stmap div { padding: 4px 0 5px; text-align: center; font: 12px/1.3 var(--font-data); font-variant-numeric: tabular-nums; border-left: 1px solid var(--rule-light); }
+.stmap div:first-child { border-left: 0; }
+.stmap b { display: block; font: 600 11px var(--font-ui); color: var(--muted); }
+.stmap .up { color: var(--bad); font-weight: 600; }
+.stmap .down { color: var(--down); font-weight: 600; }
+@media (max-width: 700px) { .stmap { grid-template-columns: repeat(6, minmax(0, 1fr)); } .viewport { height: 420px; } }
+
+/* Rail */
+aside section { padding: 14px 14px 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; }
+aside h2 { margin: 0 0 10px; font: 600 11px/1 var(--font-ui); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+label { display: flex; justify-content: space-between; gap: 8px; margin: 12px 0 4px; font-size: 13px; }
+label .val { font-family: var(--font-data); color: var(--muted); font-variant-numeric: tabular-nums; }
+input[type="range"] { width: 100%; height: 22px; margin: 0; accent-color: var(--accent); }
+select { width: 100%; padding: 6px 8px; font: 13px var(--font-ui); color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 3px; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.views { margin-top: 10px; }
+button { padding: 7px 11px; font: 500 13px/1 var(--font-ui); color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 3px; cursor: pointer; }
+button:hover { border-color: var(--muted); }
+button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button.primary { font-weight: 600; border-color: var(--ink); }
+button.primary.on { border-color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.note { margin: 10px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+
+/* Readouts */
+table.readout { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.readout td { padding: 5px 0; border-bottom: 1px solid var(--rule-light); vertical-align: baseline; }
+table.readout tr:last-child td { border-bottom: 0; }
+table.readout td:last-child { text-align: right; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+table.readout td#stup, table.readout td#stdown, table.readout td#rhythm { white-space: normal; max-width: 170px; }
+
+/* Perfusion table */
+.bed { display: grid; grid-template-columns: minmax(0, 1fr) 100px 44px 70px; gap: 10px; align-items: center; padding: 5px 0; font-size: 13px; border-bottom: 1px solid var(--rule-light); }
+.bed:last-child { border-bottom: 0; }
+.bed small { color: var(--muted); }
+.bed .num, .bed .isch { text-align: right; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.bed .isch { color: var(--muted); }
+.bed .isch.hot { color: var(--bad); }
+.bar { height: 7px; background: var(--bar-track); border-radius: 1px; overflow: hidden; }
+.bar i { display: block; height: 100%; }
+@media (max-width: 520px) { .bed { grid-template-columns: minmax(0, 1fr) 70px 40px; } .bed .isch { display: none; } }
+
+.foot { margin-top: 28px; padding-top: 10px; border-top: 1px solid var(--rule); font-size: 12px; color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+.glabel { margin: 12px 0 4px; font-size: 13px; }
+
+.masthead h1 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+.masthead .kind { font-size: 14px; font-weight: 400; letter-spacing: 0; color: var(--muted); }

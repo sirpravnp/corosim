@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CoroSim</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Public+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+<header class="masthead">
+  <h1>CoroSim <span class="kind">3D Coronary Vasculature Simulator</span></h1>
+</header>
+
+<main>
+  <section>
+    <figure>
+      <div id="view" class="viewport">
+        <div id="tag"></div>
+        <div id="pick"></div>
+        <div id="legend"><div id="bar"></div><div class="lg"><span id="l0"></span><span id="lmid"></span><span id="l1"></span></div></div>
+      </div>
+      <div class="row views">
+        <button id="vAnt" class="on">Anterior</button>
+        <button id="vLeft">Left lateral</button>
+        <button id="vPost">Posterior</button>
+        <button id="vInf">Inferior</button>
+        <button id="vRight">Right</button>
+        <button id="spin">Auto-rotate</button>
+      </div>
+      <figcaption><b>Figure 1.</b> The heart with its chambers and great vessels; the coronary arteries run in the fat-filled atrioventricular and interventricular grooves. Ventricular muscle darkens where it becomes ischemic. Click a vessel for its length, caliber, inflow and territory, or click the heart to name a structure.</figcaption>
+    </figure>
+
+    <figure>
+      <canvas id="ecg"></canvas>
+      <div id="stmap" class="stmap"></div>
+      <figcaption><b>Figure 2.</b> Twelve-lead ECG at 25 mm/s and 10 mm/mV. ST shift is the sum of injury currents from every ischemic bed, each pointing out through its own patch of wall, so the lead pattern follows whichever artery is blocked. Numbers above are ST level in mm at J + 60 ms.</figcaption>
+    </figure>
+
+    <figure>
+      <div id="beds"></div>
+      <figcaption><b>Table 1.</b> Perfusion of each myocardial bed (supply divided by demand) and its current ischemia.</figcaption>
+    </figure>
+  </section>
+
+  <aside>
+    <section>
+      <h2>Monitor</h2>
+      <table class="readout">
+        <tr><td>Circulation</td><td id="circ"></td></tr>
+        <tr><td>Blood pressure (MAP)</td><td id="bp"></td></tr>
+        <tr><td>Cardiac output</td><td id="co"></td></tr>
+        <tr><td>Rhythm</td><td id="rhythm"></td></tr>
+        <tr><td>Ventricular rate</td><td id="hr"></td></tr>
+        <tr><td>Atrial rate</td><td id="arate"></td></tr>
+        <tr><td>PR interval</td><td id="pr"></td></tr>
+        <tr><td>ST elevation</td><td id="stup"></td></tr>
+        <tr><td>ST depression</td><td id="stdown"></td></tr>
+        <tr><td>Ischemic myocardium</td><td id="burden"></td></tr>
+        <tr><td>Myocardium at risk</td><td id="risk"></td></tr>
+        <tr><td>Lesion FFR</td><td id="ffr"></td></tr>
+      </table>
+    </section>
+
+    <section>
+      <h2>Lesion</h2>
+      <label for="lseg">Vessel</label>
+      <select id="lseg"></select>
+      <label for="pos">Position along the vessel <span class="val" id="posv"></span></label>
+      <input id="pos" type="range" min="5" max="95" value="15">
+      <label for="ds">Diameter stenosis <span class="val" id="dsv"></span></label>
+      <input id="ds" type="range" min="0" max="95" value="0">
+      <div class="row">
+        <button id="occ" class="primary">Occlude</button>
+        <button id="exert">Exertion (2×)</button>
+      </div>
+      <p class="glabel" id="ts-l">Time scale</p>
+      <div class="row" style="margin-top:0">
+        <button id="s1" class="on">1×</button>
+        <button id="s3">3×</button>
+        <button id="s6">6×</button>
+      </div>
+      <p class="note">Ischemia develops over about 20 s after occlusion and resolves with a time constant of about 8 s after reperfusion. Rate and AV conduction follow the territory: anterior ischemia speeds the heart; inferior ischemia, and loss of the SA- or AV-node artery, slow it and block conduction. Lost contraction and slow rates lower blood pressure, and lower pressure then perfuses every coronary bed less.</p>
+    </section>
+
+    <section>
+      <h2>Anatomy</h2>
+      <div class="row" style="margin-top:0">
+        <button id="p_typ">Typical</button>
+        <button id="p_left">Left-dominant</button>
+        <button id="p_ramus">Ramus</button>
+        <button id="p_abs">Absent left main</button>
+      </div>
+      <label for="dom">Dominance</label>
+      <select id="dom"><option value="right">Right-dominant</option><option value="co">Co-dominant</option><option value="left">Left-dominant</option></select>
+      <label for="lm">Left main pattern</label>
+      <select id="lm"><option value="bifurcation">Bifurcation (LAD and circumflex)</option><option value="trifurcation">Trifurcation (with ramus intermedius)</option><option value="absent">Absent left main (separate ostia)</option></select>
+      <label for="lad">LAD course</label>
+      <select id="lad"><option value="normal">Reaches the apex</option><option value="short">Short, ends before the apex</option><option value="wrap">Wraps around to the inferior wall</option></select>
+      <label for="san">Sinoatrial node artery</label>
+      <select id="san"><option value="RCA">From the RCA</option><option value="LCx">From the circumflex</option></select>
+      <label for="conus">Conus branch</label>
+      <select id="conus"><option value="shared">From the RCA</option><option value="separate">Separate ostium</option></select>
+    </section>
+
+    <section>
+      <h2>Display</h2>
+      <p class="glabel">Color the vessels by</p>
+      <div class="row" style="margin-top:0">
+        <button id="m_real" class="on">Anatomic</button>
+        <button id="m_anat">Territory</button>
+        <button id="m_pressure">Pressure</button>
+        <button id="m_velocity">Velocity</button>
+        <button id="m_wss">Wall shear</button>
+      </div>
+      <p class="glabel">Myocardium</p>
+      <div class="row" style="margin-top:0">
+        <button id="h_solid" class="on">Solid</button>
+        <button id="h_ghost">See-through</button>
+        <button id="h_none">Hidden</button>
+      </div>
+      <label for="ex">Vessel radius exaggeration <span class="val"><span id="exv"></span>×</span></label>
+      <input id="ex" type="range" min="1" max="5" step="0.5" value="2.5">
+      <div class="row">
+        <button id="flowbtn">Show blood flow</button>
+      </div>
+    </section>
+  </aside>
+</main>
+<footer class="foot">For education only; not for clinical decisions. Anatomy is schematic and model constants are assumptions.</footer>
+<script type="module" src="/src/app.ts"></script>
+</body>
+</html>
