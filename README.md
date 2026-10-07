@@ -33,7 +33,8 @@ All constants live in `src/config/`, tagged as literature-backed or assumed.
 
 The simulator run backwards. "Find the culprit" (top of the right-hand rail) draws a lesion at random and hides it:
 the vessel lumen, vessel shading, lesion marker, perfusion table and the pressure, velocity, wall-shear and flow displays
-all keep the secret. You read the 12-lead and the monitor, press the spot on the vessel where you think the lesion is,
+all keep the secret, and the monitor shows only rate, cardiac output and blood pressure (the rhythm, PR and ST lines
+would read the tracing for you). You read the 12-lead, press the spot on the vessel where you think the lesion is,
 and lock in. Five cases a game, up to 100 points each: the location score is full anywhere on the lesion (within 7 mm,
 its own half-length) and falls off as a Gaussian (σ 20 mm) with distance from it *along the vessels*, so a call just
 distal to a branch is far from one just proximal, as the physiology is; that score is then multiplied by

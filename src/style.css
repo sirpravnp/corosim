@@ -128,7 +128,7 @@ button:disabled, button:disabled:hover { color: var(--muted); background: var(--
 .q-call b { font: 600 12px/1.5 var(--font-data); text-align: right; }
 .q-hidden-note { display: none; margin: 0 0 4px; }
 body[data-game="play"] .q-hidden-note { display: block; }
-body.game #lesionctl, body[data-game="play"] #bedsfig { display: none; }
+body.game #lesionctl, body[data-game="play"] #bedsfig, body[data-game="play"] tr.q-hide { display: none; }
 body.game #anatomy { opacity: 0.45; pointer-events: none; }
 
 /* Readouts */

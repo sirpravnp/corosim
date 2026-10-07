@@ -87,23 +87,24 @@ export class EcgStrip {
       g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke();
     }
     const pw = w / cols, pxMv = mm * 10, cur = this.idx % N;
+    const cal = 8 * mm; // the first 8 mm of each row belong to the calibration pulse, not the trace
     LAYOUT.forEach((row, r) => row.forEach((lead, col) => {
-      const x0 = col * pw, mid = r * ph + ph / 2;
+      const x0 = col * pw, mid = r * ph + ph / 2, from = col === 0 ? cal : 0;
       g.strokeStyle = "#141414"; g.lineWidth = 1.25; g.lineJoin = "round"; g.beginPath();
       let pen = false;
       for (let i = 0; i < N; i++) {
-        const v = this.ring[lead][i];
-        if (Number.isNaN(v) || (i - cur + N) % N < FS * 0.1) { pen = false; continue; }
-        const x = x0 + (i / N) * pw, y = mid - v * pxMv;
+        const v = this.ring[lead][i], x = x0 + (i / N) * pw;
+        if (Number.isNaN(v) || x < x0 + from || (i - cur + N) % N < FS * 0.1) { pen = false; continue; }
+        const y = mid - v * pxMv;
         if (!pen) { g.moveTo(x, y); pen = true; } else g.lineTo(x, y);
       }
       g.stroke();
-      g.fillStyle = "#1a1a1a"; g.font = `600 12px ${SANS}`; g.fillText(lead, x0 + 6, r * ph + 15);
+      g.fillStyle = "#1a1a1a"; g.font = `600 12px ${SANS}`; g.fillText(lead, x0 + from + 6, r * ph + 15);
     }));
-    // calibration pulse, 1 mV × 0.2 s, at the start of each row
+    // calibration pulse, 1 mV × 0.2 s, standing on the baseline at the start of each row
     g.strokeStyle = "#141414"; g.lineWidth = 1.25;
     for (let r = 0; r < rows; r++) {
-      const mid = r * ph + ph / 2 + 0.3 * ph, x = 2;
+      const mid = r * ph + ph / 2, x = 1;
       g.beginPath(); g.moveTo(x, mid); g.lineTo(x + mm, mid); g.lineTo(x + mm, mid - pxMv); g.lineTo(x + 6 * mm, mid - pxMv); g.lineTo(x + 6 * mm, mid); g.lineTo(x + 7 * mm, mid); g.stroke();
     }
   }
