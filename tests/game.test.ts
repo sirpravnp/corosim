@@ -113,14 +113,25 @@ describe("scoring", () => {
   it("score multiplies location by time; no call scores nothing", () => {
     const lesion = { segId: "LAD", pos: 0.3 };
     const perfect = score(t, lesion, lesion, 0);
-    expect(perfect).toEqual({ distance: 0, location: 100, time: 1, total: 100 });
+    expect(perfect).toEqual({ distance: 0, location: 100, floored: false, time: 1, total: 100 });
     const late = score(t, lesion, lesion, POINTS.timeTau);
     expect(late.total).toBe(Math.round(100 / Math.E));
     const off = score(t, { segId: "LAD", pos: 0.5 }, lesion, 0);
     expect(off.distance).toBeCloseTo(0.2 * t.byId.LAD.length, 6);
-    expect(off.total).toBeLessThan(perfect.total); expect(off.total).toBeGreaterThan(0);
+    expect(off.total).toBeLessThan(perfect.total); expect(off.total).toBeGreaterThan(POINTS.territoryFloor);
     expect(score(t, null, lesion, 10).total).toBe(0);
     expect(maxScore()).toBe(ROUNDS * POINTS.location);
+  });
+  it("the right system is never worth nothing: a PDA call on a proximal RCA lesion gets the floor, an LAD call does not", () => {
+    const lesion = { segId: "RCA", pos: 0.2 };
+    const pda = score(t, { segId: "PDA_R", pos: 0.5 }, lesion, 0), lad = score(t, { segId: "LAD", pos: 0.2 }, lesion, 0);
+    expect(pda.distance).toBeGreaterThan(80);
+    expect(pda.floored).toBe(true); expect(pda.location).toBe(POINTS.territoryFloor); expect(pda.total).toBe(POINTS.territoryFloor);
+    expect(lad.floored).toBe(false); expect(lad.total).toBe(0);
+    // the floor never lifts a call that already beats it, and the clock still applies to it
+    const near = score(t, { segId: "RCA", pos: 0.35 }, lesion, 0);
+    expect(near.floored).toBe(false); expect(near.location).toBeGreaterThan(POINTS.territoryFloor);
+    expect(score(t, { segId: "PDA_R", pos: 0.5 }, lesion, POINTS.timeTau).total).toBe(Math.round(POINTS.territoryFloor / Math.E));
   });
 });
 

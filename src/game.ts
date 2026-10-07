@@ -15,6 +15,7 @@ export const POINTS = {
   location: 100, // a call on the lesion itself, at time zero
   freeMm: 7, // half the 14 mm lesion window: anywhere on the lesion is on the lesion
   sigmaMm: 20, // beyond that, Gaussian fall-off with distance along the tree: half credit at ~17 mm off, a tenth at ~30
+  territoryFloor: 25, // a call anywhere in the culprit's system (LAD, circumflex or RCA) scores at least this
   timeTau: 150, // s of the patient's time: the location score decays by e every tau
   speed: 3, // time scale a case runs at, so seconds since the occlusion compare between players
 };
@@ -109,11 +110,15 @@ export function locationScore(d: number): number {
 /** Time factor (0..1) for a call made `elapsed` s of the patient's time after the occlusion. */
 export const timeFactor = (elapsed: number) => Math.exp(-Math.max(0, elapsed) / POINTS.timeTau);
 
-export interface Score { distance: number; location: number; time: number; total: number }
+export interface Score { distance: number; location: number; floored: boolean; time: number; total: number }
+/** Location score, then the territory floor (the right system is never worth nothing), then the clock. */
 export function score(tree: Tree, call: Point | null, lesion: Point, elapsed: number): Score {
-  if (!call) return { distance: Infinity, location: 0, time: timeFactor(elapsed), total: 0 };
-  const distance = treeDistance(tree, call, lesion), location = locationScore(distance), time = timeFactor(elapsed);
-  return { distance, location, time, total: Math.round(location * time) };
+  if (!call) return { distance: Infinity, location: 0, floored: false, time: timeFactor(elapsed), total: 0 };
+  const distance = treeDistance(tree, call, lesion), byDistance = locationScore(distance), time = timeFactor(elapsed);
+  const sameSystem = judge(tree, call.segId, lesion.segId) !== "miss";
+  const floored = sameSystem && byDistance < POINTS.territoryFloor;
+  const location = floored ? POINTS.territoryFloor : byDistance;
+  return { distance, location, floored, time, total: Math.round(location * time) };
 }
 
 export const maxScore = (rounds = ROUNDS) => rounds * POINTS.location;

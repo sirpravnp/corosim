@@ -583,7 +583,7 @@ function gameAnswer(giveUp: boolean) {
   const findings = { stUp: LEAD_ORDER.filter((l) => st[l] >= 1), stDown: LEAD_ORDER.filter((l) => st[l] <= -1), rhythm: rhythmLabel(r, rstate?.avDegree ?? 0) };
   const name = tree.byId[truth].name, chosen = call ? tree.byId[call.segId].name : "";
   const how = `${Math.round(sc.distance)} mm from the lesion along the tree, called at ${Math.round(G.clock)} s`;
-  const pts = `<span class="pts">location ${Math.round(sc.location)} × time ${sc.time.toFixed(2)} = +${sc.total}</span>`;
+  const pts = `<span class="pts">location ${Math.round(sc.location)}${sc.floored ? " (territory floor)" : ""} × time ${sc.time.toFixed(2)} = +${sc.total}</span>`;
   const res = $("qresult");
   res.className = "q-result " + (sc.total >= 60 ? "vessel" : sc.total >= 20 ? "territory" : "miss");
   res.innerHTML = !call ? `The culprit was the ${name}.`

@@ -37,7 +37,8 @@ all keep the secret, and the monitor shows only rate, cardiac output and blood p
 would read the tracing for you). You read the 12-lead, press the spot on the vessel where you think the lesion is,
 and lock in. Five cases a game, up to 100 points each: the location score is full anywhere on the lesion (within 7 mm,
 its own half-length) and falls off as a Gaussian (σ 20 mm) with distance from it *along the vessels*, so a call just
-distal to a branch is far from one just proximal, as the physiology is; that score is then multiplied by
+distal to a branch is far from one just proximal, as the physiology is, but never below 25 while the call is in the
+culprit's own system (LAD, circumflex or RCA), so the right territory at the wrong level still beats the wrong artery; that score is then multiplied by
 exp(−t/150 s), t being the patient's time since the occlusion. The clock runs at 3× during a game so scores compare.
 Each reveal shows the lesion, your call, and a short debrief: what the lesion did to the tracing and why.
 
