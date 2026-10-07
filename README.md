@@ -29,9 +29,15 @@ npm run build      # static site in dist/
 
 All constants live in `src/config/`, tagged as literature-backed or assumed.
 
+## Two versions
+
+One build, two front doors. `corosim.com` is the simulator alone; `corosim.com/#game` is the simulator with the game
+panel at the top of the right-hand rail. The switch in the masthead moves between them, and leaving the game
+mid-case quits it and restores whatever lesion and anatomy were set before.
+
 ## Game mode: find the culprit
 
-The simulator run backwards. "Find the culprit" (top of the right-hand rail) draws a lesion at random and hides it:
+The simulator run backwards. "Find the culprit" draws a lesion at random and hides it:
 the vessel lumen, vessel shading, lesion marker, perfusion table and the pressure, velocity, wall-shear and flow displays
 all keep the secret, and the monitor shows only rate, cardiac output and blood pressure (the rhythm, PR and ST lines
 would read the tracing for you). You read the 12-lead, press the spot on the vessel where you think the lesion is,

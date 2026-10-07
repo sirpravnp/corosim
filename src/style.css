@@ -53,9 +53,14 @@ body {
   font: 15px/1.5 var(--font-ui);
 }
 
-/* Masthead */
-.masthead { padding-block: 28px 18px; }
+/* Masthead: the title, and the switch between the two versions */
+.masthead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 12px 24px; padding-block: 28px 18px; }
 .masthead { border-bottom: 1px solid var(--rule); }
+.modes { display: flex; gap: 6px; }
+.modes a { padding: 8px 11px; font: 700 12px/1 var(--font-ui); letter-spacing: 0.04em; text-transform: uppercase; text-decoration: none; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); }
+.modes a:hover { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.modes a.on, .modes a.on:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+#quiz[hidden] { display: none; }
 .masthead h1 { margin: 0; font: 700 40px/1 var(--font-ui); letter-spacing: -0.03em; text-wrap: balance; }
 
 /* Layout */

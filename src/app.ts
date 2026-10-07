@@ -622,10 +622,22 @@ on("qreveal", () => gameAnswer(true));
 on("qquit", gameQuit);
 setLevel("resident");
 
+// ---------------------------------------------------------------- versions: the simulator alone, or with the game
+/** `#game` in the URL is the game version; anything else is the plain simulator. Leaving the game mid-case quits it. */
+function applyMode() {
+  const game = location.hash === "#game";
+  if (!game && G.phase !== "idle") gameQuit();
+  $("quiz").hidden = !game;
+  $("modeSim").classList.toggle("on", !game); $("modeGame").classList.toggle("on", game);
+  $("kind").textContent = game ? "Find the culprit · a game on the simulator" : "3D Coronary Vasculature Simulator";
+  document.title = game ? "CoroSim · Find the culprit" : "CoroSim";
+}
+addEventListener("hashchange", applyMode);
+
 // Browsers restore form values on reload; force every control to match the model's starting state.
 $<HTMLInputElement>("pos").value = String(S.pos * 100);
 $<HTMLInputElement>("ds").value = String(S.ds * 100);
 $<HTMLInputElement>("ex").value = String(S.exag);
-resize(); setView("vAnt"); syncSelects(); rebuildAnatomy(); applyHeartView(); controlsUi(); liveUi();
+resize(); setView("vAnt"); syncSelects(); rebuildAnatomy(); applyHeartView(); controlsUi(); liveUi(); applyMode();
 requestAnimationFrame(frame);
 void LEADS;

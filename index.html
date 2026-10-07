@@ -11,7 +11,11 @@
 </head>
 <body>
 <header class="masthead">
-  <h1>CoroSim <span class="kind">3D Coronary Vasculature Simulator</span></h1>
+  <h1>CoroSim <span class="kind" id="kind">3D Coronary Vasculature Simulator</span></h1>
+  <nav class="modes" aria-label="Version">
+    <a id="modeSim" href="#" class="on">Simulator</a>
+    <a id="modeGame" href="#game">Game</a>
+  </nav>
 </header>
 
 <main>
@@ -46,7 +50,7 @@
   </section>
 
   <aside>
-    <section id="quiz" data-phase="idle">
+    <section id="quiz" data-phase="idle" hidden>
       <h2>Find the culprit</h2>
       <div class="q-idle">
         <p class="glabel" style="margin-top:0">Level</p>
