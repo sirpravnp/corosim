@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="CoroSim heart logo">
+  <defs>
+    <linearGradient id="h" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#ff5a6e"/>
+      <stop offset="1" stop-color="#b3122e"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="#14161c"/>
+  <!-- heart -->
+  <path d="M128 216 C60 164 34 124 34 90 C34 62 55 44 80 44 C101 44 118 55 128 74 C138 55 155 44 176 44 C201 44 222 62 222 90 C222 124 196 164 128 216 Z" fill="url(#h)"/>
+  <!-- coronary arteries -->
+  <g fill="none" stroke="#ffd9de" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="0.9">
+    <path d="M128 74 C124 104 126 140 128 190"/>
+    <path d="M127 96 C108 100 88 98 70 88"/>
+    <path d="M126 124 C106 130 88 130 72 122"/>
+    <path d="M129 100 C148 104 168 104 186 94"/>
+    <path d="M129 134 C148 138 166 138 182 130"/>
+  </g>
+  <!-- ECG trace -->
+  <path d="M14 140 H78 L92 140 L102 112 L116 168 L128 128 L138 140 H242" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
