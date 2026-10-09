@@ -5,7 +5,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { buildTree, Tree, Variant, TYPICAL, rotateHeart, Segment, diameterAt } from "./anatomy/tree";
 import { meshHeart, projectToEpicardium, septalDistance, latitude, AV_GROOVE_LAT, Part, PART_NAMES } from "./anatomy/heartSurface";
 import { V3 } from "./anatomy/curve";
-import { LEADS, ST } from "./config/ecg";
+import { ALL_LEADS, Bbb, LEADS, Rhythm, ST } from "./config/ecg";
 import { Lesion, analyze, Analysis, solveNetwork } from "./physics/network";
 import { circulation, Circulation, CIRC } from "./physics/circulation";
 import { FLOW } from "./config/tree";
@@ -13,7 +13,7 @@ import { stepSeverity } from "./physics/ischemia";
 import { BedSite, bedSites, injuryVector, ischemicBurden, globalSeverity } from "./physics/ecgLink";
 import { EcgStrip } from "./ecgStrip";
 import { rhythmState, RhythmState } from "./physics/rhythm";
-import { Case, POINTS, Point, dailyCase, dayKey, dayNumber, explain, judge, score } from "./game";
+import { Case, POINTS, Point, dailyCase, dayKey, dayNumber, explain, fullFindings, judge, score } from "./game";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const MMHG = 133.322;
@@ -26,6 +26,8 @@ const S = {
   mode: "real" as Mode, heart: "solid" as HeartView, exag: 2.5, flow: false, selected: "",
   hide: false, // game: the lesion is kept out of every display (lumen, vessel shading, marker, perfusion table)
   hideIsch: false, // game: the myocardium does not darken either
+  rhythm: "sinus" as Rhythm, bbb: "none" as Bbb, // what the patient brought with them
+  posterior: false, // show V7–V9 as a fifth column
 };
 let tree: Tree, A: Analysis, sites: BedSite[] = [];
 const sev: Record<string, number> = {}; // per-bed ischemia state (0..1), evolves in time
@@ -341,6 +343,9 @@ function controlsUi() {
   $("flowbtn").classList.toggle("on", S.flow);
   for (const m of ["real", "anat", "pressure", "velocity", "wss"]) $("m_" + m).classList.toggle("on", S.mode === m);
   for (const s of [1, 3, 6]) $("s" + s).classList.toggle("on", S.speed === s);
+  for (const r of ["sinus", "af"]) $("r_" + r).classList.toggle("on", S.rhythm === r);
+  for (const b of ["none", "rbbb", "lbbb"]) $("c_" + b).classList.toggle("on", S.bbb === b);
+  $("postbtn").classList.toggle("on", S.posterior); $("stmap").classList.toggle("wide", S.posterior); ecg.posterior = S.posterior;
   const risk = A.cond.atRisk * 100;
   $("risk").textContent = S.hide ? "—" : risk.toFixed(0) + "%"; $("risk").style.color = S.hide ? "var(--muted)" : risk > 25 ? "var(--bad)" : risk > 0 ? "var(--warn)" : "var(--ok)";
   $("ffr").textContent = S.ds > 0 && !S.occ && !S.hide ? A.ffr[0].toFixed(2) : "—";
@@ -348,25 +353,29 @@ function controlsUi() {
   $("tag").textContent = S.hide ? `${tree.segments.length} arteries · click the culprit · drag to orbit` : `${tree.segments.length} arteries · radius ×${S.exag} · click a vessel · drag to orbit`;
 }
 
-const rhythmLabel = (r: ReturnType<EcgStrip["rhythm"]>, deg: number) => {
+const rhythmLabel = (r: ReturnType<EcgStrip["rhythm"]>, rs: RhythmState | null) => {
+  const deg = rs?.avDegree ?? 0, bbb = rs?.bbb ?? "none";
+  const tail = (bbb === "rbbb" ? ", right bundle branch block" : bbb === "lbbb" ? ", left bundle branch block" : "") + (r.pvc ? ", PVCs" : "");
+  if (rs?.rhythm === "af") return (deg === 3 ? "Atrial fibrillation with complete heart block, junctional escape" : deg >= 1 ? "Atrial fibrillation, slow ventricular response" : "Atrial fibrillation") + tail;
   const sinus = r.atrial < 60 ? "Sinus bradycardia" : r.atrial > 100 ? "Sinus tachycardia" : "Sinus rhythm";
   return (deg === 3 ? "Complete heart block, junctional escape"
     : deg === 2 ? `${sinus}, Mobitz I (Wenckebach)`
-    : deg === 1 ? `${sinus}, first-degree AV block` : sinus) + (r.pvc ? ", PVCs" : "");
+    : deg === 1 ? `${sinus}, first-degree AV block` : sinus) + tail;
 };
 
-const LEAD_ORDER = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"] as const;
+const leadOrder = () => (S.posterior ? ALL_LEADS : LEADS);
 function liveUi() {
   const r = ecg.rhythm(), st = ecg.st();
   const hr = Math.round(r.hr), deg = rstate?.avDegree ?? 0;
   $("hr").textContent = hr ? hr + " bpm" : "…";
   $("hr").style.color = hr && (hr < 50 || hr > 110) ? "var(--bad)" : hr && (hr < 60 || hr > 100) ? "var(--warn)" : "var(--ink)";
-  $("arate").textContent = r.atrial ? Math.round(r.atrial) + " bpm" : "…";
-  $("pr").textContent = deg === 3 ? "dissociated" : r.pr === null ? "…" : Math.round(r.pr * 1000) + " ms" + (deg === 2 ? " (lengthening)" : "");
-  $("pr").style.color = deg >= 1 ? "var(--bad)" : "var(--ink)";
-  $("rhythm").textContent = rhythmLabel(r, deg);
-  $("rhythm").style.color = deg >= 2 ? "var(--bad)" : deg === 1 || r.atrial < 60 || r.atrial > 100 ? "var(--warn)" : "var(--ink)";
-  const up = LEAD_ORDER.filter((l) => st[l] >= 1), down = LEAD_ORDER.filter((l) => st[l] <= -1);
+  const af = rstate?.rhythm === "af";
+  $("arate").textContent = af ? "fibrillating" : r.atrial ? Math.round(r.atrial) + " bpm" : "…";
+  $("pr").textContent = af ? "—" : deg === 3 ? "dissociated" : r.pr === null ? "…" : Math.round(r.pr * 1000) + " ms" + (deg === 2 ? " (lengthening)" : "");
+  $("pr").style.color = deg >= 1 && !af ? "var(--bad)" : "var(--ink)";
+  $("rhythm").textContent = rhythmLabel(r, rstate);
+  $("rhythm").style.color = deg >= 2 ? "var(--bad)" : af || deg === 1 || r.atrial < 60 || r.atrial > 100 ? "var(--warn)" : "var(--ink)";
+  const up = leadOrder().filter((l) => st[l] >= 1), down = leadOrder().filter((l) => st[l] <= -1);
   $("stup").textContent = up.length ? up.join(", ") : "none"; $("stup").style.color = up.length ? "var(--bad)" : "var(--ink)";
   $("stdown").textContent = down.length ? down.join(", ") : "none";
   if (circ) {
@@ -381,7 +390,7 @@ function liveUi() {
   }
   const burden = ischemicBurden(sites, sev) * 100;
   $("burden").textContent = S.hide ? "—" : burden.toFixed(0) + "%"; $("burden").style.color = S.hide ? "var(--muted)" : burden > 10 ? "var(--bad)" : burden > 1 ? "var(--warn)" : "var(--ink)";
-  $("stmap").innerHTML = LEAD_ORDER.map((l) => {
+  $("stmap").innerHTML = leadOrder().map((l) => {
     const v = st[l], cls = v >= 1 ? "up" : v <= -1 ? "down" : "";
     const txt = Math.abs(v) < 0.05 ? "0.0" : (v > 0 ? "+" : "−") + Math.abs(v).toFixed(1);
     return `<div><b>${l}</b><span class="${cls}">${txt}</span></div>`;
@@ -419,6 +428,9 @@ range("ex", (v) => { S.exag = v; shapeVessels(); controlsUi(); });
 on("occ", () => { S.occ = !S.occ; scheduleLesion(); });
 on("exert", () => { S.exert = !S.exert; scheduleLesion(); });
 for (const s of [1, 3, 6]) on("s" + s, () => { S.speed = s; controlsUi(); });
+for (const r of ["sinus", "af"] as Rhythm[]) on("r_" + r, () => { S.rhythm = r; controlsUi(); });
+for (const b of ["none", "rbbb", "lbbb"] as Bbb[]) on("c_" + b, () => { S.bbb = b; controlsUi(); });
+on("postbtn", () => { S.posterior = !S.posterior; controlsUi(); liveUi(); });
 (["real", "anat", "pressure", "velocity", "wss"] as Mode[]).forEach((m) => on("m_" + m, () => { S.mode = m; shapeVessels(); controlsUi(); }));
 (["solid", "ghost", "none"] as HeartView[]).forEach((h) => on("h_" + h, () => { S.heart = h; applyHeartView(); }));
 on("flowbtn", () => { S.flow = !S.flow; points.visible = S.flow; shapeVessels(); controlsUi(); });
@@ -514,7 +526,7 @@ function frame(now: number) {
   if (G.phase === "play") G.clock += dt * S.speed;
   for (const s of sites) sev[s.key] = stepSeverity(sev[s.key] ?? 0, target[s.key] ?? 0, dt * S.speed);
   const burden = ischemicBurden(sites, sev), g = globalSeverity(burden);
-  rstate = rhythmState(sites, sev, g);
+  rstate = rhythmState(sites, sev, g, { rhythm: S.rhythm, bbb: S.bbb });
   circ = circulation(sites, sev, rstate);
   mapSm += (circ.map - mapSm) * (1 - Math.exp(-(dt * S.speed) / 2)); // arterial pressure settles over a couple of seconds
   if ((mapClock += dt) > 0.5) { mapClock = 0; if (Math.abs(mapSm - solvedMap) > 2) resolveAtPressure(); }
@@ -535,8 +547,8 @@ const G = {
   call: null as Point | null, // where the player has pressed on the tree
   kase: null as Case | null, saved: null as null | { V: Variant; S: Partial<typeof S> },
 };
-const LESION_KEYS = ["lesionSeg", "pos", "ds", "occ", "exert", "mode", "flow", "speed"] as const;
-const LOCKED = ["m_pressure", "m_velocity", "m_wss", "flowbtn", "s1", "s3", "s6"]; // displays that would show the lesion, and the clock
+const LESION_KEYS = ["lesionSeg", "pos", "ds", "occ", "exert", "mode", "flow", "speed", "rhythm", "bbb", "posterior"] as const;
+const LOCKED = ["m_pressure", "m_velocity", "m_wss", "flowbtn", "s1", "s3", "s6", "postbtn"]; // displays that would show the lesion, the clock, and the leads
 /** What the player did with a day's case, kept in this browser so the day is played once and can be looked at again. */
 interface Played { total: number; distance: number; elapsed: number; call: Point | null; cls: string; result: string; why: string }
 const STORE = "corosim.daily";
@@ -562,6 +574,7 @@ function enterGame() {
   if (S.mode !== "real" && S.mode !== "anat") S.mode = "real";
   S.flow = false; points.visible = false;
   S.speed = POINTS.speed; // one clock for every player
+  S.posterior = true; // the back of the heart is in play
   for (const id of LOCKED) ($(id) as HTMLButtonElement).disabled = true;
   document.body.classList.add("game");
 }
@@ -570,6 +583,7 @@ function loadCase(key: string) {
   G.day = key; G.kase = c;
   Object.assign(V, c.variant); syncSelects();
   S.lesionSeg = c.lesion.segId; S.pos = c.lesion.pos; S.ds = c.lesion.ds; S.occ = !!c.lesion.occluded; S.exert = c.exert;
+  S.rhythm = c.rhythm; S.bbb = c.bbb;
   pendingAnatomy = pendingLesion = false;
 }
 function gameStart() {
@@ -603,8 +617,8 @@ function gameAnswer(giveUp: boolean) {
   // show the lesion: the real lumen, the shaded vessels, the marker, the darkened muscle and the perfusion table
   S.hide = S.hideIsch = false; S.selected = truth;
   buildVessels(); initParticles(); paintMyocardium();
-  const st = ecg.st(), r = ecg.rhythm();
-  const findings = { stUp: LEAD_ORDER.filter((l) => st[l] >= 1), stDown: LEAD_ORDER.filter((l) => st[l] <= -1), rhythm: rhythmLabel(r, rstate?.avDegree ?? 0) };
+  // the leads the case moves once ischemia is complete (not just what has shown so far), and the rhythm as it stands
+  const findings = { ...fullFindings(G.kase), rhythm: rhythmLabel(ecg.rhythm(), rstate) };
   const name = tree.byId[truth].name, chosen = call ? tree.byId[call.segId].name : "";
   const how = `${Math.round(sc.distance)} mm from the lesion along the tree, called at ${Math.round(G.clock)} s`;
   const pts = `<span class="pts">location ${Math.round(sc.location)}${sc.floored ? " (territory floor)" : ""} × time ${sc.time.toFixed(2)} = ${sc.total} pts</span>`;

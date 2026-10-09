@@ -88,7 +88,8 @@ figcaption b { color: var(--ink); font-weight: 700; letter-spacing: 0.06em; text
 .stmap b { display: block; font: 700 11px var(--font-ui); color: var(--muted); }
 .stmap .up { color: var(--bad); font-weight: 600; }
 .stmap .down { color: var(--down); font-weight: 600; }
-@media (max-width: 700px) { .stmap { grid-template-columns: repeat(6, minmax(0, 1fr)); } .viewport { height: 420px; } }
+.stmap.wide { grid-template-columns: repeat(15, minmax(0, 1fr)); }
+@media (max-width: 700px) { .stmap { grid-template-columns: repeat(6, minmax(0, 1fr)); } .stmap.wide { grid-template-columns: repeat(5, minmax(0, 1fr)); } .viewport { height: 420px; } }
 
 /* Rail */
 aside section { padding: 14px 14px 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: 0; }
@@ -136,7 +137,7 @@ button:disabled, button:disabled:hover { color: var(--muted); background: var(--
 .q-hidden-note { display: none; margin: 0 0 4px; }
 body[data-game="play"] .q-hidden-note { display: block; }
 body.game #lesionctl, body[data-game="play"] #bedsfig, body[data-game="play"] tr.q-hide { display: none; }
-body.game #anatomy { opacity: 0.45; pointer-events: none; }
+body.game #anatomy, body.game #patient { opacity: 0.45; pointer-events: none; }
 
 /* Readouts */
 table.readout { width: 100%; border-collapse: collapse; font-size: 13px; }

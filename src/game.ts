@@ -2,10 +2,13 @@
 // date and hidden; the player reads the 12-lead and the monitor and presses where it is. Pure functions here; app.ts
 // owns the display, the clock and the record of days played.
 import { buildTree, Tree, Variant } from "./anatomy/tree";
-import { Lesion } from "./physics/network";
+import { Lesion, analyze } from "./physics/network";
+import { bedSites, injuryVector, ischemicBurden, globalSeverity } from "./physics/ecgLink";
+import { rhythmState } from "./physics/rhythm";
+import { ALL_LEADS, Bbb, LEAD_AXES, LEADS, LeadName, POSTERIOR_LEADS, Rhythm } from "./config/ecg";
 
 export type Verdict = "vessel" | "territory" | "miss";
-export interface Case { variant: Variant; lesion: Lesion; exert: boolean }
+export interface Case { variant: Variant; lesion: Lesion; exert: boolean; rhythm: Rhythm; bbb: Bbb }
 /** A spot on the tree: a vessel and a fraction of the way along it. The player's call and the lesion are both one. */
 export interface Point { segId: string; pos: number }
 export type Rng = () => number;
@@ -17,6 +20,13 @@ export const POINTS = {
   territoryFloor: 25, // a call anywhere in the culprit's system (LAD, circumflex or RCA) scores at least this
   timeTau: 150, // s of the patient's time: the location score decays by e every tau
   speed: 3, // time scale a case runs at, so seconds since the occlusion compare between players
+};
+/** What a case must do to the tracing or the rhythm for a player to have something to find. */
+export const SOLVABLE = {
+  stMm: 0.6, // some standard lead reaches this much ST shift at full ischemia (the map prints tenths; a diagonal gives ~0.7–1.0)
+  posteriorStMm: 0.5, // or a posterior lead this much (the usual threshold there: the back is farther from the heart)
+  rateBpm: 12, // or the sinus rate moves by this much
+  tries: 40, // draws before giving up and taking the last one
 };
 export const EPOCH = "2026-10-07"; // the first case
 
@@ -64,18 +74,49 @@ export function randomVariant(rng: Rng): Variant {
   };
 }
 
-/** Any variant, any vessel (the nodal arteries included); a complete occlusion, or a tight stenosis under exertion. */
+/** Any variant, any vessel (the nodal arteries included); a complete occlusion, or a tight stenosis under exertion;
+ *  on a patient who may already be in atrial fibrillation or have a bundle branch block. */
 export function drawCase(rng: Rng): Case {
   const variant = randomVariant(rng);
   const tree = buildTree(variant);
-  const segId = pick(rng, tree.segments.map((s) => s.id));
+  // Vessels come up roughly with the size of their territory: a floor keeps the nodal arteries in play, rarely, and
+  // the left main is held back (an acute left main occlusion is rare, and seldom reaches an ECG).
+  const segId = weighted(rng, Object.fromEntries(tree.segments.map((s) => [s.id, (Math.sqrt(s.subMass) + 0.02) * (s.id === "LM" ? 0.3 : 1)])));
   const occluded = rng() < 0.65;
   const pos = 0.05 + 0.85 * rng();
-  return occluded
-    ? { variant, lesion: { segId, pos, ds: 1, occluded: true }, exert: false }
-    : { variant, lesion: { segId, pos, ds: 0.88 + 0.07 * rng(), occluded: false }, exert: true };
+  const lesion: Lesion = occluded ? { segId, pos, ds: 1, occluded: true } : { segId, pos, ds: 0.88 + 0.07 * rng(), occluded: false };
+  const rhythm: Rhythm = rng() < 0.2 ? "af" : "sinus";
+  const bbb = weighted(rng, { none: 0.7, rbbb: 0.15, lbbb: 0.15 } as Record<Bbb, number>);
+  return { variant, lesion, exert: !occluded, rhythm, bbb };
 }
-export const dailyCase = (key: string): Case => drawCase(seeded(key));
+
+/** What the case does once ischemia is fully developed: ST shift per lead (mm), and the rhythm it leaves. */
+export interface Signal { st: Record<LeadName, number>; stMax: number; stMaxPosterior: number; rateChange: number; avDegree: number }
+export function signal(c: Case): Signal {
+  const tree = buildTree(c.variant), sites = bedSites(tree);
+  const a = analyze(tree, [c.lesion], c.exert);
+  const sev = Object.fromEntries(a.cond.terminals.map((t) => [t.key, t.severity]));
+  const inj = injuryVector(sites, sev);
+  const st = {} as Record<LeadName, number>;
+  for (const l of ALL_LEADS) { const ax = LEAD_AXES[l]; st[l] = 10 * (ax[0] * inj[0] + ax[1] * inj[1] + ax[2] * inj[2]); }
+  const stMax = Math.max(...LEADS.map((l) => Math.abs(st[l]))), stMaxPosterior = Math.max(...POSTERIOR_LEADS.map((l) => Math.abs(st[l])));
+  const patient = { rhythm: c.rhythm, bbb: c.bbb };
+  const r0 = rhythmState(sites, {}, 0, patient), r1 = rhythmState(sites, sev, globalSeverity(ischemicBurden(sites, sev)), patient);
+  const rate = (r: typeof r0) => (r.rhythm === "af" ? r.afRate : r.sinusRate);
+  return { st, stMax, stMaxPosterior, rateChange: Math.abs(rate(r1) - rate(r0)), avDegree: r1.avDegree };
+}
+/** A case is solvable when it moves the ST somewhere, blocks the AV node, or changes the rate. */
+export function solvable(c: Case): boolean {
+  const s = signal(c);
+  return s.stMax >= SOLVABLE.stMm || s.stMaxPosterior >= SOLVABLE.posteriorStMm || s.avDegree >= 1 || s.rateChange >= SOLVABLE.rateBpm;
+}
+/** The day's case: the first solvable draw from the day's seed, so every player gets the same one. */
+export function dailyCase(key: string): Case {
+  const rng = seeded(key);
+  let c = drawCase(rng);
+  for (let i = 1; i < SOLVABLE.tries && !solvable(c); i++) c = drawCase(rng);
+  return c;
+}
 
 // ---- scoring ----
 export function judge(tree: Tree, guess: string, truth: string): Verdict {
@@ -133,6 +174,11 @@ const TERRITORY_NOTE: Record<string, string> = {
   LCx: "The circumflex system supplies the lateral wall, and the inferior wall too when it is dominant, so it shows in I, aVL and V5–V6, often faintly: the lateral wall faces away from most of the twelve leads.",
   RCA: "The RCA system supplies the inferior wall and the right ventricle, and usually both nodal arteries, so look to II, III and aVF, and to the rate and PR interval.",
 };
+const BACKGROUND_NOTE: Record<string, string> = {
+  af: "The patient was in atrial fibrillation: no P waves to lengthen, so the AV node showed only as a slowing of the irregular response, and the SA-node artery could show nothing at all.",
+  rbbb: "The right bundle branch block widens the QRS with late rightward forces, but leaves the ST segment readable: look past the broad S wave.",
+  lbbb: "The left bundle branch block already pushed the ST segments away from the QRS, so the question was change: ST moving with the QRS (concordant), or discordant elevation out of proportion to the S wave (Sgarbossa).",
+};
 const VESSEL_NOTE: Record<string, string> = {
   SAN: "The SA-node artery feeds almost no muscle. Its loss shows as sinus slowing, not as ST shift.",
   AVN: "The AV-node artery feeds almost no muscle. Its loss shows as a lengthening PR interval and Wenckebach, then complete block, rather than as ST shift.",
@@ -142,15 +188,24 @@ const VESSEL_NOTE: Record<string, string> = {
 
 export interface Findings { stUp: string[]; stDown: string[]; rhythm: string }
 
+/** The leads a case moves once ischemia is fully developed: 1 mm on a standard lead, 0.5 mm on a posterior one. */
+export function fullFindings(c: Case): Pick<Findings, "stUp" | "stDown"> {
+  const s = signal(c).st;
+  const bar = (l: LeadName) => ((POSTERIOR_LEADS as readonly string[]).includes(l) ? SOLVABLE.posteriorStMm : SOLVABLE.stMm);
+  return { stUp: ALL_LEADS.filter((l) => s[l] >= bar(l)), stDown: ALL_LEADS.filter((l) => s[l] <= -bar(l)) };
+}
+
 /** The one-paragraph debrief shown after a case: what the lesion was, what it did to the tracing, and why. */
 export function explain(tree: Tree, c: Case, f: Findings): string {
   const seg = tree.byId[c.lesion.segId];
   const what = c.lesion.occluded ? "Complete occlusion of the" : `${Math.round(c.lesion.ds * 100)}% stenosis of the`;
+  const atRisk = analyze(tree, [c.lesion], c.exert).cond.atRisk;
   const where = `${what} ${seg.name}, ${Math.round(c.lesion.pos * 100)}% of the way along it${c.exert ? ", under exertion" : ""}; ` +
-    `${Math.round(seg.subMass * 100)}% of the myocardium lies beyond it.`;
+    `${Math.round(atRisk * 100)}% of the myocardium lies beyond it.`;
   const st = f.stUp.length || f.stDown.length
-    ? ` ST elevation in ${f.stUp.length ? f.stUp.join(", ") : "no lead"}${f.stDown.length ? `, depression in ${f.stDown.join(", ")}` : ""}.`
-    : " No lead reached 1 mm of ST shift.";
+    ? ` At full ischemia: ST elevation in ${f.stUp.length ? f.stUp.join(", ") : "no lead"}${f.stDown.length ? `, depression in ${f.stDown.join(", ")}` : ""}.`
+    : " No lead reaches 1 mm of ST shift.";
   const rhythm = f.rhythm ? ` Rhythm: ${f.rhythm}.` : "";
-  return `${where}${st}${rhythm} ${VESSEL_NOTE[seg.id] ?? TERRITORY_NOTE[seg.group]}`;
+  const background = [c.rhythm === "af" ? BACKGROUND_NOTE.af : "", c.bbb !== "none" ? BACKGROUND_NOTE[c.bbb] : ""].filter(Boolean).map((x) => " " + x).join("");
+  return `${where}${st}${rhythm} ${VESSEL_NOTE[seg.id] ?? TERRITORY_NOTE[seg.group]}${background}`;
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildTree, TYPICAL } from "../src/anatomy/tree";
 import { analyze } from "../src/physics/network";
-import { dailyCase, dayKey, dayNumber, drawCase, explain, judge, locationScore, randomVariant, score, seeded, timeFactor, treeDistance, EPOCH, POINTS } from "../src/game";
+import { dailyCase, dayKey, dayNumber, drawCase, explain, fullFindings, judge, locationScore, randomVariant, score, seeded, signal, solvable, timeFactor, treeDistance, EPOCH, POINTS, SOLVABLE } from "../src/game";
 
 /** Seeded LCG so a failing draw is reproducible. */
 const lcg = (seed: number) => () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
@@ -133,17 +133,90 @@ describe("scoring", () => {
 describe("debrief", () => {
   const t = buildTree(TYPICAL);
   it("names the lesion, the leads and the territory", () => {
-    const s = explain(t, { variant: TYPICAL, lesion: { segId: "D1", pos: 0.3, ds: 1, occluded: true }, exert: false }, { stUp: ["I", "aVL", "V2"], stDown: ["III", "aVF"], rhythm: "Sinus tachycardia" });
+    const s = explain(t, { variant: TYPICAL, lesion: { segId: "D1", pos: 0.3, ds: 1, occluded: true }, exert: false, rhythm: "sinus", bbb: "none" }, { stUp: ["I", "aVL", "V2"], stDown: ["III", "aVF"], rhythm: "Sinus tachycardia" });
     expect(s).toContain("Complete occlusion of the Diagonal 1, 30% of the way along it");
-    expect(s).toContain("ST elevation in I, aVL, V2, depression in III, aVF.");
+    expect(s).toContain("At full ischemia: ST elevation in I, aVL, V2, depression in III, aVF.");
     expect(s).toContain("Rhythm: Sinus tachycardia.");
     expect(s).toContain("diagonals add I and aVL");
   });
   it("describes a stenosis under exertion and a silent tracing", () => {
-    const s = explain(t, { variant: TYPICAL, lesion: { segId: "SAN", pos: 0.5, ds: 0.9, occluded: false }, exert: true }, { stUp: [], stDown: [], rhythm: "" });
+    const s = explain(t, { variant: TYPICAL, lesion: { segId: "SAN", pos: 0.5, ds: 0.9, occluded: false }, exert: true, rhythm: "sinus", bbb: "none" }, { stUp: [], stDown: [], rhythm: "" });
     expect(s).toContain("90% stenosis of the SA-node artery");
     expect(s).toContain("under exertion");
-    expect(s).toContain("No lead reached 1 mm");
+    expect(s).toContain("No lead reaches 1 mm");
     expect(s).toContain("sinus slowing");
+  });
+});
+
+describe("solvable cases", () => {
+  it("every day's case can be found: ST somewhere, AV block, or a rate change", () => {
+    for (let i = 0; i < 120; i++) {
+      const d = new Date(2026, 9, 7 + i);
+      const c = dailyCase(dayKey(d));
+      expect(solvable(c)).toBe(true);
+    }
+  });
+  it("some raw draws are not, so the check earns its keep", () => {
+    const rng = lcg(11);
+    let bad = 0;
+    for (let i = 0; i < 200; i++) if (!solvable(drawCase(rng))) bad++;
+    expect(bad).toBeGreaterThan(0);
+  });
+  it("the conus branch is never a case: too little muscle to move any lead", () => {
+    const c = { variant: TYPICAL, lesion: { segId: "CONUS", pos: 0.5, ds: 1, occluded: true }, exert: false, rhythm: "sinus" as const, bbb: "none" as const };
+    expect(signal(c).stMax).toBeLessThan(SOLVABLE.stMm);
+    expect(solvable(c)).toBe(false);
+  });
+  it("the SA-node artery is a case in sinus rhythm (the rate falls) but not in atrial fibrillation", () => {
+    const san = (rhythm: "sinus" | "af") => ({ variant: TYPICAL, lesion: { segId: "SAN", pos: 0.5, ds: 1, occluded: true }, exert: false, rhythm, bbb: "none" as const });
+    expect(signal(san("sinus")).rateChange).toBeGreaterThanOrEqual(SOLVABLE.rateBpm);
+    expect(solvable(san("sinus"))).toBe(true);
+    expect(signal(san("af")).rateChange).toBeLessThan(SOLVABLE.rateBpm);
+    expect(solvable(san("af"))).toBe(false);
+  });
+  it("the AV-node artery is a case in either rhythm: the node blocks", () => {
+    for (const rhythm of ["sinus", "af"] as const) {
+      const c = { variant: TYPICAL, lesion: { segId: "AVN", pos: 0.5, ds: 1, occluded: true }, exert: false, rhythm, bbb: "none" as const };
+      expect(signal(c).avDegree).toBeGreaterThanOrEqual(1);
+      expect(solvable(c)).toBe(true);
+    }
+  });
+  it("posterior leads see a circumflex occlusion the twelve leads barely do", () => {
+    const c = { variant: { ...TYPICAL, dominance: "left" as const }, lesion: { segId: "LCX", pos: 0.5, ds: 1, occluded: true }, exert: false, rhythm: "sinus" as const, bbb: "none" as const };
+    const s = signal(c);
+    const posterior = Math.max(s.st.V7, s.st.V8, s.st.V9), twelve = Math.max(...(["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"] as const).map((l) => s.st[l]));
+    expect(posterior).toBeGreaterThan(SOLVABLE.posteriorStMm);
+    expect(posterior).toBeGreaterThan(twelve * 0.6); // elevation on the back, with the posterior attenuation, at least rivals the best standard lead
+    expect(s.st.V2).toBeLessThan(0); // the anterior leads show it as reciprocal depression
+  });
+  it("draws fibrillation and both blocks over many cases", () => {
+    const rng = lcg(12), seen = new Set<string>();
+    for (let i = 0; i < 200; i++) { const c = drawCase(rng); seen.add("r:" + c.rhythm); seen.add("b:" + c.bbb); }
+    for (const k of ["r:sinus", "r:af", "b:none", "b:rbbb", "b:lbbb"]) expect(seen.has(k)).toBe(true);
+  });
+  it("the debrief names the background", () => {
+    const c = { variant: TYPICAL, lesion: { segId: "LAD", pos: 0.3, ds: 1, occluded: true }, exert: false, rhythm: "af" as const, bbb: "lbbb" as const };
+    const s = explain(buildTree(TYPICAL), c, { stUp: ["V2"], stDown: [], rhythm: "Atrial fibrillation, left bundle branch block" });
+    expect(s).toContain("atrial fibrillation");
+    expect(s).toContain("Sgarbossa");
+  });
+});
+
+describe("full findings", () => {
+  it("lists the leads a case moves at full ischemia, with the posterior bar at 0.5 mm", () => {
+    const f = fullFindings({ variant: TYPICAL, lesion: { segId: "LAD", pos: 0.1, ds: 1, occluded: true }, exert: false, rhythm: "sinus", bbb: "none" });
+    expect(f.stUp).toEqual(expect.arrayContaining(["V2", "V3", "V4"]));
+    expect(f.stDown.length + f.stUp.length).toBeGreaterThan(4);
+    const lcx = fullFindings({ variant: { ...TYPICAL, dominance: "left" }, lesion: { segId: "LCX", pos: 0.5, ds: 1, occluded: true }, exert: false, rhythm: "sinus", bbb: "none" });
+    expect(lcx.stUp.some((l) => ["V7", "V8", "V9"].includes(l))).toBe(true);
+    expect(lcx.stDown).toContain("V2");
+  });
+  it("the debrief quotes the myocardium actually beyond the lesion, not the whole vessel", () => {
+    const t = buildTree(TYPICAL);
+    const near = explain(t, { variant: TYPICAL, lesion: { segId: "LAD", pos: 0.1, ds: 1, occluded: true }, exert: false, rhythm: "sinus", bbb: "none" }, { stUp: [], stDown: [], rhythm: "" });
+    const far = explain(t, { variant: TYPICAL, lesion: { segId: "LAD", pos: 0.9, ds: 1, occluded: true }, exert: false, rhythm: "sinus", bbb: "none" }, { stUp: [], stDown: [], rhythm: "" });
+    const pct = (s: string) => +s.match(/(\d+)% of the myocardium lies beyond/)![1];
+    expect(pct(near)).toBeGreaterThan(35);
+    expect(pct(far)).toBeLessThan(15);
   });
 });

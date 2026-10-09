@@ -1,9 +1,10 @@
-import { LEADS, LeadName, Vec3 } from "./config/ecg";
+import { AF, ALL_LEADS, LeadName, Vec3 } from "./config/ecg";
 import { Beat, sampleLeadsVec, stLevelVec } from "./physics/ecg";
 import { Conduction, RhythmState } from "./physics/rhythm";
 
 const FS = 250, WIN = 2.5, N = Math.round(FS * WIN);
 const LAYOUT: LeadName[][] = [["I", "aVR", "V1", "V4"], ["II", "aVL", "V2", "V5"], ["III", "aVF", "V3", "V6"]];
+const POSTERIOR: LeadName[] = ["V7", "V8", "V9"]; // a fifth column when the posterior leads are on
 const SANS = "-apple-system, Helvetica, Arial, sans-serif";
 
 /**
@@ -12,7 +13,8 @@ const SANS = "-apple-system, Helvetica, Arial, sans-serif";
  * pacemaker/AV-node model emits P waves and QRS complexes a little ahead of the sweep.
  */
 export class EcgStrip {
-  private ring = Object.fromEntries(LEADS.map((l) => [l, new Float32Array(N).fill(NaN)])) as Record<LeadName, Float32Array>;
+  posterior = false;
+  private ring = Object.fromEntries(ALL_LEADS.map((l) => [l, new Float32Array(N).fill(NaN)])) as Record<LeadName, Float32Array>;
   private beats: Beat[] = [];
   private beatEnd = 0;
   private conduction = new Conduction(1);
@@ -21,11 +23,12 @@ export class EcgStrip {
   t = 0;
   private injury: Vec3 = [0, 0, 0];
   private tBoost = 0;
+  private fWave = 0;
 
   constructor(private canvas: HTMLCanvasElement) {}
 
   step(dt: number, injury: Vec3, tBoost: number, state: RhythmState) {
-    this.injury = injury; this.tBoost = tBoost;
+    this.injury = injury; this.tBoost = tBoost; this.fWave = state.rhythm === "af" ? AF.fWaveMv : 0;
     // Short look-ahead so rate and conduction respond within about a beat of a state change.
     if (this.beatEnd < this.t + 0.6) {
       this.beatEnd = this.t + 1.0;
@@ -36,15 +39,15 @@ export class EcgStrip {
     const n = Math.floor(this.acc);
     this.acc -= n;
     for (let k = 0; k < n; k++) {
-      const s = sampleLeadsVec(this.t, this.beats, injury, tBoost);
-      for (const l of LEADS) this.ring[l][this.idx % N] = s[l];
+      const s = sampleLeadsVec(this.t, this.beats, injury, tBoost, this.fWave);
+      for (const l of ALL_LEADS) this.ring[l][this.idx % N] = s[l];
       this.idx++; this.t += 1 / FS;
     }
   }
 
   /** Measured ventricular and atrial rates (bpm), last PR (s, null if not conducting) and recent ectopy. */
   rhythm(): { hr: number; atrial: number; pr: number | null; pvc: boolean } {
-    const past = this.beats.filter((b) => b.t <= this.t);
+    const past = this.beats.filter((b) => b.t <= this.t && b.t > this.t - 10); // recent beats only, so a change of rhythm reads within seconds
     const rate = (xs: Beat[]) => (xs.length > 1 ? (60 * (xs.length - 1)) / (xs[xs.length - 1].t - xs[0].t) : 0);
     const qrs = past.filter((b) => !b.pOnly).slice(-5); // every ventricular complex, PVCs included
     const atria = past.filter((b) => !b.noP && !b.pvc).slice(-4);
@@ -61,13 +64,14 @@ export class EcgStrip {
     const done = this.beats.filter((b) => !b.pvc && !b.pOnly && b.t < this.t - 0.3);
     const b = [...done].reverse().find(clear) ?? done[done.length - 1];
     const out = {} as Record<LeadName, number>;
-    for (const l of LEADS) out[l] = b ? stLevelVec(l, b, this.beats, this.injury, this.tBoost) * 10 : 0;
+    for (const l of ALL_LEADS) out[l] = b ? stLevelVec(l, b, this.beats, this.injury, this.tBoost) * 10 : 0;
     return out;
   }
 
   draw() {
     const c = this.canvas, dpr = devicePixelRatio || 1;
-    const cols = 4, rows = 3, w = c.clientWidth;
+    const layout = this.posterior ? LAYOUT.map((row, r) => [...row, POSTERIOR[r]]) : LAYOUT;
+    const cols = layout[0].length, rows = 3, w = c.clientWidth;
     const mm = w / cols / (WIN * 25);
     const ph = Math.max(96, Math.round(mm * 22));
     const h = rows * ph;
@@ -88,7 +92,7 @@ export class EcgStrip {
     }
     const pw = w / cols, pxMv = mm * 10, cur = this.idx % N;
     const cal = 8 * mm; // the first 8 mm of each row belong to the calibration pulse, not the trace
-    LAYOUT.forEach((row, r) => row.forEach((lead, col) => {
+    layout.forEach((row, r) => row.forEach((lead, col) => {
       const x0 = col * pw, mid = r * ph + ph / 2, from = col === 0 ? cal : 0;
       g.strokeStyle = "#141414"; g.lineWidth = 1.25; g.lineJoin = "round"; g.beginPath();
       let pen = false;
