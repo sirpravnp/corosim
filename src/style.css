@@ -136,6 +136,16 @@ button:disabled, button:disabled:hover { color: var(--muted); background: var(--
 .q-card .row { margin: 4px 0 14px; }
 .q-card .row button { padding: 11px 16px; font-size: 13px; }
 .q-plain { font-size: 12px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+.q-strip { display: flex; gap: 4px; align-items: flex-end; height: 30px; margin: 0 0 6px; }
+.q-strip i { flex: 1; background: var(--bar-track); }
+.q-strip i.on { background: var(--accent); }
+.q-strip i.here { outline: 1px solid var(--ink); outline-offset: 1px; }
+.q-card .q-streak { margin-bottom: 10px; font: 600 12px/1.5 var(--font-data); color: var(--muted); }
+.q-arch { display: flex; gap: 16px; margin: 0 0 12px; font-size: 12px; }
+.q-arch a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.q-arch a[hidden] { display: none; }
+.q-rv { display: flex; gap: 4px; }
+.q-rv button { padding: 5px 9px; font-size: 11px; }
 .q-plain:hover { color: var(--ink); }
 .q-status { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 4px; font: 600 12px/1.4 var(--font-data); font-variant-numeric: tabular-nums; color: var(--muted); }
 .q-status span:first-child { color: var(--ink); }

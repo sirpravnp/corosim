@@ -46,6 +46,11 @@ with a complete occlusion or a tight stenosis under exertion, on a patient who m
 or have a bundle branch block. Posterior leads V7–V9 are on. You read the tracing, press the spot on the vessel where
 you think the lesion is, and lock in.
 
+Then a second question: is the right ventricle involved? Yes or no, 10 points either way, judged by the circulation
+model's own right-ventricular ischemia (the monitor's "RV involvement" line), so a case is out of 110. The card at
+`/game` keeps a streak of days played on their own day, with the last seven as bars; `/game?day=YYYY-MM-DD` opens an
+earlier case from the archive, scored but outside the streak.
+
 Every case is solvable. The draw is checked against the physics: at full ischemia some lead must reach 1 mm of ST
 shift, or the AV node must block, or the sinus rate must move by 12 bpm; a draw that does none of these (a conus
 branch, or the SA-node artery in a patient in fibrillation) is thrown away and the next from the same seed taken, so

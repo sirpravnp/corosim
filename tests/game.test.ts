@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildTree, TYPICAL } from "../src/anatomy/tree";
 import { analyze } from "../src/physics/network";
-import { dailyCase, dayKey, dayNumber, drawCase, explain, fullFindings, judge, locationScore, randomVariant, score, seeded, signal, solvable, timeFactor, treeDistance, EPOCH, POINTS, SOLVABLE } from "../src/game";
+import { dailyCase, dayKey, dayNumber, drawCase, explain, fullFindings, judge, keyOfDay, parseDay, rvInvolvement, streaks, MAX_SCORE, locationScore, randomVariant, score, seeded, signal, solvable, timeFactor, treeDistance, EPOCH, POINTS, SOLVABLE } from "../src/game";
 
 /** Seeded LCG so a failing draw is reproducible. */
 const lcg = (seed: number) => () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
@@ -109,7 +109,7 @@ describe("scoring", () => {
   it("score multiplies location by time; no call scores nothing", () => {
     const lesion = { segId: "LAD", pos: 0.3 };
     const perfect = score(t, lesion, lesion, 0);
-    expect(perfect).toEqual({ distance: 0, location: 100, floored: false, time: 1, total: 100 });
+    expect(perfect).toEqual({ distance: 0, location: 100, floored: false, time: 1, rv: 0, total: 100 });
     const late = score(t, lesion, lesion, POINTS.timeTau);
     expect(late.total).toBe(Math.round(100 / Math.E));
     const off = score(t, { segId: "LAD", pos: 0.5 }, lesion, 0);
@@ -218,5 +218,42 @@ describe("full findings", () => {
     const pct = (s: string) => +s.match(/(\d+)% of the myocardium lies beyond/)![1];
     expect(pct(near)).toBeGreaterThan(35);
     expect(pct(far)).toBeLessThan(15);
+  });
+});
+
+describe("streak, archive and the right ventricle", () => {
+  it("counts a streak ending today or yesterday, and the best run ever", () => {
+    expect(streaks([], 10)).toEqual({ current: 0, best: 0 });
+    expect(streaks([8, 9, 10], 10)).toEqual({ current: 3, best: 3 });
+    expect(streaks([7, 8, 9], 10)).toEqual({ current: 3, best: 3 }); // yesterday still counts
+    expect(streaks([6, 7, 8], 10)).toEqual({ current: 0, best: 3 }); // two days off: it is over
+    expect(streaks([1, 2, 3, 4, 9, 10], 10)).toEqual({ current: 2, best: 4 });
+    expect(streaks([10, 10, 9], 10).current).toBe(2); // duplicates do not count twice
+  });
+  it("keys and numbers round-trip; the archive accepts any case from the first up to today", () => {
+    for (const n of [1, 2, 31, 100, 366]) expect(dayNumber(keyOfDay(n))).toBe(n);
+    expect(keyOfDay(1)).toBe(EPOCH);
+    const today = "2026-10-20";
+    expect(parseDay("2026-10-07", today)).toBe("2026-10-07");
+    expect(parseDay(today, today)).toBe(today);
+    expect(parseDay("2026-10-21", today)).toBeNull(); // tomorrow
+    expect(parseDay("2026-10-06", today)).toBeNull(); // before the first case
+    expect(parseDay("2026-2-3", today)).toBeNull(); expect(parseDay("2026-13-40", today)).toBeNull();
+    expect(parseDay(null, today)).toBeNull(); expect(parseDay("drop table", today)).toBeNull();
+  });
+  it("a proximal RCA occlusion takes the right ventricle; a LAD occlusion does not", () => {
+    const mk = (segId: string) => ({ variant: TYPICAL, lesion: { segId, pos: 0.2, ds: 1, occluded: true }, exert: false, rhythm: "sinus" as const, bbb: "none" as const });
+    const rca = rvInvolvement(mk("RCA")), lad = rvInvolvement(mk("LAD"));
+    expect(rca.involved).toBe(true); expect(rca.fraction).toBeGreaterThan(POINTS.rvInvolvedAt);
+    expect(lad.involved).toBe(false); expect(lad.fraction).toBeLessThan(0.1);
+    expect(rvInvolvement({ ...mk("RCA"), lesion: { segId: "RCA", pos: 0.9, ds: 1, occluded: true } }).involved).toBe(false); // distal: the acute marginal is upstream
+  });
+  it("the right-ventricle call adds or takes ten, never below zero, and nothing without a location call", () => {
+    const t = buildTree(TYPICAL), lesion = { segId: "RCA", pos: 0.2 };
+    expect(score(t, lesion, lesion, 0, { answer: true, truth: true }).total).toBe(MAX_SCORE);
+    expect(score(t, lesion, lesion, 0, { answer: false, truth: true }).total).toBe(POINTS.location - POINTS.rv);
+    expect(score(t, { segId: "LAD", pos: 0.2 }, lesion, 0, { answer: false, truth: true }).total).toBe(0);
+    expect(score(t, null, lesion, 0, { answer: true, truth: true }).total).toBe(0);
+    expect(score(t, lesion, lesion, 0).rv).toBe(0);
   });
 });

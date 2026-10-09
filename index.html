@@ -57,11 +57,12 @@
       </div>
       <div class="q-play">
         <div class="q-call"><span>Your call</span><b id="qcall"></b></div>
+        <div class="q-call"><span>Right ventricle involved?</span><span class="q-rv"><button id="rv_yes">Yes</button><button id="rv_no">No</button></span></div>
         <div class="row" style="margin-top:0">
           <button id="qlock" class="primary" disabled>Lock in</button>
           <button id="qreveal">Show me</button>
         </div>
-        <p class="note">Click the spot on a vessel where you think the lesion is; click again to move it. Free within 7 mm (the lesion's own half-length), then points fall off with distance along the vessels. The clock is the patient's, running at 3×; ischemia takes about 20 s of it to develop.</p>
+        <p class="note">Click the spot on a vessel where you think the lesion is; click again to move it. Free within 7 mm (the lesion's own half-length), then points fall off with distance along the vessels. Then say whether the right ventricle is involved: 10 points either way. The clock is the patient's, running at 3×; ischemia takes about 20 s of it to develop.</p>
       </div>
       <div class="q-reveal">
         <p class="q-result" id="qresult"></p>
@@ -182,8 +183,11 @@
     <h2>Find the culprit</h2>
     <p class="q-day" id="qday"></p>
     <p class="q-done" id="qdone" hidden></p>
+    <div class="q-strip" id="qstrip" title="The last seven days"></div>
+    <p class="q-streak" id="qstreak"></p>
+    <nav class="q-arch" aria-label="Archive"><a id="qprev" href="#" hidden></a><a id="qtoday" href="#" hidden>Today</a><a id="qnext" href="#" hidden></a></nav>
     <p>One case a day, the same for everyone. A lesion is placed and hidden: any anatomy, any vessel, an occlusion or a tight stenosis under exertion, on a patient who may be in atrial fibrillation or have a bundle branch block; the heart keeps its ischemia to itself. Read the tracing and the monitor, then press the spot on the vessel where you think the lesion is.</p>
-    <p class="note">Up to 100 points: full on the lesion, falling with distance from it along the tree but never below 25 in the right territory, and decaying with every second of the patient's time.</p>
+    <p class="note">Up to 110 points: full on the lesion, falling with distance from it along the tree but never below 25 in the right territory, decaying with every second of the patient's time; then 10 more for calling the right ventricle correctly, or 10 fewer for calling it wrong. Earlier cases are in the archive, scored but outside the streak.</p>
     <div class="row"><button id="qstart" class="primary">Start today's case</button></div>
     <a class="q-plain" href="../">Just the simulator</a>
   </div>

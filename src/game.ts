@@ -5,6 +5,7 @@ import { buildTree, Tree, Variant } from "./anatomy/tree";
 import { Lesion, analyze } from "./physics/network";
 import { bedSites, injuryVector, ischemicBurden, globalSeverity } from "./physics/ecgLink";
 import { rhythmState } from "./physics/rhythm";
+import { circulation } from "./physics/circulation";
 import { ALL_LEADS, Bbb, LEAD_AXES, LEADS, LeadName, POSTERIOR_LEADS, Rhythm } from "./config/ecg";
 
 export type Verdict = "vessel" | "territory" | "miss";
@@ -20,6 +21,8 @@ export const POINTS = {
   territoryFloor: 25, // a call anywhere in the culprit's system (LAD, circumflex or RCA) scores at least this
   timeTau: 150, // s of the patient's time: the location score decays by e every tau
   speed: 3, // time scale a case runs at, so seconds since the occlusion compare between players
+  rv: 10, // the second question, is the right ventricle involved: this much for the right answer, as much lost for the wrong one
+  rvInvolvedAt: 0.3, // severity-weighted fraction of the right ventricle: the monitor's own line for "RV involvement"
 };
 /** What a case must do to the tracing or the rhythm for a player to have something to find. */
 export const SOLVABLE = {
@@ -40,6 +43,27 @@ export function dayKey(d = new Date()): string {
 export function dayNumber(key: string): number {
   const utc = (k: string) => { const [y, m, d] = k.split("-").map(Number); return Date.UTC(y, m - 1, d); };
   return Math.round((utc(key) - utc(EPOCH)) / 86400000) + 1;
+}
+/** The day key of case number n. */
+export function keyOfDay(n: number): string {
+  const [y, m, d] = EPOCH.split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d) + (n - 1) * 86400000);
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, "0")}-${String(t.getUTCDate()).padStart(2, "0")}`;
+}
+/** An archive request (?day=YYYY-MM-DD): the key if it names a case from the first up to today, else null. */
+export function parseDay(s: string | null | undefined, today: string): string | null {
+  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const n = dayNumber(s);
+  return Number.isFinite(n) && n >= 1 && n <= dayNumber(today) && keyOfDay(n) === s ? s : null;
+}
+/** Streaks over the case numbers played on their own day: the current one ends today or yesterday. */
+export function streaks(played: number[], today: number): { current: number; best: number } {
+  const set = new Set(played);
+  let best = 0;
+  for (const n of set) if (!set.has(n - 1)) { let k = 0; while (set.has(n + k)) k++; best = Math.max(best, k); }
+  let end = set.has(today) ? today : set.has(today - 1) ? today - 1 : null, current = 0;
+  while (end !== null && set.has(end - current)) current++;
+  return { current, best };
 }
 /** A generator seeded from a string (mulberry32 on an FNV-1a hash), so one date always draws one case. */
 export function seeded(key: string): Rng {
@@ -157,16 +181,29 @@ export function locationScore(d: number): number {
 /** Time factor (0..1) for a call made `elapsed` s of the patient's time after the occlusion. */
 export const timeFactor = (elapsed: number) => Math.exp(-Math.max(0, elapsed) / POINTS.timeTau);
 
-export interface Score { distance: number; location: number; floored: boolean; time: number; total: number }
-/** Location score, then the territory floor (the right system is never worth nothing), then the clock. */
-export function score(tree: Tree, call: Point | null, lesion: Point, elapsed: number): Score {
-  if (!call) return { distance: Infinity, location: 0, floored: false, time: timeFactor(elapsed), total: 0 };
+/** Whether the case takes the right ventricle with it, by the circulation model at full ischemia. */
+export function rvInvolvement(c: Case): { involved: boolean; fraction: number } {
+  const tree = buildTree(c.variant), sites = bedSites(tree);
+  const a = analyze(tree, [c.lesion], c.exert);
+  const sev = Object.fromEntries(a.cond.terminals.map((t) => [t.key, t.severity]));
+  const rs = rhythmState(sites, sev, globalSeverity(ischemicBurden(sites, sev)), { rhythm: c.rhythm, bbb: c.bbb });
+  const fraction = circulation(sites, sev, rs).rvIschemia;
+  return { involved: fraction >= POINTS.rvInvolvedAt, fraction };
+}
+
+export interface Score { distance: number; location: number; floored: boolean; time: number; rv: number; total: number }
+/** Location score, then the territory floor (the right system is never worth nothing), then the clock; then the
+ *  right-ventricle call, which can take as much as it gives. A no-call scores nothing at all. */
+export function score(tree: Tree, call: Point | null, lesion: Point, elapsed: number, rv?: { answer: boolean; truth: boolean }): Score {
+  if (!call) return { distance: Infinity, location: 0, floored: false, time: timeFactor(elapsed), rv: 0, total: 0 };
   const distance = treeDistance(tree, call, lesion), byDistance = locationScore(distance), time = timeFactor(elapsed);
   const sameSystem = judge(tree, call.segId, lesion.segId) !== "miss";
   const floored = sameSystem && byDistance < POINTS.territoryFloor;
   const location = floored ? POINTS.territoryFloor : byDistance;
-  return { distance, location, floored, time, total: Math.round(location * time) };
+  const rvPts = rv ? (rv.answer === rv.truth ? POINTS.rv : -POINTS.rv) : 0;
+  return { distance, location, floored, time, rv: rvPts, total: Math.max(0, Math.round(location * time) + rvPts) };
 }
+export const MAX_SCORE = POINTS.location + POINTS.rv;
 
 // ---- the debrief ----
 const TERRITORY_NOTE: Record<string, string> = {

@@ -13,7 +13,7 @@ import { stepSeverity } from "./physics/ischemia";
 import { BedSite, bedSites, injuryVector, ischemicBurden, globalSeverity } from "./physics/ecgLink";
 import { EcgStrip } from "./ecgStrip";
 import { rhythmState, RhythmState } from "./physics/rhythm";
-import { Case, POINTS, Point, dailyCase, dayKey, dayNumber, explain, fullFindings, judge, score } from "./game";
+import { Case, MAX_SCORE, POINTS, Point, dailyCase, dayKey, dayNumber, explain, fullFindings, judge, keyOfDay, parseDay, rvInvolvement, score, streaks } from "./game";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const MMHG = 133.322;
@@ -545,12 +545,14 @@ const G = {
   phase: "idle" as Phase, day: "", score: 0,
   clock: 0, // s of the patient's time since the occlusion
   call: null as Point | null, // where the player has pressed on the tree
+  rv: null as boolean | null, // the second question: is the right ventricle involved
+  target: "", // the day the front door is for: today, or an archive day from ?day=
   kase: null as Case | null, saved: null as null | { V: Variant; S: Partial<typeof S> },
 };
 const LESION_KEYS = ["lesionSeg", "pos", "ds", "occ", "exert", "mode", "flow", "speed", "rhythm", "bbb", "posterior"] as const;
 const LOCKED = ["m_pressure", "m_velocity", "m_wss", "flowbtn", "s1", "s3", "s6", "postbtn"]; // displays that would show the lesion, the clock, and the leads
 /** What the player did with a day's case, kept in this browser so the day is played once and can be looked at again. */
-interface Played { total: number; distance: number; elapsed: number; call: Point | null; cls: string; result: string; why: string }
+interface Played { total: number; distance: number; elapsed: number; call: Point | null; rv?: boolean | null; archive?: boolean; cls: string; result: string; why: string }
 const STORE = "corosim.daily";
 let history: Record<string, Played> = {};
 try { history = JSON.parse(localStorage.getItem(STORE) || "{}"); } catch { history = {}; }
@@ -558,8 +560,11 @@ const remember = (key: string, p: Played) => { history[key] = p; try { localStor
 const dayLabel = (key: string) => { const [y, m, d] = key.split("-").map(Number); return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" }); };
 const callUi = () => {
   $("qcall").textContent = G.call ? `${tree.byId[G.call.segId].name}, ${Math.round(G.call.pos * 100)}% along` : "none yet";
-  ($("qlock") as HTMLButtonElement).disabled = !G.call;
+  $("rv_yes").classList.toggle("on", G.rv === true); $("rv_no").classList.toggle("on", G.rv === false);
+  ($("qlock") as HTMLButtonElement).disabled = !G.call || G.rv === null;
 };
+/** Days played on their own day, as case numbers (archive plays do not keep a streak alive). */
+const liveDays = () => Object.entries(history).filter(([, p]) => !p.archive).map(([k]) => dayNumber(k));
 
 /** A clean slate for a case: no ischemia carried over, pressure back at baseline. */
 function resetPhysiology() {
@@ -587,10 +592,10 @@ function loadCase(key: string) {
   pendingAnatomy = pendingLesion = false;
 }
 function gameStart() {
-  const key = dayKey();
+  const key = G.target || dayKey();
   if (history[key]) return gameReview(key);
   enterGame(); loadCase(key);
-  G.clock = 0; G.score = 0; G.phase = "play"; G.call = null;
+  G.clock = 0; G.score = 0; G.phase = "play"; G.call = null; G.rv = null;
   S.hide = S.hideIsch = true; S.selected = "";
   resetPhysiology(); rebuildAnatomy();
   $("pick").style.display = "none";
@@ -600,7 +605,7 @@ function gameStart() {
 function gameReview(key: string) {
   const p = history[key];
   enterGame(); loadCase(key);
-  G.clock = p.elapsed; G.score = p.total; G.phase = "reveal"; G.call = p.call;
+  G.clock = p.elapsed; G.score = p.total; G.phase = "reveal"; G.call = p.call; G.rv = p.rv ?? null;
   S.hide = S.hideIsch = false; S.selected = G.kase!.lesion.segId;
   resetPhysiology(); rebuildAnatomy();
   const res = $("qresult"); res.className = "q-result " + p.cls; res.innerHTML = p.result;
@@ -611,7 +616,8 @@ function gameReview(key: string) {
 function gameAnswer(giveUp: boolean) {
   if (G.phase !== "play" || !G.kase) return;
   const truth = G.kase.lesion.segId, call = giveUp ? null : G.call;
-  const sc = score(tree, call, { segId: truth, pos: G.kase.lesion.pos }, G.clock);
+  const rvT = rvInvolvement(G.kase), rv = !giveUp && G.rv !== null ? { answer: G.rv, truth: rvT.involved } : undefined;
+  const sc = score(tree, call, { segId: truth, pos: G.kase.lesion.pos }, G.clock, rv);
   const verdict = call ? judge(tree, call.segId, truth) : "miss";
   G.score = sc.total; G.phase = "reveal"; G.call = call;
   // show the lesion: the real lumen, the shaded vessels, the marker, the darkened muscle and the perfusion table
@@ -621,23 +627,24 @@ function gameAnswer(giveUp: boolean) {
   const findings = { ...fullFindings(G.kase), rhythm: rhythmLabel(ecg.rhythm(), rstate) };
   const name = tree.byId[truth].name, chosen = call ? tree.byId[call.segId].name : "";
   const how = `${Math.round(sc.distance)} mm from the lesion along the tree, called at ${Math.round(G.clock)} s`;
-  const pts = `<span class="pts">location ${Math.round(sc.location)}${sc.floored ? " (territory floor)" : ""} × time ${sc.time.toFixed(2)} = ${sc.total} pts</span>`;
+  const rvLine = rv ? ` The right ventricle ${rvT.involved ? `was involved (${Math.round(rvT.fraction * 100)}% of it ischemic)` : `was spared (${Math.round(rvT.fraction * 100)}% ischemic)`}; you said ${rv.answer ? "yes" : "no"}.` : "";
+  const pts = `<span class="pts">location ${Math.round(sc.location)}${sc.floored ? " (territory floor)" : ""} × time ${sc.time.toFixed(2)}${rv ? ` ${sc.rv >= 0 ? "+" : "−"} ${Math.abs(sc.rv)} RV` : ""} = ${sc.total} pts</span>`;
   const cls = sc.total >= 60 ? "vessel" : sc.total >= 20 ? "territory" : "miss";
-  const result = !call ? `The culprit was the ${name}.`
-    : verdict === "vessel" ? `On the ${name}, ${how}. ${pts}`
-    : verdict === "territory" ? `Right territory, wrong branch: you called the ${chosen}, ${how}. ${pts}`
-    : `Wrong territory: you called the ${chosen}, ${how}. ${pts}`;
+  const result = !call ? `The culprit was the ${name}.${rvLine}`
+    : verdict === "vessel" ? `On the ${name}, ${how}.${rvLine} ${pts}`
+    : verdict === "territory" ? `Right territory, wrong branch: you called the ${chosen}, ${how}.${rvLine} ${pts}`
+    : `Wrong territory: you called the ${chosen}, ${how}.${rvLine} ${pts}`;
   const why = explain(tree, G.kase, findings);
   const res = $("qresult"); res.className = "q-result " + cls; res.innerHTML = result;
   $("qwhy").textContent = why;
-  remember(G.day, { total: sc.total, distance: sc.distance, elapsed: G.clock, call, cls, result, why });
+  remember(G.day, { total: sc.total, distance: sc.distance, elapsed: G.clock, call, rv: rv ? rv.answer : null, archive: G.day !== dayKey() || undefined, cls, result, why });
   $("pick").style.display = "none";
   controlsUi(); liveUi();
 }
 function gameQuit() {
   if (G.phase === "idle" || !G.saved) return;
   Object.assign(V, G.saved.V); Object.assign(S, G.saved.S); syncSelects();
-  S.hide = S.hideIsch = false; S.selected = ""; G.phase = "idle"; G.kase = null; G.call = null; G.saved = null;
+  S.hide = S.hideIsch = false; S.selected = ""; G.phase = "idle"; G.kase = null; G.call = null; G.rv = null; G.saved = null;
   for (const id of LOCKED) ($(id) as HTMLButtonElement).disabled = false;
   document.body.classList.remove("game");
   pendingAnatomy = pendingLesion = false;
@@ -652,11 +659,20 @@ function gameUi() {
   $("qgate").hidden = !(inGame && G.phase === "idle"); $("quiz").hidden = !(inGame && G.phase !== "idle");
   document.body.classList.toggle("gated", inGame && G.phase === "idle");
   if (G.phase === "idle") {
-    const key = dayKey(), p = history[key], days = Object.keys(history).length;
-    $("qday").textContent = `Case #${dayNumber(key)} · ${dayLabel(key)}`;
+    const today = dayKey(), key = G.target || today, n = dayNumber(key), archive = key !== today, p = history[key];
+    $("qday").textContent = `${archive ? "Archive · " : ""}Case #${n} · ${dayLabel(key)}`;
     $("qdone").hidden = !p;
-    if (p) $("qdone").textContent = `Played today: ${p.total} pts. ${days} day${days === 1 ? "" : "s"} played, ${Object.values(history).reduce((a, x) => a + x.total, 0)} pts in all.`;
-    $("qstart").textContent = p ? "Look at today's case again" : "Start today's case";
+    if (p) $("qdone").textContent = `Played${archive ? "" : " today"}: ${p.total} of ${MAX_SCORE}.`;
+    $("qstart").textContent = p ? "Look at this case again" : archive ? `Play case #${n}` : "Start today's case";
+    // streak, and the last seven days as bars
+    const s = streaks(liveDays(), dayNumber(today)), days = Object.keys(history).length, pts = Object.values(history).reduce((a, x) => a + x.total, 0);
+    $("qstreak").textContent = days ? `Streak ${s.current} · best ${s.best} · ${days} day${days === 1 ? "" : "s"} played · ${pts} pts` : "No days played yet.";
+    $("qstrip").innerHTML = Array.from({ length: 7 }, (_, i) => { const k = keyOfDay(n - 6 + i), q = history[k]; return `<i class="${q ? "on" : ""}${k === key ? " here" : ""}" style="height:${q ? Math.max(12, (100 * q.total) / MAX_SCORE) : 10}%" title="#${n - 6 + i}${q ? `: ${q.total}` : ""}"></i>`; }).join("");
+    // the archive: the day before, the day after, and today
+    const prev = $("qprev") as HTMLAnchorElement, next = $("qnext") as HTMLAnchorElement, tod = $("qtoday") as HTMLAnchorElement;
+    prev.hidden = n <= 1; prev.href = `?day=${keyOfDay(n - 1)}`; prev.textContent = `← #${n - 1}`;
+    next.hidden = !archive; next.href = `?day=${keyOfDay(n + 1)}`; next.textContent = `#${n + 1} →`;
+    tod.hidden = !archive; tod.href = location.pathname;
     return;
   }
   $("qround").textContent = `Case #${dayNumber(G.day)}`;
@@ -664,6 +680,7 @@ function gameUi() {
   $("qscore").textContent = `${G.score} pts`;
 }
 on("qstart", gameStart);
+on("rv_yes", () => { G.rv = true; callUi(); }); on("rv_no", () => { G.rv = false; callUi(); });
 on("qlock", () => gameAnswer(false));
 on("qreveal", () => gameAnswer(true));
 on("qquit", gameQuit);
@@ -672,9 +689,12 @@ on("qquit", gameQuit);
 function shareText(): string {
   const p = history[G.day];
   if (!p) return "";
-  const bar = "█".repeat(Math.round(p.total / 10)).padEnd(10, "░");
+  const bar = "█".repeat(Math.round((10 * p.total) / MAX_SCORE)).padEnd(10, "░");
   const how = p.call ? `${Math.round(p.distance)} mm from the lesion, called at ${Math.round(p.elapsed)} s` : "no call";
-  return `CoroSim · Find the culprit #${dayNumber(G.day)}\n${bar} ${p.total}/100\n${how}\n${location.origin}${location.pathname.replace(/index\.html$/, "").replace(/\/?$/, "/")}`;
+  const s = streaks(liveDays(), dayNumber(dayKey()));
+  const streak = !p.archive && s.current >= 2 ? `\n${s.current}-day streak` : "";
+  const url = location.origin + location.pathname.replace(/index\.html$/, "").replace(/\/?$/, "/");
+  return `CoroSim · Find the culprit #${dayNumber(G.day)}${p.archive ? " (archive)" : ""}\n${bar} ${p.total}/${MAX_SCORE}\n${how}${streak}\n${url}${p.archive ? `?day=${G.day}` : ""}`;
 }
 async function share() {
   const text = shareText(), btn = $("qshare") as HTMLButtonElement;
@@ -701,6 +721,7 @@ function applyMode() {
   ($("modeSim") as HTMLAnchorElement).href = root; ($("modeGame") as HTMLAnchorElement).href = root + "game/";
   (document.querySelector(".q-plain") as HTMLAnchorElement).href = root;
   inGame = game;
+  G.target = parseDay(new URLSearchParams(location.search).get("day"), dayKey()) ?? dayKey();
   $("modeSim").classList.toggle("on", !game); $("modeGame").classList.toggle("on", game);
   $("kind").textContent = game ? "Find the culprit · a game on the simulator" : "3D Coronary Vasculature Simulator";
   document.title = game ? "CoroSim · Find the culprit" : "CoroSim";
