@@ -645,8 +645,12 @@ function gameQuit() {
   $("pick").style.display = "none";
   controlsUi(); liveUi();
 }
+let inGame = false; // the page at /game
 function gameUi() {
   $("quiz").dataset.phase = G.phase; document.body.dataset.game = G.phase;
+  // idle: the front door over the blurred page; in a case: the panel in the rail
+  $("qgate").hidden = !(inGame && G.phase === "idle"); $("quiz").hidden = !(inGame && G.phase !== "idle");
+  document.body.classList.toggle("gated", inGame && G.phase === "idle");
   if (G.phase === "idle") {
     const key = dayKey(), p = history[key], days = Object.keys(history).length;
     $("qday").textContent = `Case #${dayNumber(key)} · ${dayLabel(key)}`;
@@ -695,10 +699,12 @@ function applyMode() {
   const game = /\/game(\/(index\.html)?)?$/.test(location.pathname); // /game, /game/ or /game/index.html
   const root = game && !location.pathname.endsWith("/game") ? "../" : "./";
   ($("modeSim") as HTMLAnchorElement).href = root; ($("modeGame") as HTMLAnchorElement).href = root + "game/";
-  $("quiz").hidden = !game;
+  (document.querySelector(".q-plain") as HTMLAnchorElement).href = root;
+  inGame = game;
   $("modeSim").classList.toggle("on", !game); $("modeGame").classList.toggle("on", game);
   $("kind").textContent = game ? "Find the culprit · a game on the simulator" : "3D Coronary Vasculature Simulator";
   document.title = game ? "CoroSim · Find the culprit" : "CoroSim";
+  gameUi();
 }
 
 // Browsers restore form values on reload; force every control to match the model's starting state.

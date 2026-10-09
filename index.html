@@ -52,12 +52,6 @@
   <aside>
     <section id="quiz" data-phase="idle" hidden>
       <h2>Find the culprit</h2>
-      <div class="q-idle">
-        <p class="q-day" id="qday"></p>
-        <p class="note q-done" id="qdone" hidden></p>
-        <div class="row" style="margin-top:0"><button id="qstart" class="primary">Start today's case</button></div>
-        <p class="note">One case a day, the same for everyone. A lesion is placed and hidden: any anatomy, any vessel, an occlusion or a tight stenosis under exertion, and the heart keeps its ischemia to itself. Read the 12-lead and the monitor, then press the spot on the vessel where you think it is. Up to 100 points: full on the lesion, falling with distance from it along the tree but never below 25 in the right territory, and decaying with every second of the patient's time.</p>
-      </div>
       <div class="q-live">
         <div class="q-status"><span id="qround"></span><span id="qclock"></span><span id="qscore"></span></div>
       </div>
@@ -182,6 +176,18 @@
     </section>
   </aside>
 </main>
+<!-- The game's front door: over the blurred page until a case starts -->
+<div id="qgate" hidden>
+  <div class="q-card">
+    <h2>Find the culprit</h2>
+    <p class="q-day" id="qday"></p>
+    <p class="q-done" id="qdone" hidden></p>
+    <p>One case a day, the same for everyone. A lesion is placed and hidden: any anatomy, any vessel, an occlusion or a tight stenosis under exertion, on a patient who may be in atrial fibrillation or have a bundle branch block; the heart keeps its ischemia to itself. Read the tracing and the monitor, then press the spot on the vessel where you think the lesion is.</p>
+    <p class="note">Up to 100 points: full on the lesion, falling with distance from it along the tree but never below 25 in the right territory, and decaying with every second of the patient's time.</p>
+    <div class="row"><button id="qstart" class="primary">Start today's case</button></div>
+    <a class="q-plain" href="../">Just the simulator</a>
+  </div>
+</div>
 <footer class="foot">For education only; not for clinical decisions. Anatomy is schematic and model constants are assumptions.</footer>
 <script type="module" src="/src/app.ts"></script>
 </body>
