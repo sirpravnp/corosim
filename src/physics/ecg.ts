@@ -1,4 +1,4 @@
-import { LEAD_AXES, LEADS, LeadName, RHYTHM, ST, TERRITORY, T_CENTER, T_WIDTH, Vec3, WAVES } from "../config/ecg";
+import { AF, ALL_LEADS, BBB, Bbb, LEAD_AXES, LeadName, RHYTHM, ST, TERRITORY, T_CENTER, T_WIDTH, Vec3, WAVES } from "../config/ecg";
 
 export type Territory = keyof typeof TERRITORY;
 
@@ -19,7 +19,8 @@ export interface Beat {
   pvc: boolean;
   pr?: number; // s from P-wave peak to R (default: normal)
   pOnly?: boolean; // atrial depolarization that did not conduct (AV block)
-  noP?: boolean; // ventricular complex with no preceding P (junctional escape)
+  noP?: boolean; // ventricular complex with no preceding P (junctional escape, or atrial fibrillation)
+  bbb?: Bbb; // conducted with a bundle branch block
 }
 
 const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -64,23 +65,49 @@ function beatVector(dt: number, beat: Beat, injury: Vec3, tBoost: number): Vec3 
   }
   if (!beat.noP) add(WAVES.P.v, gauss(dt, -(beat.pr ?? -WAVES.P.t), WAVES.P.w));
   if (beat.pOnly) return out;
-  add(WAVES.Q.v, gauss(dt, WAVES.Q.t, WAVES.Q.w));
-  add(WAVES.R.v, gauss(dt, WAVES.R.t, WAVES.R.w));
-  add(WAVES.S.v, gauss(dt, WAVES.S.t, WAVES.S.w));
-  add(WAVES.T.v, (1 + tBoost) * gauss(dt, T_CENTER(beat.rr), T_WIDTH(beat.rr)));
-  // Injury current flows during the ST segment (J point → end of T).
-  const win = sigmoid((dt - ST.jPoint) / ST.edge) - sigmoid((dt - (T_CENTER(beat.rr) + 2 * T_WIDTH(beat.rr))) / ST.edge);
+  const tc = T_CENTER(beat.rr), tw = T_WIDTH(beat.rr), bbb = beat.bbb ?? "none";
+  // Injury current flows during the ST segment (J point → end of T); a block's discordant ST shares the window.
+  const win = sigmoid((dt - ST.jPoint) / ST.edge) - sigmoid((dt - (tc + 2 * tw)) / ST.edge);
+  if (bbb === "lbbb") {
+    // No septal q; one broad wave toward the late left ventricle; repolarization runs the other way.
+    const L = BBB.lbbb;
+    add(L.r.v, gauss(dt, L.r.t, L.r.w));
+    add(L.s.v, gauss(dt, L.s.t, L.s.w));
+    add(L.t, (1 + tBoost) * gauss(dt, tc + 0.03, tw * 1.2));
+    add(L.st, win);
+  } else {
+    add(WAVES.Q.v, gauss(dt, WAVES.Q.t, WAVES.Q.w));
+    add(WAVES.R.v, gauss(dt, WAVES.R.t, WAVES.R.w));
+    add(WAVES.S.v, gauss(dt, WAVES.S.t, WAVES.S.w));
+    add(WAVES.T.v, (1 + tBoost) * gauss(dt, tc, tw));
+    if (bbb === "rbbb") {
+      // The right ventricle depolarizes late through muscle: a terminal rightward-anterior wave after the normal QRS.
+      const R = BBB.rbbb;
+      add(R.rPrime.v, gauss(dt, R.rPrime.t, R.rPrime.w));
+      add(R.t, gauss(dt, tc + 0.02, tw));
+      add(R.st, win);
+    }
+  }
   add(injury, win);
   return out;
+}
+
+/** Fibrillatory baseline (mV) at time t: a small wandering wave along the atrial axis, around AF.fWaveHz. */
+export function fWaves(t: number, amplitude: number): Vec3 {
+  if (amplitude <= 0) return [0, 0, 0];
+  const w = 2 * Math.PI * AF.fWaveHz;
+  const f = amplitude * (0.7 * Math.sin(w * t) + 0.5 * Math.sin(w * 1.37 * t + 1.1) + 0.3 * Math.sin(w * 0.61 * t + 2.3)) * (0.75 + 0.25 * Math.sin(2.2 * t));
+  const a = WAVES.P.v, n = Math.hypot(a[0], a[1], a[2]);
+  return [(a[0] / n) * f, (a[1] / n) * f, (a[2] / n) * f];
 }
 
 /** Injury vector (mV) for a single culprit territory at a given severity. */
 export const territoryInjury = (territory: Territory, severity: number): Vec3 =>
   TERRITORY[territory].map((c) => c * ST.fullScaleMv * severity) as unknown as Vec3;
 
-/** Voltage (mV) of all 12 leads at time t for an arbitrary injury vector (mV) and hyperacute T boost. */
-export function sampleLeadsVec(t: number, beats: Beat[], injury: Vec3, tBoost: number): Record<LeadName, number> {
-  const v: [number, number, number] = [0, 0, 0];
+/** Voltage (mV) of all 15 leads at time t for an arbitrary injury vector (mV), hyperacute T boost and f-wave amplitude. */
+export function sampleLeadsVec(t: number, beats: Beat[], injury: Vec3, tBoost: number, fWave = 0): Record<LeadName, number> {
+  const v: [number, number, number] = fWaves(t, fWave) as [number, number, number];
   for (const b of beats) {
     const dt = t - b.t;
     if (dt < -0.5 || dt > 0.8) continue;
@@ -88,7 +115,7 @@ export function sampleLeadsVec(t: number, beats: Beat[], injury: Vec3, tBoost: n
     v[0] += bv[0]; v[1] += bv[1]; v[2] += bv[2];
   }
   const out = {} as Record<LeadName, number>;
-  for (const l of LEADS) out[l] = dot(LEAD_AXES[l], v);
+  for (const l of ALL_LEADS) out[l] = dot(LEAD_AXES[l], v);
   return out;
 }
 
@@ -103,11 +130,11 @@ export function synthesize(opts: {
   const fs = opts.fs ?? 250;
   const n = Math.floor(opts.seconds * fs);
   const beats = generateBeats(opts.seconds, opts.severity, opts.seed ?? 1);
-  const leads = Object.fromEntries(LEADS.map((l) => [l, new Float32Array(n)])) as Record<LeadName, Float32Array>;
+  const leads = Object.fromEntries(ALL_LEADS.map((l) => [l, new Float32Array(n)])) as Record<LeadName, Float32Array>;
   for (let i = 0; i < n; i++) {
     const t = i / fs;
     const s = sampleLeads(t, beats, opts.severity(t), opts.territory);
-    for (const l of LEADS) leads[l][i] = s[l];
+    for (const l of ALL_LEADS) leads[l][i] = s[l];
   }
   return { fs, beats, leads };
 }
@@ -118,6 +145,8 @@ export const stLevel = (lead: LeadName, beat: Beat, beats: Beat[], severity: num
 
 /** ST level (mV) of every lead for one beat under an arbitrary injury vector. */
 export function stLevelVec(lead: LeadName, beat: Beat, beats: Beat[], injury: Vec3, tBoost: number): number {
-  const base = sampleLeadsVec(beat.t - 0.07, beats, injury, tBoost)[lead];
+  // Baseline before the QRS (a broad LBBB R starts early, so measure a little further back for it).
+  const back = beat.bbb === "lbbb" ? 0.11 : 0.07;
+  const base = sampleLeadsVec(beat.t - back, beats, injury, tBoost)[lead];
   return sampleLeadsVec(beat.t + ST.measureAt, beats, injury, tBoost)[lead] - base;
 }

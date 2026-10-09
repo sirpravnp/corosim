@@ -23,8 +23,8 @@ npm run build      # static site in dist/
 | Anatomy | Coronary tree on a procedural heart; diameters follow flow (Huo–Kassab 7/3 law), Finet's law holds at the left main | `src/anatomy/` |
 | Perfusion | Pressure and flow through the tree; Poiseuille plus expansion losses at stenoses; autoregulation and flow reserve | `src/physics/network.ts`, `hemodynamics.ts` |
 | Ischemia | Supply versus demand per myocardial bed, about 20 s to develop, τ about 8 s to recover | `src/physics/ischemia.ts` |
-| ECG | Dipole heart; each ischemic bed adds an injury current along its wall's outward normal | `src/physics/ecg.ts`, `ecgLink.ts` |
-| Rhythm | Sympathetic/vagal balance, SA- and AV-node arteries, Wenckebach, complete heart block | `src/physics/rhythm.ts` |
+| ECG | Dipole heart; each ischemic bed adds an injury current along its wall's outward normal; 12 leads plus posterior V7–V9; right and left bundle branch block with their discordant ST-T | `src/physics/ecg.ts`, `ecgLink.ts` |
+| Rhythm | Sympathetic/vagal balance, SA- and AV-node arteries, Wenckebach, complete heart block; atrial fibrillation as an existing rhythm | `src/physics/rhythm.ts` |
 | Circulation | Cardiac output × vascular resistance; pressure feeds back on coronary perfusion | `src/physics/circulation.ts` |
 
 All constants live in `src/config/`, tagged as literature-backed or assumed.
@@ -42,8 +42,14 @@ The simulator run backwards, one case a day. "Find the culprit" draws the day's 
 gets the same case) and hides it: the vessel lumen, vessel shading, lesion marker, perfusion table and the pressure,
 velocity, wall-shear and flow displays all keep the secret, the heart does not darken, and the monitor shows only rate,
 cardiac output and blood pressure. The case can be any anatomic variant and any vessel, the nodal arteries included,
-with a complete occlusion or a tight stenosis under exertion. You read the 12-lead, press the spot on the vessel where
+with a complete occlusion or a tight stenosis under exertion, on a patient who may already be in atrial fibrillation
+or have a bundle branch block. Posterior leads V7–V9 are on. You read the tracing, press the spot on the vessel where
 you think the lesion is, and lock in.
+
+Every case is solvable. The draw is checked against the physics: at full ischemia some lead must reach 1 mm of ST
+shift, or the AV node must block, or the sinus rate must move by 12 bpm; a draw that does none of these (a conus
+branch, or the SA-node artery in a patient in fibrillation) is thrown away and the next from the same seed taken, so
+the day's case is still the same for everyone.
 
 Up to 100 points: the location score is full anywhere on the lesion (within 7 mm, its own half-length) and falls off as
 a Gaussian (σ 20 mm) with distance from it *along the vessels*, so a call just distal to a branch is far from one just
@@ -75,7 +81,8 @@ Free GitHub Pages requires a public repository.
 ## Limits
 
 Steady (mean) flow only, with no pulsatile waveform. No collaterals in the coronary tree. AV block only at the
-AV node. Variant frequencies in the literature vary widely, so presets are teaching cases, not epidemiology.
+AV node. Bundle branch blocks are fixed patterns, not rate-dependent; atrial fibrillation is a rhythm only,
+with no atrial ischemia or thrombus. Variant frequencies in the literature vary widely, so presets are teaching cases, not epidemiology.
 
 ## Third-party
 

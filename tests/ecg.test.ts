@@ -141,9 +141,9 @@ describe("hemodynamics → ECG link", () => {
 });
 
 describe("synthesize", () => {
-  it("returns 12 equal-length channels at the requested rate", () => {
+  it("returns the 12 standard and 3 posterior channels, equal length, at the requested rate", () => {
     const r = synthesize({ seconds: 4, fs: 250, severity: () => 0 });
-    expect(Object.keys(r.leads)).toHaveLength(12);
+    expect(Object.keys(r.leads)).toHaveLength(15);
     for (const l of LEADS) expect(r.leads[l]).toHaveLength(1000);
   });
   it("occlusion then reperfusion: V2 ST rises then falls back", () => {

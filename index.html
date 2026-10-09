@@ -40,7 +40,7 @@
     <figure>
       <canvas id="ecg"></canvas>
       <div id="stmap" class="stmap"></div>
-      <figcaption><b>Figure 2.</b> Twelve-lead ECG at 25 mm/s and 10 mm/mV. ST shift is the sum of injury currents from every ischemic bed, each pointing out through its own patch of wall, so the lead pattern follows whichever artery is blocked. Numbers above are ST level in mm at J + 60 ms.</figcaption>
+      <figcaption><b>Figure 2.</b> Twelve-lead ECG at 25 mm/s and 10 mm/mV, with posterior leads V7–V9 as a fifth column when they are on. ST shift is the sum of injury currents from every ischemic bed, each pointing out through its own patch of wall, so the lead pattern follows whichever artery is blocked. Numbers above are ST level in mm at J + 60 ms.</figcaption>
     </figure>
 
     <figure id="bedsfig">
@@ -52,12 +52,6 @@
   <aside>
     <section id="quiz" data-phase="idle" hidden>
       <h2>Find the culprit</h2>
-      <div class="q-idle">
-        <p class="q-day" id="qday"></p>
-        <p class="note q-done" id="qdone" hidden></p>
-        <div class="row" style="margin-top:0"><button id="qstart" class="primary">Start today's case</button></div>
-        <p class="note">One case a day, the same for everyone. A lesion is placed and hidden: any anatomy, any vessel, an occlusion or a tight stenosis under exertion, and the heart keeps its ischemia to itself. Read the 12-lead and the monitor, then press the spot on the vessel where you think it is. Up to 100 points: full on the lesion, falling with distance from it along the tree but never below 25 in the right territory, and decaying with every second of the patient's time.</p>
-      </div>
       <div class="q-live">
         <div class="q-status"><span id="qround"></span><span id="qclock"></span><span id="qscore"></span></div>
       </div>
@@ -121,6 +115,22 @@
       <p class="note">Ischemia develops over about 20 s after occlusion and resolves with a time constant of about 8 s after reperfusion. Rate and AV conduction follow the territory: anterior ischemia speeds the heart; inferior ischemia, and loss of the SA- or AV-node artery, slow it and block conduction. Lost contraction and slow rates lower blood pressure, and lower pressure then perfuses every coronary bed less.</p>
     </section>
 
+    <section id="patient">
+      <h2>Patient</h2>
+      <p class="glabel" style="margin-top:0">Rhythm</p>
+      <div class="row" style="margin-top:0">
+        <button id="r_sinus" class="on">Sinus</button>
+        <button id="r_af">Atrial fibrillation</button>
+      </div>
+      <p class="glabel">Conduction</p>
+      <div class="row" style="margin-top:0">
+        <button id="c_none" class="on">Normal</button>
+        <button id="c_rbbb">RBBB</button>
+        <button id="c_lbbb">LBBB</button>
+      </div>
+      <p class="note">What the patient brought with them. Fibrillation takes away the P waves, so the AV node shows only as a slowing of the irregular response. A left bundle branch block pushes every ST segment away from its QRS before any lesion does, so read it for change: concordant ST, or discordant elevation out of proportion to the S wave.</p>
+    </section>
+
     <section id="anatomy">
       <h2>Anatomy</h2>
       <div class="row" style="margin-top:0">
@@ -161,10 +171,23 @@
       <input id="ex" type="range" min="1" max="5" step="0.5" value="2.5">
       <div class="row">
         <button id="flowbtn">Show blood flow</button>
+        <button id="postbtn">Posterior leads V7–V9</button>
       </div>
     </section>
   </aside>
 </main>
+<!-- The game's front door: over the blurred page until a case starts -->
+<div id="qgate" hidden>
+  <div class="q-card">
+    <h2>Find the culprit</h2>
+    <p class="q-day" id="qday"></p>
+    <p class="q-done" id="qdone" hidden></p>
+    <p>One case a day, the same for everyone. A lesion is placed and hidden: any anatomy, any vessel, an occlusion or a tight stenosis under exertion, on a patient who may be in atrial fibrillation or have a bundle branch block; the heart keeps its ischemia to itself. Read the tracing and the monitor, then press the spot on the vessel where you think the lesion is.</p>
+    <p class="note">Up to 100 points: full on the lesion, falling with distance from it along the tree but never below 25 in the right territory, and decaying with every second of the patient's time.</p>
+    <div class="row"><button id="qstart" class="primary">Start today's case</button></div>
+    <a class="q-plain" href="../">Just the simulator</a>
+  </div>
+</div>
 <footer class="foot">For education only; not for clinical decisions. Anatomy is schematic and model constants are assumptions.</footer>
 <script type="module" src="/src/app.ts"></script>
 </body>

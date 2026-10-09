@@ -88,7 +88,8 @@ figcaption b { color: var(--ink); font-weight: 700; letter-spacing: 0.06em; text
 .stmap b { display: block; font: 700 11px var(--font-ui); color: var(--muted); }
 .stmap .up { color: var(--bad); font-weight: 600; }
 .stmap .down { color: var(--down); font-weight: 600; }
-@media (max-width: 700px) { .stmap { grid-template-columns: repeat(6, minmax(0, 1fr)); } .viewport { height: 420px; } }
+.stmap.wide { grid-template-columns: repeat(15, minmax(0, 1fr)); }
+@media (max-width: 700px) { .stmap { grid-template-columns: repeat(6, minmax(0, 1fr)); } .stmap.wide { grid-template-columns: repeat(5, minmax(0, 1fr)); } .viewport { height: 420px; } }
 
 /* Rail */
 aside section { padding: 14px 14px 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: 0; }
@@ -122,7 +123,20 @@ button:disabled, button:disabled:hover { color: var(--muted); background: var(--
 #quiz .q-live, #quiz .q-play, #quiz .q-reveal { display: none; }
 #quiz[data-phase="play"] .q-live, #quiz[data-phase="reveal"] .q-live, #quiz[data-phase="play"] .q-play, #quiz[data-phase="reveal"] .q-reveal { display: block; }
 #quiz[data-phase="play"] .row.q-live, #quiz[data-phase="reveal"] .row.q-live { display: flex; }
-#quiz:not([data-phase="idle"]) .q-idle { display: none; }
+
+/* The game's front door: a card over the blurred page */
+#qgate { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: color-mix(in srgb, var(--bg) 55%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+#qgate[hidden] { display: none; }
+@supports not (backdrop-filter: blur(1px)) { body.gated main, body.gated .masthead, body.gated .foot { filter: blur(8px); } }
+.q-card { width: min(460px, 100%); padding: 24px 24px 20px; background: var(--panel); border: 1px solid var(--ink); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35); }
+.q-card h2 { margin: 0 0 10px; font: 700 11px/1 var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; }
+.q-card p { margin: 0 0 12px; font-size: 14px; line-height: 1.5; }
+.q-card .q-day { font: 600 13px/1.5 var(--font-data); }
+.q-card .q-done { font-size: 13px; }
+.q-card .row { margin: 4px 0 14px; }
+.q-card .row button { padding: 11px 16px; font-size: 13px; }
+.q-plain { font-size: 12px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+.q-plain:hover { color: var(--ink); }
 .q-status { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 4px; font: 600 12px/1.4 var(--font-data); font-variant-numeric: tabular-nums; color: var(--muted); }
 .q-status span:first-child { color: var(--ink); }
 .q-result { margin: 6px 0 0; font-size: 14px; line-height: 1.45; font-weight: 700; }
@@ -136,7 +150,7 @@ button:disabled, button:disabled:hover { color: var(--muted); background: var(--
 .q-hidden-note { display: none; margin: 0 0 4px; }
 body[data-game="play"] .q-hidden-note { display: block; }
 body.game #lesionctl, body[data-game="play"] #bedsfig, body[data-game="play"] tr.q-hide { display: none; }
-body.game #anatomy { opacity: 0.45; pointer-events: none; }
+body.game #anatomy, body.game #patient { opacity: 0.45; pointer-events: none; }
 
 /* Readouts */
 table.readout { width: 100%; border-collapse: collapse; font-size: 13px; }
