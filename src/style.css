@@ -175,7 +175,8 @@ table.readout td#stup, table.readout td#stdown, table.readout td#rhythm { white-
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
 .glabel { margin: 12px 0 4px; font-size: 13px; }
 
-.masthead h1 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+.masthead h1 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
+.masthead .logo { width: 56px; height: 56px; border-radius: 50%; background: #fff; flex: none; }
 .masthead .kind { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 
 /* Floating markers, positioned over the lesion and over the player's call by app.ts */
