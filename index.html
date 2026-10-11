@@ -99,14 +99,14 @@
         <tr class="q-hide"><td>Myocardium at risk</td><td id="risk"></td></tr>
         <tr class="q-hide"><td>Lesion FFR</td><td id="ffr"></td></tr>
         <tr class="q-hide"><td>Ischemic time</td><td id="m_time"></td></tr>
-        <tr class="q-hide"><td>Infarct (of left ventricle)</td><td id="m_inf"></td></tr>
+        <tr class="q-hide"><td>Infarct, left ventricle</td><td id="m_inf"></td></tr>
         <tr class="q-hide"><td>Estimated LVEF</td><td id="m_ef"></td></tr>
-        <tr class="q-hide"><td>Coronary perfusion pressure</td><td id="m_cpp"></td></tr>
+        <tr class="q-hide"><td>Coronary perfusion</td><td id="m_cpp"></td></tr>
       </table>
       <p class="note q-hidden-note">Rate, output and pressure only while a case is running: the rest reads the tracing for you.</p>
     </section>
 
-    <section>
+    <section id="lesionsec">
       <h2>Lesion</h2>
       <div id="lesionctl">
         <label for="lseg" style="margin-top:0">Vessel</label>
@@ -134,7 +134,7 @@
       <div class="tabs" role="tablist">
         <h2>Management</h2>
         <button class="tab on" data-tab="support" role="tab">Support</button>
-        <button class="tab" data-tab="revasc" role="tab">Open the artery</button>
+        <button class="tab" data-tab="revasc" role="tab">Reperfuse</button>
         <button class="tab" data-tab="assess" role="tab">Assessment</button>
       </div>
       <div class="pane" data-pane="support">
