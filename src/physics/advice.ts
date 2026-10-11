@@ -14,7 +14,8 @@ export interface Situation {
 
 export interface Issue { tone: "bad" | "warn" | "ok"; text: string }
 export interface Step { text: string; why: string }
-export interface Assessment { issues: Issue[]; warnings: string[]; steps: Step[] }
+export interface Warning { tag: string; text: string }
+export interface Assessment { issues: Issue[]; warnings: Warning[]; steps: Step[] }
 
 const shock = (s: Situation) => s.map < CIRC.shockMap;
 const lowOutput = (s: Situation) => s.cardiacOutput < 3.6;
@@ -24,7 +25,7 @@ const lowOutput = (s: Situation) => s.cardiacOutput < 3.6;
  * Teaching logic from the usual STEMI and cardiogenic-shock teaching points (ACC/AHA); not a clinical decision aid.
  */
 export function assess(s: Situation): Assessment {
-  const issues: Issue[] = [], warnings: string[] = [], steps: Step[] = [];
+  const issues: Issue[] = [], warnings: Warning[] = [], steps: Step[] = [];
   const sup = s.support;
   const stemi = s.hasLesion && (s.occluded || s.stElevation) && !s.reperfused;
   const rvDown = s.rvIschemia > 0.3 && s.map < CIRC.hypotensionMap;
@@ -43,11 +44,11 @@ export function assess(s: Situation): Assessment {
   if (s.reperfused && s.infarctSize <= 0.02) issues.push({ tone: "ok", text: "Reperfused with little muscle lost" });
 
   // Things the team is doing that are hurting.
-  if (sup.nitro > 0 && (s.rvIschemia > 0.3 || s.map < CIRC.hypotensionMap)) warnings.push("Nitroglycerin is lowering a preload this patient depends on. Stop it.");
-  if (sup.norepi > 0 && s.lvIschemia > 0.3 && lowOutput(s)) warnings.push("The pressor raises MAP but adds afterload to a failing ventricle; output may not follow.");
-  if (sup.dobutamine > 0 && s.hasLesion && !s.reperfused) warnings.push("Dobutamine raises oxygen demand in muscle that is still ischemic. Open the artery.");
-  if (sup.fluids > 1 && s.congestion > 0.3) warnings.push("More volume is backing up into the lungs. Stop fluids.");
-  if (sup.impella && s.rvIschemia > 0.4) warnings.push("A left-sided pump cannot move blood the failing right ventricle does not deliver.");
+  if (sup.nitro > 0 && (s.rvIschemia > 0.3 || s.map < CIRC.hypotensionMap)) warnings.push({ tag: "nitroglycerin in a preload-dependent patient", text: "Nitroglycerin is lowering a preload this patient depends on. Stop it." });
+  if (sup.norepi > 0 && s.lvIschemia > 0.3 && lowOutput(s)) warnings.push({ tag: "a pressor on a failing ventricle", text: "The pressor raises MAP but adds afterload to a failing ventricle; output may not follow." });
+  if (sup.dobutamine > 0 && s.hasLesion && !s.reperfused) warnings.push({ tag: "dobutamine with the artery still closed", text: "Dobutamine raises oxygen demand in muscle that is still ischemic. Open the artery." });
+  if (sup.fluids > 1 && s.congestion > 0.3) warnings.push({ tag: "volume into congested lungs", text: "More volume is backing up into the lungs. Stop fluids." });
+  if (sup.impella && s.rvIschemia > 0.4) warnings.push({ tag: "a left-sided pump in right-ventricular failure", text: "A left-sided pump cannot move blood the failing right ventricle does not deliver." });
 
   // Steps, in order.
   if (stemi && !s.pending) {

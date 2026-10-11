@@ -35,8 +35,9 @@ All constants live in `src/config/`, tagged as literature-backed or assumed.
 
 ## Management: what to do next
 
-The **Management** panel (simulator only; the daily game keeps its own physiology) turns the lesion into a decision.
-Block an artery, then treat the patient while the muscle is dying.
+The **Management** panel turns the lesion into a decision: block an artery, then treat the patient while the muscle is
+dying. It has three tabs (support, opening the artery, assessment) so the rail stays short; the patient, anatomy and
+display sections fold away with their state in the header.
 
 - **Hemodynamic support.** Norepinephrine raises MAP but adds afterload to a failing ventricle. Dobutamine raises output
   and oxygen demand and provokes ectopy. Fluid fills a right ventricle that depends on preload and congests the lungs
@@ -56,6 +57,7 @@ Block an artery, then treat the patient while the muscle is dying.
   and a button for the guideline order of steps, so a learner can decide first and check after.
 
 Choices are the teaching points of STEMI and infarct shock care (ACC/AHA; SHOCK, IABP-SHOCK II), not a decision aid.
+In the daily game the treatment is the second half of the case (below).
 
 ## Two versions
 
@@ -75,7 +77,17 @@ or have a bundle branch block. Posterior leads V7–V9 are on. You read the trac
 you think the lesion is, and lock in.
 
 Then a second question: is the right ventricle involved? Yes or no, 10 points either way, judged by the circulation
-model's own right-ventricular ischemia (the monitor's "RV involvement" line), so a case is out of 110. The card at
+model's own right-ventricular ischemia (the monitor's "RV involvement" line).
+
+Then the case goes on: the lesion is shown and the player treats the patient. The Management panel is live (its
+assessment tab is not: that is the answer), a clinical clock runs at 2 minutes a second, orders take their clinical time
+to arrive, and muscle dies while the artery stays closed. The phase ends 20 clinical minutes after reperfusion, at 150
+minutes, or when the player hands over. Up to 40 points for the muscle saved, judged against the infarct that immediate
+PCI would have left (all the points) and that no reperfusion would have (none); the baselines are computed from the
+state at the moment of the call, so a slow find does not count twice. Up to 20 points for the share of the phase spent
+out of shock, less the share spent doing harm (a nitrate in a right-ventricular infarct, volume into congested lungs,
+and the other warnings the assessment would have raised). The debrief then says what was done and when, the infarct
+against both baselines, the harm by name, and what the guidelines would have done at the start. A case is out of 170. The card at
 `/game` keeps a streak of days played on their own day, with the last seven as bars; `/game?day=YYYY-MM-DD` opens an
 earlier case from the archive, scored but outside the streak.
 

@@ -120,9 +120,9 @@ button:disabled, button:disabled:hover { color: var(--muted); background: var(--
 .note { margin: 10px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
 
 /* Game panel: which block shows follows the phase on the section */
-#quiz .q-live, #quiz .q-play, #quiz .q-reveal { display: none; }
-#quiz[data-phase="play"] .q-live, #quiz[data-phase="reveal"] .q-live, #quiz[data-phase="play"] .q-play, #quiz[data-phase="reveal"] .q-reveal { display: block; }
-#quiz[data-phase="play"] .row.q-live, #quiz[data-phase="reveal"] .row.q-live { display: flex; }
+#quiz .q-live, #quiz .q-play, #quiz .q-treat, #quiz .q-reveal { display: none; }
+#quiz:not([data-phase="idle"]) .q-live, #quiz[data-phase="play"] .q-play, #quiz[data-phase="treat"] .q-treat, #quiz[data-phase="reveal"] .q-reveal { display: block; }
+#quiz:not([data-phase="idle"]) .row.q-live { display: flex; }
 
 /* The game's front door: a card over the blurred page */
 #qgate { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: color-mix(in srgb, var(--bg) 55%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
@@ -161,6 +161,8 @@ button:disabled, button:disabled:hover { color: var(--muted); background: var(--
 body[data-game="play"] .q-hidden-note { display: block; }
 body.game #lesionctl, body[data-game="play"] #bedsfig, body[data-game="play"] tr.q-hide { display: none; }
 body.game #anatomy, body.game #patient { opacity: 0.45; pointer-events: none; }
+body[data-game="play"] #manage, body.gated #manage { display: none; }
+body[data-game="treat"] #manage .tab[data-tab="assess"], body.game #m_reset { display: none; } /* the assessment is the answer */
 
 /* Readouts */
 table.readout { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -215,5 +217,29 @@ table.readout td#stup, table.readout td#stdown, table.readout td#rhythm { white-
 .steps > div::before { counter-increment: step; content: counter(step); position: absolute; left: 8px; font: 700 12px/1.6 var(--font-data); color: var(--muted); }
 .steps b { font-weight: 700; }
 .steps small { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 1.4; }
-#manage .readout td:last-child.bad { color: var(--bad); }
-body.game #manage, body.gated #manage { display: none; }
+table.readout td.bad { color: var(--bad); }
+
+/* Folds: sections that stay out of the way, with their state in the header */
+details.fold { padding: 0 14px; background: var(--panel); border: 1px solid var(--rule); }
+details.fold summary { display: flex; align-items: baseline; gap: 10px; padding: 12px 0; cursor: pointer; list-style: none; }
+details.fold summary::-webkit-details-marker { display: none; }
+details.fold summary::after { content: "+"; margin-left: auto; font: 700 14px/1 var(--font-data); color: var(--muted); }
+details.fold[open] summary::after { content: "−"; }
+details.fold summary h2 { margin: 0; }
+details.fold .sum { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 11.5px/1.4 var(--font-data); color: var(--muted); }
+details.fold[open] .sum { display: none; }
+details.fold > :not(summary):last-child { margin-bottom: 16px; }
+
+/* Management tabs and the compact control grid */
+.tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 12px; }
+.tabs h2 { margin: 0 auto 0 0; }
+.tab { padding: 6px 8px; font-size: 11px; }
+#manage .pane { display: none; }
+#manage[data-tab="support"] .pane[data-pane="support"], #manage[data-tab="revasc"] .pane[data-pane="revasc"], #manage[data-tab="assess"] .pane[data-pane="assess"] { display: block; }
+.ctl { display: grid; grid-template-columns: 1fr 104px 54px; align-items: center; gap: 7px 8px; font-size: 13px; }
+.ctl label { margin: 0; font-size: 13px; }
+.ctl input[type="range"] { height: 18px; }
+.ctl button { width: 100%; padding: 6px 4px; font-size: 11px; }
+.ctl .val { font: 500 12px/1 var(--font-data); color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.ctl .pace-only { display: none; }
+#manage.pacing .ctl .pace-only { display: block; }

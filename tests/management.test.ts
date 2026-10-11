@@ -116,7 +116,7 @@ describe("rate and rhythm support", () => {
 describe("infarct evolution", () => {
   it("grows with ischemic time and severity, and stops when there is none", () => {
     let full = 0, partial = 0;
-    for (let s = 0; s < 60; s++) { full = stepNecrosis(full, 1, 1); partial = stepNecrosis(partial, 0.5, 1); }
+    for (let s = 0; s < 60; s++) { full = stepNecrosis(full, 1, 1); partial = stepNecrosis(partial, 0.5, 1); } // 60 clinical minutes
     expect(full).toBeGreaterThan(0.3); expect(partial).toBeLessThan(full / 3);
     expect(stepNecrosis(0.4, 0, 100)).toBe(0.4);
     expect(stepNecrosis(0.99, 1, 1e6)).toBeLessThanOrEqual(1);
@@ -192,7 +192,7 @@ describe("next-step advisor", () => {
   it("in a right-ventricular infarct with low pressure: fluid, not nitrate", () => {
     const rv = { ...base, map: 68, rvIschemia: 0.6 };
     expect(texts(rv)).toMatch(/fluid/i);
-    expect(assess({ ...rv, support: sup({ nitro: 1 }) }).warnings.join(" ")).toMatch(/Nitroglycerin/);
+    expect(assess({ ...rv, support: sup({ nitro: 1 }) }).warnings.map((w) => w.text).join(" ")).toMatch(/Nitroglycerin/);
   });
   it("block with low pressure: atropine if tone, pacing if not", () => {
     const blk = { ...base, avDegree: 2 as const, hr: 45, map: 66, vagal: 0.6 };
@@ -201,7 +201,7 @@ describe("next-step advisor", () => {
   });
   it("warns when volume is congesting the lungs", () => {
     const c = { ...base, congestion: 0.6, support: sup({ fluids: 3 }) };
-    expect(assess(c).warnings.join(" ")).toMatch(/lungs/); expect(texts(c)).toMatch(/Stop fluids/);
+    expect(assess(c).warnings.map((w) => w.text).join(" ")).toMatch(/lungs/); expect(texts(c)).toMatch(/Stop fluids/);
   });
   it("stable flow-limiting stenosis: PCI, or CABG for the left main", () => {
     const st = { ...base, occluded: false, ds: 0.8, ffr: 0.7, stElevation: false };

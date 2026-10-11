@@ -66,9 +66,17 @@
         </div>
         <p class="note">Click the spot on a vessel where you think the lesion is; click again to move it. Free within 7 mm (the lesion's own half-length), then points fall off with distance along the vessels. Then say whether the right ventricle is involved: 10 points either way. The clock is the patient's, running at 3×; ischemia takes about 20 s of it to develop.</p>
       </div>
+      <div class="q-treat">
+        <p class="q-result" id="qcallresult"></p>
+        <div class="q-call"><span>Clinical time</span><b id="qclin"></b></div>
+        <div class="q-call"><span>Artery</span><b id="qartery"></b></div>
+        <div class="row" style="margin-top:0"><button id="qhand" class="primary">Hand over</button></div>
+        <p class="note">Now treat the patient. The lesion is shown; the Management panel below is live. Muscle dies while the artery stays closed, and orders take clinical minutes to arrive (2 a second). 40 points for muscle saved, against immediate PCI; 20 for the share of the time the pressure is held out of shock, less the share spent doing harm. The phase ends 20 min after reperfusion, at 150 min, or when you hand over.</p>
+      </div>
       <div class="q-reveal">
         <p class="q-result" id="qresult"></p>
         <p class="note" id="qwhy"></p>
+        <p class="note" id="qtreatwhy"></p>
         <div class="row" style="margin-top:0"><button id="qshare" class="primary">Share your score</button></div>
         <p class="note">The next case comes tomorrow.</p>
       </div>
@@ -90,6 +98,10 @@
         <tr class="q-hide"><td>Ischemic myocardium</td><td id="burden"></td></tr>
         <tr class="q-hide"><td>Myocardium at risk</td><td id="risk"></td></tr>
         <tr class="q-hide"><td>Lesion FFR</td><td id="ffr"></td></tr>
+        <tr class="q-hide"><td>Ischemic time</td><td id="m_time"></td></tr>
+        <tr class="q-hide"><td>Infarct (of left ventricle)</td><td id="m_inf"></td></tr>
+        <tr class="q-hide"><td>Estimated LVEF</td><td id="m_ef"></td></tr>
+        <tr class="q-hide"><td>Coronary perfusion pressure</td><td id="m_cpp"></td></tr>
       </table>
       <p class="note q-hidden-note">Rate, output and pressure only while a case is running: the rest reads the tracing for you.</p>
     </section>
@@ -107,64 +119,59 @@
           <button id="occ" class="primary">Occlude</button>
           <button id="exert">Exertion (2×)</button>
         </div>
+        <p class="glabel" id="ts-l">Time scale</p>
+        <div class="row" style="margin-top:0">
+          <button id="s1" class="on">1×</button>
+          <button id="s3">3×</button>
+          <button id="s6">6×</button>
+        </div>
       </div>
       <p class="note q-hidden-note">The lesion is hidden while a case is running.</p>
-      <p class="glabel" id="ts-l">Time scale</p>
-      <div class="row" style="margin-top:0">
-        <button id="s1" class="on">1×</button>
-        <button id="s3">3×</button>
-        <button id="s6">6×</button>
-      </div>
-      <p class="note">Ischemia develops over about 20 s after occlusion and resolves with a time constant of about 8 s after reperfusion. Rate and AV conduction follow the territory: anterior ischemia speeds the heart; inferior ischemia, and loss of the SA- or AV-node artery, slow it and block conduction. Lost contraction and slow rates lower blood pressure, and lower pressure then perfuses every coronary bed less.</p>
+      <p class="note">Ischemia develops over about 20 s after occlusion and resolves with a time constant of about 8 s after reperfusion. Rate and AV conduction follow the territory; lost contraction and slow rates lower blood pressure, and lower pressure perfuses every coronary bed less.</p>
     </section>
 
-    <section id="manage">
-      <h2>Management</h2>
-      <table class="readout">
-        <tr><td>Ischemic time</td><td id="m_time"></td></tr>
-        <tr><td>Infarct (of left ventricle)</td><td id="m_inf"></td></tr>
-        <tr><td>Estimated LVEF</td><td id="m_ef"></td></tr>
-        <tr><td>Coronary perfusion pressure</td><td id="m_cpp"></td></tr>
-      </table>
-
-      <p class="glabel">Hemodynamic support</p>
-      <label for="nor" style="margin-top:0">Norepinephrine <span class="val" id="norv"></span></label>
-      <input id="nor" type="range" min="0" max="100" value="0">
-      <label for="dob">Dobutamine <span class="val" id="dobv"></span></label>
-      <input id="dob" type="range" min="0" max="100" value="0">
-      <div class="row">
-        <button id="m_fluid">Fluid bolus 500 ml</button>
-        <button id="m_nitro">Nitroglycerin</button>
-        <button id="m_atropine">Atropine</button>
+    <section id="manage" data-tab="support">
+      <div class="tabs" role="tablist">
+        <h2>Management</h2>
+        <button class="tab on" data-tab="support" role="tab">Support</button>
+        <button class="tab" data-tab="revasc" role="tab">Open the artery</button>
+        <button class="tab" data-tab="assess" role="tab">Assessment</button>
       </div>
-      <p class="note" id="fluidnote"></p>
-      <div class="row">
-        <button id="m_pace">Pacing</button>
-        <button id="m_iabp">Balloon pump</button>
-        <button id="m_impella">Impella</button>
+      <div class="pane" data-pane="support">
+        <div class="ctl">
+          <label for="nor">Norepinephrine</label><input id="nor" type="range" min="0" max="100" value="0"><span class="val" id="norv"></span>
+          <label for="dob">Dobutamine</label><input id="dob" type="range" min="0" max="100" value="0"><span class="val" id="dobv"></span>
+          <span>IV fluid</span><button id="m_fluid">+500 ml</button><span class="val" id="fluidv"></span>
+          <span>Nitroglycerin</span><button id="m_nitro">Off</button><span class="val"></span>
+          <span>Atropine</span><button id="m_atropine">Off</button><span class="val"></span>
+          <span>Pacing</span><button id="m_pace">Off</button><span class="val" id="pacev"></span>
+          <label for="pacerate" class="pace-only">at rate</label><input id="pacerate" class="pace-only" type="range" min="40" max="120" value="70"><span class="val pace-only"></span>
+          <span>Balloon pump</span><button id="m_iabp">Off</button><span class="val"></span>
+          <span>Impella</span><button id="m_impella">Off</button><span class="val"></span>
+        </div>
+        <p class="note" id="fluidnote"></p>
+        <p class="note">Support changes what the patient can tolerate and how much oxygen the heart asks for; it does not open the artery. Each choice also has a cost: pressors add afterload, inotropes add demand and ectopy, volume congests a failing left ventricle, nitrates drop the preload a right ventricle depends on.</p>
       </div>
-      <label for="pacerate">Pacing rate <span class="val" id="pacev"></span></label>
-      <input id="pacerate" type="range" min="40" max="120" value="70">
-
-      <p class="glabel">Revascularization</p>
-      <div class="row" style="margin-top:0">
-        <button id="m_pci">Primary PCI</button>
-        <button id="m_lysis">Fibrinolytic</button>
-        <button id="m_cabg">CABG</button>
-        <button id="m_cancel">Cancel order</button>
+      <div class="pane" data-pane="revasc">
+        <div class="row" style="margin-top:0">
+          <button id="m_pci">Primary PCI</button>
+          <button id="m_lysis">Fibrinolytic</button>
+          <button id="m_cabg">CABG</button>
+          <button id="m_cancel">Cancel</button>
+        </div>
+        <p class="note" id="mstatus"></p>
+        <p class="note">Orders take clinical time to reach the artery (about 2 minutes pass per second at 1×), and muscle that stays ischemic dies as it waits. PCI stents the lesion; a fibrinolytic opens an occlusion in about half of patients and leaves a stenosis; a bypass feeds the vessel beyond the lesion and leaves the lesion itself.</p>
       </div>
-      <p class="note" id="mstatus"></p>
-
-      <p class="glabel">Where things stand</p>
-      <div id="issues" class="issues"></div>
-      <div id="warns" class="warns"></div>
-      <div class="row"><button id="m_hint">What would the guidelines do?</button><button id="m_reset">Reset treatment</button></div>
-      <div id="steps" class="steps" hidden></div>
-      <p class="note">Orders take clinical time to arrive (about 2 minutes pass per second at 1×), and muscle that stays ischemic dies as it waits, so the hardest decision is often how quickly to act. Support buys time and changes what the patient can tolerate; it does not open the artery.</p>
+      <div class="pane" data-pane="assess">
+        <div id="issues" class="issues"></div>
+        <div id="warns" class="warns"></div>
+        <div class="row"><button id="m_hint">What would the guidelines do?</button><button id="m_reset">Reset treatment</button></div>
+        <div id="steps" class="steps" hidden></div>
+      </div>
     </section>
 
-    <section id="patient">
-      <h2>Patient</h2>
+    <details class="fold" id="patient">
+      <summary><h2>Patient</h2><span class="sum" id="patientsum"></span></summary>
       <p class="glabel" style="margin-top:0">Rhythm</p>
       <div class="row" style="margin-top:0">
         <button id="r_sinus" class="on">Sinus</button>
@@ -177,10 +184,10 @@
         <button id="c_lbbb">LBBB</button>
       </div>
       <p class="note">What the patient brought with them. Fibrillation takes away the P waves, so the AV node shows only as a slowing of the irregular response. A left bundle branch block pushes every ST segment away from its QRS before any lesion does, so read it for change: concordant ST, or discordant elevation out of proportion to the S wave.</p>
-    </section>
+    </details>
 
-    <section id="anatomy">
-      <h2>Anatomy</h2>
+    <details class="fold" id="anatomy">
+      <summary><h2>Anatomy</h2><span class="sum" id="anatomysum"></span></summary>
       <div class="row" style="margin-top:0">
         <button id="p_typ">Typical</button>
         <button id="p_left">Left-dominant</button>
@@ -197,11 +204,11 @@
       <select id="san"><option value="RCA">From the RCA</option><option value="LCx">From the circumflex</option></select>
       <label for="conus">Conus branch</label>
       <select id="conus"><option value="shared">From the RCA</option><option value="separate">Separate ostium</option></select>
-    </section>
+    </details>
 
-    <section>
-      <h2>Display</h2>
-      <p class="glabel">Color the vessels by</p>
+    <details class="fold" id="display">
+      <summary><h2>Display</h2><span class="sum" id="displaysum"></span></summary>
+      <p class="glabel" style="margin-top:0">Color the vessels by</p>
       <div class="row" style="margin-top:0">
         <button id="m_real" class="on">Anatomic</button>
         <button id="m_anat">Territory</button>
@@ -221,7 +228,7 @@
         <button id="flowbtn">Show blood flow</button>
         <button id="postbtn">Posterior leads V7–V9</button>
       </div>
-    </section>
+    </details>
   </aside>
 </main>
 <!-- The game's front door: over the blurred page until a case starts -->
@@ -233,8 +240,8 @@
     <div class="q-strip" id="qstrip" title="The last seven days"></div>
     <p class="q-streak" id="qstreak"></p>
     <nav class="q-arch" aria-label="Archive"><a id="qprev" href="#" hidden></a><a id="qtoday" href="#" hidden>Today</a><a id="qnext" href="#" hidden></a></nav>
-    <p>One case a day, the same for everyone. A lesion is placed and hidden: any anatomy, any vessel, an occlusion or a tight stenosis under exertion, on a patient who may be in atrial fibrillation or have a bundle branch block; the heart keeps its ischemia to itself. Read the tracing and the monitor, then press the spot on the vessel where you think the lesion is.</p>
-    <p class="note">Up to 110 points: full on the lesion, falling with distance from it along the tree but never below 25 in the right territory, decaying with every second of the patient's time; then 10 more for calling the right ventricle correctly, or 10 fewer for calling it wrong. Earlier cases are in the archive, scored but outside the streak.</p>
+    <p>One case a day, the same for everyone. A lesion is placed and hidden: any anatomy, any vessel, an occlusion or a tight stenosis under exertion, on a patient who may be in atrial fibrillation or have a bundle branch block; the heart keeps its ischemia to itself. Read the tracing and the monitor, then press the spot on the vessel where you think the lesion is. Then the case goes on: treat the patient while the muscle is dying.</p>
+    <p class="note">Up to 170 points. Finding it: full on the lesion, falling with distance from it along the tree but never below 25 in the right territory, decaying with every second of the patient's time; then 10 for calling the right ventricle correctly, or 10 lost for calling it wrong. Then treat the patient: 40 for the muscle you save by opening the artery in time, 20 for holding the pressure without doing harm. Earlier cases are in the archive, scored but outside the streak.</p>
     <div class="row"><button id="qstart" class="primary">Start today's case</button></div>
     <a class="q-plain" href="../">Just the simulator</a>
   </div>

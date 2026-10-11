@@ -5,11 +5,10 @@ import { isRightVentricular } from "./circulation";
 /**
  * Irreversible injury. Ischemia that is relieved in time leaves the muscle stunned but alive; ischemia that goes on
  * kills it, from the inside out, at a rate that climbs steeply with how little blood arrives:
- *   dN/dt = (1 − N) · severity^k / τ      (t in clinical minutes)
+ *   dN/dt = (1 − N) · severity^k / τ      (t in clinical minutes; the caller converts its own clock)
  * Reperfusion stops the clock but does not bring dead muscle back.
  */
-export function stepNecrosis(n: number, severity: number, seconds: number): number {
-  const minutes = seconds * INFARCT.minutesPerSecond;
+export function stepNecrosis(n: number, severity: number, minutes: number): number {
   return n + (1 - n) * (1 - Math.exp((-minutes * Math.pow(severity, INFARCT.severityPower)) / INFARCT.tauMinutes));
 }
 
