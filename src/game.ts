@@ -203,7 +203,6 @@ export function score(tree: Tree, call: Point | null, lesion: Point, elapsed: nu
   const rvPts = rv ? (rv.answer === rv.truth ? POINTS.rv : -POINTS.rv) : 0;
   return { distance, location, floored, time, rv: rvPts, total: Math.max(0, Math.round(location * time) + rvPts) };
 }
-export const MAX_SCORE = POINTS.location + POINTS.rv;
 
 // ---- the debrief ----
 const TERRITORY_NOTE: Record<string, string> = {
@@ -245,4 +244,49 @@ export function explain(tree: Tree, c: Case, f: Findings): string {
   const rhythm = f.rhythm ? ` Rhythm: ${f.rhythm}.` : "";
   const background = [c.rhythm === "af" ? BACKGROUND_NOTE.af : "", c.bbb !== "none" ? BACKGROUND_NOTE[c.bbb] : ""].filter(Boolean).map((x) => " " + x).join("");
   return `${where}${st}${rhythm} ${VESSEL_NOTE[seg.id] ?? TERRITORY_NOTE[seg.group]}${background}`;
+}
+
+// ---- treating the patient ----
+/** After the call, the case goes on: the lesion is shown and the player treats the patient while muscle dies. */
+export const TREAT = {
+  minutesPerSecond: 2, // clinical minutes per real second of a case: PCI lands in half a minute, CABG in two
+  capMinutes: 150, // the phase ends here if the artery is still closed
+  settleMinutes: 20, // or this long after reperfusion, once the pressure has had time to recover
+  muscle: 40, // points for muscle saved, against immediate PCI (all) and no reperfusion at all (none)
+  hemo: 20, // points for the fraction of the time the pressure was held out of shock, less the fraction spent doing harm
+  tinyStake: 0.01, // of the left ventricle: below this there was nothing to save, and the muscle points are given
+};
+export interface TreatScore { saved: number; stable: number; harm: number; muscle: number; hemo: number; total: number }
+/** `saved`: fraction of the muscle at stake that was saved; `stable`, `harm`: fractions of the phase's time. */
+export function treatScore(saved: number, stable: number, harm: number): TreatScore {
+  const c = (x: number) => Math.min(1, Math.max(0, x));
+  const muscle = Math.round(TREAT.muscle * c(saved)), hemo = Math.round(TREAT.hemo * c(c(stable) - c(harm)));
+  return { saved: c(saved), stable: c(stable), harm: c(harm), muscle, hemo, total: muscle + hemo };
+}
+/** Fraction saved, from the infarct the player ended with against the best (immediate PCI) and worst (none) cases. */
+export function muscleSaved(got: number, best: number, worst: number): number {
+  if (worst - best < TREAT.tinyStake) return 1;
+  return Math.min(1, Math.max(0, (worst - got) / (worst - best)));
+}
+export const MAX_SCORE = POINTS.location + POINTS.rv + TREAT.muscle + TREAT.hemo;
+
+export interface TreatRecord {
+  reperfusedBy: string | null; orderedAt: number | null; reperfusedAt: number | null; // clinical minutes into the phase
+  got: number; best: number; worst: number; // infarct, fraction of the left ventricle
+  harms: Record<string, number>; // each harmful choice, by the fraction of the phase it was in force
+  steps: string[]; // what the guidelines would have done, at the start
+}
+/** The treatment debrief: what was done, what it cost, what the guidelines would have done. */
+export function explainTreatment(r: TreatRecord, s: TreatScore): string {
+  const pct = (x: number) => `${Math.round(x * 100)}%`;
+  const when = r.reperfusedBy
+    ? `Reperfused by ${r.reperfusedBy} at ${Math.round(r.reperfusedAt ?? 0)} min, ordered at ${Math.round(r.orderedAt ?? 0)} min.`
+    : r.orderedAt !== null ? `The artery was still closed when the phase ended; the order went in at ${Math.round(r.orderedAt)} min.` : "No reperfusion was ordered.";
+  const stake = r.worst - r.best < TREAT.tinyStake
+    ? `Little muscle was at stake (${pct(r.worst)} of the left ventricle at worst).`
+    : `Infarct ${pct(r.got)} of the left ventricle, against ${pct(r.best)} with immediate PCI and ${pct(r.worst)} with none: ${pct(s.saved)} of the muscle at stake saved.`;
+  const harms = Object.entries(r.harms).filter(([, f]) => f >= 0.05).sort((a, b) => b[1] - a[1]);
+  const hemo = `Pressure held out of shock ${pct(s.stable)} of the time` + (harms.length ? `; harmful choices ${pct(s.harm)} of it: ${harms.map(([h, f]) => `${h} (${pct(f)})`).join(", ")}.` : ", with no harmful choice.");
+  const guide = r.steps.length ? ` The guidelines at the start: ${r.steps.map((x, i) => `${i + 1}. ${x}`).join(" ")}` : "";
+  return `${when} ${stake} ${hemo}${guide}`;
 }

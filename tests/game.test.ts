@@ -250,10 +250,39 @@ describe("streak, archive and the right ventricle", () => {
   });
   it("the right-ventricle call adds or takes ten, never below zero, and nothing without a location call", () => {
     const t = buildTree(TYPICAL), lesion = { segId: "RCA", pos: 0.2 };
-    expect(score(t, lesion, lesion, 0, { answer: true, truth: true }).total).toBe(MAX_SCORE);
+    expect(score(t, lesion, lesion, 0, { answer: true, truth: true }).total).toBe(POINTS.location + POINTS.rv);
+    expect(MAX_SCORE).toBeGreaterThan(POINTS.location + POINTS.rv);
     expect(score(t, lesion, lesion, 0, { answer: false, truth: true }).total).toBe(POINTS.location - POINTS.rv);
     expect(score(t, { segId: "LAD", pos: 0.2 }, lesion, 0, { answer: false, truth: true }).total).toBe(0);
     expect(score(t, null, lesion, 0, { answer: true, truth: true }).total).toBe(0);
     expect(score(t, lesion, lesion, 0).rv).toBe(0);
+  });
+});
+
+describe("treating the patient", async () => {
+  const { TREAT, treatScore, muscleSaved, explainTreatment } = await import("../src/game");
+  it("muscle saved runs from the worst case to immediate PCI, and is given when nothing was at stake", () => {
+    expect(muscleSaved(0.2, 0.2, 0.5)).toBe(1);
+    expect(muscleSaved(0.5, 0.2, 0.5)).toBe(0);
+    expect(muscleSaved(0.35, 0.2, 0.5)).toBeCloseTo(0.5, 6);
+    expect(muscleSaved(0.15, 0.2, 0.5)).toBe(1); // lysis landed sooner than PCI would have
+    expect(muscleSaved(0.004, 0.001, 0.005)).toBe(1); // a nodal artery: nothing to save
+  });
+  it("hemodynamic points are the time out of shock less the time doing harm", () => {
+    expect(treatScore(1, 1, 0).total).toBe(TREAT.muscle + TREAT.hemo);
+    expect(treatScore(1, 0.5, 0).hemo).toBe(TREAT.hemo / 2);
+    expect(treatScore(1, 1, 1).hemo).toBe(0);
+    expect(treatScore(0, 0.8, 0.3).total).toBe(Math.round(TREAT.hemo * 0.5));
+    expect(MAX_SCORE).toBe(POINTS.location + POINTS.rv + TREAT.muscle + TREAT.hemo);
+  });
+  it("the debrief names what was done, what it cost, and the harm", () => {
+    const r = { reperfusedBy: "Primary PCI", orderedAt: 5, reperfusedAt: 65, got: 0.2, best: 0.18, worst: 0.5, harms: { "nitroglycerin in a preload-dependent patient": 0.3 }, steps: ["Reperfuse now: primary PCI"] };
+    const s = treatScore(muscleSaved(r.got, r.best, r.worst), 0.9, 0.3);
+    const text = explainTreatment(r, s);
+    expect(text).toMatch(/Reperfused by Primary PCI at 65 min, ordered at 5 min/);
+    expect(text).toMatch(/94% of the muscle at stake saved/);
+    expect(text).toMatch(/nitroglycerin in a preload-dependent patient \(30%\)/);
+    expect(text).toMatch(/1\. Reperfuse now/);
+    expect(explainTreatment({ ...r, reperfusedBy: null, reperfusedAt: null, harms: {} }, s)).toMatch(/still closed.*no harmful choice/);
   });
 });

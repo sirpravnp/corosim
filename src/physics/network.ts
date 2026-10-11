@@ -4,8 +4,11 @@ import { Segment, Tree, diameterAt } from "../anatomy/tree";
 import { area, defaultLesion } from "./geometry";
 import { pressureAlong } from "./hemodynamics";
 import { severityTarget } from "./ischemia";
+import { PROCEDURE } from "../config/management";
 
 export interface Lesion { segId: string; pos: number; ds: number; occluded?: boolean } // pos: 0..1 along the segment
+/** A bypass graft from the aorta, sewn onto a vessel `pos` mm along it. Beyond that point the vessel is fed at aortic pressure less the graft's own loss. */
+export interface Graft { segId: string; pos: number }
 
 interface Dense { s: number[]; d: number[]; w0: number; w1: number; ref: number; sc: number; lesion?: Lesion }
 interface Terminal { key: string; seg: Segment; pos: number; mass: number; label: string; Qrest: number; Rmin: number }
@@ -49,7 +52,7 @@ function denseProfile(tree: Tree, seg: Segment, lesion?: Lesion): Dense {
  * Each bed takes min(demand, (Pd − Pzf)/Rmin); pressure falls along each artery by Poiseuille loss
  * (and the lesion model inside lesion windows), so beds beyond a lesion are starved first.
  */
-export function solveNetwork(tree: Tree, lesions: Lesion[], demandMult: number, aorticPressure = CORONARY.meanAorticPressure): NetResult {
+export function solveNetwork(tree: Tree, lesions: Lesion[], demandMult: number, aorticPressure = CORONARY.meanAorticPressure, grafts: Graft[] = []): NetResult {
   // Each bed's maximal dilation is a fixed property, set at the reference pressure; the driving pressure can fall.
   const Pref = CORONARY.meanAorticPressure, Pa = aorticPressure, Pzf = CORONARY.zeroFlowPressure;
   const dense: Record<string, Dense> = {};
@@ -69,9 +72,12 @@ export function solveNetwork(tree: Tree, lesions: Lesion[], demandMult: number, 
   // occlusions: terminals fed through an occluded point get no flow
   const occ: Record<string, number> = {};
   for (const l of lesions) if (l.occluded) { const sg = tree.byId[l.segId]; occ[l.segId] = Math.min(sg.length - HALF, Math.max(HALF, l.pos * sg.length)); }
+  const graftAt: Record<string, number> = {};
+  for (const g of grafts) graftAt[g.segId] = Math.min(tree.byId[g.segId].length, g.pos);
   const blocked = (t: Terminal) => {
     let seg: Segment | null = t.seg, pos = t.pos;
     while (seg) {
+      if (graftAt[seg.id] !== undefined && pos >= graftAt[seg.id] - 1e-9) return false; // supplied from the graft, past the block
       if (occ[seg.id] !== undefined && occ[seg.id] < pos) return true;
       if (!seg.parent) return false;
       pos = seg.attach * tree.byId[seg.parent].length; seg = tree.byId[seg.parent];
@@ -101,6 +107,13 @@ export function solveNetwork(tree: Tree, lesions: Lesion[], demandMult: number, 
       let p0 = Pa;
       if (seg.parent) { const pp = P[seg.parent], ps = dense[seg.parent].s, x = seg.attach * tree.byId[seg.parent].length; p0 = interp(ps, pp, x); }
       const pr: number[] = new Array(n); pr[0] = p0;
+      let grafted = graftAt[seg.id] === undefined;
+      // Where a graft is sewn on, the vessel is fed from the aorta through the graft: pressure there is at least that.
+      const graftIn = (j: number) => {
+        if (grafted || D.s[j] < graftAt[seg.id] - 1e-9) return;
+        grafted = true;
+        pr[j] = Math.max(pr[j], Pa - graftDrop(q[j]));
+      };
       let i = 1;
       while (i < n) {
         if (D.lesion && i === D.w0 + 1) {
@@ -108,11 +121,13 @@ export function solveNetwork(tree: Tree, lesions: Lesion[], demandMult: number, 
           const Qw = q[Math.floor((D.w0 + D.w1) / 2)];
           const pw = pressureAlong({ x: xs, d: ds }, D.ref, Qw, pr[D.w0]);
           for (let k = 1; k < pw.length; k++) pr[D.w0 + k] = pw[k];
+          graftIn(D.w1);
           i = D.w1 + 1; continue;
         }
         const dx = (D.s[i] - D.s[i - 1]) * 1e-3;
         const g = (j: number) => q[j] / area(D.d[j]) ** 2;
         pr[i] = pr[i - 1] - 8 * Math.PI * BLOOD.viscosity * 0.5 * (g(i - 1) + g(i)) * dx;
+        graftIn(i);
         i++;
       }
       P[seg.id] = pr; Qs[seg.id] = q;
@@ -153,6 +168,15 @@ export function solveNetwork(tree: Tree, lesions: Lesion[], demandMult: number, 
   return { seg, terminals, atRisk, iterations: it, pa: Pa };
 }
 
+/** Poiseuille loss (Pa) along the conduit for flow Q (m3/s). */
+const graftDrop = (Q: number) => (8 * BLOOD.viscosity * PROCEDURE.graftLength * Q) / (Math.PI * (PROCEDURE.graftDiameter / 2) ** 4);
+
+/** Where a surgeon would sew the graft for a lesion: just beyond its window, or at the end of the vessel when there is no room. */
+export function graftsFor(tree: Tree, l: Lesion): Graft[] {
+  const sg = tree.byId[l.segId], sc = Math.min(sg.length - HALF, Math.max(HALF, l.pos * sg.length));
+  return [{ segId: l.segId, pos: Math.min(sg.length, sc + HALF + PROCEDURE.graftTail) }];
+}
+
 function interp(xs: number[], ys: number[], x: number): number {
   if (x <= xs[0]) return ys[0];
   if (x >= xs[xs.length - 1]) return ys[ys.length - 1];
@@ -171,8 +195,8 @@ export function lesionFFR(tree: Tree, lesions: Lesion[], hyper: NetResult): numb
 }
 
 export interface Analysis { cond: NetResult; hyper: NetResult; ffr: number[] }
-export function analyze(tree: Tree, lesions: Lesion[], exertion: boolean, aorticPressure = CORONARY.meanAorticPressure): Analysis {
+export function analyze(tree: Tree, lesions: Lesion[], exertion: boolean, aorticPressure = CORONARY.meanAorticPressure, grafts: Graft[] = [], demandScale = 1): Analysis {
   // FFR is defined at maximal hyperemia, so it keeps the reference pressure; the working state uses the live one.
   const hyper = solveNetwork(tree, lesions, Infinity);
-  return { cond: solveNetwork(tree, lesions, exertion ? FLOW.exertionDemand : 1, aorticPressure), hyper, ffr: lesionFFR(tree, lesions, hyper) };
+  return { cond: solveNetwork(tree, lesions, (exertion ? FLOW.exertionDemand : 1) * demandScale, aorticPressure, grafts), hyper, ffr: lesionFFR(tree, lesions, hyper) };
 }

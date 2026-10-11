@@ -12,7 +12,7 @@ are assumptions, marked as such in the code. It has not been compared with patie
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # 157 tests
+npm test           # 234 tests
 npm run build      # static site in dist/
 ```
 
@@ -26,8 +26,38 @@ npm run build      # static site in dist/
 | ECG | Dipole heart; each ischemic bed adds an injury current along its wall's outward normal; 12 leads plus posterior V7–V9; right and left bundle branch block with their discordant ST-T | `src/physics/ecg.ts`, `ecgLink.ts` |
 | Rhythm | Sympathetic/vagal balance, SA- and AV-node arteries, Wenckebach, complete heart block; atrial fibrillation as an existing rhythm | `src/physics/rhythm.ts` |
 | Circulation | Cardiac output × vascular resistance; pressure feeds back on coronary perfusion | `src/physics/circulation.ts` |
+| Support | Fluids, norepinephrine, dobutamine, nitroglycerin, atropine, pacing, balloon pump, Impella: each changes the circulation, rhythm and myocardial oxygen demand | `src/physics/support.ts` |
+| Infarct | Muscle that stays ischemic dies at a rate rising steeply with severity (τ 150 clinical min at full ischemia); reperfusion stops it but does not undo it | `src/physics/infarct.ts` |
+| Revascularization | Primary PCI, fibrinolytic (55% success), CABG (a graft that feeds the vessel beyond the lesion at aortic pressure less its own loss); each takes clinical minutes to arrive | `src/physics/revasc.ts`, `network.ts` |
+| Advice | Reads the live state and lists what is wrong and what guidelines would do next, in order | `src/physics/advice.ts` |
 
 All constants live in `src/config/`, tagged as literature-backed or assumed.
+
+## Management: what to do next
+
+The **Management** panel turns the lesion into a decision: block an artery, then treat the patient while the muscle is
+dying. It has three tabs (support, opening the artery, assessment) so the rail stays short; the patient, anatomy and
+display sections fold away with their state in the header.
+
+- **Hemodynamic support.** Norepinephrine raises MAP but adds afterload to a failing ventricle. Dobutamine raises output
+  and oxygen demand and provokes ectopy. Fluid fills a right ventricle that depends on preload and congests the lungs
+  of a failing left one. Nitroglycerin collapses the pressure of a right-ventricular infarct. Atropine lifts vagal
+  slowing and tone-mediated block but does nothing for an infarcted AV node. Pacing holds the rate (atrial for a slow
+  sinus rhythm, ventricular with its left-bundle pattern in heart block). A balloon pump augments coronary perfusion
+  pressure by about 10 mmHg; an Impella adds up to 3 L/min and unloads the ventricle, but moves less when the right
+  ventricle fails. Anything that changes demand or perfusion pressure re-solves the coronary network.
+- **Revascularization.** Primary PCI (60 clinical min to the artery) stents the lesion. A fibrinolytic (40 min) opens an
+  occlusion in about 55% of patients, leaving a 50% stenosis, and does nothing for a stenosis. CABG (4 h) sews a graft
+  just beyond the lesion; the native lesion stays, and branches that leave before the anastomosis stay cut off.
+- **Time is muscle.** About 2 clinical minutes pass per second at 1×. Ischemic beds infarct, steeply faster the more
+  severe the ischemia, and the infarct shows as a percentage of the left ventricle and a lower estimated ejection
+  fraction that outlasts reperfusion.
+- **Where things stand.** Live problems (shock, RV infarct, heart block, congestion, infarct size), warnings when what
+  the team is doing is hurting (nitrate in an RV infarct, a pressor in pump failure, dobutamine in ischemic muscle),
+  and a button for the guideline order of steps, so a learner can decide first and check after.
+
+Choices are the teaching points of STEMI and infarct shock care (ACC/AHA; SHOCK, IABP-SHOCK II), not a decision aid.
+In the daily game the treatment is the second half of the case (below).
 
 ## Two versions
 
@@ -47,7 +77,17 @@ or have a bundle branch block. Posterior leads V7–V9 are on. You read the trac
 you think the lesion is, and lock in.
 
 Then a second question: is the right ventricle involved? Yes or no, 10 points either way, judged by the circulation
-model's own right-ventricular ischemia (the monitor's "RV involvement" line), so a case is out of 110. The card at
+model's own right-ventricular ischemia (the monitor's "RV involvement" line).
+
+Then the case goes on: the lesion is shown and the player treats the patient. The Management panel is live (its
+assessment tab is not: that is the answer), a clinical clock runs at 2 minutes a second, orders take their clinical time
+to arrive, and muscle dies while the artery stays closed. The phase ends 20 clinical minutes after reperfusion, at 150
+minutes, or when the player hands over. Up to 40 points for the muscle saved, judged against the infarct that immediate
+PCI would have left (all the points) and that no reperfusion would have (none); the baselines are computed from the
+state at the moment of the call, so a slow find does not count twice. Up to 20 points for the share of the phase spent
+out of shock, less the share spent doing harm (a nitrate in a right-ventricular infarct, volume into congested lungs,
+and the other warnings the assessment would have raised). The debrief then says what was done and when, the infarct
+against both baselines, the harm by name, and what the guidelines would have done at the start. A case is out of 170. The card at
 `/game` keeps a streak of days played on their own day, with the last seven as bars; `/game?day=YYYY-MM-DD` opens an
 earlier case from the archive, scored but outside the streak.
 
@@ -85,7 +125,11 @@ Free GitHub Pages requires a public repository.
 
 ## Limits
 
-Steady (mean) flow only, with no pulsatile waveform. No collaterals in the coronary tree. AV block only at the
+Steady (mean) flow only, with no pulsatile waveform. No collaterals in the coronary tree. One lesion at a time, so
+multivessel disease and the PCI-versus-CABG choice it raises are not modeled; a graft is a single conduit, with no
+competitive-flow failure or patency over time. Drug and device effects are single-number teaching assumptions, with no
+dose titration curves, bleeding, vascular or reperfusion complications. Infarct size does not feed back on the ECG (no
+Q waves) or on the rhythm. AV block only at the
 AV node. Bundle branch blocks are fixed patterns, not rate-dependent; atrial fibrillation is a rhythm only,
 with no atrial ischemia or thrombus. Variant frequencies in the literature vary widely, so presets are teaching cases, not epidemiology.
 
