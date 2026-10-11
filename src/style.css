@@ -201,3 +201,19 @@ table.readout td#stup, table.readout td#stdown, table.readout td#rhythm { white-
 .lz-tag { position: absolute; left: 26px; bottom: 26px; white-space: nowrap; padding: 5px 8px; font: 700 11px/1 var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-ink); background: var(--accent); }
 @keyframes lz-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
 @media (prefers-reduced-motion: reduce) { .lz-ring { animation: none; } }
+
+/* Management: clinical issues, warnings and the stepwise hint */
+.issues, .warns, .steps { display: grid; gap: 4px; font-size: 13px; }
+.issues > div { padding: 5px 8px; border-left: 3px solid var(--rule); }
+.issues > div.bad { border-left-color: var(--bad); }
+.issues > div.warn { border-left-color: var(--warn); }
+.issues > div.ok { border-left-color: var(--ok); }
+.warns { margin-top: 6px; }
+.warns > div { padding: 5px 8px; color: var(--bad); border: 1px solid var(--bad); }
+.steps { margin-top: 8px; counter-reset: step; }
+.steps > div { padding: 6px 8px 7px 30px; position: relative; border-bottom: 1px solid var(--rule-light); }
+.steps > div::before { counter-increment: step; content: counter(step); position: absolute; left: 8px; font: 700 12px/1.6 var(--font-data); color: var(--muted); }
+.steps b { font-weight: 700; }
+.steps small { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+#manage .readout td:last-child.bad { color: var(--bad); }
+body.game #manage, body.gated #manage { display: none; }

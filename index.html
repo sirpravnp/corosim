@@ -118,6 +118,51 @@
       <p class="note">Ischemia develops over about 20 s after occlusion and resolves with a time constant of about 8 s after reperfusion. Rate and AV conduction follow the territory: anterior ischemia speeds the heart; inferior ischemia, and loss of the SA- or AV-node artery, slow it and block conduction. Lost contraction and slow rates lower blood pressure, and lower pressure then perfuses every coronary bed less.</p>
     </section>
 
+    <section id="manage">
+      <h2>Management</h2>
+      <table class="readout">
+        <tr><td>Ischemic time</td><td id="m_time"></td></tr>
+        <tr><td>Infarct (of left ventricle)</td><td id="m_inf"></td></tr>
+        <tr><td>Estimated LVEF</td><td id="m_ef"></td></tr>
+        <tr><td>Coronary perfusion pressure</td><td id="m_cpp"></td></tr>
+      </table>
+
+      <p class="glabel">Hemodynamic support</p>
+      <label for="nor" style="margin-top:0">Norepinephrine <span class="val" id="norv"></span></label>
+      <input id="nor" type="range" min="0" max="100" value="0">
+      <label for="dob">Dobutamine <span class="val" id="dobv"></span></label>
+      <input id="dob" type="range" min="0" max="100" value="0">
+      <div class="row">
+        <button id="m_fluid">Fluid bolus 500 ml</button>
+        <button id="m_nitro">Nitroglycerin</button>
+        <button id="m_atropine">Atropine</button>
+      </div>
+      <p class="note" id="fluidnote"></p>
+      <div class="row">
+        <button id="m_pace">Pacing</button>
+        <button id="m_iabp">Balloon pump</button>
+        <button id="m_impella">Impella</button>
+      </div>
+      <label for="pacerate">Pacing rate <span class="val" id="pacev"></span></label>
+      <input id="pacerate" type="range" min="40" max="120" value="70">
+
+      <p class="glabel">Revascularization</p>
+      <div class="row" style="margin-top:0">
+        <button id="m_pci">Primary PCI</button>
+        <button id="m_lysis">Fibrinolytic</button>
+        <button id="m_cabg">CABG</button>
+        <button id="m_cancel">Cancel order</button>
+      </div>
+      <p class="note" id="mstatus"></p>
+
+      <p class="glabel">Where things stand</p>
+      <div id="issues" class="issues"></div>
+      <div id="warns" class="warns"></div>
+      <div class="row"><button id="m_hint">What would the guidelines do?</button><button id="m_reset">Reset treatment</button></div>
+      <div id="steps" class="steps" hidden></div>
+      <p class="note">Orders take clinical time to arrive (about 2 minutes pass per second at 1×), and muscle that stays ischemic dies as it waits, so the hardest decision is often how quickly to act. Support buys time and changes what the patient can tolerate; it does not open the artery.</p>
+    </section>
+
     <section id="patient">
       <h2>Patient</h2>
       <p class="glabel" style="margin-top:0">Rhythm</p>
