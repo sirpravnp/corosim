@@ -324,7 +324,7 @@ export class Accounts {
 }
 
 /** The server's own pages (sign-in, consent), in CoroSim's console look. No scripts. */
-function page(title: string, body: string): string {
+export function page(title: string, body: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} · CoroSim</title>
 <style>
 :root { --bg: #05060a; --panel: #0b0d14; --ink: #e9e7e1; --muted: #8d90a3; --rule: #2b2f45; --accent: #b8372e; }

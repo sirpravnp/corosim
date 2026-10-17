@@ -210,6 +210,13 @@ describe("pages and accounts", () => {
     expect((await again.call("corosim_get_state")).data.scenario.bloodLoss).toBe(0);
     await again.client.close();
   });
+  it("a browser opening the connector address gets an explanation; AI clients are unaffected", async () => {
+    const html = await fetch(`${base}/mcp`, { headers: { accept: "text/html,application/xhtml+xml" } });
+    expect(html.status).toBe(200);
+    expect(await html.text()).toContain("Add custom connector");
+    expect((await fetch(`${base}/mcp`, { headers: { accept: "text/event-stream" } })).status).toBe(405);
+    expect((await fetch(`${base}/health`)).headers.get("content-type")).toContain("application/json");
+  });
   it("old secret-URL connectors are told what changed", async () => {
     const r = await fetch(`${base}/mcp/uMMlt16laqmV4BjD6x7puA`, { method: "POST" });
     expect(r.status).toBe(410); expect((await r.json()).error).toMatch(/sign-in/);

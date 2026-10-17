@@ -14,7 +14,7 @@ import { MODEL_CARD, PROMPTS } from "./content";
 import { SCENARIO_REFERENCE } from "../sim/llm";
 import { PROTOCOL_VERSION, PageToServer, ServerToPage } from "./protocol";
 import { Store } from "./db";
-import { Accounts, ProviderKeys } from "./accounts";
+import { Accounts, ProviderKeys, page } from "./accounts";
 
 export const VERSION = "0.4.0";
 const APP_URL = process.env.COROSIM_APP_URL ?? "https://corosim.com";
@@ -278,6 +278,21 @@ export function startHttp(o: HttpOptions) {
     try {
       const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
       if (req.method === "OPTIONS" && !url.pathname.startsWith("/auth/")) return send(res, 204, "");
+      // A person who opens the server or the connector address in a browser gets a page saying what it is for;
+      // AI clients (JSON, or an event stream) never ask for HTML and are unaffected.
+      const browser = String(req.headers.accept ?? "").includes("text/html") && !String(req.headers.accept).includes("text/event-stream");
+      if (req.method === "GET" && browser && (url.pathname === "/" || url.pathname === "/mcp" || url.pathname === "/mcp/")) {
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-frame-options": "DENY", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'" });
+        return res.end(page("Connect your AI", `
+          <p>This is CoroSim's connector address for AI assistants. It is not a page to browse: paste it into your AI app.</p>
+          <p><code style="font-size:13px">${accounts!.resource}</code></p>
+          <ul class="muted" style="padding-left:18px">
+            <li><b>Claude</b>: Settings → Connectors → Add custom connector, paste the address, then Connect and sign in.</li>
+            <li><b>ChatGPT</b>: Settings → Apps &amp; Connectors → Advanced → Developer mode, then Create, paste it, and sign in.</li>
+            <li><b>Claude Code</b>: <code>claude mcp add --transport http corosim ${accounts!.resource}</code></li>
+          </ul>
+          <a class="btn primary" href="https://corosim.com">Open CoroSim</a>`));
+      }
       if (url.pathname === "/" || url.pathname === "/health") {
         return send(res, 200, { name: "corosim", version: VERSION, mcp: accounts!.resource, signIn: accounts!.providers, pagesOpen: rooms.size, persistent: store.persistent });
       }
