@@ -694,7 +694,7 @@ function frame(now: number) {
   if (inCase) G.clock += dt * S.speed;
   // The clinical clock: the simulator's runs at its time scale; a case's at the game's fixed rate; none once a case is over.
   const minutes = G.phase === "idle" ? dt * S.speed * INFARCT.minutesPerSecond : inCase ? dt * TREAT.minutesPerSecond : 0;
-  sim.speed = S.speed; sim.patient = { rhythm: S.rhythm, bbb: S.bbb }; sim.support = T.support;
+  sim.speed = S.speed; sim.patient = { rhythm: S.rhythm, bbb: S.bbb }; sim.support = T.support; sim.treated = T.treated; // shared: an AI's treatment and the panel's are one record
   sim.step(dt, { minutes });
   if (minutes > 0) manageStep(minutes, ischemicBurden(sites, sev));
   if (sim.analysis !== A) { A = sim.analysis; for (const b of built) b.blocked = blockedFlags(b.seg); shapeVessels(); } // perfusion pressure or demand moved
@@ -978,6 +978,7 @@ function adoptSimState(reset: boolean) {
   if (first) { S.lesionSeg = first.artery; S.occ = !!first.occluded; S.ds = first.occluded ? 0 : first.stenosis; S.pos = first.position; } else { S.ds = 0; S.occ = false; }
   S.exert = n.exertion; S.rhythm = sim.patient.rhythm; S.bbb = sim.patient.bbb;
   T.support = { ...sim.support }; // the frame loop hands this back to the simulation every frame
+  T.treated = sim.treated; // a PCI, lysis or graft the AI ordered
   Object.assign(PHYS, { bl: Math.round(n.bloodLoss * 100), bb: Math.round(n.drugs.betaBlocker * 100) });
   $<HTMLInputElement>("pos").value = String(S.pos * 100); $<HTMLInputElement>("ds").value = String(S.ds * 100);
   $<HTMLInputElement>("nor").value = String(T.support.norepi * 100); $<HTMLInputElement>("dob").value = String(T.support.dobutamine * 100); $<HTMLInputElement>("pacerate").value = String(T.support.paceRate);

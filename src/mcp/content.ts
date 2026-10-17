@@ -26,20 +26,28 @@ Constants are teaching assumptions tuned so that a resting adult is 72 bpm, stro
 `;
 
 export const PROMPTS: Record<string, { description: string; text: string }> = {
+  rounds: {
+    description: "Teach on the current patient like attending rounds: present, ask, act on the learner's plan, debrief, repeat.",
+    text: "Run a teaching round on my CoroSim patient. Call corosim_get_state. Present the patient as on rounds, without the diagnosis: one-line summary, vitals, rhythm, 12-lead ST findings by lead, and how the patient looks (stable, compensated, shocked). Then stop and ask me: what is going on, which artery, and what would you do first? When I answer, tell me briefly what I got right and what I missed, then carry out my plan with corosim_adjust or corosim_treat and show what changed (before → after numbers). Compare my plan with assessment.guidelineNextSteps and say why the guidelines order things that way. Give two or three teaching points, then advance the case with corosim_run (5–20 s) and start the next round. Keep each turn short. Learner level: {{level}}",
+  },
   build_patient: {
-    description: "Turn a free-text clinical case into a CoroSim scenario and explain what happens.",
-    text: "Read corosim_get_schema, then translate the case below into a Scenario and call corosim_set_scenario. Read the returned warnings. Then call corosim_explain and tell me, in plain language and quoting the numbers it returned, what the patient's hemodynamics are and why. State which parts of the case the model cannot represent.\n\nCase: {{case}}",
+    description: "Turn a free-text clinical case into a CoroSim patient and present it for teaching.",
+    text: "Read corosim_get_schema, translate the case below into a Scenario (pick reasonable values for anything unstated and say what you picked in one line), and call corosim_set_scenario. Then present the patient as on rounds: one-line summary, vitals, rhythm, 12-lead ST findings, and the main problem from the assessment. Ask me what I think is happening and what I would do next; do not lecture yet. Mention a model limit only if it changes the case, in one sentence.\n\nCase: {{case}}",
+  },
+  manage: {
+    description: "Manage the current patient to the guidelines, step by step, showing the effect of each step.",
+    text: "Call corosim_get_state and take the patient through assessment.guidelineNextSteps in order. For each step: say what you are doing and why in one line, do it (corosim_adjust for support, corosim_treat for reperfusion), and show the vitals, ECG and infarct size before and after. Stop when the assessment says the patient is stable. End with a short summary of the muscle saved or lost and what made the difference.",
   },
   baroreflex_demo: {
-    description: "A short guided experiment showing the baroreflex: vasopressor bolus with and without the reflex.",
-    text: "Use corosim_compare with three scenarios on the same seed: (1) baseline, (2) vasopressor 0.8, (3) vasopressor 0.8 with autonomic.baroreflexGain 0. Then explain, using the returned deltas, why heart rate falls in (2) but not (3) and why mean pressure rises further in (3). Finish with one question for the learner.",
+    description: "A short experiment showing the baroreflex: vasopressor with and without the reflex.",
+    text: "Use corosim_compare with three scenarios on the same seed: (1) baseline, (2) vasopressor 0.8, (3) vasopressor 0.8 with autonomic.baroreflexGain 0. Explain from the deltas why heart rate falls in (2) but not (3) and why mean pressure rises further in (3). Finish with one question for the learner.",
   },
   hemorrhage_ladder: {
-    description: "Compare ATLS-class hemorrhage with and without a working baroreflex.",
-    text: "Use corosim_compare with bloodLoss 0, 0.15, 0.30 and 0.45. Tabulate heart rate, systolic and diastolic pressure, pulse pressure, stroke volume and MAP. Explain what compensates at each step and which number changes first. Then rerun 0.15 with baroreflexGain 0 and say what the reflex was contributing.",
+    description: "Compare hemorrhage classes, and what the reflexes contribute.",
+    text: "Use corosim_compare with bloodLoss 0, 0.15, 0.30 and 0.45. Tabulate heart rate, systolic and diastolic pressure, pulse pressure, stroke volume and MAP. Explain what compensates at each step and which number changes first. Then rerun 0.15 with autonomic.baroreflexGain 0 and say what the reflex was contributing.",
   },
   explain_current_state: {
-    description: "Explain the current simulated patient to a learner.",
-    text: "Call corosim_explain and corosim_get_state. Explain the patient's hemodynamics to a {{level}} using only what the model returned. Separate what the model computed from general physiology you add.",
+    description: "Explain the current patient to a learner.",
+    text: "Call corosim_get_state and corosim_explain. Explain the patient to a {{level}}: the clinical picture first (vitals, ECG, the problem), then the mechanism, then what should happen next and why. Be concise.",
   },
 };

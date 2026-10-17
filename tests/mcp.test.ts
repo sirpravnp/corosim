@@ -49,7 +49,10 @@ describe("MCP server", () => {
     const { call } = await connect();
     const r = await call("corosim_run", { seconds: 120, beats: "all", maxBeats: 50 });
     expect(r.data.beats.rows.length).toBeLessThanOrEqual(50); expect(r.data.beats.columns).toContain("rr_ms");
-    expect(r.data.metrics.hrv.sdnnMs).toBeGreaterThan(10);
+    expect(r.data.metrics.hrv).toBeUndefined(); // autonomic statistics only on request
+    expect(r.data.ecg.stMm.V2).toBeDefined();
+    const withHrv = await call("corosim_run", { seconds: 90, autonomic: true });
+    expect(withHrv.data.metrics.hrv.sdnnMs).toBeGreaterThan(10);
   });
   it("compare leaves the current patient untouched and reports deltas", async () => {
     const { call } = await connect();

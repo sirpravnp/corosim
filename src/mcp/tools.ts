@@ -89,7 +89,7 @@ function trend(beats: BeatRecord[], from: number, to: number, buckets = 24) {
     const b = beats.filter((x) => x.t >= t && x.t < t + w);
     if (!b.length) continue;
     const avg = (f: (x: BeatRecord) => number) => b.reduce((s, x) => s + f(x), 0) / b.length;
-    out.push({ t: round(t - from + w / 2, 1), hr: round(avg((x) => x.hr), 0), sbp: round(avg((x) => x.sbp), 0), dbp: round(avg((x) => x.dbp), 0), map: round(avg((x) => x.map), 0), sv: round(avg((x) => x.sv), 0), sympathetic: round(avg((x) => x.sympathetic), 2), vagal: round(avg((x) => x.vagal), 2) });
+    out.push({ t: round(t - from + w / 2, 1), hr: round(avg((x) => x.hr), 0), sbp: round(avg((x) => x.sbp), 0), dbp: round(avg((x) => x.dbp), 0), map: round(avg((x) => x.map), 0), sv: round(avg((x) => x.sv), 0), pvcs: b.filter((x) => x.pvc).length });
   }
   return out;
 }
@@ -98,17 +98,34 @@ function beatTable(beats: BeatRecord[], max: number) {
   const step = Math.max(1, Math.ceil(beats.length / max));
   const pick = beats.filter((_, i) => i % step === 0);
   return {
-    columns: ["t_s", "rr_ms", "sbp", "dbp", "sv_ml", "pvc", "sympathetic", "vagal"],
-    rows: pick.map((b) => [round(b.t, 2), round(b.interval * 1000, 0), round(b.sbp, 1), round(b.dbp, 1), round(b.sv, 1), b.pvc ? 1 : 0, round(b.sympathetic, 2), round(b.vagal, 2)]),
+    columns: ["t_s", "rr_ms", "sbp", "dbp", "sv_ml", "pvc"],
+    rows: pick.map((b) => [round(b.t, 2), round(b.interval * 1000, 0), round(b.sbp, 1), round(b.dbp, 1), round(b.sv, 1), b.pvc ? 1 : 0]),
     decimatedEvery: step,
   };
 }
 
-function runReport(ctx: ToolContext, seconds: number, beatsMode: string, maxBeats: number) {
+/** What a clinician at the bedside would have: monitor, 12-lead ECG, and where the guidelines stand. */
+function bedside(sim: Simulation) {
+  const a = sim.assessment();
+  return {
+    state: sim.state(),
+    ecg: sim.ecg(),
+    assessment: { problems: a.issues.map((i) => i.text), harmful: a.warnings.map((w) => w.text), guidelineNextSteps: a.steps.map((x) => ({ step: x.text, why: x.why })) },
+  };
+}
+
+/** Beat statistics without the autonomic internals (HRV, baroreflex sensitivity) unless asked for. */
+function clinicalMetrics(beats: BeatRecord[], seconds: number, autonomic: boolean) {
+  const m = computeMetrics(beats, seconds) as unknown as Record<string, unknown>;
+  if (!autonomic) { delete m.hrv; delete m.baroreflexSensitivity; delete m.respiratorySinusArrhythmia; delete m.note; }
+  return m;
+}
+
+function runReport(ctx: ToolContext, seconds: number, beatsMode: string, maxBeats: number, autonomic = false) {
   const { sim } = ctx, from = sim.t, beats = sim.run(seconds);
   const out: Record<string, unknown> = {
-    ranFromS: round(from), ranToS: round(sim.t), metrics: computeMetrics(beats, seconds),
-    timeCourse: trend(beats, from, sim.t), state: sim.state(),
+    ranFromS: round(from), ranToS: round(sim.t), metrics: clinicalMetrics(beats, seconds, autonomic),
+    timeCourse: trend(beats, from, sim.t), ...bedside(sim),
   };
   if (beatsMode === "all") out.beats = beatTable(beats, maxBeats);
   if (sim.warnings.length) out.warnings = sim.warnings;
@@ -131,12 +148,12 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "corosim_set_scenario", title: "Build a patient", readOnly: false,
-    description: `Replace the current patient with this scenario, then run a warm-up so the baroreflex has settled. Returns the resulting state, plus warnings listing anything that was clamped or dropped (read them: they tell you what actually ran). Use settled=false to watch an occlusion develop from a healthy start. The warm-up does not advance the infarct clock; corosim_run and corosim_adjust do (2 clinical minutes per simulated second), so a closed artery loses muscle as you run it. ${NOT_CLINICAL}`,
+    description: `Replace the current patient with this scenario, then run a warm-up so the reflexes have settled. Returns the monitor, the 12-lead ECG, the guideline assessment and a grounded explanation, plus warnings listing anything that was clamped or dropped (read them: they tell you what actually ran). Use settled=false to watch an occlusion develop from a healthy start. The warm-up does not advance the infarct clock; corosim_run and corosim_adjust do (2 clinical minutes per simulated second), so a closed artery loses muscle as you run it. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: { scenario: scenarioSchema, settled: { type: "boolean", description: "Start with ischemia already at its steady value (default true). False = ischemia develops over ~20 s." }, warmupSeconds: { type: "number", minimum: 0, maximum: 300, description: "Simulated seconds to run before returning (default 45)." } } },
     run({ sim }, a) {
       sim.reset((a.scenario ?? {}) as Scenario, { settled: a.settled !== false });
       sim.warmup(num(a.warmupSeconds, 45, 0, 300));
-      return { scenario: sim.scenario(), warnings: sim.warnings, state: sim.state(), explanation: explain(sim) };
+      return { scenario: sim.scenario(), warnings: sim.warnings, ...bedside(sim), explanation: explain(sim) };
     },
   },
   {
@@ -151,19 +168,31 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "corosim_run", title: "Advance the simulation", readOnly: false,
-    description: `Run the current patient forward and return beat statistics (heart rate, pressures, stroke volume, HRV SDNN/RMSSD/LF/HF, baroreflex sensitivity, respiratory sinus arrhythmia), a bounded time course, and optionally the individual beats. ${NOT_CLINICAL}`,
-    inputSchema: { type: "object", properties: { seconds: { type: "number", minimum: 1, maximum: 900, description: "Simulated seconds (default 60)." }, beats: { enum: ["none", "all"], description: "'all' adds a beat-by-beat table (decimated to maxBeats)." }, maxBeats: { type: "integer", minimum: 5, maximum: 500, description: "Row cap for the beat table (default 120)." } } },
-    run(ctx, a) { return runReport(ctx, num(a.seconds, 60, 1, 900), a.beats === "all" ? "all" : "none", Math.trunc(num(a.maxBeats, 120, 5, 500))); },
+    description: `Run the current patient forward (the infarct clock runs: 2 clinical minutes per second) and return rate, pressures, stroke volume and ectopy, a time course, the monitor, ECG and guideline assessment at the end, and optionally the individual beats. ${NOT_CLINICAL}`,
+    inputSchema: { type: "object", properties: { seconds: { type: "number", minimum: 1, maximum: 900, description: "Simulated seconds (default 60)." }, beats: { enum: ["none", "all"], description: "'all' adds a beat-by-beat table (decimated to maxBeats)." }, maxBeats: { type: "integer", minimum: 5, maximum: 500, description: "Row cap for the beat table (default 120)." }, autonomic: { type: "boolean", description: "Also return heart-rate variability and baroreflex-sensitivity statistics. Only for autonomic-physiology questions." } } },
+    run(ctx, a) { return runReport(ctx, num(a.seconds, 60, 1, 900), a.beats === "all" ? "all" : "none", Math.trunc(num(a.maxBeats, 120, 5, 500)), a.autonomic === true); },
   },
   {
     name: "corosim_get_state", title: "Current hemodynamic state", readOnly: true,
-    description: `Current vitals (10 s rolling), rhythm, autonomic tone, ischemic beds, FFR and the scenario that produced them. Does not advance time. ${NOT_CLINICAL}`,
+    description: `The patient right now, as at the bedside: monitor (10 s rolling vitals), 12-lead ECG ST levels by lead, rhythm, ventricle and infarct size, support running, ischemic beds, FFR, and the guideline assessment (problems, anything harmful being done, next steps in order). Does not advance time. Read this first. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: {} },
-    run({ sim }) { return { scenario: sim.scenario(), warnings: sim.warnings, state: sim.state() }; },
+    run({ sim }) { return { scenario: sim.scenario(), warnings: sim.warnings, ...bedside(sim) }; },
+  },
+  {
+    name: "corosim_treat", title: "Revascularize: PCI, fibrinolysis or CABG", readOnly: false,
+    description: `Treat the culprit artery. The order's real delay runs first on the infarct clock (primary PCI 60 min, fibrinolytic 40 min, CABG 4 h), so muscle keeps dying while the team gets there; then PCI stents the lesion open, a fibrinolytic opens an occlusion in about half of patients (fixed per patient) and leaves a 50% stenosis, CABG grafts beyond the lesion. Returns what happened, infarct size before and at arrival, and the patient afterwards. For support (fluids, pressors, inotropes, nitrates, atropine, pacing, balloon pump, Impella) use corosim_adjust. ${NOT_CLINICAL}`,
+    inputSchema: { type: "object", required: ["procedure"], properties: { procedure: { enum: ["pci", "lysis", "cabg"] }, runSecondsAfter: { type: "number", minimum: 0, maximum: 300, description: "Seconds to run after the procedure lands, to watch recovery (default 30)." } } },
+    run(ctx, a) {
+      const kind = String(a.procedure);
+      if (!["pci", "lysis", "cabg"].includes(kind)) throw new Error("procedure must be pci, lysis or cabg.");
+      const outcome = ctx.sim.revascularize(kind as "pci" | "lysis" | "cabg");
+      const after = runReport(ctx, num(a.runSecondsAfter, 30, 0, 300) || 0.02, "none", 0);
+      return { outcome, ...after };
+    },
   },
   {
     name: "corosim_explain", title: "Grounded explanation of the current state", readOnly: true,
-    description: `Return the model's own causal account of the current state: abnormal vitals, which reflex or lesion produced each, and teaching points. Use this to ground an explanation to a learner in what was actually computed rather than a generic textbook patient. ${NOT_CLINICAL}`,
+    description: `The model's causal account of the current state: which lesion, reflex or treatment produced each abnormal finding, and teaching points. Quote it rather than improvising physiology. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: {} },
     run({ sim }) { return explain(sim); },
   },

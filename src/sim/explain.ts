@@ -62,18 +62,16 @@ export function explain(sim: Simulation): Explanation {
 
   if (last) {
     const dS = last.sympathetic - restTone.s, dV = last.vagal - restTone.v;
-    if (dS > 0.12) mech.push(`Sympathetic tone is raised (${last.sympathetic.toFixed(2)} vs ${restTone.s} at rest), ${last.afferent < -0.1 ? "driven by baroreceptors unloaded by low pressure" : "driven by non-baroreceptor inputs (volume or ischemic reflexes)"}.`);
-    if (dS < -0.12) mech.push(`Sympathetic tone is suppressed (${last.sympathetic.toFixed(2)}), consistent with baroreceptor loading from high pressure.`);
-    if (dV > 0.12) mech.push(`Vagal tone is raised (${last.vagal.toFixed(2)} vs ${restTone.v} at rest), consistent with baroreceptor loading.`);
-    if (dV < -0.12) mech.push(`Vagal tone is withdrawn (${last.vagal.toFixed(2)}), which speeds the sinus node within a beat or two.`);
+    // Said as physiology, not as model numbers: the reflex shows up in rate, resistance and contractility.
+    if (dS > 0.12) mech.push(last.afferent < -0.1 ? "Reflex sympathetic activation from the low arterial pressure is driving the tachycardia, vasoconstriction and extra contractility." : "Sympathetic activation from volume loss or the ischemic reflex is driving rate and vasoconstriction.");
+    if (dS < -0.12 || dV > 0.12) mech.push("The high arterial pressure is reflexly slowing the heart and relaxing the vessels (baroreflex).");
+    else if (dV < -0.12 && dS <= 0.12) mech.push("Vagal withdrawal is speeding the sinus node.");
   }
   if (m.hrv && m.hrv.lfPeakHz && m.hrv.lfHf !== null && m.hrv.lfHf > 5 && m.map.sd! > 12) mech.push(`Pressure oscillates (MAP SD ${m.map.sd} mmHg) with a spectral peak at ${m.hrv.lfPeakHz} Hz: a baroreflex limit cycle.`);
 
   if (pulse < 30 && sv < 55) teach.push("Pulse pressure is narrow because stroke volume is low (pulse pressure ≈ stroke volume ÷ arterial compliance); this is an early sign of hypovolemia or pump failure.");
   if (hr > 100 && map >= CIRC.hypotensionMap) teach.push("Compensated: pressure is defended by tachycardia and vasoconstriction, at the cost of falling stroke volume. Pressure is a late sign.");
   if (map < CIRC.hypotensionMap) teach.push("Reflex compensation is failing or exhausted: mean pressure is below the level that reliably perfuses the coronaries, which can worsen ischemia (a vicious cycle).");
-  teach.push("Beat-to-beat variation here is generated, not scripted: respiration gates vagal tone (RSA); noise in sympathetic, vagal and vascular tone is filtered through a baroreflex with fast vagal and slow sympathetic arms.");
-  if (st.autonomic.baroreflexGainMsPerMmHg !== null) teach.push(`The model's own vagal baroreflex gain right now is ${st.autonomic.baroreflexGainMsPerMmHg} ms of R-R interval per mmHg (normal people: roughly 5–20). The sequence-method estimate from the beats is ${m.baroreflexSensitivity.msPerMmHg ?? "n/a"} ms/mmHg and is inflated by respiratory coupling.`);
 
   const headline = map < CIRC.shockMap ? `Shock: MAP ${map} mmHg` : map < CIRC.hypotensionMap ? `Hypotension: MAP ${map} mmHg` : hr > 100 ? "Tachycardia with maintained pressure" : hr < 55 ? "Bradycardia" : "Hemodynamically stable";
   return {
@@ -81,10 +79,6 @@ export function explain(sim: Simulation): Explanation {
     vitals: `HR ${hr} bpm, BP ${sbp}/${dbp} (MAP ${map}), SV ${sv} ml, CO ${roll.cardiacOutput.toFixed(1)} L/min, rhythm: ${st.rhythm.label}`,
     mechanisms: mech,
     teachingPoints: teach,
-    caveats: [
-      "Educational model. Constants are teaching assumptions; the model has not been validated against patient data and must not inform clinical decisions.",
-      "Anatomy is schematic. The ventricle is not simulated in 3D: use SimVascular or a full 0D/1D/3D solver for patient-specific hemodynamics.",
-      "Reference resting adult: 72 bpm, stroke volume 70 ml, MAP 90 mmHg.",
-    ],
+    caveats: ["Teaching model, not for clinical decisions. Mention limits only when they change the answer."],
   };
 }

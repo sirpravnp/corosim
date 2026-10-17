@@ -1,9 +1,12 @@
 import { buildTree, Tree } from "../anatomy/tree";
 import { Lesion, Graft, analyze, solveNetwork, Analysis } from "../physics/network";
 import { FLOW } from "../config/tree";
-import { ST } from "../config/ecg";
+import { ST, LEADS, ALL_LEADS, LeadName } from "../config/ecg";
+import { stLevelVec, Beat } from "../physics/ecg";
+import { assess, Assessment } from "../physics/advice";
+import { Treated, untreated, applyProcedure } from "../physics/revasc";
 import { MMHG } from "../config/anatomy";
-import { INFARCT, SUPPORT } from "../config/management";
+import { INFARCT, SUPPORT, PROCEDURE, Procedure } from "../config/management";
 import { stepSeverity } from "../physics/ischemia";
 import { stepNecrosis, lvInfarctSize } from "../physics/infarct";
 import { BedSite, bedSites, ischemicBurden, globalSeverity, injuryVector } from "../physics/ecgLink";
@@ -46,6 +49,10 @@ export class Simulation {
   /** Clinical minutes of infarct evolution per simulated second at speed 1. */
   minutesPerSecond = INFARCT.minutesPerSecond;
   clinicalMinutes = 0;
+  /** Clinical minutes during which some myocardium was ischemic (what the guidelines' clock counts). */
+  ischemicMinutes = 0;
+  /** What has been done to the culprit artery. */
+  treated: Treated = untreated();
   /** Live inputs. The app's controls write these directly; `apply()` sets them from a scenario. */
   support!: Support;
   patient!: Patient;
@@ -84,7 +91,7 @@ export class Simulation {
     const { scenario, warnings } = normalizeScenario(input);
     this.n = scenario; this.warnings = warnings;
     this.support = { ...scenario.support }; this.patient = { ...scenario.patient }; this.grafts = [];
-    this.t = 0; this.clinicalMinutes = 0; this.history = []; this.beatCount = 0;
+    this.t = 0; this.clinicalMinutes = 0; this.ischemicMinutes = 0; this.treated = untreated(); this.history = []; this.beatCount = 0;
     for (const k of Object.keys(this.sev)) delete this.sev[k];
     for (const k of Object.keys(this.scar)) delete this.scar[k];
     this.map = this.perfusion = this.solvedPerfusion = CIRC.baseMap; this.solvedDemand = 1; this.mapClock = 0;
@@ -102,7 +109,7 @@ export class Simulation {
   resetPhysiology() {
     for (const k of Object.keys(this.sev)) delete this.sev[k];
     for (const k of Object.keys(this.scar)) delete this.scar[k];
-    this.map = this.perfusion = this.solvedPerfusion = CIRC.baseMap; this.solvedDemand = 1; this.clinicalMinutes = 0;
+    this.map = this.perfusion = this.solvedPerfusion = CIRC.baseMap; this.solvedDemand = 1; this.clinicalMinutes = 0; this.ischemicMinutes = 0;
     this.beatHemo.reset();
     this.resolveCoronaries(true);
     this.updateCirculation();
@@ -185,6 +192,7 @@ export class Simulation {
     if (minutes > 0) {
       for (const s of this.sites) this.scar[s.key] = stepNecrosis(this.scar[s.key] ?? 0, this.sev[s.key] ?? 0, minutes);
       this.clinicalMinutes += minutes;
+      if (ischemicBurden(this.sites, this.sev) > 0.005) this.ischemicMinutes += minutes;
     }
     this.slew(h);
     this.updateCirculation();
@@ -277,9 +285,9 @@ export class Simulation {
       meanArterialPressure: Math.round(this.map),
       coronaryPerfusionPressure: Math.round(this.perfusion),
       rhythm: { label, sinusRate: Math.round(rs.sinusRate), avBlock: rs.avDegree, pvcSeverity: +rs.pvcSeverity.toFixed(2), baseline: { ...this.patient } },
-      autonomic: {
-        baroreflexGainMsPerMmHg: last ? +this.autonomic.vagalBaroreflexGain(last.interval * 1000).toFixed(1) : null,
-        sympatheticTone: last ? +last.sympathetic.toFixed(2) : null, vagalTone: last ? +last.vagal.toFixed(2) : null, baroreceptorDrive: last ? +last.afferent.toFixed(2) : null,
+      treatment: {
+        ischemicMinutes: Math.round(this.ischemicMinutes),
+        stent: this.treated.stent, lysis: this.treated.lysed, grafted: this.treated.grafts.length > 0,
       },
       ventricle: { ejectionFraction: +c.ejectionFraction.toFixed(2), lvInfarctFraction: +lvInfarctSize(this.sites, this.scar).toFixed(3), lvIschemia: +c.lvIschemia.toFixed(2), rvIschemia: +c.rvIschemia.toFixed(2), pulmonaryCongestion: +c.congestion.toFixed(2) },
       support: { ...supportSpec(this.support), deviceFlowLpm: +c.deviceFlow.toFixed(1), atropine: this.support.atropine || this.n.drugs.atropine >= 0.5 },
@@ -288,6 +296,69 @@ export class Simulation {
       compromisedBeds: compromised.slice(0, 8),
       ffr: this.analysis.ffr.map((f, i) => ({ artery: this.n.lesions[i]?.segId, ffr: +f.toFixed(2) })),
     };
+  }
+
+  /**
+   * The 12-lead ECG as a reader would report it: ST level (mm, at J + 60 ms) in every lead including V7–V9, the
+   * leads with ≥ 1 mm elevation or depression, rhythm and QRS conduction. Computed from the same injury currents the
+   * app's ECG strip draws.
+   */
+  ecg() {
+    const rs = this.rstate, last = this.history[this.history.length - 1];
+    const beat: Beat = { t: 10, rr: last ? last.interval : 60 / CIRC.baseRate, pvc: false, pr: rs.pr, bbb: rs.bbb === "none" ? undefined : rs.bbb, noP: rs.rhythm === "af" };
+    const g = globalSeverity(ischemicBurden(this.sites, this.sev)), inj = injuryVector(this.sites, this.sev);
+    const st = Object.fromEntries(ALL_LEADS.map((l) => [l, Math.round(stLevelVec(l, beat, [beat], inj, ST.tBoost * g) * 100) / 10])) as Record<LeadName, number>;
+    const recent = this.history.filter((b) => b.t > this.t - 10);
+    return {
+      stMm: st,
+      stElevation: ALL_LEADS.filter((l) => st[l] >= 1),
+      stDepression: ALL_LEADS.filter((l) => st[l] <= -1),
+      rhythm: this.state().rhythm.label,
+      ventricularRate: recent.length ? Math.round(recent.reduce((a, b) => a + b.hr, 0) / recent.length) : null,
+      pvcsLast10s: recent.filter((b) => b.pvc).length,
+      prMs: rs.rhythm === "af" || rs.avDegree === 3 ? null : Math.round(rs.pr * 1000),
+      qrs: rs.bbb === "lbbb" ? "wide, left bundle branch block" : rs.bbb === "rbbb" ? "wide, right bundle branch block" : "narrow",
+      note: "ST in mm at J+60 ms; V7–V9 are posterior leads. Limb and precordial leads only; no Q waves or T-wave inversion are modelled.",
+    };
+  }
+
+  /** What the guidelines would say now: problems, harmful choices in progress, and next steps (the app's advisor). */
+  assessment(): Assessment {
+    const first = this.n.lesionSpecs[0], c = this.circ, roll = this.rolling(10);
+    const reperfused = this.treated.stent || this.treated.lysed === true || this.treated.grafts.length > 0;
+    return assess({
+      hasLesion: !!first && !reperfused, occluded: !!first?.occluded, ds: first?.stenosis ?? 0,
+      ffr: first && !first.occluded ? this.analysis.ffr[0] ?? null : null, leftMain: first?.artery === "LM",
+      stElevation: LEADS.some((l) => this.ecg().stMm[l] >= 1),
+      map: this.map, cardiacOutput: Number.isFinite(roll.cardiacOutput) ? roll.cardiacOutput : c.cardiacOutput,
+      lvIschemia: c.lvIschemia, rvIschemia: c.rvIschemia, avDegree: this.rstate.avDegree,
+      hr: Number.isFinite(roll.hr) ? roll.hr : c.hr, vagal: this.rstate.vagal, congestion: c.congestion,
+      minutesIschemic: this.ischemicMinutes, infarctSize: lvInfarctSize(this.sites, this.scar),
+      reperfused, pending: null, grafted: this.treated.grafts.length > 0, support: this.effSupport(),
+    });
+  }
+
+  /**
+   * Revascularize the culprit (the first lesion). The order's clinical delay runs first on the infarct clock
+   * (muscle keeps dying while the team gets there), then the procedure lands as in the app: PCI stents the lesion
+   * open, a fibrinolytic opens an occlusion in about half of patients and leaves a stenosis, CABG grafts beyond it.
+   */
+  revascularize(kind: Procedure) {
+    const first = this.n.lesionSpecs[0];
+    if (!first) throw new Error("There is no lesion to treat.");
+    const lvBefore = lvInfarctSize(this.sites, this.scar), delay = PROCEDURE[kind].delayMin;
+    this.step(delay / this.minutesPerSecond, { minutes: delay }); // the wait, in heartbeats and clinical minutes
+    const lvAtArrival = lvInfarctSize(this.sites, this.scar);
+    const lesion = this.n.lesions.find((l) => l.segId === first.artery) ?? null;
+    const r = applyProcedure(kind, lesion, this.tree, this.n.seed + 11);
+    const others = this.n.lesionSpecs.slice(1);
+    let result: string;
+    if (kind === "pci") { this.treated.stent = true; this.apply({ lesions: others }); result = `Stent placed in the ${first.artery}; flow restored.`; }
+    else if (kind === "cabg") { this.treated.grafts = r.graft ?? []; this.setGrafts(this.treated.grafts); result = `Graft sewn onto the ${first.artery} beyond the lesion; the native lesion remains.`; }
+    else if (r.lysed === undefined) result = "No clot to lyse: fibrinolysis does nothing for a fixed stenosis.";
+    else if (r.lysed) { this.treated.lysed = true; this.apply({ lesions: [{ ...first, occluded: false, stenosis: r.lesion!.ds }, ...others] }); result = `The clot lysed; a ${Math.round(r.lesion!.ds * 100)}% stenosis remains.`; }
+    else { this.treated.lysed = false; result = "Fibrinolysis failed: the artery is still closed. Rescue PCI is the next step."; }
+    return { procedure: PROCEDURE[kind].label, delayMinutes: delay, result, lvInfarctBefore: +lvBefore.toFixed(3), lvInfarctAtArrival: +lvAtArrival.toFixed(3) };
   }
 
   /** The serialisable scenario, including what the app's controls have changed since it was loaded. */

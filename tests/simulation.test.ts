@@ -165,3 +165,39 @@ describe("GitHub's management model inside the shared core", () => {
     expect(sc.support!.norepinephrine).toBe(0.4); expect(sc.support!.fluids).toBe(3); expect(sc.drugs!.atropine).toBe(1);
   });
 });
+
+describe("what the AI sees: ECG, guideline assessment, treatment", () => {
+  const settled2 = (sc: Record<string, unknown>) => { const s = new Simulation(); s.reset({ seed: 5, ...sc }, { settled: true }); s.warmup(30); return s; };
+  it("reads the ST pattern of the territory", () => {
+    const lad = settled2({ lesions: [{ artery: "LAD", occluded: true }] }).ecg();
+    expect(lad.stElevation).toEqual(expect.arrayContaining(["V2", "V3"]));
+    const rca = settled2({ lesions: [{ artery: "RCA", occluded: true, position: 0.2 }] }).ecg();
+    expect(rca.stElevation).toEqual(expect.arrayContaining(["II", "III", "aVF"]));
+    expect(settled2({}).ecg().stElevation).toEqual([]);
+  });
+  it("the guideline assessment calls for reperfusion of an occlusion, and nothing for a healthy heart", () => {
+    const steps = settled2({ lesions: [{ artery: "LAD", occluded: true }] }).assessment().steps.map((x) => x.text).join(" ");
+    expect(steps).toMatch(/PCI/);
+    expect(settled2({}).assessment().steps[0].text).toMatch(/Nothing to do/);
+  });
+  it("PCI costs its delay in muscle, then opens the artery and ischemia resolves", () => {
+    const s = settled2({ lesions: [{ artery: "LAD", occluded: true }] });
+    const r = s.revascularize("pci");
+    expect(r.lvInfarctAtArrival).toBeGreaterThan(r.lvInfarctBefore); // muscle lost while the team got there
+    expect(s.n.lesions).toEqual([]); expect(s.treated.stent).toBe(true);
+    s.run(40);
+    expect(s.state().ischemicMassFraction).toBeLessThan(0.02);
+    expect(s.assessment().steps.map((x) => x.text).join(" ")).not.toMatch(/Reperfuse now/);
+  });
+  it("a fibrinolytic does nothing for a fixed stenosis; CABG grafts and keeps the lesion", () => {
+    const s = settled2({ lesions: [{ artery: "LCX", stenosis: 0.85 }] });
+    expect(s.revascularize("lysis").result).toMatch(/No clot/);
+    const c = settled2({ lesions: [{ artery: "LAD", stenosis: 0.9 }] });
+    c.revascularize("cabg");
+    expect(c.treated.grafts.length).toBe(1); expect(c.n.lesions.length).toBe(1);
+  });
+  it("the AI-facing state carries no autonomic internals", () => {
+    const st = settled2({}).state() as Record<string, unknown>;
+    expect(st.autonomic).toBeUndefined();
+  });
+});
