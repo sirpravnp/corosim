@@ -1,0 +1,55 @@
+<!doctype html>
+<!-- DRAFT: review before launch. Written as a plain description of what the code does; not legal advice. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Privacy · CoroSim</title>
+<link rel="icon" type="image/png" href="favicon.png">
+<style>
+:root { --bg: #05060a; --panel: #0b0d14; --ink: #e9e7e1; --muted: #8d90a3; --rule: #2b2f45; }
+@media (prefers-color-scheme: light) { :root { --bg: #eeece6; --panel: #f7f5f0; --ink: #05060a; --muted: #5a5d6e; --rule: #05060a; } }
+body { margin: 0; padding: 32px 16px; background: var(--bg); color: var(--ink); font: 15px/1.6 -apple-system, "Helvetica Neue", Arial, sans-serif; }
+main { max-width: 680px; margin: 0 auto; padding: 24px; background: var(--panel); border: 1px solid var(--rule); }
+h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: -0.02em; } h2 { margin: 26px 0 6px; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; }
+.muted { color: var(--muted); font-size: 13px; } a { color: inherit; } li { margin: 4px 0; }
+</style>
+</head>
+<body><main>
+<h1>Privacy</h1>
+<p class="muted">CoroSim · last updated October 2026</p>
+
+<h2>Without an account</h2>
+<p>The simulator runs entirely in your browser. Nothing you do in it is sent anywhere, and there are no analytics or advertising trackers. The daily game keeps your scores in your browser's storage.</p>
+
+<h2>With an account (to connect an AI)</h2>
+<p>Signing in is only needed to let an AI assistant work with your patient. When you sign in with Google or GitHub, CoroSim keeps:</p>
+<ul>
+  <li>your name, your email address and the account ID that Google or GitHub gives us;</li>
+  <li>your simulated patient (a scenario: lesions, drugs, settings). It is synthetic and contains no health information about you;</li>
+  <li>which AI apps you have connected, and how many simulator calls your account made each day (kept 30 days, to enforce fair-use limits);</li>
+  <li>sign-in sessions and access tokens, stored only as one-way hashes.</li>
+</ul>
+<p>We do not read your Google or GitHub data beyond your name, email and account ID, and we do not sell or share any of it.</p>
+
+<h2>Where it is kept</h2>
+<p>On a server run by Fly.io in the United States. Your browser keeps a sign-in token in its local storage, and the sign-in pages on mcp.corosim.com set one cookie to keep you signed in there.</p>
+
+<h2>Other services involved</h2>
+<ul>
+  <li><b>Google or GitHub</b>, when you choose to sign in with them.</li>
+  <li><b>The AI you connect</b> (for example Claude or ChatGPT) receives what the simulator returns to it, under that company's own terms and privacy policy.</li>
+  <li><b>Fly.io</b> hosts the server.</li>
+</ul>
+
+<h2>Deleting your data</h2>
+<p>Open <b>Connect AI</b> in CoroSim and choose <b>Delete my account</b>. That removes your account, your saved patient, your connected AIs and your usage records at once. <b>Disconnect AIs</b> revokes every AI's access without deleting the account.</p>
+
+<h2>Not medical advice</h2>
+<p>CoroSim is an educational simulation. Do not enter real patient information, and do not use its output for clinical decisions.</p>
+
+<h2>Questions</h2>
+<p>Open an issue at <a href="https://github.com/sirpravnp/corosim/issues">github.com/sirpravnp/corosim/issues</a>.</p>
+<p class="muted"><a href="./">Back to CoroSim</a></p>
+</main></body>
+</html>

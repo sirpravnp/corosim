@@ -1,9 +1,10 @@
 # CoroSim MCP server on Fly.io, served as https://mcp.corosim.com
 # First time: see docs/LLM_AND_MCP.md, "Hosting mcp.corosim.com". After that: fly deploy --ha=false
 #
-# One machine, always on: an open page holds its room on this process, so a second machine could split a page
-# from the AI talking to it. Scale up (more CPU/memory), not out. Saved patients live on the volume at /data, so
-# connectors keep working across deploys and restarts (fly volumes create corosim_data --size 1 --region iad).
+# One machine, asleep when unused: Fly stops it when no requests or open pages remain and starts it on the next
+# request (a second or two). Nothing is lost while it sleeps: accounts, AI sign-ins and patients are in SQLite on
+# the volume at /data (fly volumes create corosim_data --size 1 --region iad), and connectors hold no session.
+# Keep it to one machine: an open page holds its line on one process. Scale up, not out.
 
 app = "corosim-mcp"
 primary_region = "iad"
@@ -16,7 +17,11 @@ primary_region = "iad"
   HOST = "0.0.0.0"
   COROSIM_ALLOWED_ORIGINS = "https://corosim.com,https://www.corosim.com"
   COROSIM_APP_URL = "https://corosim.com"
+  COROSIM_PUBLIC_URL = "https://mcp.corosim.com"
   COROSIM_DATA_DIR = "/data"
+  COROSIM_TRUST_PROXY = "1"
+  # Secrets, set with fly secrets set (never in this file): GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET,
+  # GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
 
 [mounts]
   source = "corosim_data"
@@ -25,9 +30,9 @@ primary_region = "iad"
 [http_service]
   internal_port = 8787
   force_https = true
-  auto_stop_machines = "off"   # a stopped machine would drop every open page's line
+  auto_stop_machines = "stop"   # sleep when idle; an open page's line keeps it awake
   auto_start_machines = true
-  min_machines_running = 1
+  min_machines_running = 0
 
   [http_service.concurrency]
     type = "connections"

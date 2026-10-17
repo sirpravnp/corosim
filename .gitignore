@@ -7,3 +7,4 @@ publish/
 .env.*
 *.log
 dist-mcp/
+.data/

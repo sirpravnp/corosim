@@ -10,7 +10,7 @@
     "publish:prep": "npm run build && node scripts/prepare-publish.mjs",
     "mcp": "tsx src/mcp/main.ts",
     "mcp:http": "tsx src/mcp/main.ts --http 8787",
-    "build:mcp": "esbuild src/mcp/main.ts --bundle --platform=node --format=esm --target=node18 --outfile=dist-mcp/corosim-mcp.mjs --banner:js=\"import{createRequire}from'module';const require=createRequire(import.meta.url);\"",
+    "build:mcp": "esbuild src/mcp/main.ts --bundle --platform=node --format=esm --target=node18 --outfile=dist-mcp/corosim-mcp.mjs --banner:js=\"import{createRequire as __corosimRequire}from'module';const require=__corosimRequire(import.meta.url);\"",
     "export:tools": "tsx scripts/export-tools.ts"
   },
   "devDependencies": {

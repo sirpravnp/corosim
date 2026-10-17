@@ -20,7 +20,7 @@ import { Simulation } from "./sim/simulation";
 import { Scenario, LesionSpec } from "./sim/scenario";
 import { encodeScenario, decodeScenario } from "./sim/llm";
 import { TOOLS } from "./mcp/tools";
-import { LiveLink, LiveStatus } from "./live";
+import { Account, LiveLink, LiveStatus } from "./live";
 import { Case, MAX_SCORE, POINTS, Point, TREAT, TreatRecord, TreatScore, dailyCase, dayKey, dayNumber, explain, explainTreatment, fullFindings, judge, keyOfDay, muscleSaved, parseDay, rvInvolvement, score, streaks, treatScore } from "./game";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -1013,25 +1013,32 @@ function runForAi(name: string, args: Record<string, unknown>) {
   return result;
 }
 let restored: { at: number; note: string } | null = null;
-const LIVE_LABEL: Record<LiveStatus["state"], string> = { off: "Connect AI", connecting: "Connecting…", open: "AI line open", retrying: "Reconnecting…", replaced: "In another tab" };
+const LIVE_LABEL: Record<LiveStatus["state"], string> = { off: "AI paused", connecting: "Connecting…", open: "AI ready", retrying: "Reconnecting…", replaced: "In another tab", signedout: "Connect AI" };
+const PROVIDER_LABEL: Record<string, string> = { google: "Continue with Google", github: "Continue with GitHub", dev: "Continue with a development account" };
 function linkUi(st: LiveStatus) {
-  const on = st.state !== "off" && st.state !== "replaced";
-  $("ln_open").hidden = on; $("ln_close").hidden = !on; $("ln_new").hidden = false; $("ln_live").hidden = false;
-  $("ln_open").textContent = st.state === "replaced" ? "Take it back" : "Open a connection";
-  ($("ln_url") as HTMLInputElement).value = live.connectorUrl;
-  $("ln_cli").textContent = `claude mcp add --transport http corosim ${live.connectorUrl}`;
-  const who = st.lastClient ? st.lastClient.replace(/-/g, " ") : "an AI";
+  const signedIn = !!account.user;
+  $("ac_out").hidden = signedIn; $("ac_in").hidden = !signedIn;
+  if (!signedIn) {
+    const html = account.providers.map((p) => `<button data-provider="${p}">${PROVIDER_LABEL[p] ?? p}</button>`).join("");
+    if ($("ac_providers").innerHTML !== html) $("ac_providers").innerHTML = html || `<p class="ln-status warn">Cannot reach the CoroSim server to sign in right now.</p>`;
+  } else {
+    $("ac_name").textContent = account.user!.name ?? account.user!.email ?? "you";
+    ($("ln_url") as HTMLInputElement).value = account.connectorUrl;
+    $("ln_cli").textContent = `claude mcp add --transport http corosim ${account.connectorUrl}`;
+    $("ac_connected").textContent = account.connected.length ? `Connected: ${account.connected.join(", ")}.` : "No AI connected yet.";
+  }
+  const who = st.lastClient ? st.lastClient.replace(/-/g, " ") : "Your AI";
   const [text, tone] = st.state === "open"
-    ? st.clients ? [`${who} is connected${st.lastTool ? ` · last: ${st.lastTool.replace("corosim_", "")}` : ""}.`, "ok"] : [`Open. Add the URL to your AI as a connector${st.saved ? "; it keeps working when this page is closed, on the saved patient" : ""}.`, "warn"]
-    : st.state === "off" ? ["Closed. The URL works again when you open the connection.", ""]
-    : st.state === "replaced" ? ["This patient's line moved to another tab.", "bad"] : [st.detail ?? "Connecting to the CoroSim server…", "warn"];
+    ? st.clients ? [`${who} is working with this patient${st.lastTool ? ` · last: ${st.lastTool.replace("corosim_", "")}` : ""}.`, "ok"] : ["Ready. Ask your AI about this patient; it works here while this page is open, and on your saved patient when it is not.", "ok"]
+    : st.state === "replaced" ? ["Your AI is working with CoroSim in another tab.", "bad"]
+    : st.state === "off" || st.state === "signedout" ? ["", ""] : [st.detail ?? "Connecting to the CoroSim server…", "warn"];
   const fresh = restored && Date.now() - restored.at < 30_000; // say so for a while: the status line updates often
   $("ln_status").textContent = fresh ? restored!.note : text; $("ln_status").className = "ln-status " + (fresh ? "ok" : tone);
   // the masthead button: what the line is doing, at a glance
-  const connected = st.state === "open" && st.clients > 0;
-  $("ln_sum").textContent = connected ? (st.lastClient ? `${who} connected` : "AI connected") : st.state === "open" ? "AI line open" : st.state === "off" ? "Connect AI" : LIVE_LABEL[st.state];
+  const working = st.state === "open" && st.clients > 0;
+  $("ln_sum").textContent = !signedIn ? "Connect AI" : working ? `${who} connected` : LIVE_LABEL[st.state];
   const btn = $("aibtn");
-  btn.classList.toggle("live", connected); btn.classList.toggle("wait", st.state !== "off" && !connected && st.state !== "replaced"); btn.classList.toggle("bad", st.state === "replaced");
+  btn.classList.toggle("live", signedIn && st.state === "open"); btn.classList.toggle("wait", signedIn && (st.state === "connecting" || st.state === "retrying")); btn.classList.toggle("bad", st.state === "replaced");
 }
 /** The panel under the masthead button: opens on click, closes on ×, Escape or a click elsewhere. */
 function aiPanel(open: boolean) { $("aipanel").hidden = !open; $("aibtn").setAttribute("aria-expanded", String(open)); }
@@ -1046,23 +1053,34 @@ function restoreFromServer(sc: Scenario) {
   restored = { at: Date.now(), note: "Picked up the patient your AI left while this page was closed" + (w.length ? ` (adjusted: ${w.join("; ")})` : ".") };
   linkUi(live.status);
 }
-const live = new LiveLink(runForAi, linkUi, restoreFromServer, "0.3.0");
-// Keep the server's copy of this patient current as it is edited here, so the connector works with the page closed.
+const account = new Account();
+const live = new LiveLink(account, runForAi, linkUi, restoreFromServer, "0.4.0");
+// Keep the server's copy of this patient current as it is edited here, so the AI works on it with the page closed.
 setInterval(() => { if (G.phase === "idle") live.snapshot(sim.scenario()); }, 3000);
-on("ln_open", () => live.open());
-on("ln_close", () => live.close());
-on("ln_new", () => { if (confirm("Retire this connector URL? Anyone using it, including your AI, will need the new one.")) live.rotate(); });
-on("ln_use", () => {
-  const txt = ($("ln_other") as HTMLInputElement).value;
-  if (!txt.trim()) return;
-  if (!live.useUrl(txt)) { $("ln_status").textContent = "That is not a CoroSim connector URL."; $("ln_status").className = "ln-status bad"; return; }
-  ($("ln_other") as HTMLInputElement).value = "";
-  if (live.status.state === "off") live.open();
+$("ac_providers").addEventListener("click", (e) => { const p = (e.target as HTMLElement).closest("button")?.dataset.provider; if (p) account.signIn(p); });
+on("ac_signout", async () => { live.close(); await account.signOut(); linkUi(live.status); });
+on("ac_disconnect", async () => {
+  if (!confirm("Disconnect every AI from your CoroSim account? They will ask you to sign in again.")) return;
+  try { await account.disconnectAIs(); } catch (e) { alert((e as Error).message); }
+  linkUi(live.status);
+});
+on("ac_delete", async (e?: Event) => {
+  e?.preventDefault();
+  if (!confirm("Delete your CoroSim account? This removes your saved patient and every AI connection, and cannot be undone. The patient on this page stays until you leave it.")) return;
+  live.close();
+  try { await account.deleteAccount(); } catch (err) { alert((err as Error).message); }
+  linkUi(live.status);
 });
 on("ln_copy", async () => {
-  try { await navigator.clipboard.writeText(live.connectorUrl); $("ln_copy").textContent = "Copied"; setTimeout(() => { $("ln_copy").textContent = "Copy"; }, 2000); }
+  try { await navigator.clipboard.writeText(account.connectorUrl); $("ln_copy").textContent = "Copied"; setTimeout(() => { $("ln_copy").textContent = "Copy"; }, 2000); }
   catch { ($("ln_url") as HTMLInputElement).select(); }
 });
+/** Who is signed in decides whether the line opens; refresh the list of connected AIs now and then. */
+async function startAccount() {
+  await account.load();
+  if (account.user && !inGame) live.open(); else linkUi(live.status);
+  setInterval(async () => { if (account.user) { await account.refresh(); linkUi(live.status); } }, 60_000);
+}
 
 // Browsers restore form values on reload; force every control to match the model's starting state.
 $<HTMLInputElement>("pos").value = String(S.pos * 100);
@@ -1080,8 +1098,8 @@ function openShared() {
 openShared();
 addEventListener("hashchange", openShared);
 linkUi(live.status);
-if (live.remembered && !inGame) live.open(); // this browser had a line open: keep the connector working
+void startAccount();
 /** Handle for scripts and browser-driving assistants: corosim.sim, corosim.load(scenario), corosim.live. */
-(window as unknown as { corosim: object }).corosim = { sim, load: loadScenario, live, refresh: () => { controlsUi(); liveUi(); linkUi(live.status); } };
+(window as unknown as { corosim: object }).corosim = { sim, load: loadScenario, live, account, refresh: () => { controlsUi(); liveUi(); linkUi(live.status); } };
 requestAnimationFrame(frame);
 void LEADS;

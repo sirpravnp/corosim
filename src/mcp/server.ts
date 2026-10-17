@@ -8,16 +8,18 @@ import { createServer, IncomingMessage, ServerResponse, Server as HttpServer } f
 import { randomUUID } from "node:crypto";
 import { WebSocketServer, WebSocket } from "ws";
 import { Simulation } from "../sim/simulation";
+import { Scenario } from "../sim/scenario";
 import { TOOLS, openAiTools, anthropicTools } from "./tools";
 import { MODEL_CARD, PROMPTS } from "./content";
 import { SCENARIO_REFERENCE } from "../sim/llm";
-import { PROTOCOL_VERSION, ROOM_RE, PageToServer, ServerToPage } from "./protocol";
-import { RoomStore } from "./roomStore";
+import { PROTOCOL_VERSION, PageToServer, ServerToPage } from "./protocol";
+import { Store } from "./db";
+import { Accounts, ProviderKeys } from "./accounts";
 
-export const VERSION = "0.2.0";
+export const VERSION = "0.4.0";
 const APP_URL = process.env.COROSIM_APP_URL ?? "https://corosim.com";
 
-/** Runs a tool somewhere: on a private headless patient, or on a live page. */
+/** Runs a tool somewhere: on a local patient (stdio), on the user's open page, or on their saved patient. */
 export type Exec = (tool: string, args: Record<string, unknown>) => Promise<unknown>;
 
 export function localExec(sim = new Simulation({ seed: 1 }), appUrl = APP_URL): Exec {
@@ -29,20 +31,18 @@ export function localExec(sim = new Simulation({ seed: 1 }), appUrl = APP_URL): 
 }
 
 const INSTRUCTIONS = {
-  // live: a connector URL. The patient is the user's; it is on their screen when their page is open, saved otherwise.
-  private: "CoroSim is a stochastic, closed-loop cardiovascular teaching simulation (coronary lesions → ischemia → rhythm → beat-by-beat pressure → autonomic reflexes). This connection has its own private patient. Build one with corosim_set_scenario (read corosim_get_schema first), change it with corosim_adjust, observe with corosim_run, ground explanations with corosim_explain, and use corosim_compare for what-if questions. Educational only; never present results as clinical advice. Always read the 'warnings' field: it lists anything that was clamped or dropped.",
-  live: "CoroSim is a stochastic, closed-loop cardiovascular teaching simulation. This connection is the user's own patient: when their CoroSim page is open every tool acts on the patient they are watching and changes appear on their screen at once; when it is closed, tools act on their saved patient and results carry a 'connection' note saying so. Start with corosim_get_state to see what they are looking at before changing anything; prefer corosim_adjust over corosim_set_scenario unless asked for a new patient, since set_scenario replaces what is on their screen. Educational only; never present results as clinical advice. Always read the 'warnings' field.",
+  local: "CoroSim is a stochastic, closed-loop cardiovascular teaching simulation (coronary lesions → ischemia → rhythm → beat-by-beat pressure → autonomic reflexes). This connection has its own local patient. Build one with corosim_set_scenario (read corosim_get_schema first), change it with corosim_adjust, observe with corosim_run, ground explanations with corosim_explain, and use corosim_compare for what-if questions. Educational only; never present results as clinical advice. Always read the 'warnings' field: it lists anything that was clamped or dropped.",
+  // account: the signed-in user's own patient. On their screen when their page is open, saved otherwise.
+  account: "CoroSim is a stochastic, closed-loop cardiovascular teaching simulation. This connection works on the signed-in user's own patient: when their CoroSim page is open every tool acts on the patient they are watching and changes appear on their screen at once; when it is closed, tools act on their saved patient and results carry a 'connection' note saying so. Start with corosim_get_state to see what they are looking at before changing anything; prefer corosim_adjust over corosim_set_scenario unless asked for a new patient, since set_scenario replaces what is on their screen. Educational only; never present results as clinical advice. Always read the 'warnings' field.",
 };
 
-/** One MCP server instance per session. */
-export function buildServer(exec: Exec = localExec(), mode: keyof typeof INSTRUCTIONS = "private", onCall?: (tool: string) => void): Server {
+export function buildServer(exec: Exec = localExec(), mode: keyof typeof INSTRUCTIONS = "local"): Server {
   const server = new Server({ name: "corosim", version: VERSION }, { capabilities: { tools: {}, resources: {}, prompts: {} }, instructions: INSTRUCTIONS[mode] });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: TOOLS.map((t) => ({ name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema as { type: "object" }, annotations: { title: t.title, readOnlyHint: t.readOnly, destructiveHint: false, idempotentHint: t.readOnly, openWorldHint: false } })),
   }));
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const args = (req.params.arguments ?? {}) as Record<string, unknown>;
-    onCall?.(req.params.name);
     try {
       const result = await exec(req.params.name, args);
       const structured = result && typeof result === "object" && !Array.isArray(result) ? (result as Record<string, unknown>) : { result };
@@ -75,62 +75,61 @@ export function buildServer(exec: Exec = localExec(), mode: keyof typeof INSTRUC
   return server;
 }
 
-// ---------------------------------------------------------------- OpenAPI (custom GPT actions, anything REST)
+// ---------------------------------------------------------------- OpenAPI (custom GPT actions, scripts)
 export function openApi(serverUrl: string) {
   const paths: Record<string, unknown> = {};
   for (const t of TOOLS) {
     paths[`/api/${t.name}`] = {
       post: {
-        operationId: t.name, summary: t.title, description: t.description,
+        operationId: t.name, summary: t.title, description: t.description, security: [{ oauth: [] }],
         requestBody: { required: false, content: { "application/json": { schema: t.inputSchema } } },
-        responses: { "200": { description: "JSON result", content: { "application/json": { schema: { type: "object" } } } } },
+        responses: { "200": { description: "JSON result", content: { "application/json": { schema: { type: "object" } } } }, "401": { description: "Sign in required" } },
       },
     };
   }
   return {
     openapi: "3.1.0",
-    info: { title: "CoroSim", version: VERSION, description: "Stochastic closed-loop cardiovascular teaching simulation. Send an `x-session-id` header to keep a patient between calls. Educational only; not for clinical decisions." },
+    info: { title: "CoroSim", version: VERSION, description: "Stochastic closed-loop cardiovascular teaching simulation, on the signed-in user's own patient. Educational only; not for clinical decisions." },
     servers: [{ url: serverUrl }], paths,
+    components: { securitySchemes: { oauth: { type: "oauth2", flows: { authorizationCode: { authorizationUrl: `${serverUrl}/oauth/authorize`, tokenUrl: `${serverUrl}/oauth/token`, scopes: { corosim: "Use your CoroSim patient" } } } } } },
   };
 }
 
-// ---------------------------------------------------------------- rooms: a connector URL's patient, live on a page or saved here
+// ---------------------------------------------------------------- rooms: each account's patient, live on a page or saved here
 interface Pending { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }
 interface Live { ws: WebSocket; pending: Map<string, Pending>; alive: boolean }
+export interface PatientStore { get(id: string): { scenario: Scenario; at: number } | undefined; put(id: string, scenario: Scenario, at?: number): void; readonly persistent: boolean }
 
 const CLOSED_NOTE = "The user's CoroSim page is closed, so this ran on their saved patient. The change is kept, and they will see it the next time they open CoroSim.";
 const ACTIVE_MS = 10 * 60_000;
 
 /**
- * Each room is a connector URL. Its patient lives on the user's page while one is open (calls are forwarded there)
- * and is saved here, so the URL keeps working when no page is open (calls run on a server copy) and across
- * restarts (the store is on disk). A page that connects gets the saved patient if an AI changed it meanwhile.
+ * One room per account. The patient lives on the user's page while one is open (calls are forwarded there) and is
+ * saved in the store, so their AI keeps working when no page is open (calls run on a server copy) and across
+ * restarts. A page that connects is handed the saved patient if an AI changed it meanwhile.
  */
 export class Rooms {
   private live = new Map<string, Live>();
-  private twins = new Map<string, Simulation>(); // server copies for rooms with no page open
+  private twins = new Map<string, Simulation>();
   private activity = new Map<string, { lastTool: string | null; lastClient: string | null; lastCallAt: number }>();
-  constructor(readonly store: RoomStore, private callTimeoutMs = 20_000, private maxRooms = 2000, private maxTwins = 200) {}
+  constructor(readonly store: PatientStore, private callTimeoutMs = 20_000, private maxRooms = 2000, private maxTwins = 200) {}
   get size() { return this.live.size; }
   has(id: string) { return this.live.has(id); }
 
-  attach(id: string, ws: WebSocket) {
+  /** A signed-in page has said hello: it becomes the live copy of this account's patient. */
+  attach(id: string, ws: WebSocket, since = 0) {
     const old = this.live.get(id);
     if (old) { this.send(old.ws, { type: "replaced" }); this.detach(id, old.ws, "the page was opened in another tab"); old.ws.close(4000, "replaced"); }
     if (this.live.size >= this.maxRooms) { ws.close(1013, "server busy"); return; }
     const room: Live = { ws, pending: new Map(), alive: true };
     this.live.set(id, room);
-    this.twins.delete(id); // the page is the live copy now
+    this.twins.delete(id);
     ws.on("pong", () => { room.alive = true; });
     ws.on("message", (raw) => {
       let m: PageToServer;
       try { m = JSON.parse(String(raw)); } catch { return; }
-      if (m.type === "hello") {
-        const saved = this.store.get(id);
-        if (saved && saved.at > (m.since ?? 0)) this.send(ws, { type: "restore", scenario: saved.scenario, at: saved.at });
-        this.status(id);
-      } else if (m.type === "snapshot") {
-        if (m.scenario && typeof m.scenario === "object") this.store.put(id, m.scenario, { at: Number(m.at) || Date.now() });
+      if (m.type === "snapshot") {
+        if (m.scenario && typeof m.scenario === "object") this.store.put(id, m.scenario, Number(m.at) || Date.now());
       } else if (m.type === "result") {
         const p = room.pending.get(m.id);
         if (!p) return;
@@ -140,6 +139,9 @@ export class Rooms {
     });
     ws.on("close", () => this.detach(id, ws, "the CoroSim page was closed or disconnected"));
     this.send(ws, { type: "welcome", protocol: PROTOCOL_VERSION });
+    const saved = this.store.get(id);
+    if (saved && saved.at > since) this.send(ws, { type: "restore", scenario: saved.scenario, at: saved.at });
+    this.status(id);
   }
 
   private detach(id: string, ws: WebSocket, why: string) {
@@ -149,13 +151,11 @@ export class Rooms {
     this.live.delete(id);
   }
 
-  /** An AI introduced itself on this room (its MCP initialize). */
   noteClient(id: string, name?: string) {
     const a = this.activity.get(id) ?? { lastTool: null, lastClient: null, lastCallAt: Date.now() };
     if (name) a.lastClient = name;
     a.lastCallAt = Date.now();
     this.activity.set(id, a);
-    this.store.touch(id, name);
     this.status(id);
   }
 
@@ -173,21 +173,24 @@ export class Rooms {
       this.status(id);
       return out;
     }
-    // No page open: run on the saved patient, and save what changed.
     const sim = this.twin(id);
     const result = await localExec(sim)(tool, args);
-    const tool_ = TOOLS.find((t) => t.name === tool);
-    if (tool_ && !tool_.readOnly) this.store.put(id, sim.scenario());
-    else this.store.touch(id);
+    if (!TOOLS.find((t) => t.name === tool)?.readOnly) this.store.put(id, sim.scenario());
     return result && typeof result === "object" && !Array.isArray(result) ? { ...(result as object), connection: { page: "closed", note: CLOSED_NOTE } } : result;
+  }
+
+  /** Forget everything held in memory for an account (it was deleted). */
+  forget(id: string) {
+    const r = this.live.get(id);
+    if (r) { this.detach(id, r.ws, "the account was deleted"); r.ws.close(4401, "account deleted"); }
+    this.twins.delete(id); this.activity.delete(id);
   }
 
   private twin(id: string): Simulation {
     let sim = this.twins.get(id);
     if (sim) { this.twins.delete(id); this.twins.set(id, sim); return sim; }
-    const saved = this.store.get(id);
     sim = new Simulation();
-    sim.reset(saved?.scenario ?? { seed: 1 }, { settled: true });
+    sim.reset(this.store.get(id)?.scenario ?? { seed: 1 }, { settled: true });
     sim.warmup(20);
     this.twins.set(id, sim);
     while (this.twins.size > this.maxTwins) this.twins.delete(this.twins.keys().next().value!);
@@ -203,7 +206,6 @@ export class Rooms {
 
   private send(ws: WebSocket, m: ServerToPage) { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m)); }
 
-  /** Drop pages that stopped answering pings; refresh "AI connected" as activity ages out. */
   heartbeat() {
     for (const [id, r] of this.live) {
       if (!r.alive) { r.ws.terminate(); this.detach(id, r.ws, "the CoroSim page stopped responding"); continue; }
@@ -215,13 +217,17 @@ export class Rooms {
 // ---------------------------------------------------------------- HTTP
 export interface HttpOptions {
   port: number; host?: string;
-  allowedOrigins?: string[]; // pages allowed to open live rooms; default corosim.com and localhost
-  sessionIdleMs?: number; maxSessions?: number; callsPerMinute?: number; callTimeoutMs?: number;
-  dataDir?: string; // where connector patients are saved; without it they last until the process ends
-  log?: (m: string) => void;
+  publicUrl?: string; // this server's public base (OAuth issuer); default http://<host>:<port>
+  allowedOrigins?: (string | RegExp)[]; // site origins: pages that may open a live line, and where sign-in may return
+  dbFile?: string; // accounts and patients; without it everything is lost on restart
+  github?: ProviderKeys; google?: ProviderKeys; devLogin?: boolean;
+  callsPerMinute?: number; callsPerDay?: number; callTimeoutMs?: number;
+  requestsPerMinutePerAddress?: number; // all HTTP requests from one address (a classroom shares one)
+  trustProxy?: boolean; // behind Fly's proxy: take the client address from its header, not the socket
+  log?: (m: string) => void; fetch?: typeof fetch;
 }
 
-/** Token bucket per client address: bounds how much CPU one caller can spend. */
+/** Token bucket per key: bounds how fast one account or one address can call. */
 class Limiter {
   private b = new Map<string, { tokens: number; at: number }>();
   constructor(private perMinute: number) {}
@@ -234,96 +240,77 @@ class Limiter {
   }
 }
 
-const DEFAULT_ORIGINS = ["https://corosim.com", "https://www.corosim.com", /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/];
+export const DEFAULT_ORIGINS: (string | RegExp)[] = ["https://corosim.com", "https://www.corosim.com", /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/];
 
-export function startHttp(o: HttpOptions): { http: HttpServer; rooms: Rooms; close: () => Promise<void> } {
+export function startHttp(o: HttpOptions) {
   const log = o.log ?? ((m: string) => console.error(m));
-  const idleMs = o.sessionIdleMs ?? 30 * 60_000, maxSessions = o.maxSessions ?? 1000;
-  const origins: (string | RegExp)[] = o.allowedOrigins?.length ? o.allowedOrigins : DEFAULT_ORIGINS;
+  const origins = o.allowedOrigins?.length ? o.allowedOrigins : DEFAULT_ORIGINS;
   const originOk = (origin?: string) => !!origin && origins.some((x) => (typeof x === "string" ? x === origin : x.test(origin)));
-  const rooms = new Rooms(new RoomStore(o.dataDir, 90, 5000, log), o.callTimeoutMs);
-  const limiter = new Limiter(o.callsPerMinute ?? 120);
-  const sessions = new Map<string, { transport: StreamableHTTPServerTransport; room: string | null; last: number }>();
-  const rest = new Map<string, { exec: Exec; last: number }>();
+  const store = new Store(o.dbFile);
+  if (!store.persistent) log("no database file: accounts and patients last only until the server stops");
+  const patients: PatientStore = { get: (id) => store.patient(id), put: (id, sc, at) => store.savePatient(id, sc, at), persistent: store.persistent };
+  const rooms = new Rooms(patients, o.callTimeoutMs);
+  const perMinute = new Limiter(o.callsPerMinute ?? 60), perIp = new Limiter(o.requestsPerMinutePerAddress ?? 600), perDay = o.callsPerDay ?? 2000;
+  let accounts: Accounts | undefined;
 
-  const send = (res: ServerResponse, code: number, body: unknown) => {
+  const ANY = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET, POST, DELETE, OPTIONS", "access-control-expose-headers": "mcp-session-id, www-authenticate" };
+  const send = (res: ServerResponse, code: number, body: unknown, headers: Record<string, string> = ANY) => {
     if (res.headersSent) return;
-    res.writeHead(code, { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET, POST, DELETE, OPTIONS", "access-control-expose-headers": "mcp-session-id" });
+    res.writeHead(code, { "content-type": "application/json", ...headers });
     res.end(typeof body === "string" ? body : JSON.stringify(body));
   };
-  const ip = (req: IncomingMessage) => String(req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "?").split(",")[0].trim();
+  // Forwarding headers are only believed behind a proxy that sets them; otherwise anyone could forge one.
+  const ip = (req: IncomingMessage) => String((o.trustProxy ? req.headers["fly-client-ip"] ?? req.headers["x-forwarded-for"] : undefined) ?? req.socket.remoteAddress ?? "?").split(",")[0].trim();
   async function readJson(req: IncomingMessage): Promise<unknown> {
     const chunks: Buffer[] = []; let size = 0;
     for await (const c of req) { size += (c as Buffer).length; if (size > 1_000_000) throw Object.assign(new Error("Request body too large"), { code: 413 }); chunks.push(c as Buffer); }
     const s = Buffer.concat(chunks).toString("utf8");
     try { return s ? JSON.parse(s) : undefined; } catch { throw Object.assign(new Error("Invalid JSON"), { code: 400 }); }
   }
-  const evictIdle = () => {
-    const now = Date.now();
-    for (const [id, s] of sessions) if (now - s.last > idleMs) { void s.transport.close(); sessions.delete(id); }
-    for (const [id, s] of rest) if (now - s.last > idleMs) rest.delete(id);
+  /** Every tool call is counted against the account: a per-minute rate and a daily allowance. */
+  const metered = (userId: string): Exec => (tool, args) => {
+    if (!perMinute.take(userId)) return Promise.reject(new Error("Too many calls in a minute; slow down."));
+    if (!store.spend(userId, perDay)) return Promise.reject(new Error(`Daily limit of ${perDay} calls reached for this account; it resets at midnight UTC.`));
+    return rooms.call(userId, tool, args);
   };
 
   const http = createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
-      const base = `${req.headers["x-forwarded-proto"] ?? "http"}://${req.headers.host}`;
-      if (req.method === "OPTIONS") return send(res, 204, "");
+      if (req.method === "OPTIONS" && !url.pathname.startsWith("/auth/")) return send(res, 204, "");
       if (url.pathname === "/" || url.pathname === "/health") {
-        return send(res, 200, { name: "corosim", version: VERSION, mcp: `${base}/mcp`, live: `${base}/mcp/<room>`, openapi: `${base}/openapi.json`, sessions: sessions.size, pagesOpen: rooms.size, persistent: rooms.store.persistent });
+        return send(res, 200, { name: "corosim", version: VERSION, mcp: accounts!.resource, signIn: accounts!.providers, pagesOpen: rooms.size, persistent: store.persistent });
       }
-      if (url.pathname === "/openapi.json") return send(res, 200, openApi(base));
+      if (!perIp.take(ip(req))) return send(res, 429, { error: "Too many requests; slow down." });
+      if (await accounts!.handle(req, res, url)) return;
+      if (url.pathname === "/openapi.json") return send(res, 200, openApi(accounts!.issuer));
       if (url.pathname === "/tools.openai.json") return send(res, 200, openAiTools());
       if (url.pathname === "/tools.anthropic.json") return send(res, 200, anthropicTools());
 
       if (url.pathname.startsWith("/api/") && req.method === "POST") {
         const tool = TOOLS.find((t) => t.name === url.pathname.slice(5));
         if (!tool) return send(res, 404, { error: "unknown tool" });
-        if (!limiter.take(ip(req))) return send(res, 429, { error: "Too many calls; slow down." });
-        const id = String(req.headers["x-session-id"] ?? "default").slice(0, 128);
-        let s = rest.get(id);
-        if (!s) { evictIdle(); if (rest.size >= maxSessions) return send(res, 503, { error: "Server busy." }); s = { exec: localExec(), last: 0 }; rest.set(id, s); }
-        s.last = Date.now();
-        try { return send(res, 200, await s.exec(tool.name, ((await readJson(req)) ?? {}) as Record<string, unknown>)); }
+        const who = accounts!.bearer(req);
+        if (!who) return accounts!.challenge(res, ANY);
+        try { return send(res, 200, await metered(who.user.id)(tool.name, ((await readJson(req)) ?? {}) as Record<string, unknown>)); }
         catch (e) { return send(res, (e as { code?: number }).code ?? 400, { error: (e as Error).message }); }
       }
 
-      // MCP: /mcp/<room> is a connector URL with a saved patient. It is stateless: no session to lose, so it keeps
-      // working across restarts, deploys and idle time. /mcp is a private patient per session (stateful).
-      const m = url.pathname.match(/^\/mcp(?:\/([^/]+))?\/?$/);
-      if (m && m[1] !== undefined) {
-        const room = m[1];
-        if (!ROOM_RE.test(room)) return send(res, 404, { error: "Unknown connector URL." });
-        if (req.method !== "POST") { res.writeHead(405, { allow: "POST", "access-control-allow-origin": "*" }); return res.end(); }
+      // MCP: one URL for everyone; the token says whose patient. Stateless, so nothing to lose across restarts.
+      if (url.pathname === "/mcp" || url.pathname === "/mcp/") {
+        if (req.method !== "POST") { res.writeHead(405, { ...ANY, allow: "POST" }); return res.end(); }
+        const who = accounts!.bearer(req);
+        if (!who) return accounts!.challenge(res, ANY);
         const body = await readJson(req);
-        if (isInitializeRequest(body)) rooms.noteClient(room, (body as { params?: { clientInfo?: { name?: string } } }).params?.clientInfo?.name);
-        const exec: Exec = (tool, args) => (limiter.take(ip(req)) ? rooms.call(room, tool, args) : Promise.reject(new Error("Too many calls in a minute; slow down.")));
-        const server = buildServer(exec, "live");
+        if (isInitializeRequest(body)) rooms.noteClient(who.user.id, (body as { params?: { clientInfo?: { name?: string } } }).params?.clientInfo?.name);
+        const server = buildServer(metered(who.user.id), "account");
         const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
         res.on("close", () => { void transport.close(); void server.close(); });
         await server.connect(transport);
         return await transport.handleRequest(req, res, body);
       }
-      if (m) {
-        const sid = req.headers["mcp-session-id"] as string | undefined;
-        const body = req.method === "POST" ? await readJson(req) : undefined;
-        const entry = sid ? sessions.get(sid) : undefined;
-        if (!entry && req.method === "POST" && isInitializeRequest(body)) {
-          evictIdle();
-          if (sessions.size >= maxSessions) return send(res, 503, { jsonrpc: "2.0", error: { code: -32000, message: "Server busy; try again shortly." }, id: null });
-          const exec = localExec();
-          const transport: StreamableHTTPServerTransport = new StreamableHTTPServerTransport({
-            sessionIdGenerator: () => randomUUID(),
-            onsessioninitialized: (id) => { sessions.set(id, { transport, room: null, last: Date.now() }); },
-          });
-          transport.onclose = () => { if (transport.sessionId) sessions.delete(transport.sessionId); };
-          const limited: Exec = (tool, args) => (limiter.take(ip(req)) ? exec(tool, args) : Promise.reject(new Error("Too many calls in a minute; slow down.")));
-          await buildServer(limited, "private").connect(transport);
-          return await transport.handleRequest(req, res, body);
-        }
-        if (!entry) return send(res, 404, { jsonrpc: "2.0", error: { code: -32001, message: "Session not found or expired; reconnect." }, id: null });
-        entry.last = Date.now();
-        return await entry.transport.handleRequest(req, res, body);
+      if (url.pathname.startsWith("/mcp/")) {
+        return send(res, 410, { error: `CoroSim connectors now use ${accounts!.resource} with sign-in. Remove this connector and add that URL instead.` });
       }
       send(res, 404, { error: "not found" });
     } catch (e) {
@@ -332,23 +319,45 @@ export function startHttp(o: HttpOptions): { http: HttpServer; rooms: Rooms; clo
     }
   });
 
-  // Pages open their live room over a WebSocket at /live/<room>.
+  // Signed-in pages hold their account's live line at /live: the first message must carry the page token.
   const wss = new WebSocketServer({ noServer: true, maxPayload: 2_000_000 });
   http.on("upgrade", (req, socket, head) => {
-    const m = (req.url ?? "").match(/^\/live\/([^/?#]+)/);
-    if (!m || !ROOM_RE.test(m[1]) || !originOk(req.headers.origin)) { socket.write("HTTP/1.1 403 Forbidden\r\n\r\n"); socket.destroy(); return; }
-    wss.handleUpgrade(req, socket, head, (ws) => rooms.attach(m[1], ws));
+    if (!/^\/live\/?(\?|$)/.test(req.url ?? "") || !originOk(req.headers.origin)) { socket.write("HTTP/1.1 403 Forbidden\r\n\r\n"); socket.destroy(); return; }
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      const timer = setTimeout(() => ws.close(4401, "sign in first"), 5000);
+      ws.once("message", (raw) => {
+        clearTimeout(timer);
+        let m: PageToServer;
+        try { m = JSON.parse(String(raw)); } catch { ws.close(4400, "bad hello"); return; }
+        const user = m.type === "hello" ? store.sessionUser(m.token, "page") : undefined;
+        if (!user || m.type !== "hello") { ws.close(4401, "sign in first"); return; }
+        rooms.attach(user.id, ws, m.since ?? 0);
+      });
+    });
   });
-  const beat = setInterval(() => { rooms.heartbeat(); evictIdle(); }, 25_000);
-  const purge = setInterval(() => rooms.store.purge(), 6 * 3600_000);
-  http.on("close", () => { clearInterval(beat); clearInterval(purge); rooms.store.flush(); });
 
-  http.listen(o.port, o.host ?? "127.0.0.1", () => log(`CoroSim MCP ${VERSION}: http://${o.host ?? "127.0.0.1"}:${o.port}/mcp (private patient), /mcp/<room> (live page), /live/<room> (pages), /openapi.json`));
-  const close = () => new Promise<void>((resolve) => {
-    clearInterval(beat); clearInterval(purge); rooms.store.flush();
-    for (const s of sessions.values()) void s.transport.close();
-    for (const c of wss.clients) c.terminate();
-    wss.close(); http.close(() => resolve()); http.closeAllConnections?.();
+  // The OAuth issuer is this server's public URL; without one configured it is localhost on the port actually bound.
+  const makeAccounts = (base: string) => new Accounts(store, { publicUrl: base, siteOrigins: origins, github: o.github, google: o.google, devLogin: o.devLogin, fetch: o.fetch });
+  if (o.publicUrl) accounts = makeAccounts(o.publicUrl);
+  http.listen(o.port, o.host ?? "127.0.0.1", () => {
+    const addr = http.address(), port = typeof addr === "object" && addr ? addr.port : o.port;
+    const a = (accounts ??= makeAccounts(`http://localhost:${port}`));
+    log(`CoroSim MCP ${VERSION} on ${o.host ?? "127.0.0.1"}:${port}: ${a.resource} (sign-in: ${a.providers.join(", ") || "none configured"})`);
   });
-  return { http, rooms, close };
+  // Deleting an account also drops its live line and server copy.
+  const del = store.deleteUser.bind(store);
+  store.deleteUser = (id: string) => { rooms.forget(id); del(id); };
+
+  const beat = setInterval(() => rooms.heartbeat(), 25_000);
+  const sweep = setInterval(() => store.sweep(), 3600_000);
+  let closed = false;
+  const close = () => new Promise<void>((resolve) => {
+    if (closed) return resolve();
+    closed = true;
+    clearInterval(beat); clearInterval(sweep);
+    for (const c of wss.clients) c.terminate();
+    wss.close(); http.closeAllConnections?.();
+    http.close(() => { store.close(); resolve(); });
+  });
+  return { http, rooms, store, accounts: () => accounts!, close };
 }

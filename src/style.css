@@ -277,3 +277,6 @@ details.fold > :not(summary):last-child { margin-bottom: 16px; }
 .ai-x:hover { color: var(--ink); }
 body.game .aibtn, body.game .aipanel { display: none; } /* an AI on the line could read the lesion */
 .aibtn[hidden] { display: none; }
+#ac_providers { display: grid; gap: 6px; margin-top: 10px; }
+#ac_providers button { width: 100%; }
+.ac-who { margin: 0 0 10px; font-size: 13px; }

@@ -33,7 +33,7 @@ npm run build      # static site in dist/
 | Revascularization | Primary PCI, fibrinolytic (55% success), CABG (a graft that feeds the vessel beyond the lesion at aortic pressure less its own loss); each takes clinical minutes to arrive | `src/physics/revasc.ts`, `network.ts` |
 | Advice | Reads the live state and lists what is wrong and what guidelines would do next, in order | `src/physics/advice.ts` |
 | Simulation core | The whole model with no DOM, seeded and reproducible; the app, the MCP server and the tests all step this one object | `src/sim/` |
-| AI connection | MCP server (Streamable HTTP and stdio) with live rooms that run tools on the user's open page, REST/OpenAPI, `#s=` share links | `src/mcp/`, `src/live.ts` |
+| AI connection | MCP server (Streamable HTTP and stdio); accounts (Google/GitHub) and OAuth for connectors; each account's patient runs on its open page or is saved in SQLite; REST/OpenAPI; `#s=` share links | `src/mcp/`, `src/live.ts` |
 
 All constants live in `src/config/`, tagged as literature-backed or assumed.
 
@@ -113,18 +113,15 @@ Case drawing, scoring and the debrief live in `src/game.ts`; the display logic i
 ## Connecting an AI
 
 CoroSim is a teaching layer beside image-based solvers such as SimVascular, not a competitor to them. An assistant
-connects to it over MCP and works on the same patient you are watching: in the simulator, the **Connect AI** button at the top →
-**Open a connection** gives a connector URL to add to Claude (Settings → Connectors → Add custom connector), ChatGPT (developer
-mode connectors) or Claude Code (`claude mcp add --transport http corosim <url>`). Its tool calls then run on the page,
-and the controls follow. Without a page, `/mcp` gives each AI session its own patient. Details, hosting and the
-security model: [docs/LLM_AND_MCP.md](docs/LLM_AND_MCP.md).
+connects to it over MCP: click **Connect AI** at the top, sign in with Google or GitHub, and add
+`https://mcp.corosim.com/mcp` as a connector in Claude, ChatGPT or Claude Code (it asks you to sign in and allow
+access). The AI then works on your account's patient: on your screen while CoroSim is open, saved otherwise. The
+simulator itself needs no account. Details, hosting, limits and privacy: [docs/LLM_AND_MCP.md](docs/LLM_AND_MCP.md).
 
 ```bash
-npm run mcp:http        # the server, on 127.0.0.1:8787 (the dev page connects here)
-npm run build:mcp       # one-file server for hosting; or: docker build -t corosim-mcp .
+COROSIM_DEV_LOGIN=1 COROSIM_DATA_DIR=.data npm run mcp:http   # the server, with a development sign-in, on :8787
+npm run build:mcp                                             # one-file server for hosting; or: docker build .
 ```
-
-The public server is meant to run at `https://mcp.corosim.com` (Fly.io config included); setup steps are in the doc above.
 
 ## Deploy
 

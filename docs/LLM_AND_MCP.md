@@ -1,133 +1,119 @@
 # Connecting an AI to CoroSim
 
-CoroSim speaks the Model Context Protocol (MCP). An assistant connected to it can build a patient, change it, run the
-clock and read back what the model computed. All of it goes through tools, with no pasted text. There are two kinds of
-connection, served by the same server.
+CoroSim speaks the Model Context Protocol (MCP). An assistant connected to it can build a patient, change it, run
+the clock and read back what the model computed, all through tools. Using it from an AI needs a CoroSim account
+(sign in with Google or GitHub); the simulator itself never does.
 
-| Connector URL | What the AI drives |
+## For people using it
+
+1. In CoroSim, click **Connect AI** at the top and sign in with Google or GitHub.
+2. Add the connector URL `https://mcp.corosim.com/mcp` to your assistant once:
+   - **Claude** (claude.ai or Desktop): Settings → Connectors → Add custom connector, paste the URL, then
+     **Connect**. A CoroSim page opens: sign in and choose **Allow**.
+   - **ChatGPT**: Settings → Apps & Connectors → Advanced → Developer mode, then Create, paste the URL, and sign in.
+   - **Claude Code**: `claude mcp add --transport http corosim https://mcp.corosim.com/mcp`, then `/mcp` to sign in.
+3. Ask: "What's going on with this patient?", "Occlude the proximal RCA and tell me what happens to the rhythm".
+
+The AI works on **your account's patient**. With CoroSim open, that is the patient on your screen and you watch every
+change. With it closed, the AI works on your saved patient, and CoroSim picks it up next time you open it, on any
+device you sign in on. While a Find the culprit case is running the AI is paused, since it could read the lesion.
+
+**Connect AI** also lists which AIs are connected, **Disconnect AIs** revokes them all, and **Delete my account**
+removes the account, the saved patient and every connection at once.
+
+## How it works
+
+| Piece | |
 |---|---|
-| `https://<server>/mcp/<room>` | **Your patient.** On your screen while a CoroSim page holds the room open; saved on the server, and still reachable, when no page is. |
-| `https://<server>/mcp` | A private patient for that AI session, with no page involved. |
+| `POST /mcp` | MCP over Streamable HTTP, stateless. Requires an OAuth bearer token; without one it answers 401 with `WWW-Authenticate: Bearer resource_metadata=…`, which is how a client finds the sign-in. |
+| `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server` | Discovery (RFC 9728, RFC 8414). |
+| `/oauth/register` | Dynamic client registration (RFC 7591). Redirect URIs must be https, or http on localhost. |
+| `/oauth/authorize` → `/auth/signin` → Google/GitHub → `/oauth/consent` | Sign in, then an Allow/Cancel screen naming the app and where it returns to. PKCE S256 required. |
+| `/oauth/token` | Authorization code (single use, 5 min) for an access token (1 h) and a refresh token (90 days, rotated on every use). |
+| `/auth/login`, `/auth/exchange`, `/auth/me`, `/auth/logout`, `/auth/disconnect`, `DELETE /auth/account` | The site's own sign-in: back to corosim.com with a one-time code in the URL fragment, exchanged for a page token. |
+| `wss://…/live` | A signed-in page's line. The first message carries its page token; tool calls for that account are forwarded to it. |
 
-## Live: connect your AI to the page you are looking at
+Everything lives in one SQLite file (`src/mcp/db.ts`): accounts, sessions, OAuth clients, codes and tokens (stored
+as SHA-256 hashes only), one patient per account, and daily usage. Code: `src/mcp/accounts.ts` (sign-in and OAuth),
+`src/mcp/server.ts` (MCP, live lines, limits), `src/live.ts` (the page's end), `src/mcp/protocol.ts` (page ↔ server
+messages).
 
-1. In CoroSim, click **Connect AI** at the top of the page, then **Open a connection**. The panel shows a connector URL. The button's dot turns green once an AI is on the line.
-2. Add that URL to your assistant once:
-   - **Claude** (claude.ai or Desktop): Settings → Connectors → Add custom connector, paste the URL.
-   - **ChatGPT**: Settings → Apps & Connectors → Advanced → Developer mode, then Create, paste the URL.
-   - **Claude Code**: `claude mcp add --transport http corosim <url>`
-   - Any other MCP client: Streamable HTTP transport, no authentication.
-3. Ask: "What's going on with this patient?", "Occlude the proximal RCA and tell me what happens to the rhythm", "Give
-   a litre of fluid and explain the pressure."
+Limits: 60 tool calls a minute and 2000 a day per account (`COROSIM_CALLS_PER_DAY`), 600 requests a minute per
+address, a 20 s answer deadline for pages, pings every 25 s that drop dead pages.
 
-### Add it once; it stays good
-
-- **Same URL every visit.** The room id is kept in the browser, and the page reopens the line by itself if it was
-  open last time.
-- **Survives restarts and deploys.** Connector URLs are stateless (no MCP session to lose), and the room's patient is
-  saved on the server's disk.
-- **Works with the page closed.** The AI's calls then run on the saved patient, and results carry a
-  `connection: { page: "closed" }` note. When you open CoroSim again, the page loads what the AI left.
-- **One connector across devices.** On another browser, paste the URL under *On another device? Use the same URL
-  there*; that browser joins the same patient. The newest tab to open the line holds it.
-- **Lasts 90 days unused.** Rooms nobody has used for 90 days are removed. **New URL** retires one at once.
-- While a Find the culprit case is running, the line is paused: an AI on the line could read the lesion.
-
-How it works: the page opens a WebSocket to `wss://<server>/live/<room>`. When an AI calls a tool on
-`/mcp/<room>`, the server forwards the call over that socket. The page runs it on its own simulation (the same
-`src/mcp/tools.ts` code a private session runs), brings its controls into line with what changed, and sends the result
-back. The page also sends a snapshot of the patient whenever it changes, which is what the server runs on when no page
-is open (`src/mcp/roomStore.ts`). If a second tab opens the same room, it takes over and the first tab is told. The
-protocol is in `src/mcp/protocol.ts`.
-
-## Tools
+### Tools
 
 | Tool | Use |
 |---|---|
-| `corosim_get_state` | What is happening now: rolling vitals, rhythm, ventricle, support, ischemic beds, FFR. Read first in a live session. |
+| `corosim_get_state` | What is happening now: vitals, rhythm, ventricle, support, ischemic beds, FFR. Read first. |
 | `corosim_get_schema` | Scenario format, valid arteries for the current anatomy, what each knob does. |
-| `corosim_set_scenario` | Replace the patient; settles the reflexes first; returns the state, a grounded explanation and **warnings** (anything clamped or dropped). |
+| `corosim_set_scenario` | Replace the patient; returns the state, a grounded explanation and **warnings** (anything clamped or dropped). |
 | `corosim_adjust` | Change the running patient (lesion, drug, bleed, support, rhythm); returns the response over time. |
-| `corosim_run` | Advance time; beat statistics, a bounded time course, optional beat table. The infarct clock runs (2 clinical min per s). |
+| `corosim_run` | Advance time; beat statistics, a bounded time course, optional beat table. The infarct clock runs. |
 | `corosim_explain` | The model's own causal account of the state, to quote rather than improvise. |
-| `corosim_compare` | Counterfactuals from the same seed in separate simulations; the current patient is untouched. |
+| `corosim_compare` | Counterfactuals from the same seed in separate simulations; the patient is untouched. |
 | `corosim_open_link` | A URL that opens this patient in the app. |
 
-Resources: `corosim://model-card`, `corosim://scenario-reference`. Prompts: `build_patient`, `baroreflex_demo`,
-`hemorrhage_ladder`, `explain_current_state`. Results come back as text and as `structuredContent`.
-
-The autonomic loop (baroreflex, respiratory gating, physiological noise) is not shown in the app; it is the
-physiology, and shows up in the rate and pressure. An AI can still read it (`state.autonomic`, HRV in run metrics) and
-set it (`autonomic.baroreflexGain`, `respRate`, `noise`) to answer what-if questions.
-
-## Running the server
-
-```bash
-npm run mcp:http                       # development: http://127.0.0.1:8787, which the dev page uses
-npm run build:mcp                      # dist-mcp/corosim-mcp.mjs, a single file with no dependencies
-PORT=8787 HOST=0.0.0.0 node dist-mcp/corosim-mcp.mjs --http
-docker build -t corosim-mcp . && docker run -p 8787:8787 corosim-mcp
-npm run mcp                            # stdio, one private patient, for local clients
-```
-
-Claude and ChatGPT connectors need a public **https** URL, so in production the server sits behind TLS (Fly.io,
-Render, Railway, Cloud Run and similar terminate it for you). The site finds the server through
-`VITE_COROSIM_MCP_URL` at build time, defaulting to `https://mcp.corosim.com` (and `http://localhost:8787` on
-localhost).
-
-| Setting | Default | |
-|---|---|---|
-| `PORT`, `HOST` | 8787, 127.0.0.1 | Use `HOST=0.0.0.0` in a container. |
-| `COROSIM_ALLOWED_ORIGINS` | corosim.com, www.corosim.com, localhost | Page origins allowed to open live rooms. |
-| `COROSIM_APP_URL` | https://corosim.com | Base of share links. |
-| `COROSIM_DATA_DIR` | unset (`/data` in the image) | Where connector patients are saved. Unset: memory only, lost on restart. |
-
-Built-in limits: 120 tool calls per minute per caller, private `/mcp` sessions expire after 30 idle minutes (connector
-URLs have no sessions), rooms unused for 90 days are removed, 1000 sessions and 2000
-live rooms at most, 1 MB request bodies, a 20 s answer deadline for pages, and pings every 25 s that drop dead pages.
-
-**Security model.** No accounts: a live connector URL is a 128-bit capability, and whoever holds it can drive that
-tab's patient while the line is open. Nothing personal is stored or sent; the patient is synthetic. Rotate the URL
-with **New URL**. If you need per-user access control, put OAuth in front of `/mcp` (the MCP authorization spec) and
-keep `/live` behind the same origin check.
+Resources `corosim://model-card`, `corosim://scenario-reference`; prompts `build_patient`, `baroreflex_demo`,
+`hemorrhage_ladder`, `explain_current_state`. The autonomic loop is not shown in the app, but an AI can read it
+(`state.autonomic`, HRV in run metrics) and set it (`autonomic.baroreflexGain`, `respRate`, `noise`) for what-ifs.
 
 ## Hosting mcp.corosim.com
 
-The connector URL has to be public **https** and always up, because Claude's and ChatGPT's servers are what call it.
-It also needs one long-running process that holds WebSockets, so serverless functions and hosts that sleep when idle
-do not fit. The repository is set up for **Fly.io** (`fly.toml`, `.github/workflows/mcp.yml`): one always-on
-`shared-cpu-1x` machine, a few dollars a month at Fly's current prices.
+One Fly.io machine that **sleeps when unused** and wakes on the next request (a second or two), with a 1 GB volume
+for the database. At Fly's prices (October 2026): the volume is $0.15 a month, the machine $3.69 a month if it never
+slept and proportionally less as it does, certificates and shared addresses are free. Nothing is lost while it
+sleeps: connectors hold no session, and everything is on the volume.
 
-1. Install flyctl (`brew install flyctl`) and sign in: `fly auth signup` or `fly auth login`.
-2. From the repository: `fly launch --no-deploy --copy-config`. If the name `corosim-mcp` is taken, pick another and
-   it is written to `fly.toml`.
-3. A disk for saved patients: `fly volumes create corosim_data --size 1 --region iad` (1 GB holds hundreds of
-   thousands of patients).
-4. `fly deploy --ha=false`, then check `https://<app>.fly.dev/health`: it should say `"persistent": true`.
-5. `fly certs add mcp.corosim.com`. It prints the DNS record to add: in the domain's DNS settings (Squarespace
-   Domains), add a **CNAME** with host `mcp` pointing to `<app>.fly.dev`. When `fly certs show mcp.corosim.com` says the
-   certificate is issued, `https://mcp.corosim.com/health` answers.
-6. Automatic deploys: `fly tokens create deploy`, and save the result as the repository secret `FLY_API_TOKEN`
-   (Settings → Secrets and variables → Actions). After that, every push to `main` that touches the server tests and
-   deploys it. Do this after step 5: the workflow ends by checking `https://mcp.corosim.com/health`.
+**You do (accounts and money):**
 
-Keep it to **one machine**: an open page holds its room on that process, so a page and the AI talking to it must reach
-the same one. Scale up if needed, not out. A restart briefly drops open pages, which reconnect by themselves;
-connectors keep working throughout, since they hold no session and the patients are on the volume. The site needs no change: it looks for `https://mcp.corosim.com` by default.
+1. Fly.io: `fly auth login` (sign up and add a card if new; Fly has no free tier for new accounts).
+2. GitHub sign-in: github.com → Settings → Developer settings → OAuth Apps → New OAuth App.
+   Homepage `https://corosim.com`, callback `https://mcp.corosim.com/auth/callback/github`.
+   Generate a client secret.
+3. Google sign-in: console.cloud.google.com → APIs & Services → OAuth consent screen (External; app name CoroSim;
+   scopes `openid`, `email`, `profile`; publish it), then Credentials → Create credentials → OAuth client ID → Web
+   application, authorized redirect URI `https://mcp.corosim.com/auth/callback/google`.
+4. Put the four values in Fly yourself (they are secrets; do not paste them into chats or files):
+   `fly secrets set GITHUB_CLIENT_ID=… GITHUB_CLIENT_SECRET=… GOOGLE_CLIENT_ID=… GOOGLE_CLIENT_SECRET=…`
+5. DNS at your registrar: a CNAME `mcp` → `corosim-mcp.fly.dev` (`fly certs add` prints the exact value).
 
-Other hosts work with the same `Dockerfile` (Railway, Render's paid tier, Google Cloud Run with min-instances 1 and
-session affinity). Cloudflare Workers with Durable Objects would suit per-room state well, but needs the server
-rewritten for that runtime.
+**From the repository (the deploy):**
+
+1. `fly launch --no-deploy --copy-config` (if the name `corosim-mcp` is taken, pick another; it goes into `fly.toml`).
+2. `fly volumes create corosim_data --size 1 --region iad`, then `fly deploy --ha=false`.
+   `https://<app>.fly.dev/health` should say `"persistent": true` and list the sign-in methods.
+3. `fly certs add mcp.corosim.com`; when `fly certs show mcp.corosim.com` says issued, the domain is live.
+4. Optional automatic deploys: `fly tokens create deploy`, saved as the GitHub repository secret `FLY_API_TOKEN`.
+
+Keep it to **one machine**: a page's live line is held by one process. Scale up if needed, not out.
+
+| Setting | Default | |
+|---|---|---|
+| `COROSIM_PUBLIC_URL` | `http://localhost:<port>` | The public base and OAuth issuer (`https://mcp.corosim.com` in `fly.toml`). |
+| `COROSIM_DATA_DIR` / `COROSIM_DB` | memory only | SQLite location (`/data/corosim.db` in the image). |
+| `GITHUB_CLIENT_ID/_SECRET`, `GOOGLE_CLIENT_ID/_SECRET` | none | Sign-in providers; each optional. |
+| `COROSIM_ALLOWED_ORIGINS` | corosim.com, www.corosim.com, localhost | Sites that may open a line and receive sign-ins. |
+| `COROSIM_CALLS_PER_DAY` | 2000 | Per-account daily allowance. |
+| `COROSIM_TRUST_PROXY` | off (`1` in `fly.toml`) | Take client addresses from the proxy's header. |
+| `COROSIM_DEV_LOGIN` | off | A sign-in without Google/GitHub for development; refused unless the public URL is localhost. |
+
+### Development
+
+```bash
+COROSIM_DEV_LOGIN=1 COROSIM_DATA_DIR=.data npm run mcp:http    # server on http://localhost:8787
+npm run dev                                                    # the site; Connect AI offers a development account
+npm run mcp                                                    # stdio, one local patient, no account (local clients)
+```
+
+## Privacy
+
+The site's privacy page is `public/privacy.html` (a draft to review before launch). In short: name, email and
+provider account ID; the synthetic patient; connected AI apps; 30 days of daily call counts; hashed tokens. No
+analytics or trackers. Deleting the account removes all of it.
 
 ## REST and OpenAPI
 
-For clients without MCP (custom GPT actions, scripts): `POST /api/<tool>` with the tool's arguments as JSON and an
-`x-session-id` header to keep a patient; the schema is at `/openapi.json`, and OpenAI/Anthropic tool definitions at
-`/tools.openai.json` and `/tools.anthropic.json` (`npm run export:tools` writes them to `dist-mcp/`).
-
-## What an assistant should do with it
-
-- Quote numbers from `corosim_get_state` and `corosim_explain`; say plainly what the model does not compute.
-- Read `warnings`: scenarios are clamped, and lesions on arteries absent from the chosen anatomy are dropped.
-- In a live session, prefer `corosim_adjust`; `corosim_set_scenario` replaces what the user is looking at.
-- Say that it is an educational model with teaching constants and no patient validation.
+For clients without MCP: `POST /api/<tool>` with a bearer token, `/openapi.json` (declares the OAuth flow), and
+tool definitions at `/tools.openai.json` and `/tools.anthropic.json` (`npm run export:tools` writes them to
+`dist-mcp/`).

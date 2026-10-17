@@ -23,24 +23,27 @@
   </div>
   <section id="aipanel" class="aipanel" hidden aria-label="Connect your AI">
     <div class="ai-head"><h2>Connect your AI</h2><button id="ai_close" class="ai-x" aria-label="Close">×</button></div>
-    <p class="note" style="margin-top:0">Give Claude, ChatGPT or any MCP client a live line to this patient. It reads the monitor, changes the patient and runs the clock, and you watch it happen here.</p>
-    <div class="row">
-      <button id="ln_open" class="primary">Open a connection</button>
-      <button id="ln_close" hidden>Disconnect</button>
-      <button id="ln_new" hidden>New URL</button>
+    <div id="ac_out">
+      <p class="note" style="margin-top:0">Sign in to let Claude, ChatGPT or any MCP client work with your patient: read the monitor, change the patient, run the clock. When this page is open you watch it happen; when it is closed your AI works on your saved patient, which is here when you come back.</p>
+      <div id="ac_providers"></div>
+      <p class="note">CoroSim keeps your name, email and your simulated patient, nothing else. <a href="privacy.html">Privacy</a></p>
     </div>
-    <div id="ln_live" hidden>
+    <div id="ac_in" hidden>
+      <p class="ac-who">Signed in as <b id="ac_name"></b></p>
       <label for="ln_url">Connector URL</label>
       <div class="ln-url"><input id="ln_url" readonly spellcheck="false"><button id="ln_copy">Copy</button></div>
       <p class="ln-status" id="ln_status"></p>
       <ul class="note ln-how">
-        <li><b>Claude</b>: Settings → Connectors → Add custom connector, paste the URL.</li>
-        <li><b>ChatGPT</b>: Settings → Apps &amp; Connectors → Advanced → Developer mode, then Create, paste the URL.</li>
-        <li><b>Claude Code</b>: <code id="ln_cli"></code></li>
+        <li><b>Claude</b>: Settings → Connectors → Add custom connector, paste the URL, then Connect: it asks you to sign in to CoroSim and allow access.</li>
+        <li><b>ChatGPT</b>: Settings → Apps &amp; Connectors → Advanced → Developer mode, then Create, paste the URL, and sign in.</li>
+        <li><b>Claude Code</b>: <code id="ln_cli"></code>, then <code>/mcp</code> to sign in.</li>
       </ul>
-      <p class="note">Add the connector once: the URL stays the same in this browser, keeps working after restarts, and when this page is closed your AI works on the saved patient, which is here when you come back. Anyone with the URL can drive this patient; New URL retires it.</p>
-      <label for="ln_other">On another device? Use the same URL there</label>
-      <div class="ln-url"><input id="ln_other" placeholder="Paste a connector URL" spellcheck="false"><button id="ln_use">Use</button></div>
+      <p class="note" id="ac_connected"></p>
+      <div class="row">
+        <button id="ac_disconnect">Disconnect AIs</button>
+        <button id="ac_signout">Sign out</button>
+      </div>
+      <p class="note"><a href="#" id="ac_delete">Delete my account</a>: removes your account, your saved patient and every AI connection.</p>
     </div>
   </section>
 </header>
