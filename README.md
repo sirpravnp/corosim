@@ -12,7 +12,7 @@ are assumptions, marked as such in the code. It has not been compared with patie
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # 157 tests
+npm test           # 200+ tests
 npm run build      # static site in dist/
 ```
 
@@ -26,8 +26,24 @@ npm run build      # static site in dist/
 | ECG | Dipole heart; each ischemic bed adds an injury current along its wall's outward normal | `src/physics/ecg.ts`, `ecgLink.ts` |
 | Rhythm | Sympathetic/vagal balance, SA- and AV-node arteries, Wenckebach, complete heart block | `src/physics/rhythm.ts` |
 | Circulation | Cardiac output × vascular resistance; pressure feeds back on coronary perfusion | `src/physics/circulation.ts` |
+| Beat hemodynamics | Every ventricular beat gets its own filling, stroke volume and Windkessel pressure | `src/physics/beatHemo.ts`, `beatStream.ts` |
+| Autonomic loop | Baroreceptors → fast vagal and slow sympathetic arms → rate, contractility, resistance; respiration (RSA) and Ornstein–Uhlenbeck noise make every beat different | `src/physics/autonomic.ts` |
+| Simulation core | The whole model with no DOM, seeded and reproducible; the browser app, the MCP server and the tests all step this one object | `src/sim/` |
+| LLM interface | MCP server (stdio and HTTP), OpenAPI, OpenAI/Anthropic tool schemas, paste-in blocks and share links | `src/mcp/`, `src/sim/llm.ts` |
 
 All constants live in `src/config/`, tagged as literature-backed or assumed.
+
+## Working with Claude and ChatGPT
+
+CoroSim is a teaching layer, not a solver to compete with SimVascular: it makes the *interaction* of a lesion, volume, drugs and the autonomic reflexes visible beat by beat, and it hands the same state to an LLM to explain or change. See [docs/LLM_AND_MCP.md](docs/LLM_AND_MCP.md).
+
+```bash
+claude mcp add corosim -- npx tsx /path/to/corosim/src/mcp/main.ts    # Claude Code
+npm run build:mcp && node dist-mcp/corosim-mcp.mjs                    # standalone stdio server
+npm run mcp:http                                                     # MCP over HTTP + REST + /openapi.json on 127.0.0.1:8787
+```
+
+In the app, **Ask an AI → Copy for AI** puts the patient, the model's own causal account of it and the way to ask for changes on the clipboard; paste it into any assistant.
 
 ## Deploy
 
@@ -48,7 +64,7 @@ Free GitHub Pages requires a public repository.
 
 ## Limits
 
-Steady (mean) flow only, with no pulsatile waveform. No collaterals in the coronary tree. AV block only at the
+Coronary flow is steady (mean) with no pulsatile waveform; systemic pressure is a two-element Windkessel stepped per beat, not a ventricular pressure–volume model. Autonomic constants are teaching assumptions tuned to a resting adult and to ATLS-style hemorrhage; they are not fitted to patient data (see the model card in `src/mcp/content.ts`). No collaterals in the coronary tree. AV block only at the
 AV node. Variant frequencies in the literature vary widely, so presets are teaching cases, not epidemiology.
 
 ## Third-party

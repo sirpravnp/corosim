@@ -47,7 +47,11 @@ export interface Circulation {
   state: "stable" | "hypotension" | "shock";
 }
 
-export function circulation(sites: BedSite[], sev: Record<string, number>, rhythm: RhythmState): Circulation {
+/**
+ * `baroreflexRetained` is the static stand-in for pressure buffering. Pass 1 when a dynamic baroreflex
+ * (physics/autonomic.ts) closes the loop instead, so the buffering is not applied twice.
+ */
+export function circulation(sites: BedSite[], sev: Record<string, number>, rhythm: RhythmState, baroreflexRetained = CIRC.baroreflexRetained): Circulation {
   let lvMass = 0, lvIsch = 0, rvMass = 0, rvIsch = 0;
   for (const s of sites) {
     if (isNodal(s.key)) continue;
@@ -61,7 +65,7 @@ export function circulation(sites: BedSite[], sev: Record<string, number>, rhyth
   const co = (hr * sv) / 1000;
   const svr = BASE_SVR * (1 + CIRC.sympatheticSvr * rhythm.sympathetic) * (1 - CIRC.vagalSvr * rhythm.vagal);
   const open = co * svr;
-  const map = CIRC.baseMap - (CIRC.baseMap - open) * CIRC.baroreflexRetained;
+  const map = CIRC.baseMap - (CIRC.baseMap - open) * baroreflexRetained;
   const pulse = sv / CIRC.arterialCompliance;
   const diastolic = map - pulse / 3, systolic = diastolic + pulse;
   const state = map < CIRC.shockMap ? "shock" : map < CIRC.hypotensionMap ? "hypotension" : "stable";

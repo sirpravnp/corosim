@@ -31,6 +31,8 @@ export const CONDUCTION = {
   junctionalEscape: 42, // bpm, narrow-complex escape from the AV junction
 };
 
+export interface SinusModulation { rate(t: number): number; jitter(): number }
+
 export type AvDegree = 0 | 1 | 2 | 3;
 export interface RhythmState {
   sinusRate: number; // bpm
@@ -72,10 +74,18 @@ export class Conduction {
   private lastR = -Infinity;
   constructor(seed = 1, t0 = 0.4) { this.rng = mulberry32(seed); this.nextP = t0 - CONDUCTION.basePr; this.nextEscape = t0; }
 
-  advance(until: number, state: RhythmState): Beat[] {
+  /**
+   * `mod` lets a closed-loop autonomic model set each sinus cycle: `rate(t)` multiplies the sinus rate at the
+   * P wave at time t and `jitter()` replaces the default uniform ±hrv noise. Omitted, the rhythm is open-loop.
+   */
+  advance(until: number, state: RhythmState, mod?: SinusModulation): Beat[] {
     const out: Beat[] = [];
     const C = CONDUCTION;
-    const pp = () => (60 / state.sinusRate) * (1 + RHYTHM.hrv * (2 * this.rng() - 1));
+    const pp = (tAt: number) => {
+      const scale = mod ? mod.rate(tAt) : 1;
+      const noise = mod ? mod.jitter() : RHYTHM.hrv * (2 * this.rng() - 1);
+      return (60 / (state.sinusRate * scale)) * (1 + noise);
+    };
     const ectopy = Math.max(0, (state.pvcSeverity - RHYTHM.pvcOnsetSeverity) / (1 - RHYTHM.pvcOnsetSeverity));
     if (state.avDegree < 3) this.nextEscape = Math.max(this.nextEscape, this.lastR + 60 / state.escapeRate);
     while (true) {
@@ -83,13 +93,13 @@ export class Conduction {
         // Atria and ventricles dissociate: P waves march through; the junction escapes regularly.
         const tP = this.nextP, tE = this.nextEscape;
         if (Math.min(tP, tE) > until) break;
-        if (tP <= tE) { out.push({ t: tP + C.basePr, rr: 60 / state.escapeRate, pvc: false, pr: C.basePr, pOnly: true }); this.nextP = tP + pp(); }
+        if (tP <= tE) { out.push({ t: tP + C.basePr, rr: 60 / state.escapeRate, pvc: false, pr: C.basePr, pOnly: true }); this.nextP = tP + pp(tP); }
         else { const rr = 60 / state.escapeRate; out.push({ t: tE, rr, pvc: false, noP: true }); this.lastR = tE; this.nextEscape = tE + rr * (1 + 0.01 * (2 * this.rng() - 1)); }
         continue;
       }
       const tP = this.nextP;
       if (tP > until) break;
-      const interval = pp();
+      const interval = pp(tP);
       this.nextP = tP + interval;
       let pr = state.pr, conducts = true;
       if (state.avDegree === 2) {
@@ -106,7 +116,7 @@ export class Conduction {
         this.lastR = tv;
         // The next sinus P still fires but falls inside the PVC and cannot conduct (compensatory pause).
         out.push({ t: this.nextP + C.basePr, rr: interval, pvc: false, pr: C.basePr, pOnly: true });
-        this.nextP += pp();
+        this.nextP += pp(this.nextP);
       }
     }
     return out;

@@ -1,5 +1,5 @@
 import { Beat } from "./ecg";
-import { Conduction, RhythmState } from "./rhythm";
+import { Conduction, RhythmState, SinusModulation } from "./rhythm";
 
 /**
  * The single source of beats. The ECG strip draws them and the hemodynamics consume them, so a PVC,
@@ -12,13 +12,18 @@ export class BeatStream {
   private conduction: Conduction;
   private delivered = new WeakSet<Beat>();
 
-  constructor(seed = 1) { this.conduction = new Conduction(seed); }
+  /**
+   * `lookahead` is how far beats are generated ahead of the clock and `chunk` how much is added at a time.
+   * The ECG strip needs a fraction of a second; a closed-loop run uses a small lookahead so that each
+   * sinus interval is set from tone that is only a few tens of milliseconds old.
+   */
+  constructor(seed = 1, private lookahead = 0.6, private chunk = 0.4) { this.conduction = new Conduction(seed); }
 
-  /** Make sure beats exist through `t + 0.6` s, generated from the current rhythm state. */
-  extend(t: number, state: RhythmState) {
-    if (this.horizon < t + 0.6) {
-      this.horizon = t + 1.0;
-      this.beats.push(...this.conduction.advance(this.horizon, state));
+  /** Make sure beats exist through `t + lookahead` s, generated from the current rhythm state. */
+  extend(t: number, state: RhythmState, mod?: SinusModulation) {
+    if (this.horizon < t + this.lookahead) {
+      this.horizon = t + this.lookahead + this.chunk;
+      this.beats.push(...this.conduction.advance(this.horizon, state, mod));
     }
   }
 

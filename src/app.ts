@@ -6,15 +6,14 @@ import { buildTree, Tree, Variant, TYPICAL, rotateHeart, Segment } from "./anato
 import { meshHeart, projectToEpicardium, septalDistance, latitude, AV_GROOVE_LAT, Part, PART_NAMES } from "./anatomy/heartSurface";
 import { V3 } from "./anatomy/curve";
 import { LEADS, ST } from "./config/ecg";
-import { Lesion, analyze, Analysis, solveNetwork } from "./physics/network";
-import { circulation, Circulation, CIRC } from "./physics/circulation";
-import { BeatStream } from "./physics/beatStream";
-import { BeatHemodynamics } from "./physics/beatHemo";
-import { FLOW } from "./config/tree";
-import { stepSeverity } from "./physics/ischemia";
-import { BedSite, bedSites, injuryVector, ischemicBurden, globalSeverity } from "./physics/ecgLink";
+import { Analysis } from "./physics/network";
+import { CIRC } from "./physics/circulation";
+import { BedSite, ischemicBurden } from "./physics/ecgLink";
 import { EcgStrip } from "./ecgStrip";
-import { rhythmState, RhythmState } from "./physics/rhythm";
+import { drawBeatTrace } from "./beatTrace";
+import { Simulation } from "./sim/simulation";
+import { Scenario, LesionSpec } from "./sim/scenario";
+import { describeForLlm, encodeScenario, decodeScenario } from "./sim/llm";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const MMHG = 133.322;
@@ -26,9 +25,13 @@ const S = {
   lesionSeg: "LAD", pos: 0.15, ds: 0, occ: false, exert: false, speed: 1,
   mode: "real" as Mode, heart: "solid" as HeartView, exag: 2.5, flow: false, selected: "",
 };
-let tree: Tree, A: Analysis, sites: BedSite[] = [];
-const sev: Record<string, number> = {}; // per-bed ischemia state (0..1), evolves in time
-let target: Record<string, number> = {};
+// The physics lives in the shared headless Simulation (also served over MCP); this file draws it and edits it.
+const sim = new Simulation({ seed: 1 });
+let tree: Tree = sim.tree, A: Analysis = sim.analysis, sites: BedSite[] = sim.sites;
+let sev = sim.sev; // per-bed ischemia state (0..1), evolves in time
+let extraLesions: LesionSpec[] = []; // lesions from a loaded scenario beyond the one the controls edit
+/** Re-read the simulation's derived structures after it rebuilt them. */
+function pull() { tree = sim.tree; A = sim.analysis; sites = sim.sites; sev = sim.sev; }
 
 // ---------------------------------------------------------------- renderer
 const view = $("view");
@@ -280,9 +283,8 @@ function stepParticles(dt: number) {
 
 // ---------------------------------------------------------------- model
 function rebuildAnatomy() {
-  tree = buildTree(V);
-  sites = bedSites(tree);
-  for (const k of Object.keys(sev)) if (!sites.some((s) => s.key === k)) delete sev[k];
+  sim.apply({ anatomy: { ...V } });
+  pull();
   const sel = $<HTMLSelectElement>("lseg");
   sel.innerHTML = tree.segments.map((s) => `<option value="${s.id}">${s.name}</option>`).join("");
   if (!tree.byId[S.lesionSeg]) S.lesionSeg = "LAD";
@@ -291,20 +293,11 @@ function rebuildAnatomy() {
   prepareMyocardium();
   buildVessels(); initParticles(); points.visible = S.flow;
 }
-let lesions: Lesion[] = [];
-let solvedMap: number = CIRC.baseMap, mapSm: number = CIRC.baseMap; // mmHg: the pressure the coronary network was last solved at, and the live one
+/** Push the lesion controls into the simulation (it re-solves the coronary network). */
 function solve() {
-  lesions = S.ds > 0 || S.occ ? [{ segId: S.lesionSeg, pos: S.pos, ds: S.occ ? 1 : S.ds, occluded: S.occ }] : [];
-  A = analyze(tree, lesions, S.exert, solvedMap * MMHG);
-  target = Object.fromEntries(A.cond.terminals.map((t) => [t.key, t.severity]));
-}
-/** Coronary perfusion follows the systemic pressure: re-solve the working state when MAP has moved. */
-function resolveAtPressure() {
-  solvedMap = mapSm;
-  A = { ...A, cond: solveNetwork(tree, lesions, S.exert ? FLOW.exertionDemand : 1, solvedMap * MMHG) };
-  target = Object.fromEntries(A.cond.terminals.map((t) => [t.key, t.severity]));
-  for (const b of built) b.blocked = blockedFlags(b.seg);
-  shapeVessels();
+  const lesions: LesionSpec[] = S.ds > 0 || S.occ ? [{ artery: S.lesionSeg, stenosis: S.ds, occluded: S.occ, position: S.pos }] : [];
+  sim.apply({ lesions: [...lesions, ...extraLesions.filter((l) => l.artery !== S.lesionSeg)], exertion: S.exert });
+  pull();
 }
 let pendingAnatomy = false, pendingLesion = false;
 const scheduleAnatomy = () => { pendingAnatomy = true; };
@@ -342,7 +335,7 @@ function controlsUi() {
 const LEAD_ORDER = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"] as const;
 function liveUi() {
   const r = ecg.rhythm(), st = ecg.st();
-  const hr = Math.round(r.hr), deg = rstate?.avDegree ?? 0;
+  const hr = Math.round(r.hr), deg = sim.rstate.avDegree;
   $("hr").textContent = hr ? hr + " bpm" : "…";
   $("hr").style.color = hr && (hr < 50 || hr > 110) ? "var(--bad)" : hr && (hr < 60 || hr > 100) ? "var(--warn)" : "var(--ink)";
   $("arate").textContent = r.atrial ? Math.round(r.atrial) + " bpm" : "…";
@@ -356,17 +349,23 @@ function liveUi() {
   const up = LEAD_ORDER.filter((l) => st[l] >= 1), down = LEAD_ORDER.filter((l) => st[l] <= -1);
   $("stup").textContent = up.length ? up.join(", ") : "none"; $("stup").style.color = up.length ? "var(--bad)" : "var(--ink)";
   $("stdown").textContent = down.length ? down.join(", ") : "none";
-  if (circ) {
-    const lb = beatHemo.last; // the latest beat's own pressure; falls back to the settled mean before the first beat
-    const pulse = lb ? lb.systolic - lb.diastolic : circ.systolic - circ.diastolic;
-    $("bp").textContent = lb ? `${Math.round(lb.systolic)}/${Math.round(lb.diastolic)} (${Math.round(mapSm)})`
-      : `${Math.round(mapSm + (2 * pulse) / 3)}/${Math.round(mapSm - pulse / 3)} (${Math.round(mapSm)})`;
+  {
+    const circ = sim.circ, mapSm = sim.map, lb = sim.history[sim.history.length - 1]; // the latest beat's own pressure
+    const roll = sim.state().rolling10s;
+    $("bp").textContent = lb ? `${Math.round(lb.sbp)}/${Math.round(lb.dbp)} (${Math.round(mapSm)})` : `— (${Math.round(mapSm)})`;
     $("bp").style.color = mapSm < CIRC.shockMap ? "var(--bad)" : mapSm < CIRC.hypotensionMap ? "var(--warn)" : "var(--ink)";
-    $("co").textContent = `${circ.cardiacOutput.toFixed(1)} L/min · SV ${Math.round(circ.strokeVolume)} ml`;
+    $("co").textContent = Number.isFinite(roll.hr) ? `${((roll.hr * roll.sv) / 1000).toFixed(1)} L/min · SV ${roll.sv} ml` : "…";
     const st8 = mapSm < CIRC.shockMap ? "Shock" : mapSm < CIRC.hypotensionMap ? "Hypotension" : "Stable";
     const why = circ.rvIschemia > 0.3 ? "RV involvement" : circ.lvIschemia > 0.35 ? "LV pump failure" : circ.hr < 50 ? "bradycardia" : "";
     $("circ").textContent = st8 + (st8 !== "Stable" && why ? `, ${why}` : "");
     $("circ").style.color = $("bp").style.color;
+    const last = sim.history[sim.history.length - 1];
+    $("tone").textContent = last ? `sympathetic ${last.sympathetic.toFixed(2)} · vagal ${last.vagal.toFixed(2)}` : "…";
+    const m = sim.metrics(60);
+    $("hrv").textContent = m.hrv ? `SDNN ${m.hrv.sdnnMs} · RMSSD ${m.hrv.rmssdMs} ms` : "…";
+    const g = sim.state().autonomic.baroreflexGainMsPerMmHg;
+    $("brs").textContent = g === null ? "…" : `${g} ms/mmHg` + (sim.n.autonomic.baroreflexGain < 0.2 ? " (cut)" : "");
+    drawBeatTrace($<HTMLCanvasElement>("beats-trace"), sim.history);
   }
   const burden = ischemicBurden(sites, sev) * 100;
   $("burden").textContent = burden.toFixed(0) + "%"; $("burden").style.color = burden > 10 ? "var(--bad)" : burden > 1 ? "var(--warn)" : "var(--ink)";
@@ -436,8 +435,7 @@ renderer.domElement.addEventListener("pointerup", (e) => {
 });
 
 // ---------------------------------------------------------------- loop
-const stream = new BeatStream(1), beatHemo = new BeatHemodynamics();
-const ecg = new EcgStrip($<HTMLCanvasElement>("ecg"), stream);
+const ecg = new EcgStrip($<HTMLCanvasElement>("ecg"), sim.stream);
 function resize() { const w = view.clientWidth, h = view.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 new ResizeObserver(resize).observe(view);
 // ---------------------------------------------------------------- lesion marker
@@ -478,19 +476,15 @@ function updateMarker(dt: number) {
 }
 
 let last = performance.now(), uiClock = 0, paintClock = 0;
-let rstate: RhythmState | null = null, circ: Circulation | null = null, mapClock = 0;
 function frame(now: number) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   flush();
-  for (const s of sites) sev[s.key] = stepSeverity(sev[s.key] ?? 0, target[s.key] ?? 0, dt * S.speed);
-  const burden = ischemicBurden(sites, sev), g = globalSeverity(burden);
-  rstate = rhythmState(sites, sev, g);
-  circ = circulation(sites, sev, rstate);
-  mapSm += (circ.map - mapSm) * (1 - Math.exp(-(dt * S.speed) / 2)); // arterial pressure settles over a couple of seconds
-  if ((mapClock += dt) > 0.5) { mapClock = 0; if (Math.abs(mapSm - solvedMap) > 2) resolveAtPressure(); }
-  ecg.step(dt, injuryVector(sites, sev), ST.tBoost * g, rstate);
+  sim.speed = S.speed; // the time-scale buttons speed up ischemia and ramps, not the heartbeat
+  sim.step(dt);
+  if (sim.analysis !== A) { A = sim.analysis; for (const b of built) b.blocked = blockedFlags(b.seg); shapeVessels(); } // perfusion pressure moved
+  const fx = sim.ecgInputs();
+  ecg.step(dt, fx.injury, fx.tBoost);
   ecg.draw();
-  for (const b of stream.drain(ecg.t)) beatHemo.onBeat(b, circ);
   if (S.flow) stepParticles(dt);
   if ((paintClock += dt) > 0.1) { paintClock = 0; paintMyocardium(); }
   if ((uiClock += dt) > 0.25) { uiClock = 0; liveUi(); }
@@ -498,10 +492,72 @@ function frame(now: number) {
   requestAnimationFrame(frame);
 }
 
+// ---------------------------------------------------------------- volume, drugs, reflex
+const PHYS = { bl: 0, vp: 0, bb: 0, at: 0, bg: 100, rr: 15 };
+function physUi() {
+  $("blv").textContent = PHYS.bl === 0 ? "normal" : PHYS.bl > 0 ? `${PHYS.bl}% lost` : `${-PHYS.bl}% overload`;
+  $("vpv").textContent = PHYS.vp === 0 ? "none" : PHYS.vp > 0 ? `pressor ${PHYS.vp}%` : `dilator ${-PHYS.vp}%`;
+  $("bbv").textContent = PHYS.bb + "%"; $("atv").textContent = PHYS.at + "%";
+  $("bgv").textContent = PHYS.bg === 100 ? "normal" : PHYS.bg === 0 ? "cut" : (PHYS.bg / 100).toFixed(1) + "×";
+  $("rrv").textContent = PHYS.rr + "/min";
+  for (const k of Object.keys(PHYS) as (keyof typeof PHYS)[]) $<HTMLInputElement>(k).value = String(PHYS[k]);
+}
+function applyPhys() {
+  sim.apply({
+    bloodLoss: PHYS.bl / 100, drugs: { vasopressor: PHYS.vp / 100, betaBlocker: PHYS.bb / 100, atropine: PHYS.at / 100 },
+    autonomic: { baroreflexGain: PHYS.bg / 100, respRate: PHYS.rr },
+  });
+  physUi();
+}
+for (const k of Object.keys(PHYS) as (keyof typeof PHYS)[]) range(k, (v) => { PHYS[k] = v; applyPhys(); });
+const setPhys = (p: Partial<typeof PHYS>) => { Object.assign(PHYS, p); applyPhys(); };
+on("r_bleed", () => setPhys({ bl: 20 })); on("r_pressor", () => setPhys({ vp: 80 })); on("r_cut", () => setPhys({ bg: 0 }));
+on("r_reset", () => setPhys({ bl: 0, vp: 0, bb: 0, at: 0, bg: 100, rr: 15 }));
+
+// ---------------------------------------------------------------- scenarios and AI hand-off
+/** Replace the patient with a scenario and bring every control into line with it. */
+function loadScenario(sc: Scenario) {
+  sim.reset(sc, { settled: true });
+  const n = sim.n, first = n.lesionSpecs[0];
+  Object.assign(V, n.anatomy);
+  extraLesions = n.lesionSpecs.slice(1);
+  if (first) { S.lesionSeg = first.artery; S.occ = !!first.occluded; S.ds = first.occluded ? 0 : first.stenosis; S.pos = first.position; } else { S.ds = 0; S.occ = false; }
+  S.exert = n.exertion;
+  Object.assign(PHYS, { bl: Math.round(n.bloodLoss * 100), vp: Math.round(n.drugs.vasopressor * 100), bb: Math.round(n.drugs.betaBlocker * 100), at: Math.round(n.drugs.atropine * 100), bg: Math.round(n.autonomic.baroreflexGain * 100), rr: Math.round(n.autonomic.respRate) });
+  $<HTMLInputElement>("pos").value = String(S.pos * 100); $<HTMLInputElement>("ds").value = String(S.ds * 100);
+  physUi(); syncSelects(); pull();
+  sim.warmup(20); // let the baroreflex settle
+  ecg.stream = sim.stream; ecg.reset(); ecg.t = sim.t;
+  scheduleAnatomy();
+  return sim.warnings;
+}
+const appLink = () => `${location.origin}${location.pathname}#s=${encodeScenario(sim.scenario())}`;
+const say = (m: string) => { $("ai_msg").textContent = m; };
+async function copy(text: string, ok: string) {
+  try { await navigator.clipboard.writeText(text); say(ok); } catch { window.prompt("Copy this:", text); say("Clipboard unavailable; text shown in a dialog."); }
+}
+on("ai_copy", () => copy(describeForLlm(sim, { link: appLink() }), "Copied. Paste it into Claude or ChatGPT and ask for an explanation or a change."));
+on("ai_link", () => copy(appLink(), "Link copied: it opens this exact patient."));
+on("ai_load", () => {
+  const txt = window.prompt("Paste a Scenario JSON (or a CoroSim link):");
+  if (!txt) return;
+  try {
+    const m = txt.match(/#s=([\w-]+)/), body = txt.match(/```json\s*([\s\S]*?)```/);
+    const warnings = loadScenario(m ? decodeScenario(m[1]) : JSON.parse(body ? body[1] : txt));
+    say(warnings.length ? "Loaded with changes: " + warnings.join("; ") : "Loaded.");
+  } catch (e) { say("Could not read that scenario: " + (e as Error).message); }
+});
+
 // Browsers restore form values on reload; force every control to match the model's starting state.
 $<HTMLInputElement>("pos").value = String(S.pos * 100);
 $<HTMLInputElement>("ds").value = String(S.ds * 100);
 $<HTMLInputElement>("ex").value = String(S.exag);
-resize(); setView("vAnt"); syncSelects(); rebuildAnatomy(); applyHeartView(); controlsUi(); liveUi();
+physUi(); sim.warmup(20); ecg.t = sim.t; // start with the baroreflex already settled
+resize(); setView("vAnt"); syncSelects(); rebuildAnatomy(); applyHeartView(); controlsUi();
+const shared = location.hash.match(/^#s=([\w-]+)/);
+if (shared) { try { loadScenario(decodeScenario(shared[1])); rebuildAnatomy(); controlsUi(); } catch { /* ignore a malformed link */ } }
+liveUi();
+/** Handle for scripts and browser-driving assistants: `corosim.sim.apply({...})`, `corosim.load(scenario)`, `corosim.describe()`. */
+(window as unknown as { corosim: object }).corosim = { sim, load: loadScenario, describe: () => describeForLlm(sim, { link: appLink() }), refresh: () => { pull(); liveUi(); } };
 requestAnimationFrame(frame);
 void LEADS;

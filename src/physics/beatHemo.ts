@@ -27,6 +27,13 @@ export interface BeatHemo {
   pvc: boolean; atrialKick: boolean;
 }
 
+/** Per-beat multipliers from the autonomic loop, drugs and volume status. All default to 1. */
+export interface BeatModifiers {
+  contractility?: number; // stroke volume (sympathetic inotropy, beta blockade, noise)
+  resistance?: number; // systemic resistance (sympathetic vasoconstriction, vasopressor, noise)
+  preload?: number; // filling (blood volume, venous tone, breathing)
+}
+
 export class BeatHemodynamics {
   private lastT = NaN;
   private peak = NaN; // systolic pressure of the previous beat, mmHg
@@ -35,16 +42,16 @@ export class BeatHemodynamics {
 
   reset() { this.lastT = NaN; this.peak = NaN; this.afterPvc = false; this.last = null; }
 
-  onBeat(b: Beat, c: Circulation): BeatHemo {
+  onBeat(b: Beat, c: Circulation, fx: BeatModifiers = {}): BeatHemo {
     const meanInterval = 60 / c.hr;
     const interval = Number.isNaN(this.lastT) ? meanInterval : Math.max(BEAT.minInterval, b.t - this.lastT);
     const fill = Math.min(CIRC.fillingMax, Math.max(CIRC.fillingMin, Math.pow(interval / meanInterval, CIRC.fillingExponent)));
     const atrialKick = !b.noP && !b.pvc;
-    let sv = c.strokeVolume * fill * (atrialKick ? 1 : 1 - BEAT.atrialKickLoss);
+    let sv = c.strokeVolume * fill * (fx.preload ?? 1) * (fx.contractility ?? 1) * (atrialKick ? 1 : 1 - BEAT.atrialKickLoss);
     if (b.pvc) sv *= BEAT.pvcContractility;
     else if (this.afterPvc) sv *= 1 + BEAT.potentiation;
     // Windkessel: resistance from the settled mean state, decay over the preceding interval, then the stroke.
-    const R = c.map / ((c.cardiacOutput * 1000) / 60); // mmHg·s/ml
+    const R = (fx.resistance ?? 1) * (c.map / ((c.cardiacOutput * 1000) / 60)); // mmHg·s/ml
     const tau = R * CIRC.arterialCompliance;
     const diastolic = Number.isNaN(this.peak) ? c.diastolic : this.peak * Math.exp(-interval / tau);
     const systolic = diastolic + sv / CIRC.arterialCompliance;

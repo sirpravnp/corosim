@@ -6,3 +6,4 @@ publish/
 .env
 .env.*
 *.log
+dist-mcp/

@@ -40,6 +40,11 @@
     </figure>
 
     <figure>
+      <canvas id="beats-trace"></canvas>
+      <figcaption><b>Figure 3.</b> Every beat is different. Pressure of each beat follows from its own filling interval; the baroreceptors sense it, and a fast vagal and a slow sympathetic arm change the next intervals, contractility and resistance. Respiration gates vagal tone, which gives the ~4-beat swing (respiratory sinus arrhythmia); the slower waves are the baroreflex responding to its own delayed correction, with noise in autonomic tone adding to both.</figcaption>
+    </figure>
+
+    <figure>
       <div id="beds"></div>
       <figcaption><b>Table 1.</b> Perfusion of each myocardial bed (supply divided by demand) and its current ischemia.</figcaption>
     </figure>
@@ -52,6 +57,9 @@
         <tr><td>Circulation</td><td id="circ"></td></tr>
         <tr><td>Blood pressure (MAP)</td><td id="bp"></td></tr>
         <tr><td>Cardiac output</td><td id="co"></td></tr>
+        <tr><td>Autonomic tone</td><td id="tone"></td></tr>
+        <tr><td>HRV, last 60 s</td><td id="hrv"></td></tr>
+        <tr><td>Baroreflex gain (vagal)</td><td id="brs"></td></tr>
         <tr><td>Rhythm</td><td id="rhythm"></td></tr>
         <tr><td>Ventricular rate</td><td id="hr"></td></tr>
         <tr><td>Atrial rate</td><td id="arate"></td></tr>
@@ -83,6 +91,40 @@
         <button id="s6">6×</button>
       </div>
       <p class="note">Ischemia develops over about 20 s after occlusion and resolves with a time constant of about 8 s after reperfusion. Rate and AV conduction follow the territory: anterior ischemia speeds the heart; inferior ischemia, and loss of the SA- or AV-node artery, slow it and block conduction. Lost contraction and slow rates lower blood pressure, and lower pressure then perfuses every coronary bed less.</p>
+    </section>
+
+    <section>
+      <h2>Volume, drugs and reflex</h2>
+      <label for="bl">Blood loss <span class="val" id="blv"></span></label>
+      <input id="bl" type="range" min="-20" max="50" value="0">
+      <label for="vp">Vasopressor (+) / vasodilator (−) <span class="val" id="vpv"></span></label>
+      <input id="vp" type="range" min="-100" max="100" value="0">
+      <label for="bb">Beta blocker <span class="val" id="bbv"></span></label>
+      <input id="bb" type="range" min="0" max="100" value="0">
+      <label for="at">Atropine (vagal block) <span class="val" id="atv"></span></label>
+      <input id="at" type="range" min="0" max="100" value="0">
+      <label for="bg">Baroreflex gain <span class="val" id="bgv"></span></label>
+      <input id="bg" type="range" min="0" max="300" value="100">
+      <label for="rr">Breathing rate <span class="val" id="rrv"></span></label>
+      <input id="rr" type="range" min="6" max="30" value="15">
+      <div class="row">
+        <button id="r_bleed">Bleed 20%</button>
+        <button id="r_pressor">Pressor</button>
+        <button id="r_cut">Cut reflex</button>
+        <button id="r_reset">Reset</button>
+      </div>
+      <p class="note">Drugs and volume ramp in over about 10 s. The vagal arm answers within a beat or two, the sympathetic arm over several seconds. Try a pressor with and without the reflex, or turn the gain above 2 to make the loop oscillate (Mayer waves).</p>
+    </section>
+
+    <section>
+      <h2>Ask an AI</h2>
+      <p class="note" style="margin-top:0">Copy this patient, with the model's own causal account of it, into Claude or ChatGPT. Or connect the CoroSim MCP server to let an assistant build and run patients itself.</p>
+      <div class="row">
+        <button id="ai_copy" class="primary">Copy for AI</button>
+        <button id="ai_link">Copy link</button>
+        <button id="ai_load">Paste scenario</button>
+      </div>
+      <p class="note" id="ai_msg"></p>
     </section>
 
     <section>

@@ -74,7 +74,8 @@ figcaption b { color: var(--ink); font-weight: 700; letter-spacing: 0.06em; text
 #bar { height: 8px; border-radius: 0; margin-bottom: 3px; }
 .lg { display: flex; justify-content: space-between; gap: 6px; }
 #pick { display: none; position: absolute; right: 10px; top: 10px; max-width: 250px; padding: 8px 10px; font: 12px/1.55 var(--font-data); color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-left: 4px solid var(--accent); }
-#ecg { display: block; width: 100%; height: 300px; border: 1px solid #e3b3ad; }
+#ecg, #beats-trace { display: block; width: 100%; height: 300px; border: 1px solid #e3b3ad; }
+#beats-trace { height: 210px; }
 
 /* ST map under the ECG: one cell per lead */
 .stmap { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); margin-top: 8px; border: 1px solid var(--rule); }

@@ -1,6 +1,5 @@
 import { LEADS, LeadName, Vec3 } from "./config/ecg";
 import { Beat, sampleLeadsVec, stLevelVec } from "./physics/ecg";
-import { RhythmState } from "./physics/rhythm";
 import { BeatStream } from "./physics/beatStream";
 
 const FS = 250, WIN = 2.5, N = Math.round(FS * WIN);
@@ -9,8 +8,8 @@ const SANS = "-apple-system, Helvetica, Arial, sans-serif";
 
 /**
  * Sweeping 12-lead ECG on standard paper (25 mm/s, 10 mm/mV).
- * Each frame the caller supplies the current injury vector, T-wave boost and rhythm state; a stateful
- * pacemaker/AV-node model emits P waves and QRS complexes a little ahead of the sweep.
+ * Each frame the caller supplies the current injury vector and T-wave boost; the P waves and QRS complexes
+ * come from the simulation's shared beat stream, a little ahead of the sweep.
  */
 export class EcgStrip {
   private ring = Object.fromEntries(LEADS.map((l) => [l, new Float32Array(N).fill(NaN)])) as Record<LeadName, Float32Array>;
@@ -20,14 +19,16 @@ export class EcgStrip {
   private injury: Vec3 = [0, 0, 0];
   private tBoost = 0;
 
-  constructor(private canvas: HTMLCanvasElement, private stream: BeatStream = new BeatStream(1)) {}
+  constructor(private canvas: HTMLCanvasElement, public stream: BeatStream = new BeatStream(1)) {}
+
+  /** Blank the paper and restart the clock (the simulation was reset). */
+  reset() { for (const l of LEADS) this.ring[l].fill(NaN); this.acc = 0; this.idx = 0; this.t = 0; }
 
   private get beats(): Beat[] { return this.stream.beats; }
 
-  step(dt: number, injury: Vec3, tBoost: number, state: RhythmState) {
+  /** Draws from beats that the simulation's BeatStream already holds; the simulation generates and prunes them. */
+  step(dt: number, injury: Vec3, tBoost: number) {
     this.injury = injury; this.tBoost = tBoost;
-    this.stream.extend(this.t, state);
-    this.stream.prune(this.t);
     this.acc += dt * FS;
     const n = Math.floor(this.acc);
     this.acc -= n;
