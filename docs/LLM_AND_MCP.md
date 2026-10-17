@@ -11,7 +11,7 @@ connection, served by the same server.
 
 ## Live: connect your AI to the page you are looking at
 
-1. In CoroSim, open **Connect your AI → Open a connection**. The page shows a connector URL.
+1. In CoroSim, click **Connect AI** at the top of the page, then **Open a connection**. The panel shows a connector URL. The button's dot turns green once an AI is on the line.
 2. Add that URL to your assistant once:
    - **Claude** (claude.ai or Desktop): Settings → Connectors → Add custom connector, paste the URL.
    - **ChatGPT**: Settings → Apps & Connectors → Advanced → Developer mode, then Create, paste the URL.
@@ -78,6 +78,32 @@ live rooms at most, 1 MB request bodies, a 20 s answer deadline for pages, and p
 tab's patient while the line is open. Nothing personal is stored or sent; the patient is synthetic. Rotate the URL
 with **New URL**. If you need per-user access control, put OAuth in front of `/mcp` (the MCP authorization spec) and
 keep `/live` behind the same origin check.
+
+## Hosting mcp.corosim.com
+
+The connector URL has to be public **https** and always up, because Claude's and ChatGPT's servers are what call it.
+It also needs one long-running process that holds WebSockets, so serverless functions and hosts that sleep when idle
+do not fit. The repository is set up for **Fly.io** (`fly.toml`, `.github/workflows/mcp.yml`): one always-on
+`shared-cpu-1x` machine, a few dollars a month at Fly's current prices.
+
+1. Install flyctl (`brew install flyctl`) and sign in: `fly auth signup` or `fly auth login`.
+2. From the repository: `fly launch --no-deploy --copy-config`. If the name `corosim-mcp` is taken, pick another and
+   it is written to `fly.toml`.
+3. `fly deploy --ha=false`, then check `https://<app>.fly.dev/health`.
+4. `fly certs add mcp.corosim.com`. It prints the DNS record to add: in the domain's DNS settings (Squarespace
+   Domains), add a **CNAME** with host `mcp` pointing to `<app>.fly.dev`. When `fly certs show mcp.corosim.com` says the
+   certificate is issued, `https://mcp.corosim.com/health` answers.
+5. Automatic deploys: `fly tokens create deploy`, and save the result as the repository secret `FLY_API_TOKEN`
+   (Settings → Secrets and variables → Actions). After that, every push to `main` that touches the server tests and
+   deploys it. Do this after step 4: the workflow ends by checking `https://mcp.corosim.com/health`.
+
+Keep it to **one machine**: rooms and sessions live in memory, so a page and the AI talking to it must reach the same
+process. Scale up if needed, not out. A restart drops open lines; pages reconnect by themselves, and AI clients start
+a new session. The site needs no change: it looks for `https://mcp.corosim.com` by default.
+
+Other hosts work with the same `Dockerfile` (Railway, Render's paid tier, Google Cloud Run with min-instances 1 and
+session affinity). Cloudflare Workers with Durable Objects would suit per-room state well, but needs the server
+rewritten for that runtime.
 
 ## REST and OpenAPI
 

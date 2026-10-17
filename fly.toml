@@ -1,0 +1,40 @@
+# CoroSim MCP server on Fly.io, served as https://mcp.corosim.com
+# First time: see docs/LLM_AND_MCP.md, "Hosting mcp.corosim.com". After that: fly deploy --ha=false
+#
+# One machine, always on: live rooms and MCP sessions are held in memory, so a second machine would split
+# a page from the AI talking to it. Scale up (more CPU/memory), not out.
+
+app = "corosim-mcp"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8787"
+  HOST = "0.0.0.0"
+  COROSIM_ALLOWED_ORIGINS = "https://corosim.com,https://www.corosim.com"
+  COROSIM_APP_URL = "https://corosim.com"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "off"   # a stopped machine would drop every open page's line
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 800
+    hard_limit = 1000
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

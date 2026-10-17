@@ -14,10 +14,33 @@
 <body>
 <header class="masthead">
   <h1><img class="logo" src="/logo.png" alt="" width="56" height="56">CoroSim <span class="kind" id="kind">3D Coronary Vasculature Simulator</span></h1>
-  <nav class="modes" aria-label="Version">
-    <a id="modeSim" href="./" class="on">Simulator</a>
-    <a id="modeGame" href="game/">Find the culprit</a>
-  </nav>
+  <div class="mast-right">
+    <nav class="modes" aria-label="Version">
+      <a id="modeSim" href="./" class="on">Simulator</a>
+      <a id="modeGame" href="game/">Find the culprit</a>
+    </nav>
+    <button id="aibtn" class="aibtn" aria-expanded="false" aria-controls="aipanel"><i class="dot"></i><span id="ln_sum">Connect AI</span></button>
+  </div>
+  <section id="aipanel" class="aipanel" hidden aria-label="Connect your AI">
+    <div class="ai-head"><h2>Connect your AI</h2><button id="ai_close" class="ai-x" aria-label="Close">×</button></div>
+    <p class="note" style="margin-top:0">Give Claude, ChatGPT or any MCP client a live line to this patient. It reads the monitor, changes the patient and runs the clock, and you watch it happen here.</p>
+    <div class="row">
+      <button id="ln_open" class="primary">Open a connection</button>
+      <button id="ln_close" hidden>Disconnect</button>
+      <button id="ln_new" hidden>New URL</button>
+    </div>
+    <div id="ln_live" hidden>
+      <label for="ln_url">Connector URL</label>
+      <div class="ln-url"><input id="ln_url" readonly spellcheck="false"><button id="ln_copy">Copy</button></div>
+      <p class="ln-status" id="ln_status"></p>
+      <ul class="note ln-how">
+        <li><b>Claude</b>: Settings → Connectors → Add custom connector, paste the URL.</li>
+        <li><b>ChatGPT</b>: Settings → Apps &amp; Connectors → Advanced → Developer mode, then Create, paste the URL.</li>
+        <li><b>Claude Code</b>: <code id="ln_cli"></code></li>
+      </ul>
+      <p class="note">The URL stays the same on this browser, so you add the connector once. Anyone with it can drive this tab's patient while the connection is open; New URL retires it.</p>
+    </div>
+  </section>
 </header>
 
 <main>
@@ -199,26 +222,6 @@
       <p class="note">Both ramp in over about 10 s. What follows is the patient's own response: watch the rate, the pressure and the pulse pressure.</p>
     </details>
 
-    <details class="fold" id="connect">
-      <summary><h2>Connect your AI</h2><span class="sum" id="ln_sum">not connected</span></summary>
-      <p class="note" style="margin-top:0">Give Claude, ChatGPT or any MCP client a live line to this patient. It reads the monitor, changes the patient and runs the clock, and you watch it happen here.</p>
-      <div class="row">
-        <button id="ln_open" class="primary">Open a connection</button>
-        <button id="ln_close" hidden>Disconnect</button>
-        <button id="ln_new" hidden>New URL</button>
-      </div>
-      <div id="ln_live" hidden>
-        <label for="ln_url">Connector URL</label>
-        <div class="ln-url"><input id="ln_url" readonly spellcheck="false"><button id="ln_copy">Copy</button></div>
-        <p class="ln-status" id="ln_status"></p>
-        <ul class="note ln-how">
-          <li><b>Claude</b>: Settings → Connectors → Add custom connector, paste the URL.</li>
-          <li><b>ChatGPT</b>: Settings → Apps &amp; Connectors → Advanced → Developer mode, then Create, paste the URL.</li>
-          <li><b>Claude Code</b>: <code id="ln_cli"></code></li>
-        </ul>
-        <p class="note">The URL stays the same on this browser, so you add the connector once. Anyone with it can drive this tab's patient while the connection is open; New URL retires it.</p>
-      </div>
-    </details>
 
     <details class="fold" id="anatomy">
       <summary><h2>Anatomy</h2><span class="sum" id="anatomysum"></span></summary>

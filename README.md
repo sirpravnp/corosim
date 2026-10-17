@@ -113,8 +113,8 @@ Case drawing, scoring and the debrief live in `src/game.ts`; the display logic i
 ## Connecting an AI
 
 CoroSim is a teaching layer beside image-based solvers such as SimVascular, not a competitor to them. An assistant
-connects to it over MCP and works on the same patient you are watching: in the simulator, **Connect your AI → Open a
-connection** gives a connector URL to add to Claude (Settings → Connectors → Add custom connector), ChatGPT (developer
+connects to it over MCP and works on the same patient you are watching: in the simulator, the **Connect AI** button at the top →
+**Open a connection** gives a connector URL to add to Claude (Settings → Connectors → Add custom connector), ChatGPT (developer
 mode connectors) or Claude Code (`claude mcp add --transport http corosim <url>`). Its tool calls then run on the page,
 and the controls follow. Without a page, `/mcp` gives each AI session its own patient. Details, hosting and the
 security model: [docs/LLM_AND_MCP.md](docs/LLM_AND_MCP.md).
@@ -123,6 +123,8 @@ security model: [docs/LLM_AND_MCP.md](docs/LLM_AND_MCP.md).
 npm run mcp:http        # the server, on 127.0.0.1:8787 (the dev page connects here)
 npm run build:mcp       # one-file server for hosting; or: docker build -t corosim-mcp .
 ```
+
+The public server is meant to run at `https://mcp.corosim.com` (Fly.io config included); setup steps are in the doc above.
 
 ## Deploy
 

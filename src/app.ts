@@ -943,6 +943,7 @@ function applyMode() {
   inGame = game;
   G.target = parseDay(new URLSearchParams(location.search).get("day"), dayKey()) ?? dayKey();
   $("modeSim").classList.toggle("on", !game); $("modeGame").classList.toggle("on", game);
+  $("aibtn").hidden = game; // the game page has no AI line
   $("kind").textContent = game ? "Find the culprit · a game on the simulator" : "3D Coronary Vasculature Simulator";
   document.title = game ? "CoroSim · Find the culprit" : "CoroSim";
   gameUi();
@@ -1010,7 +1011,7 @@ function runForAi(name: string, args: Record<string, unknown>) {
   if (sim.stream !== stream || sim.t !== t0 || JSON.stringify(sim.scenario()) !== sig) adoptSimState(sim.stream !== stream);
   return result;
 }
-const LIVE_LABEL: Record<LiveStatus["state"], string> = { off: "not connected", connecting: "connecting…", open: "open", retrying: "reconnecting…", replaced: "taken over by another tab" };
+const LIVE_LABEL: Record<LiveStatus["state"], string> = { off: "Connect AI", connecting: "Connecting…", open: "AI line open", retrying: "Reconnecting…", replaced: "In another tab" };
 function linkUi(st: LiveStatus) {
   const on = st.state !== "off" && st.state !== "replaced";
   $("ln_open").hidden = on; $("ln_close").hidden = !on; $("ln_new").hidden = false; $("ln_live").hidden = false;
@@ -1023,8 +1024,18 @@ function linkUi(st: LiveStatus) {
     : st.state === "off" ? ["Closed. The URL works again when you open the connection.", ""]
     : st.state === "replaced" ? ["This patient's line moved to another tab.", "bad"] : [st.detail ?? "Connecting to the CoroSim server…", "warn"];
   $("ln_status").textContent = text; $("ln_status").className = "ln-status " + tone;
-  $("ln_sum").textContent = st.state === "open" && st.clients ? `${who} connected` : LIVE_LABEL[st.state];
+  // the masthead button: what the line is doing, at a glance
+  const connected = st.state === "open" && st.clients > 0;
+  $("ln_sum").textContent = connected ? (st.lastClient ? `${who} connected` : "AI connected") : st.state === "open" ? "AI line open" : st.state === "off" ? "Connect AI" : LIVE_LABEL[st.state];
+  const btn = $("aibtn");
+  btn.classList.toggle("live", connected); btn.classList.toggle("wait", st.state !== "off" && !connected && st.state !== "replaced"); btn.classList.toggle("bad", st.state === "replaced");
 }
+/** The panel under the masthead button: opens on click, closes on ×, Escape or a click elsewhere. */
+function aiPanel(open: boolean) { $("aipanel").hidden = !open; $("aibtn").setAttribute("aria-expanded", String(open)); }
+on("aibtn", () => aiPanel($("aipanel").hidden));
+on("ai_close", () => aiPanel(false));
+addEventListener("keydown", (e) => { if (e.key === "Escape") aiPanel(false); });
+addEventListener("pointerdown", (e) => { const t = e.target as Node; if (!$("aipanel").hidden && !$("aipanel").contains(t) && !$("aibtn").contains(t)) aiPanel(false); });
 const live = new LiveLink(runForAi, linkUi, "0.2.0");
 on("ln_open", () => live.open());
 on("ln_close", () => live.close());

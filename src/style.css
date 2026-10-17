@@ -55,7 +55,7 @@ body {
 
 /* Masthead: the title, and the switch between the two versions */
 .masthead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 12px 24px; padding-block: 28px 18px; }
-.masthead { border-bottom: 1px solid var(--rule); }
+.masthead { position: relative; border-bottom: 1px solid var(--rule); }
 .modes { display: flex; gap: 6px; }
 .modes a { padding: 8px 11px; font: 700 12px/1 var(--font-ui); letter-spacing: 0.04em; text-transform: uppercase; text-decoration: none; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); }
 .modes a:hover { background: var(--ink); border-color: var(--ink); color: var(--bg); }
@@ -170,7 +170,6 @@ body[data-game="play"] .q-hidden-note { display: block; }
 body.game #lesionctl, body[data-game="play"] #bedsfig, body[data-game="play"] tr.q-hide { display: none; }
 body.game #lesionsec .note:not(.q-hidden-note), body[data-game="treat"] #lesionsec, body[data-game="reveal"] #lesionsec { display: none; }
 body.game #anatomy, body.game #patient, body.game #volume { opacity: 0.45; pointer-events: none; }
-body.game #connect { display: none; } /* an AI on the line could read the lesion */
 body[data-game="play"] #manage, body.gated #manage { display: none; }
 body[data-game="treat"] #manage .tab[data-tab="assess"], body.game #m_reset { display: none; } /* the assessment is the answer */
 
@@ -262,3 +261,19 @@ details.fold > :not(summary):last-child { margin-bottom: 16px; }
 .ln-status { margin: 10px 0 0; font: 600 12px/1.45 var(--font-data); color: var(--muted); }
 .ln-status.ok { color: var(--ok); } .ln-status.warn { color: var(--warn); } .ln-status.bad { color: var(--bad); }
 .ln-how { padding-left: 16px; } .ln-how li { margin: 3px 0; } .ln-how code { font: 11px var(--font-data); word-break: break-all; }
+
+/* Connect your AI: the masthead button and its panel */
+.mast-right { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.aibtn { display: inline-flex; align-items: center; gap: 7px; padding: 8px 11px; font: 700 12px/1 var(--font-ui); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); cursor: pointer; }
+.aibtn:hover, .aibtn[aria-expanded="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.aibtn .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.aibtn.wait .dot { background: var(--warn); } .aibtn.live .dot { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 30%, transparent); }
+.aibtn.bad .dot { background: var(--bad); }
+.aipanel { position: absolute; z-index: 40; right: 0; top: calc(100% + 8px); width: min(420px, calc(100vw - 32px)); padding: 14px 14px 16px; background: var(--panel); border: 1px solid var(--ink); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
+.aipanel[hidden] { display: none; }
+.ai-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.ai-head h2 { margin: 0; font: 700 11px/1 var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink); }
+.ai-x { padding: 2px 8px; font: 700 18px/1 var(--font-ui); color: var(--muted); background: none; border: 0; cursor: pointer; }
+.ai-x:hover { color: var(--ink); }
+body.game .aibtn, body.game .aipanel { display: none; } /* an AI on the line could read the lesion */
+.aibtn[hidden] { display: none; }
