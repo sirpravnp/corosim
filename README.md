@@ -27,13 +27,13 @@ npm run build      # static site in dist/
 | Rhythm | Sympathetic/vagal balance, SA- and AV-node arteries, Wenckebach, complete heart block; atrial fibrillation as an existing rhythm | `src/physics/rhythm.ts` |
 | Circulation | Cardiac output × vascular resistance; pressure feeds back on coronary perfusion | `src/physics/circulation.ts` |
 | Beat hemodynamics | Every ventricular beat gets its own filling, stroke volume and Windkessel pressure; the ECG and the pressure trace show the same beats | `src/physics/beatHemo.ts`, `beatStream.ts` |
-| Autonomic loop | Baroreceptors → fast vagal and slow sympathetic arms → rate, contractility, resistance; breathing (RSA) and Ornstein–Uhlenbeck noise make every beat different; CNS-ischemic and volume reflexes | `src/physics/autonomic.ts` |
+| Autonomic loop | Baroreceptors → fast vagal and slow sympathetic arms → rate, contractility, resistance; breathing (RSA) and Ornstein–Uhlenbeck noise make every beat different; CNS-ischemic and volume reflexes. Not displayed: it shows up only as the rate and pressure | `src/physics/autonomic.ts` |
 | Support | Fluids, norepinephrine, dobutamine, nitroglycerin, atropine, pacing, balloon pump, Impella: each changes the circulation, rhythm and myocardial oxygen demand | `src/physics/support.ts` |
 | Infarct | Muscle that stays ischemic dies at a rate rising steeply with severity (τ 150 clinical min at full ischemia); reperfusion stops it but does not undo it | `src/physics/infarct.ts` |
 | Revascularization | Primary PCI, fibrinolytic (55% success), CABG (a graft that feeds the vessel beyond the lesion at aortic pressure less its own loss); each takes clinical minutes to arrive | `src/physics/revasc.ts`, `network.ts` |
 | Advice | Reads the live state and lists what is wrong and what guidelines would do next, in order | `src/physics/advice.ts` |
 | Simulation core | The whole model with no DOM, seeded and reproducible; the app, the MCP server and the tests all step this one object | `src/sim/` |
-| LLM interface | MCP server (stdio and HTTP), OpenAPI, OpenAI/Anthropic tool schemas, paste-in blocks and `#s=` share links | `src/mcp/`, `src/sim/llm.ts` |
+| AI connection | MCP server (Streamable HTTP and stdio) with live rooms that run tools on the user's open page, REST/OpenAPI, `#s=` share links | `src/mcp/`, `src/live.ts` |
 
 All constants live in `src/config/`, tagged as literature-backed or assumed.
 
@@ -110,16 +110,19 @@ and "Share your score" copies a spoiler-free line (the case number, the score, h
 
 Case drawing, scoring and the debrief live in `src/game.ts`; the display logic is in `src/app.ts`.
 
-## Working with Claude and ChatGPT
+## Connecting an AI
 
-CoroSim is a teaching layer beside image-based solvers such as SimVascular, not a competitor to them: it makes the interaction of a lesion, volume, drugs, support and the autonomic reflexes visible beat by beat, and hands the same state to an LLM to explain or change. See [docs/LLM_AND_MCP.md](docs/LLM_AND_MCP.md).
+CoroSim is a teaching layer beside image-based solvers such as SimVascular, not a competitor to them. An assistant
+connects to it over MCP and works on the same patient you are watching: in the simulator, **Connect your AI → Open a
+connection** gives a connector URL to add to Claude (Settings → Connectors → Add custom connector), ChatGPT (developer
+mode connectors) or Claude Code (`claude mcp add --transport http corosim <url>`). Its tool calls then run on the page,
+and the controls follow. Without a page, `/mcp` gives each AI session its own patient. Details, hosting and the
+security model: [docs/LLM_AND_MCP.md](docs/LLM_AND_MCP.md).
 
 ```bash
-npm run build:mcp && claude mcp add corosim -- node "$PWD/dist-mcp/corosim-mcp.mjs"   # Claude Code (stdio)
-npm run mcp:http                                                                      # MCP over HTTP + REST + /openapi.json on 127.0.0.1:8787
+npm run mcp:http        # the server, on 127.0.0.1:8787 (the dev page connects here)
+npm run build:mcp       # one-file server for hosting; or: docker build -t corosim-mcp .
 ```
-
-In the simulator, **Ask an AI → Copy for AI** puts the patient, the numbers and the model's own causal account of them on the clipboard for any assistant; **Copy link** gives a URL that opens the same patient. Both are hidden during a game case.
 
 ## Deploy
 

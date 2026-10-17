@@ -2,7 +2,7 @@ import { Simulation } from "../sim/simulation";
 import { Scenario, normalizeScenario } from "../sim/scenario";
 import { BeatRecord, computeMetrics } from "../sim/metrics";
 import { explain } from "../sim/explain";
-import { SCENARIO_REFERENCE, describeForLlm, encodeScenario } from "../sim/llm";
+import { SCENARIO_REFERENCE, encodeScenario } from "../sim/llm";
 import { buildTree } from "../anatomy/tree";
 
 /**
@@ -186,11 +186,10 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "corosim_open_link", title: "Link to open this patient in the web app", readOnly: true,
-    description: "Return a URL that opens the current scenario in the CoroSim 3D web app (anatomy, ECG strip and beat-to-beat trace), and a paste-ready text block that gives any chat assistant the same state.",
+    description: "Return a URL that opens the current patient in the CoroSim 3D web app (anatomy, 12-lead ECG, monitor), for the user to look at or share.",
     inputSchema: { type: "object", properties: {} },
     run({ sim, appUrl }) {
-      const link = `${appUrl.replace(/\/$/, "")}/#s=${encodeScenario(sim.scenario())}`;
-      return { link, pasteBlock: describeForLlm(sim, { link }) };
+      return { link: `${appUrl.replace(/\/$/, "")}/#s=${encodeScenario(sim.scenario())}` };
     },
   },
 ];

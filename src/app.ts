@@ -18,8 +18,9 @@ import { Pending, Treated, untreated, order, applyProcedure } from "./physics/re
 import { assess, Situation } from "./physics/advice";
 import { Simulation } from "./sim/simulation";
 import { Scenario, LesionSpec } from "./sim/scenario";
-import { describeForLlm, encodeScenario, decodeScenario } from "./sim/llm";
-import { drawBeatTrace } from "./beatTrace";
+import { encodeScenario, decodeScenario } from "./sim/llm";
+import { TOOLS } from "./mcp/tools";
+import { LiveLink, LiveStatus } from "./live";
 import { Case, MAX_SCORE, POINTS, Point, TREAT, TreatRecord, TreatScore, dailyCase, dayKey, dayNumber, explain, explainTreatment, fullFindings, judge, keyOfDay, muscleSaved, parseDay, rvInvolvement, score, streaks, treatScore } from "./game";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -369,7 +370,7 @@ function controlsUi() {
   const DOM = { right: "Right-dominant", co: "Co-dominant", left: "Left-dominant" }, LMP = { bifurcation: "bifurcation", trifurcation: "ramus", absent: "absent left main" }, LADC = { normal: "LAD to apex", short: "short LAD", wrap: "wrapping LAD" };
   $("anatomysum").textContent = `${DOM[V.dominance]} · ${LMP[V.lm]} · ${LADC[V.ladCourse]} · SA node from ${V.saNodeFrom}`;
   const MODE = { real: "Anatomic", anat: "Territory", pressure: "Pressure", velocity: "Velocity", wss: "Wall shear" };
-  $("reflexsum").textContent = reflexSummary();
+  $("volumesum").textContent = volumeSummary();
   $("displaysum").textContent = `${MODE[S.mode]} · ${S.heart === "solid" ? "solid" : S.heart === "ghost" ? "see-through" : "no"} heart · ${S.exag}×${S.flow ? " · flow" : ""}${S.posterior ? " · V7–V9" : ""}`;
   for (const r of ["sinus", "af"]) $("r_" + r).classList.toggle("on", S.rhythm === r);
   for (const b of ["none", "rbbb", "lbbb"]) $("c_" + b).classList.toggle("on", S.bbb === b);
@@ -411,12 +412,6 @@ function liveUi() {
     $("bp").textContent = lb ? `${Math.round(lb.sbp)}/${Math.round(lb.dbp)} (${Math.round(mapSm)})` : `— (${Math.round(mapSm)})`;
     $("bp").style.color = mapSm < CIRC.shockMap ? "var(--bad)" : mapSm < CIRC.hypotensionMap ? "var(--warn)" : "var(--ink)";
     $("co").textContent = Number.isFinite(roll.cardiacOutput) ? `${roll.cardiacOutput.toFixed(1)} L/min · SV ${Math.round(roll.sv)} ml` : "…";
-    $("tone").textContent = lb ? `sympathetic ${lb.sympathetic.toFixed(2)} · vagal ${lb.vagal.toFixed(2)}` : "…";
-    const hv = sim.metrics(60).hrv;
-    $("hrv").textContent = hv ? `SDNN ${Math.round(hv.sdnnMs ?? 0)} · RMSSD ${Math.round(hv.rmssdMs ?? 0)} ms` : "…";
-    const gain = sim.state().autonomic.baroreflexGainMsPerMmHg;
-    $("brs").textContent = gain === null ? "…" : `${gain} ms/mmHg` + (sim.n.autonomic.baroreflexGain < 0.2 ? " (cut)" : "");
-    drawBeatTrace($<HTMLCanvasElement>("beats-trace"), sim.history);
     const st8 = mapSm < CIRC.shockMap ? "Shock" : mapSm < CIRC.hypotensionMap ? "Hypotension" : "Stable";
     const why = circ.rvIschemia > 0.3 ? "RV involvement" : circ.lvIschemia > 0.35 ? "LV pump failure" : circ.hr < 50 ? "bradycardia" : "";
     $("circ").textContent = st8 + (st8 !== "Stable" && why ? `, ${why}` : "");
@@ -753,7 +748,7 @@ function resetPhysiology() {
 /** Into the game: remember the simulator's state and lock the displays that would give the lesion away. */
 function enterGame() {
   if (G.saved) return;
-  setPhys(PHYS_REST); // every player gets the same patient: normal volume, no beta blocker, an intact reflex
+  setPhys(PHYS_REST); // every player gets the same patient: normal volume, no beta blocker
   G.saved = { V: { ...V }, S: Object.fromEntries(LESION_KEYS.map((k) => [k, S[k]])) };
   // pressure and velocity colouring and the flow particles would all show where the blood stops
   if (S.mode !== "real" && S.mode !== "anat") S.mode = "real";
@@ -953,54 +948,40 @@ function applyMode() {
   gameUi();
 }
 
-// ---------------------------------------------------------------- reflex and volume
-const PHYS_REST = { bl: 0, bb: 0, bg: 100, rr: 15 };
+// ---------------------------------------------------------------- volume and drugs
+// The reflexes themselves are not shown or controlled here: they are the physiology, and show up in rate and pressure.
+const PHYS_REST = { bl: 0, bb: 0 };
 const PHYS = { ...PHYS_REST };
-function reflexSummary() {
-  const parts = [PHYS.bl > 0 ? `${PHYS.bl}% blood lost` : PHYS.bl < 0 ? `${-PHYS.bl}% volume overload` : "normal volume"];
-  if (PHYS.bb) parts.push(`beta blocker ${PHYS.bb}%`);
-  parts.push(PHYS.bg === 100 ? "reflex intact" : PHYS.bg === 0 ? "reflex cut" : `reflex ${(PHYS.bg / 100).toFixed(1)}×`);
-  if (PHYS.rr !== 15) parts.push(`${PHYS.rr}/min`);
-  return parts.join(" · ");
-}
+const volumeSummary = () => [PHYS.bl > 0 ? `${PHYS.bl}% blood lost` : PHYS.bl < 0 ? `${-PHYS.bl}% volume overload` : "normal volume", PHYS.bb ? `beta blocker ${PHYS.bb}%` : ""].filter(Boolean).join(" · ");
 function physUi() {
   $("blv").textContent = PHYS.bl === 0 ? "normal" : PHYS.bl > 0 ? `${PHYS.bl}% lost` : `${-PHYS.bl}% overload`;
   $("bbv").textContent = PHYS.bb ? PHYS.bb + "%" : "none";
-  $("bgv").textContent = PHYS.bg === 100 ? "normal" : PHYS.bg === 0 ? "cut" : (PHYS.bg / 100).toFixed(1) + "×";
-  $("rrv").textContent = PHYS.rr + "/min";
   for (const k of Object.keys(PHYS) as (keyof typeof PHYS)[]) $<HTMLInputElement>(k).value = String(PHYS[k]);
-  $("reflexsum").textContent = reflexSummary();
+  $("volumesum").textContent = volumeSummary();
 }
-function applyPhys() {
-  sim.apply({ bloodLoss: PHYS.bl / 100, drugs: { betaBlocker: PHYS.bb / 100 }, autonomic: { baroreflexGain: PHYS.bg / 100, respRate: PHYS.rr } });
-  physUi();
-}
+function applyPhys() { sim.apply({ bloodLoss: PHYS.bl / 100, drugs: { betaBlocker: PHYS.bb / 100 } }); physUi(); }
 const setPhys = (p: Partial<typeof PHYS>) => { Object.assign(PHYS, p); applyPhys(); };
 for (const k of Object.keys(PHYS) as (keyof typeof PHYS)[]) range(k, (v) => setPhys({ [k]: v }));
-on("x_bleed", () => setPhys({ bl: 20 })); on("x_cut", () => setPhys({ bg: 0 })); on("x_reset", () => setPhys(PHYS_REST));
+on("x_bleed", () => setPhys({ bl: 20 })); on("x_reset", () => setPhys(PHYS_REST));
 
-// ---------------------------------------------------------------- scenarios and the hand-off to an AI
-/** Replace the patient with a scenario (from a link, an assistant or the MCP server) and bring every control into line. */
-function loadScenario(sc: Scenario): string[] {
-  clearTreatment(); manageSig = "";
-  sim.reset(sc, { settled: true });
+// ---------------------------------------------------------------- the simulation changed underneath the controls
+/**
+ * Bring every control and every mesh into line with the simulation after something other than the controls changed
+ * it: a shared link, or an AI over the live connection. `reset` means the patient was replaced, so treatment starts over.
+ */
+function adoptSimState(reset: boolean) {
+  if (reset) { clearTreatment(); manageSig = ""; }
   const n = sim.n, first = n.lesionSpecs[0];
   Object.assign(V, n.anatomy);
   extraLesions = n.lesionSpecs.slice(1);
   if (first) { S.lesionSeg = first.artery; S.occ = !!first.occluded; S.ds = first.occluded ? 0 : first.stenosis; S.pos = first.position; } else { S.ds = 0; S.occ = false; }
-  S.exert = n.exertion; S.rhythm = n.patient.rhythm; S.bbb = n.patient.bbb;
-  T.support = { ...sim.support, atropine: n.drugs.atropine >= 0.5 };
-  Object.assign(PHYS, { bl: Math.round(n.bloodLoss * 100), bb: Math.round(n.drugs.betaBlocker * 100), bg: Math.round(n.autonomic.baroreflexGain * 100), rr: Math.round(n.autonomic.respRate) });
+  S.exert = n.exertion; S.rhythm = sim.patient.rhythm; S.bbb = sim.patient.bbb;
+  T.support = { ...sim.support }; // the frame loop hands this back to the simulation every frame
+  Object.assign(PHYS, { bl: Math.round(n.bloodLoss * 100), bb: Math.round(n.drugs.betaBlocker * 100) });
   $<HTMLInputElement>("pos").value = String(S.pos * 100); $<HTMLInputElement>("ds").value = String(S.ds * 100);
   $<HTMLInputElement>("nor").value = String(T.support.norepi * 100); $<HTMLInputElement>("dob").value = String(T.support.dobutamine * 100); $<HTMLInputElement>("pacerate").value = String(T.support.paceRate);
   physUi(); syncSelects();
-  sim.warmup(20); // let the reflex settle before anyone looks
-  ecg.stream = sim.stream; ecg.reset(sim.t);
-  rebuildAnatomyKeepingState();
-  return sim.warnings;
-}
-/** Re-mesh for the loaded anatomy without resetting the treatment the scenario carried. */
-function rebuildAnatomyKeepingState() {
+  if (ecg.stream !== sim.stream || Math.abs(sim.t - ecg.t) > 1) { ecg.stream = sim.stream; ecg.reset(sim.t); } // a new patient, or time jumped
   tree = sim.tree; sites = sim.sites; A = sim.analysis;
   const sel = $<HTMLSelectElement>("lseg");
   sel.innerHTML = tree.segments.map((x) => `<option value="${x.id}">${x.name}</option>`).join("");
@@ -1009,39 +990,68 @@ function rebuildAnatomyKeepingState() {
   prepareMyocardium(); buildVessels(); initParticles(); points.visible = S.flow; buildGrafts();
   controlsUi(); liveUi();
 }
-const appLink = () => `${location.origin}${location.pathname.replace(/game\/(index\.html)?$/, "")}#s=${encodeScenario(sim.scenario())}`;
-const say = (m: string) => { $("ai_msg").textContent = m; };
-async function copy(text: string, ok: string) {
-  try { await navigator.clipboard.writeText(text); say(ok); } catch { window.prompt("Copy this:", text); say("The clipboard is blocked here; the text is in the dialog."); }
+/** Replace the patient with a scenario and settle it before anyone looks. */
+function loadScenario(sc: Scenario): string[] {
+  sim.reset(sc, { settled: true });
+  sim.warmup(20);
+  adoptSimState(true);
+  return sim.warnings;
 }
-on("ai_copy", () => copy(describeForLlm(sim, { link: appLink() }), "Copied. Paste it into Claude or ChatGPT and ask for an explanation, or for a change to the patient."));
-on("ai_link", () => copy(appLink(), "Link copied: it opens this exact patient."));
-on("ai_load", () => {
-  const txt = window.prompt("Paste a scenario (JSON, a reply containing a json block, or a CoroSim link):");
-  if (!txt) return;
-  try {
-    const link = txt.match(/#s=([\w-]+)/), block = txt.match(/```json\s*([\s\S]*?)```/);
-    const warnings = loadScenario(link ? decodeScenario(link[1]) : JSON.parse(block ? block[1] : txt));
-    say(warnings.length ? "Loaded, with changes: " + warnings.join("; ") : "Loaded.");
-  } catch (e) { say("Could not read that scenario: " + (e as Error).message); }
+const appLink = () => `${location.origin}${location.pathname.replace(/game\/(index\.html)?$/, "")}#s=${encodeScenario(sim.scenario())}`;
+
+// ---------------------------------------------------------------- connect your AI: a live MCP line to this page
+/** Each tool call from the AI runs here, on the patient on screen; the controls then follow what it changed. */
+function runForAi(name: string, args: Record<string, unknown>) {
+  if (G.phase !== "idle") throw new Error("The user is in the middle of a Find the culprit case; the AI connection is paused until it ends.");
+  const tool = TOOLS.find((t) => t.name === name);
+  if (!tool) throw new Error(`Unknown tool ${name}`);
+  const stream = sim.stream, t0 = sim.t, sig = JSON.stringify(sim.scenario());
+  const result = tool.run({ sim, appUrl: appLink().split("#")[0] }, args);
+  if (sim.stream !== stream || sim.t !== t0 || JSON.stringify(sim.scenario()) !== sig) adoptSimState(sim.stream !== stream);
+  return result;
+}
+const LIVE_LABEL: Record<LiveStatus["state"], string> = { off: "not connected", connecting: "connecting…", open: "open", retrying: "reconnecting…", replaced: "taken over by another tab" };
+function linkUi(st: LiveStatus) {
+  const on = st.state !== "off" && st.state !== "replaced";
+  $("ln_open").hidden = on; $("ln_close").hidden = !on; $("ln_new").hidden = false; $("ln_live").hidden = false;
+  $("ln_open").textContent = st.state === "replaced" ? "Take it back" : "Open a connection";
+  ($("ln_url") as HTMLInputElement).value = live.connectorUrl;
+  $("ln_cli").textContent = `claude mcp add --transport http corosim ${live.connectorUrl}`;
+  const who = st.lastClient ? st.lastClient.replace(/-/g, " ") : "an AI";
+  const [text, tone] = st.state === "open"
+    ? st.clients ? [`${who} is connected${st.lastTool ? ` · last: ${st.lastTool.replace("corosim_", "")}` : ""}.`, "ok"] : ["Open. Add the URL to your AI as a connector, then ask it about this patient.", "warn"]
+    : st.state === "off" ? ["Closed. The URL works again when you open the connection.", ""]
+    : st.state === "replaced" ? ["This patient's line moved to another tab.", "bad"] : [st.detail ?? "Connecting to the CoroSim server…", "warn"];
+  $("ln_status").textContent = text; $("ln_status").className = "ln-status " + tone;
+  $("ln_sum").textContent = st.state === "open" && st.clients ? `${who} connected` : LIVE_LABEL[st.state];
+}
+const live = new LiveLink(runForAi, linkUi, "0.2.0");
+on("ln_open", () => live.open());
+on("ln_close", () => live.close());
+on("ln_new", () => { if (confirm("Retire this connector URL? Anyone using it, including your AI, will need the new one.")) live.rotate(); });
+on("ln_copy", async () => {
+  try { await navigator.clipboard.writeText(live.connectorUrl); $("ln_copy").textContent = "Copied"; setTimeout(() => { $("ln_copy").textContent = "Copy"; }, 2000); }
+  catch { ($("ln_url") as HTMLInputElement).select(); }
 });
 
 // Browsers restore form values on reload; force every control to match the model's starting state.
 $<HTMLInputElement>("pos").value = String(S.pos * 100);
 $<HTMLInputElement>("ds").value = String(S.ds * 100);
 $<HTMLInputElement>("ex").value = String(S.exag);
-physUi(); sim.warmup(20); ecg.reset(sim.t); // start with the reflex already settled
+physUi(); sim.warmup(20); ecg.reset(sim.t); // start with the reflexes already settled
 resize(); setView("vAnt"); syncSelects(); rebuildAnatomy(); applyHeartView(); controlsUi(); liveUi(); applyMode();
 /** A #s= link opens that patient, on load and when a link is pasted into an open tab. */
 function openShared() {
   const shared = !inGame && location.hash.match(/^#s=([\w-]+)/);
   if (!shared) return;
-  try { const w = loadScenario(decodeScenario(shared[1])); say(w.length ? "Loaded, with changes: " + w.join("; ") : "Opened the shared patient."); }
-  catch (e) { console.warn("CoroSim: could not open the shared patient", e); say("Could not open the shared patient: " + (e as Error).message); }
+  try { const w = loadScenario(decodeScenario(shared[1])); if (w.length) console.warn("CoroSim: the shared patient was adjusted:", w.join("; ")); }
+  catch (e) { console.warn("CoroSim: could not open the shared patient", e); }
 }
 openShared();
 addEventListener("hashchange", openShared);
-/** Handle for scripts and browser-driving assistants: corosim.sim, corosim.load(scenario), corosim.describe(). */
-(window as unknown as { corosim: object }).corosim = { sim, load: loadScenario, describe: () => describeForLlm(sim, { link: appLink() }), refresh: () => { controlsUi(); liveUi(); } };
+linkUi(live.status);
+if (live.remembered && !inGame) live.open(); // this browser had a line open: keep the connector working
+/** Handle for scripts and browser-driving assistants: corosim.sim, corosim.load(scenario), corosim.live. */
+(window as unknown as { corosim: object }).corosim = { sim, load: loadScenario, live, refresh: () => { controlsUi(); liveUi(); linkUi(live.status); } };
 requestAnimationFrame(frame);
 void LEADS;

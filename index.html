@@ -45,11 +45,6 @@
       <figcaption><b>Figure 2.</b> Twelve-lead ECG at 25 mm/s and 10 mm/mV, with posterior leads V7–V9 as a fifth column when they are on. ST shift is the sum of injury currents from every ischemic bed, each pointing out through its own patch of wall, so the lead pattern follows whichever artery is blocked. Numbers above are ST level in mm at J + 60 ms.</figcaption>
     </figure>
 
-    <figure id="tracefig">
-      <canvas id="beats-trace"></canvas>
-      <figcaption><b>Figure 3.</b> Every beat is different. Each beat's pressure follows from its own filling interval; baroreceptors sense it, and a fast vagal and a slow sympathetic arm set the next intervals, contractility and resistance. Breathing gates vagal tone, which gives the swing every few beats (respiratory sinus arrhythmia); the slower waves are the reflex answering its own delayed correction, with noise in autonomic tone feeding both.</figcaption>
-    </figure>
-
     <figure id="bedsfig">
       <div id="beds"></div>
       <figcaption><b>Table 1.</b> Perfusion of each myocardial bed (supply divided by demand) and its current ischemia.</figcaption>
@@ -94,9 +89,6 @@
         <tr class="q-hide"><td>Circulation</td><td id="circ"></td></tr>
         <tr><td>Blood pressure (MAP)</td><td id="bp"></td></tr>
         <tr><td>Cardiac output</td><td id="co"></td></tr>
-        <tr class="q-hide"><td>Autonomic tone</td><td id="tone"></td></tr>
-        <tr class="q-hide"><td>HRV, last 60 s</td><td id="hrv"></td></tr>
-        <tr class="q-hide"><td>Baroreflex gain (vagal)</td><td id="brs"></td></tr>
         <tr class="q-hide"><td>Rhythm</td><td id="rhythm"></td></tr>
         <tr><td>Ventricular rate</td><td id="hr"></td></tr>
         <tr class="q-hide"><td>Atrial rate</td><td id="arate"></td></tr>
@@ -194,33 +186,38 @@
       <p class="note">What the patient brought with them. Fibrillation takes away the P waves, so the AV node shows only as a slowing of the irregular response. A left bundle branch block pushes every ST segment away from its QRS before any lesion does, so read it for change: concordant ST, or discordant elevation out of proportion to the S wave.</p>
     </details>
 
-    <details class="fold" id="reflex">
-      <summary><h2>Reflex and volume</h2><span class="sum" id="reflexsum"></span></summary>
+    <details class="fold" id="volume">
+      <summary><h2>Volume and drugs</h2><span class="sum" id="volumesum"></span></summary>
       <label for="bl" style="margin-top:0">Blood loss <span class="val" id="blv"></span></label>
       <input id="bl" type="range" min="-20" max="50" value="0">
       <label for="bb">Beta blocker <span class="val" id="bbv"></span></label>
       <input id="bb" type="range" min="0" max="100" value="0">
-      <label for="bg">Baroreflex gain <span class="val" id="bgv"></span></label>
-      <input id="bg" type="range" min="0" max="300" value="100">
-      <label for="rr">Breathing rate <span class="val" id="rrv"></span></label>
-      <input id="rr" type="range" min="6" max="30" value="15">
       <div class="row">
         <button id="x_bleed">Bleed 20%</button>
-        <button id="x_cut">Cut the reflex</button>
         <button id="x_reset">Reset</button>
       </div>
-      <p class="note">Volume and beta blockade ramp in over about 10 s. The vagal arm answers within a beat or two, the sympathetic arm over several seconds. Give norepinephrine with the reflex intact and then cut it; or turn the gain above 2 to make the loop oscillate (Mayer waves).</p>
+      <p class="note">Both ramp in over about 10 s. What follows is the patient's own response: watch the rate, the pressure and the pulse pressure.</p>
     </details>
 
-    <details class="fold" id="ai">
-      <summary><h2>Ask an AI</h2><span class="sum">this patient, for Claude or ChatGPT</span></summary>
-      <p class="note" style="margin-top:0">Copies the patient, the numbers the model computed and its own causal account of them, ready to paste into Claude or ChatGPT. The assistant can answer with an edited scenario to paste back. With the CoroSim MCP server connected, an assistant can build and run patients itself.</p>
+    <details class="fold" id="connect">
+      <summary><h2>Connect your AI</h2><span class="sum" id="ln_sum">not connected</span></summary>
+      <p class="note" style="margin-top:0">Give Claude, ChatGPT or any MCP client a live line to this patient. It reads the monitor, changes the patient and runs the clock, and you watch it happen here.</p>
       <div class="row">
-        <button id="ai_copy" class="primary">Copy for AI</button>
-        <button id="ai_link">Copy link</button>
-        <button id="ai_load">Paste scenario</button>
+        <button id="ln_open" class="primary">Open a connection</button>
+        <button id="ln_close" hidden>Disconnect</button>
+        <button id="ln_new" hidden>New URL</button>
       </div>
-      <p class="note" id="ai_msg"></p>
+      <div id="ln_live" hidden>
+        <label for="ln_url">Connector URL</label>
+        <div class="ln-url"><input id="ln_url" readonly spellcheck="false"><button id="ln_copy">Copy</button></div>
+        <p class="ln-status" id="ln_status"></p>
+        <ul class="note ln-how">
+          <li><b>Claude</b>: Settings → Connectors → Add custom connector, paste the URL.</li>
+          <li><b>ChatGPT</b>: Settings → Apps &amp; Connectors → Advanced → Developer mode, then Create, paste the URL.</li>
+          <li><b>Claude Code</b>: <code id="ln_cli"></code></li>
+        </ul>
+        <p class="note">The URL stays the same on this browser, so you add the connector once. Anyone with it can drive this tab's patient while the connection is open; New URL retires it.</p>
+      </div>
     </details>
 
     <details class="fold" id="anatomy">

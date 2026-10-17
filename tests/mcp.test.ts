@@ -3,8 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildServer, openApi } from "../src/mcp/server";
 import { TOOLS, openAiTools, anthropicTools } from "../src/mcp/tools";
-import { encodeScenario, decodeScenario, describeForLlm } from "../src/sim/llm";
-import { Simulation } from "../src/sim/simulation";
+import { encodeScenario, decodeScenario } from "../src/sim/llm";
 
 async function connect() {
   const [a, b] = InMemoryTransport.createLinkedPair();
@@ -65,13 +64,12 @@ describe("MCP server", () => {
     const r = await call("corosim_compare", { scenarios: [{ label: "only", scenario: {} }] });
     expect(r.isError).toBe(true);
   });
-  it("serves a round-trippable share link and a paste block", async () => {
+  it("serves a round-trippable share link", async () => {
     const { call } = await connect();
     await call("corosim_set_scenario", { scenario: { lesions: [{ artery: "LAD", stenosis: 0.75 }], drugs: { betaBlocker: 0.5 } }, warmupSeconds: 10 });
     const r = await call("corosim_open_link");
     const enc = r.data.link.split("#s=")[1];
     expect(decodeScenario(enc).lesions![0].artery).toBe("LAD");
-    expect(r.data.pasteBlock).toMatch(/Scenario \(editable JSON\)/);
   });
   it("exposes resources and prompts", async () => {
     const { client } = await connect();
@@ -91,10 +89,5 @@ describe("export formats", () => {
   it("scenario codec round-trips unicode-safe", () => {
     const s = { seed: 9, lesions: [{ artery: "RCA", occluded: true }] };
     expect(decodeScenario(encodeScenario(s))).toEqual(s);
-  });
-  it("paste block contains the scenario and grounded mechanisms", () => {
-    const sim = new Simulation({ bloodLoss: 0.3 }); sim.warmup(60);
-    const t = describeForLlm(sim);
-    expect(t).toMatch(/"bloodLoss": 0.3/); expect(t).toMatch(/Blood volume is 30% below normal/);
   });
 });
