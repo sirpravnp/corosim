@@ -10,6 +10,8 @@ export interface Situation {
   minutesIschemic: number; infarctSize: number; // clinical minutes with ischemia present; fraction of LV infarcted
   reperfused: boolean; pending: string | null; grafted: boolean;
   support: Support;
+  exertion?: boolean; // the heart is working harder than at rest (demand ischemia can settle with rest)
+  diffuseDepressionAvr?: boolean; // ST depression in many leads with elevation in aVR: global subendocardial ischemia
 }
 
 export interface Issue { tone: "bad" | "warn" | "ok"; text: string }
@@ -31,7 +33,14 @@ export function assess(s: Situation): Assessment {
   const rvDown = s.rvIschemia > 0.3 && s.map < CIRC.hypotensionMap;
   const block = s.avDegree >= 2, slow = s.hr < 50;
 
-  if (stemi) issues.push({ tone: "bad", text: `Acute occlusion, ischemic for ${Math.round(s.minutesIschemic)} min` });
+  // Demand ischemia: a fixed stenosis that cannot meet the extra demand of exertion, without transmural injury.
+  const demand = s.hasLesion && !stemi && !s.reperfused && !!s.exertion && s.lvIschemia + s.rvIschemia > 0.02;
+  if (stemi) issues.push({ tone: "bad", text: s.minutesIschemic >= 1 ? `Acute occlusion, ischemic for ${Math.round(s.minutesIschemic)} min` : "Acute occlusion (transmural ischemia, ST elevation)" });
+  if (demand) issues.push({ tone: "warn", text: "Exertional (demand) ischemia: subendocardial, with ST depression that does not localize the culprit" });
+  // Ischemia at rest from a stenosis, without ST elevation: the picture of a non-ST-elevation acute coronary syndrome.
+  const restIschemia = s.hasLesion && !stemi && !s.reperfused && !s.exertion && s.lvIschemia + s.rvIschemia > 0.02;
+  if (restIschemia) issues.push({ tone: "bad", text: "Ischemia at rest without ST elevation: a non-ST-elevation ACS picture" });
+  if (s.diffuseDepressionAvr && !stemi) issues.push({ tone: "bad", text: "Diffuse ST depression with ST elevation in aVR: think left main or three-vessel disease" });
   else if (s.hasLesion && !s.reperfused && (s.ds >= 0.7 || (s.ffr !== null && s.ffr <= 0.8))) issues.push({ tone: "warn", text: `Flow-limiting stenosis${s.ffr !== null ? ` (FFR ${s.ffr.toFixed(2)})` : ""}` });
   if (shock(s)) issues.push({ tone: "bad", text: `Shock: MAP ${Math.round(s.map)}, output ${s.cardiacOutput.toFixed(1)} L/min` });
   else if (s.map < CIRC.hypotensionMap) issues.push({ tone: "warn", text: `Hypotension: MAP ${Math.round(s.map)}` });
@@ -51,6 +60,8 @@ export function assess(s: Situation): Assessment {
   if (sup.impella && s.rvIschemia > 0.4) warnings.push({ tag: "a left-sided pump in right-ventricular failure", text: "A left-sided pump cannot move blood the failing right ventricle does not deliver." });
 
   // Steps, in order.
+  if (restIschemia) steps.push({ text: "Treat as NSTE-ACS: aspirin, anticoagulation, nitrates; angiography within 24 h", why: "Ischemia at rest from a flow-limiting lesion is unstable. Without ST elevation it is not a primary-PCI emergency, but high-risk features (ongoing pain, instability, diffuse ST depression with aVR elevation) move angiography to within 2 h." });
+  if (demand) steps.push({ text: "Stop the exertion; give nitroglycerin", why: "Demand ischemia from a fixed stenosis settles within minutes with rest and nitrates. ST depression does not point to the culprit, so the lesion is found afterwards (stress imaging, or angiography with FFR) and treated electively; ST elevation during exertion would instead mean transmural ischemia and an urgent pathway." });
   if (stemi && !s.pending) {
     steps.push({
       text: s.minutesIschemic < 120 ? "Reperfuse now: primary PCI" : "Reperfuse now: primary PCI; every minute is muscle",

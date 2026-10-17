@@ -72,3 +72,19 @@ describe("culprit artery → ST pattern (emerges from the tree geometry)", () =>
     expect(mag(small)).toBeLessThan(mag(big) / 2);
   });
 });
+
+import { transmurality, meetsStElevation } from "../src/physics/ecgLink";
+describe("transmurality and the ST-elevation criterion", () => {
+  it("transmurality rises smoothly from 0 to 1 as supply falls", () => {
+    expect(transmurality(1)).toBe(0); expect(transmurality(0)).toBe(1);
+    const xs = [0.4, 0.3, 0.2, 0.15, 0.1, 0.05, 0].map(transmurality);
+    for (let i = 1; i < xs.length; i++) expect(xs[i]).toBeGreaterThanOrEqual(xs[i - 1]);
+  });
+  it("needs two contiguous leads; aVR or a single lead is not enough", () => {
+    expect(meetsStElevation({ II: 1.5, III: 1.2 })).toBe(true);
+    expect(meetsStElevation({ aVR: 3 })).toBe(false);
+    expect(meetsStElevation({ V1: 1.2 })).toBe(false);
+    expect(meetsStElevation({ V2: 1, V4: 1 })).toBe(false); // not contiguous
+    expect(meetsStElevation({ V8: 0.6, V9: 0.5 })).toBe(true); // posterior threshold 0.5 mm
+  });
+});

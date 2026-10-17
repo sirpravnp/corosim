@@ -3,7 +3,7 @@
 // owns the display, the clock and the record of days played.
 import { buildTree, Tree, Variant } from "./anatomy/tree";
 import { Lesion, analyze } from "./physics/network";
-import { bedSites, injuryVector, ischemicBurden, globalSeverity } from "./physics/ecgLink";
+import { bedSites, injuryVector, ischemicBurden, globalSeverity, transmurality } from "./physics/ecgLink";
 import { rhythmState } from "./physics/rhythm";
 import { circulation } from "./physics/circulation";
 import { ALL_LEADS, Bbb, LEAD_AXES, LEADS, LeadName, POSTERIOR_LEADS, Rhythm } from "./config/ecg";
@@ -116,11 +116,16 @@ export function drawCase(rng: Rng): Case {
 
 /** What the case does once ischemia is fully developed: ST shift per lead (mm), and the rhythm it leaves. */
 export interface Signal { st: Record<LeadName, number>; stMax: number; stMaxPosterior: number; rateChange: number; avDegree: number }
-export function signal(c: Case): Signal {
+/**
+ * `physics`: "legacy" treats every ischemic bed as transmural, the model the daily cases were drawn with, so case
+ * selection (and every past day's case) stays the same; "current" adds subendocardial ischemia, as the player sees it.
+ */
+export function signal(c: Case, physics: "legacy" | "current" = "legacy"): Signal {
   const tree = buildTree(c.variant), sites = bedSites(tree);
   const a = analyze(tree, [c.lesion], c.exert);
   const sev = Object.fromEntries(a.cond.terminals.map((t) => [t.key, t.severity]));
-  const inj = injuryVector(sites, sev);
+  const tm = physics === "current" ? Object.fromEntries(a.cond.terminals.map((t) => [t.key, transmurality(t.blocked ? 0 : t.ratio)])) : undefined;
+  const inj = injuryVector(sites, sev, tm);
   const st = {} as Record<LeadName, number>;
   for (const l of ALL_LEADS) { const ax = LEAD_AXES[l]; st[l] = 10 * (ax[0] * inj[0] + ax[1] * inj[1] + ax[2] * inj[2]); }
   const stMax = Math.max(...LEADS.map((l) => Math.abs(st[l]))), stMaxPosterior = Math.max(...POSTERIOR_LEADS.map((l) => Math.abs(st[l])));
@@ -226,7 +231,7 @@ export interface Findings { stUp: string[]; stDown: string[]; rhythm: string }
 
 /** The leads a case moves once ischemia is fully developed: 1 mm on a standard lead, 0.5 mm on a posterior one. */
 export function fullFindings(c: Case): Pick<Findings, "stUp" | "stDown"> {
-  const s = signal(c).st;
+  const s = signal(c, "current").st; // the debrief describes the tracing the player saw
   const bar = (l: LeadName) => ((POSTERIOR_LEADS as readonly string[]).includes(l) ? SOLVABLE.posteriorStMm : SOLVABLE.stMm);
   return { stUp: ALL_LEADS.filter((l) => s[l] >= bar(l)), stDown: ALL_LEADS.filter((l) => s[l] <= -bar(l)) };
 }

@@ -25,12 +25,26 @@ export function bedSites(tree: Tree): BedSite[] {
   return out;
 }
 
-/** ST injury vector (mV): sum over beds of severity × mass × direction, scaled by a single gain. */
-export function injuryVector(sites: BedSite[], severity: Record<string, number>): Vec3 {
-  const v: [number, number, number] = [0, 0, 0];
+/** How far through the wall a bed's ischemia reaches (0 subendocardial … 1 transmural), from its supply/demand ratio. */
+export function transmurality(supplyRatio: number): number {
+  const { subendocardialAbove: hi, transmuralBelow: lo } = ECG_LINK;
+  const x = Math.min(1, Math.max(0, (hi - supplyRatio) / (hi - lo)));
+  return x * x * (3 - 2 * x); // smooth: depression gives way to elevation as flow falls
+}
+
+/**
+ * ST injury vector (mV). Each ischemic bed (severity × mass) contributes along its outward wall normal in proportion
+ * to how transmural it is, and to the single non-localizing subendocardial vector for the rest. Without `transmural`
+ * every bed is treated as transmural (the original model, still used to pick the game's daily cases).
+ */
+export function injuryVector(sites: BedSite[], severity: Record<string, number>, transmural?: Record<string, number>): Vec3 {
+  const v: [number, number, number] = [0, 0, 0], d = ECG_LINK.subendocardialDir;
   for (const s of sites) {
-    const k = (severity[s.key] ?? 0) * s.mass * ECG_LINK.gainMv;
-    v[0] += s.dir[0] * k; v[1] += s.dir[1] * k; v[2] += s.dir[2] * k;
+    const w = (severity[s.key] ?? 0) * s.mass;
+    if (!w) continue;
+    const tm = transmural ? transmural[s.key] ?? 1 : 1;
+    const k = w * tm * ECG_LINK.gainMv, ks = w * (1 - tm) * ECG_LINK.subendocardialGainMv;
+    v[0] += s.dir[0] * k + d[0] * ks; v[1] += s.dir[1] * k + d[1] * ks; v[2] += s.dir[2] * k + d[2] * ks;
   }
   return v;
 }
@@ -41,3 +55,19 @@ export const ischemicBurden = (sites: BedSite[], severity: Record<string, number
 
 /** Whole-heart severity used for rate, ectopy and T-wave change: saturates at a large-territory infarct. */
 export const globalSeverity = (burden: number) => Math.min(1, burden / ECG_LINK.burdenForFullEffect);
+
+/** Pairs of anatomically contiguous leads, for the ST-elevation criterion. */
+const CONTIGUOUS: [string, string][] = [
+  ["II", "III"], ["III", "aVF"], ["II", "aVF"], // inferior
+  ["I", "aVL"], ["V5", "V6"], ["I", "V6"], // lateral
+  ["V1", "V2"], ["V2", "V3"], ["V3", "V4"], ["V4", "V5"], // septal and anterior
+  ["V7", "V8"], ["V8", "V9"], // posterior
+];
+/**
+ * ST-elevation infarction criterion: elevation in two contiguous leads, at least 1 mm (0.5 mm in V7–V9, whose
+ * voltages are smaller). aVR is not part of it: its elevation with diffuse depression is a separate pattern.
+ */
+export function meetsStElevation(stMm: Record<string, number>): boolean {
+  const ok = (l: string) => (stMm[l] ?? 0) >= (l.startsWith("V7") || l === "V8" || l === "V9" ? 0.5 : 1);
+  return CONTIGUOUS.some(([a, b]) => ok(a) && ok(b));
+}

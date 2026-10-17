@@ -8,7 +8,7 @@ import { V3 } from "./anatomy/curve";
 import { ALL_LEADS, Bbb, LEADS, Rhythm, ST } from "./config/ecg";
 import { Lesion, Analysis } from "./physics/network";
 import { Circulation, CIRC } from "./physics/circulation";
-import { BedSite, ischemicBurden } from "./physics/ecgLink";
+import { BedSite, ischemicBurden, meetsStElevation } from "./physics/ecgLink";
 import { EcgStrip } from "./ecgStrip";
 import { RhythmState } from "./physics/rhythm";
 import { INFARCT, PROCEDURE, SUPPORT, Procedure } from "./config/management";
@@ -499,11 +499,12 @@ function situation(): Situation | null {
   const st = ecg.st(), les = currentLesion(), roll = sim.rolling(10);
   return {
     hasLesion: !!les && !reperfused(), occluded: S.occ, ds: S.ds, ffr: S.ds > 0 && !S.occ ? A.ffr[0] : null, leftMain: S.lesionSeg === "LM",
-    stElevation: LEADS.some((l) => st[l] >= 1),
+    stElevation: meetsStElevation(st), // two contiguous leads; aVR alone does not count
+    diffuseDepressionAvr: st.aVR >= 1 && LEADS.filter((l) => st[l] <= -1).length >= 4,
     map: sim.map, cardiacOutput: Number.isFinite(roll.cardiacOutput) ? roll.cardiacOutput : circ.cardiacOutput, lvIschemia: circ.lvIschemia, rvIschemia: circ.rvIschemia,
     avDegree: rstate.avDegree, hr: Number.isFinite(roll.hr) ? roll.hr : circ.hr, vagal: rstate.vagal, congestion: circ.congestion,
     minutesIschemic: T.ischemicMin, infarctSize: lvInfarctSize(sites, nec), reperfused: reperfused(), pending: T.pending ? PROC_LABEL[T.pending.kind] : null,
-    grafted: T.treated.grafts.length > 0, support: T.support,
+    grafted: T.treated.grafts.length > 0, support: T.support, exertion: S.exert,
   };
 }
 

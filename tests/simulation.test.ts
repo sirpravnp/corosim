@@ -201,3 +201,30 @@ describe("what the AI sees: ECG, guideline assessment, treatment", () => {
     expect(st.autonomic).toBeUndefined();
   });
 });
+
+describe("subendocardial and transmural ischemia, and the transition between them", () => {
+  const ecgOf = (sc: Record<string, unknown>) => { const s = new Simulation(); s.reset({ seed: 2, ...sc }, { settled: true }); s.warmup(20); return { e: s.ecg(), a: s.assessment() }; };
+  const lad = (ds: number, exertion = true) => ecgOf({ lesions: [{ artery: "LAD", stenosis: ds, position: 0.25 }], exertion });
+  it("a flow-limiting stenosis on exertion gives non-localizing ST depression with aVR elevation, not a STEMI", () => {
+    const { e, a } = lad(0.75);
+    expect(e.ischemia).toBe("subendocardial");
+    expect(e.stMm.II).toBeLessThan(-0.5); expect(e.stMm.V5).toBeLessThan(-0.3); expect(e.stMm.aVR).toBeGreaterThan(0.5);
+    expect(e.meetsStemiCriteria).toBe(false);
+    expect(a.steps[0].text).toMatch(/Stop the exertion/);
+  });
+  it("tightening the stenosis turns depression into localizing ST elevation", () => {
+    const v3 = [0.6, 0.75, 0.88, 0.97].map((ds) => lad(ds).e.stMm.V3);
+    for (let i = 1; i < v3.length; i++) expect(v3[i]).toBeGreaterThanOrEqual(v3[i - 1] - 0.05);
+    const tight = lad(0.97);
+    expect(tight.e.ischemia).toBe("transmural"); expect(tight.e.meetsStemiCriteria).toBe(true);
+    expect(tight.e.stElevation).toEqual(expect.arrayContaining(["V2", "V3", "V4"]));
+  });
+  it("an occlusion is transmural from the start", () => {
+    const { e, a } = ecgOf({ lesions: [{ artery: "RCA", occluded: true, position: 0.2 }] });
+    expect(e.ischemia).toBe("transmural"); expect(e.stElevation).toEqual(expect.arrayContaining(["II", "III", "aVF"]));
+    expect(a.steps[0].text).toMatch(/PCI/);
+  });
+  it("ischemia at rest without ST elevation is treated as NSTE-ACS", () => {
+    expect(lad(0.8, false).a.steps[0].text).toMatch(/NSTE-ACS/);
+  });
+});

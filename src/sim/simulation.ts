@@ -9,7 +9,7 @@ import { MMHG } from "../config/anatomy";
 import { INFARCT, SUPPORT, PROCEDURE, Procedure } from "../config/management";
 import { stepSeverity } from "../physics/ischemia";
 import { stepNecrosis, lvInfarctSize } from "../physics/infarct";
-import { BedSite, bedSites, ischemicBurden, globalSeverity, injuryVector } from "../physics/ecgLink";
+import { BedSite, bedSites, ischemicBurden, globalSeverity, injuryVector, transmurality, meetsStElevation } from "../physics/ecgLink";
 import { rhythmState, RhythmState, SinusModulation, Patient } from "../physics/rhythm";
 import { circulation, Circulation, CIRC } from "../physics/circulation";
 import { Support, supportedRhythm } from "../physics/support";
@@ -43,6 +43,8 @@ export class Simulation {
   sev: Record<string, number> = {}; // per-bed ischemia 0..1 (cleared in place, so callers may hold the reference)
   scar: Record<string, number> = {}; // per-bed irreversible injury 0..1
   target: Record<string, number> = {};
+  /** Per bed, how far through the wall its ischemia reaches (0 subendocardial … 1 transmural), from supply/demand. */
+  transmural: Record<string, number> = {};
   t = 0;
   /** Accelerates the slow processes (ischemia kinetics, drug and volume ramps) without touching the heartbeat clock. */
   speed = 1;
@@ -155,6 +157,7 @@ export class Simulation {
     else this.analysis = { ...this.analysis, cond: solveNetwork(this.tree, lesions, this.demand * this.solvedDemand, Pa, this.grafts) };
     this.solvedPerfusion = this.perfusion;
     this.target = Object.fromEntries(this.analysis.cond.terminals.map((t) => [t.key, t.severity]));
+    this.transmural = Object.fromEntries(this.analysis.cond.terminals.map((t) => [t.key, transmurality(t.blocked ? 0 : t.ratio)]));
   }
 
   private updateCirculation() {
@@ -166,7 +169,7 @@ export class Simulation {
   /** ECG injury vector and T-wave boost for the strip, from the current ischemia. */
   ecgInputs() {
     const g = globalSeverity(ischemicBurden(this.sites, this.sev));
-    return { injury: injuryVector(this.sites, this.sev), tBoost: ST.tBoost * g };
+    return { injury: injuryVector(this.sites, this.sev, this.transmural), tBoost: ST.tBoost * g };
   }
 
   /**
@@ -306,35 +309,47 @@ export class Simulation {
   ecg() {
     const rs = this.rstate, last = this.history[this.history.length - 1];
     const beat: Beat = { t: 10, rr: last ? last.interval : 60 / CIRC.baseRate, pvc: false, pr: rs.pr, bbb: rs.bbb === "none" ? undefined : rs.bbb, noP: rs.rhythm === "af" };
-    const g = globalSeverity(ischemicBurden(this.sites, this.sev)), inj = injuryVector(this.sites, this.sev);
+    const g = globalSeverity(ischemicBurden(this.sites, this.sev)), inj = injuryVector(this.sites, this.sev, this.transmural);
     const st = Object.fromEntries(ALL_LEADS.map((l) => [l, Math.round(stLevelVec(l, beat, [beat], inj, ST.tBoost * g) * 100) / 10])) as Record<LeadName, number>;
     const recent = this.history.filter((b) => b.t > this.t - 10);
     return {
       stMm: st,
       stElevation: ALL_LEADS.filter((l) => st[l] >= 1),
+      meetsStemiCriteria: meetsStElevation(st),
       stDepression: ALL_LEADS.filter((l) => st[l] <= -1),
       rhythm: this.state().rhythm.label,
       ventricularRate: recent.length ? Math.round(recent.reduce((a, b) => a + b.hr, 0) / recent.length) : null,
       pvcsLast10s: recent.filter((b) => b.pvc).length,
       prMs: rs.rhythm === "af" || rs.avDegree === 3 ? null : Math.round(rs.pr * 1000),
       qrs: rs.bbb === "lbbb" ? "wide, left bundle branch block" : rs.bbb === "rbbb" ? "wide, right bundle branch block" : "narrow",
-      note: "ST in mm at J+60 ms; V7–V9 are posterior leads. Limb and precordial leads only; no Q waves or T-wave inversion are modelled.",
+      ischemia: this.ischemiaPattern(),
+      note: "ST in mm at J+60 ms; V7–V9 are posterior leads. Subendocardial (demand) ischemia gives non-localizing ST depression; transmural ischemia gives localizing ST elevation. No Q waves or T-wave inversion are modelled.",
     };
+  }
+
+  /** Whether the ischemia is subendocardial, transmural or mixed, by mass. */
+  private ischemiaPattern(): "none" | "subendocardial" | "mixed" | "transmural" {
+    let w = 0, tm = 0;
+    for (const s of this.sites) { const x = (this.sev[s.key] ?? 0) * s.mass; w += x; tm += x * (this.transmural[s.key] ?? 1); }
+    if (w < 0.005) return "none";
+    const f = tm / w;
+    return f < 0.25 ? "subendocardial" : f > 0.75 ? "transmural" : "mixed";
   }
 
   /** What the guidelines would say now: problems, harmful choices in progress, and next steps (the app's advisor). */
   assessment(): Assessment {
-    const first = this.n.lesionSpecs[0], c = this.circ, roll = this.rolling(10);
+    const first = this.n.lesionSpecs[0], c = this.circ, roll = this.rolling(10), ecg = this.ecg();
     const reperfused = this.treated.stent || this.treated.lysed === true || this.treated.grafts.length > 0;
     return assess({
       hasLesion: !!first && !reperfused, occluded: !!first?.occluded, ds: first?.stenosis ?? 0,
       ffr: first && !first.occluded ? this.analysis.ffr[0] ?? null : null, leftMain: first?.artery === "LM",
-      stElevation: LEADS.some((l) => this.ecg().stMm[l] >= 1),
+      stElevation: meetsStElevation(ecg.stMm), // two contiguous leads; aVR alone does not count
+      diffuseDepressionAvr: ecg.stMm.aVR >= 1 && LEADS.filter((l) => ecg.stMm[l] <= -1).length >= 4,
       map: this.map, cardiacOutput: Number.isFinite(roll.cardiacOutput) ? roll.cardiacOutput : c.cardiacOutput,
       lvIschemia: c.lvIschemia, rvIschemia: c.rvIschemia, avDegree: this.rstate.avDegree,
       hr: Number.isFinite(roll.hr) ? roll.hr : c.hr, vagal: this.rstate.vagal, congestion: c.congestion,
       minutesIschemic: this.ischemicMinutes, infarctSize: lvInfarctSize(this.sites, this.scar),
-      reperfused, pending: null, grafted: this.treated.grafts.length > 0, support: this.effSupport(),
+      reperfused, pending: null, grafted: this.treated.grafts.length > 0, support: this.effSupport(), exertion: this.n.exertion,
     });
   }
 

@@ -47,4 +47,13 @@ export const TAPS: Record<string, { frac: number; n: number }> = {
 export const ECG_LINK = {
   gainMv: 1.4,
   burdenForFullEffect: 0.3, // ischemic mass fraction at which rate rise and ectopy are maximal
+  // Subendocardial vs transmural ischemia. A bed whose supply still meets a quarter or more of its demand is ischemic only in
+  // the subendocardium; one getting a twentieth or less (near-critical stenosis, or occlusion) is ischemic through the
+  // wall; in between it blends, so tightening a stenosis turns ST depression into localizing ST elevation. Subendocardial injury current does not localize: it sums into one global vector that gives
+  // ST depression in II and V4–V6 with reciprocal elevation in aVR (and V1), whatever the territory. [assumed
+  // thresholds; direction and non-localization from exercise-ECG and animal studies]
+  subendocardialAbove: 0.25, // supply/demand at or above which a bed is purely subendocardial
+  transmuralBelow: 0.05, // at or below which it is fully transmural (in the model, ~93%+ stenosis on exertion, or occlusion)
+  subendocardialGainMv: 0.5, // gives 1–3 mm of depression for a large demand-ischemic territory
+  subendocardialDir: [-0.866, -0.5, 0] as const, // toward aVR: depression in I, II, V4–V6
 };
