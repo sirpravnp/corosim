@@ -47,7 +47,11 @@ function cookies(req: IncomingMessage): Record<string, string> {
 
 export class Accounts {
   readonly issuer: string;
-  readonly resource: string;
+  readonly resource: string; // the documented connector address
+  readonly resources: string[]; // every address MCP is served at
+  /** The resource identifier for a request path: the bare domain or /mcp. */
+  resourceFor(path: string) { return path === "/" || path === "" ? this.issuer : this.resource; }
+  private knownResource(r: string | null | undefined) { return !r || this.resources.includes(r.replace(/\/$/, "")); }
   private secure: boolean;
   private devAllowed: boolean;
   private fetch: typeof fetch;
@@ -55,6 +59,7 @@ export class Accounts {
   constructor(readonly store: Store, private cfg: AccountsConfig) {
     this.issuer = cfg.publicUrl.replace(/\/$/, "");
     this.resource = `${this.issuer}/mcp`;
+    this.resources = [this.resource, this.issuer]; // the bare domain works too: people paste it
     this.secure = this.issuer.startsWith("https://");
     const local = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(this.issuer);
     this.devAllowed = !!cfg.devLogin && local;
@@ -72,14 +77,17 @@ export class Accounts {
     const m = String(req.headers.authorization ?? "").match(/^Bearer\s+(\S+)$/i);
     if (!m) return undefined;
     const t = this.store.tokenUser(m[1], "access");
-    if (t && (!t.resource || t.resource === this.resource)) return { user: t.user, via: "ai", clientId: t.clientId };
+    if (t && this.knownResource(t.resource)) return { user: t.user, via: "ai", clientId: t.clientId };
     const u = this.store.sessionUser(m[1], "page");
     return u ? { user: u, via: "page" } : undefined;
   }
 
   /** The 401 an MCP client needs to find the authorization server. */
-  challenge(res: ServerResponse, cors: Record<string, string>) {
-    res.writeHead(401, { ...cors, "content-type": "application/json", "www-authenticate": `Bearer resource_metadata="${this.issuer}/.well-known/oauth-protected-resource"` });
+  challenge(res: ServerResponse, cors: Record<string, string>, path = "/mcp") {
+    // RFC 9728: the metadata for a resource at /mcp lives at /.well-known/oauth-protected-resource/mcp, and for the
+    // bare domain at /.well-known/oauth-protected-resource; each names the address the client actually used.
+    const meta = `${this.issuer}/.well-known/oauth-protected-resource${this.resourceFor(path) === this.issuer ? "" : "/mcp"}`;
+    res.writeHead(401, { ...cors, "content-type": "application/json", "www-authenticate": `Bearer resource_metadata="${meta}"` });
     res.end(JSON.stringify({ error: "unauthorized", message: "Sign in to CoroSim to use it from an AI. Your AI client should open the sign-in page for you." }));
   }
 
@@ -113,7 +121,7 @@ export class Accounts {
 
     // ---------------- discovery (RFC 9728, RFC 8414)
     if (p === "/.well-known/oauth-protected-resource" || p === "/.well-known/oauth-protected-resource/mcp") {
-      this.json(res, 200, { resource: this.resource, authorization_servers: [this.issuer], bearer_methods_supported: ["header"], resource_name: "CoroSim", resource_documentation: "https://corosim.com" }, { "access-control-allow-origin": "*" });
+      this.json(res, 200, { resource: p.endsWith("/mcp") ? this.resource : this.issuer, authorization_servers: [this.issuer], bearer_methods_supported: ["header"], resource_name: "CoroSim", resource_documentation: "https://corosim.com" }, { "access-control-allow-origin": "*" });
       return true;
     }
     if (p === "/.well-known/oauth-authorization-server" || p === "/.well-known/openid-configuration") {
@@ -147,7 +155,7 @@ export class Accounts {
       const back = (err: string, desc: string) => { const r = new URL(q.redirect_uri); r.searchParams.set("error", err); r.searchParams.set("error_description", desc); if (q.state) r.searchParams.set("state", q.state); this.redirect(res, r.toString()); };
       if (q.response_type !== "code") { back("unsupported_response_type", "Only response_type=code is supported."); return true; }
       if (!q.code_challenge || q.code_challenge_method !== "S256") { back("invalid_request", "PKCE with S256 is required."); return true; }
-      if (q.resource && q.resource.replace(/\/$/, "") !== this.resource) { back("invalid_target", `resource must be ${this.resource}`); return true; }
+      if (q.resource && !this.knownResource(q.resource)) { back("invalid_target", `resource must be ${this.resource} or ${this.issuer}`); return true; }
       const pending = this.store.park({ kind: "authorize", client_id: client.clientId, redirect_uri: q.redirect_uri, code_challenge: q.code_challenge, state: q.state ?? "", resource: q.resource ?? "" });
       if (!this.webUser(req)) { this.redirect(res, `${this.issuer}/auth/signin?pending=${encodeURIComponent(pending)}`); return true; }
       this.redirect(res, `${this.issuer}/oauth/consent?pending=${encodeURIComponent(pending)}`);

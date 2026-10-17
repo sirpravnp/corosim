@@ -34,8 +34,8 @@ async function signInPage(as: string, b = base): Promise<string> {
 }
 
 /** What Claude or ChatGPT does: discover, register, authorize (sign in + consent), exchange the code with PKCE. */
-async function connectAi(as: string, b = base, name = "Claude") {
-  const r401 = await fetch(`${b}/mcp`, { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream" }, body: "{}" });
+async function connectAi(as: string, b = base, name = "Claude", path = "/mcp") {
+  const r401 = await fetch(`${b}${path}`, { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream" }, body: "{}" });
   expect(r401.status).toBe(401);
   const prm = await (await fetch(r401.headers.get("www-authenticate")!.match(/resource_metadata="([^"]+)"/)![1])).json();
   const asMeta = await (await fetch(`${prm.authorization_servers[0]}/.well-known/oauth-authorization-server`)).json();
@@ -90,7 +90,7 @@ const until = async (f: () => boolean, ms = 2000) => { const t0 = Date.now(); wh
 
 describe("AI connectors sign in with OAuth (the MCP authorization flow)", () => {
   it("advertises how to sign in", async () => {
-    const prm = await (await fetch(`${base}/.well-known/oauth-protected-resource`)).json();
+    const prm = await (await fetch(`${base}/.well-known/oauth-protected-resource/mcp`)).json();
     expect(prm.resource).toBe(`${base}/mcp`);
     const as = await (await fetch(`${base}/.well-known/oauth-authorization-server`)).json();
     expect(as.code_challenge_methods_supported).toEqual(["S256"]);
@@ -137,6 +137,27 @@ describe("AI connectors sign in with OAuth (the MCP authorization flow)", () => 
     const { client, call } = await mcpClient(access);
     expect((await call("corosim_get_state")).isError).toBe(false);
     await client.close();
+  });
+});
+
+describe("the bare domain works as a connector address too", () => {
+  it("discovery, sign-in and tools all work at / as at /mcp", async () => {
+    const r401 = await fetch(`${base}/`, { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream" }, body: "{}" });
+    expect(r401.status).toBe(401);
+    const metaUrl = r401.headers.get("www-authenticate")!.match(/resource_metadata="([^"]+)"/)![1];
+    expect(metaUrl).toBe(`${base}/.well-known/oauth-protected-resource`);
+    expect((await (await fetch(metaUrl)).json()).resource).toBe(base); // names the address the client used
+    expect((await (await fetch(`${base}/.well-known/oauth-protected-resource/mcp`)).json()).resource).toBe(`${base}/mcp`);
+    const t = await connectAi("root", base, "Claude", "/");
+    const client = new Client({ name: "claude-ai", version: "1" });
+    await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/`), { requestInit: { headers: { authorization: `Bearer ${t.access}` } } }));
+    const r = await client.callTool({ name: "corosim_get_state", arguments: {} });
+    expect(r.isError).toBeFalsy();
+    await client.close();
+  });
+  it("a browser at / still gets the explanation page, and GET /health stays JSON", async () => {
+    expect(await (await fetch(`${base}/`, { headers: { accept: "text/html" } })).text()).toContain("Add custom connector");
+    expect((await (await fetch(`${base}/health`)).json()).name).toBe("corosim");
   });
 });
 

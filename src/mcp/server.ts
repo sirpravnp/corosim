@@ -293,7 +293,7 @@ export function startHttp(o: HttpOptions) {
           </ul>
           <a class="btn primary" href="https://corosim.com">Open CoroSim</a>`));
       }
-      if (url.pathname === "/" || url.pathname === "/health") {
+      if ((url.pathname === "/" && req.method !== "POST") || url.pathname === "/health") {
         return send(res, 200, { name: "corosim", version: VERSION, mcp: accounts!.resource, signIn: accounts!.providers, pagesOpen: rooms.size, persistent: store.persistent });
       }
       if (!perIp.take(ip(req))) return send(res, 429, { error: "Too many requests; slow down." });
@@ -306,16 +306,17 @@ export function startHttp(o: HttpOptions) {
         const tool = TOOLS.find((t) => t.name === url.pathname.slice(5));
         if (!tool) return send(res, 404, { error: "unknown tool" });
         const who = accounts!.bearer(req);
-        if (!who) return accounts!.challenge(res, ANY);
+        if (!who) return accounts!.challenge(res, ANY, "/mcp");
         try { return send(res, 200, await metered(who.user.id)(tool.name, ((await readJson(req)) ?? {}) as Record<string, unknown>)); }
         catch (e) { return send(res, (e as { code?: number }).code ?? 400, { error: (e as Error).message }); }
       }
 
-      // MCP: one URL for everyone; the token says whose patient. Stateless, so nothing to lose across restarts.
-      if (url.pathname === "/mcp" || url.pathname === "/mcp/") {
+      // MCP: one URL for everyone (at /mcp, and at the bare domain since people paste that); the token says whose
+      // patient. Stateless, so nothing to lose across restarts.
+      if (url.pathname === "/mcp" || url.pathname === "/mcp/" || (url.pathname === "/" && req.method === "POST")) {
         if (req.method !== "POST") { res.writeHead(405, { ...ANY, allow: "POST" }); return res.end(); }
         const who = accounts!.bearer(req);
-        if (!who) return accounts!.challenge(res, ANY);
+        if (!who) return accounts!.challenge(res, ANY, url.pathname);
         const body = await readJson(req);
         if (isInitializeRequest(body)) rooms.noteClient(who.user.id, (body as { params?: { clientInfo?: { name?: string } } }).params?.clientInfo?.name);
         const server = buildServer(metered(who.user.id), "account");
