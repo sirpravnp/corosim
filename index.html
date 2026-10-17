@@ -38,7 +38,9 @@
         <li><b>ChatGPT</b>: Settings → Apps &amp; Connectors → Advanced → Developer mode, then Create, paste the URL.</li>
         <li><b>Claude Code</b>: <code id="ln_cli"></code></li>
       </ul>
-      <p class="note">The URL stays the same on this browser, so you add the connector once. Anyone with it can drive this tab's patient while the connection is open; New URL retires it.</p>
+      <p class="note">Add the connector once: the URL stays the same in this browser, keeps working after restarts, and when this page is closed your AI works on the saved patient, which is here when you come back. Anyone with the URL can drive this patient; New URL retires it.</p>
+      <label for="ln_other">On another device? Use the same URL there</label>
+      <div class="ln-url"><input id="ln_other" placeholder="Paste a connector URL" spellcheck="false"><button id="ln_use">Use</button></div>
     </div>
   </section>
 </header>

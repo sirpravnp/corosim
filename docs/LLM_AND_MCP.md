@@ -6,7 +6,7 @@ connection, served by the same server.
 
 | Connector URL | What the AI drives |
 |---|---|
-| `https://<server>/mcp/<room>` | **The patient on your screen.** The CoroSim page holds the room open; every tool call runs on that page and you watch the result. |
+| `https://<server>/mcp/<room>` | **Your patient.** On your screen while a CoroSim page holds the room open; saved on the server, and still reachable, when no page is. |
 | `https://<server>/mcp` | A private patient for that AI session, with no page involved. |
 
 ## Live: connect your AI to the page you are looking at
@@ -20,15 +20,25 @@ connection, served by the same server.
 3. Ask: "What's going on with this patient?", "Occlude the proximal RCA and tell me what happens to the rhythm", "Give
    a litre of fluid and explain the pressure."
 
-The URL is kept in this browser, so the connector keeps working on later visits; the page reopens the line by itself
-if it was open last time. **New URL** retires the old one. While a Find the culprit case is running, the line is
-paused: an AI on the line could read the lesion.
+### Add it once; it stays good
+
+- **Same URL every visit.** The room id is kept in the browser, and the page reopens the line by itself if it was
+  open last time.
+- **Survives restarts and deploys.** Connector URLs are stateless (no MCP session to lose), and the room's patient is
+  saved on the server's disk.
+- **Works with the page closed.** The AI's calls then run on the saved patient, and results carry a
+  `connection: { page: "closed" }` note. When you open CoroSim again, the page loads what the AI left.
+- **One connector across devices.** On another browser, paste the URL under *On another device? Use the same URL
+  there*; that browser joins the same patient. The newest tab to open the line holds it.
+- **Lasts 90 days unused.** Rooms nobody has used for 90 days are removed. **New URL** retires one at once.
+- While a Find the culprit case is running, the line is paused: an AI on the line could read the lesion.
 
 How it works: the page opens a WebSocket to `wss://<server>/live/<room>`. When an AI calls a tool on
 `/mcp/<room>`, the server forwards the call over that socket. The page runs it on its own simulation (the same
 `src/mcp/tools.ts` code a private session runs), brings its controls into line with what changed, and sends the result
-back. If the page is closed, the AI gets a plain error asking the user to open it. If a second tab opens the same
-room, it takes over and the first tab is told. The protocol is in `src/mcp/protocol.ts`.
+back. The page also sends a snapshot of the patient whenever it changes, which is what the server runs on when no page
+is open (`src/mcp/roomStore.ts`). If a second tab opens the same room, it takes over and the first tab is told. The
+protocol is in `src/mcp/protocol.ts`.
 
 ## Tools
 
@@ -70,8 +80,10 @@ localhost).
 | `PORT`, `HOST` | 8787, 127.0.0.1 | Use `HOST=0.0.0.0` in a container. |
 | `COROSIM_ALLOWED_ORIGINS` | corosim.com, www.corosim.com, localhost | Page origins allowed to open live rooms. |
 | `COROSIM_APP_URL` | https://corosim.com | Base of share links. |
+| `COROSIM_DATA_DIR` | unset (`/data` in the image) | Where connector patients are saved. Unset: memory only, lost on restart. |
 
-Built-in limits: 120 tool calls per minute per caller, sessions expire after 30 idle minutes, 1000 sessions and 2000
+Built-in limits: 120 tool calls per minute per caller, private `/mcp` sessions expire after 30 idle minutes (connector
+URLs have no sessions), rooms unused for 90 days are removed, 1000 sessions and 2000
 live rooms at most, 1 MB request bodies, a 20 s answer deadline for pages, and pings every 25 s that drop dead pages.
 
 **Security model.** No accounts: a live connector URL is a 128-bit capability, and whoever holds it can drive that
@@ -89,17 +101,19 @@ do not fit. The repository is set up for **Fly.io** (`fly.toml`, `.github/workfl
 1. Install flyctl (`brew install flyctl`) and sign in: `fly auth signup` or `fly auth login`.
 2. From the repository: `fly launch --no-deploy --copy-config`. If the name `corosim-mcp` is taken, pick another and
    it is written to `fly.toml`.
-3. `fly deploy --ha=false`, then check `https://<app>.fly.dev/health`.
-4. `fly certs add mcp.corosim.com`. It prints the DNS record to add: in the domain's DNS settings (Squarespace
+3. A disk for saved patients: `fly volumes create corosim_data --size 1 --region iad` (1 GB holds hundreds of
+   thousands of patients).
+4. `fly deploy --ha=false`, then check `https://<app>.fly.dev/health`: it should say `"persistent": true`.
+5. `fly certs add mcp.corosim.com`. It prints the DNS record to add: in the domain's DNS settings (Squarespace
    Domains), add a **CNAME** with host `mcp` pointing to `<app>.fly.dev`. When `fly certs show mcp.corosim.com` says the
    certificate is issued, `https://mcp.corosim.com/health` answers.
-5. Automatic deploys: `fly tokens create deploy`, and save the result as the repository secret `FLY_API_TOKEN`
+6. Automatic deploys: `fly tokens create deploy`, and save the result as the repository secret `FLY_API_TOKEN`
    (Settings → Secrets and variables → Actions). After that, every push to `main` that touches the server tests and
-   deploys it. Do this after step 4: the workflow ends by checking `https://mcp.corosim.com/health`.
+   deploys it. Do this after step 5: the workflow ends by checking `https://mcp.corosim.com/health`.
 
-Keep it to **one machine**: rooms and sessions live in memory, so a page and the AI talking to it must reach the same
-process. Scale up if needed, not out. A restart drops open lines; pages reconnect by themselves, and AI clients start
-a new session. The site needs no change: it looks for `https://mcp.corosim.com` by default.
+Keep it to **one machine**: an open page holds its room on that process, so a page and the AI talking to it must reach
+the same one. Scale up if needed, not out. A restart briefly drops open pages, which reconnect by themselves;
+connectors keep working throughout, since they hold no session and the patients are on the volume. The site needs no change: it looks for `https://mcp.corosim.com` by default.
 
 Other hosts work with the same `Dockerfile` (Railway, Render's paid tier, Google Cloud Run with min-instances 1 and
 session affinity). Cloudflare Workers with Durable Objects would suit per-room state well, but needs the server

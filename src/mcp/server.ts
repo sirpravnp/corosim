@@ -12,6 +12,7 @@ import { TOOLS, openAiTools, anthropicTools } from "./tools";
 import { MODEL_CARD, PROMPTS } from "./content";
 import { SCENARIO_REFERENCE } from "../sim/llm";
 import { PROTOCOL_VERSION, ROOM_RE, PageToServer, ServerToPage } from "./protocol";
+import { RoomStore } from "./roomStore";
 
 export const VERSION = "0.2.0";
 const APP_URL = process.env.COROSIM_APP_URL ?? "https://corosim.com";
@@ -28,8 +29,9 @@ export function localExec(sim = new Simulation({ seed: 1 }), appUrl = APP_URL): 
 }
 
 const INSTRUCTIONS = {
+  // live: a connector URL. The patient is the user's; it is on their screen when their page is open, saved otherwise.
   private: "CoroSim is a stochastic, closed-loop cardiovascular teaching simulation (coronary lesions → ischemia → rhythm → beat-by-beat pressure → autonomic reflexes). This connection has its own private patient. Build one with corosim_set_scenario (read corosim_get_schema first), change it with corosim_adjust, observe with corosim_run, ground explanations with corosim_explain, and use corosim_compare for what-if questions. Educational only; never present results as clinical advice. Always read the 'warnings' field: it lists anything that was clamped or dropped.",
-  live: "CoroSim is a stochastic, closed-loop cardiovascular teaching simulation. This connection is linked to a CoroSim page the user has open: every tool acts on the patient they are watching, and changes appear on their screen at once. Start with corosim_get_state to see what they are looking at before changing anything; prefer corosim_adjust over corosim_set_scenario unless asked for a new patient, since set_scenario replaces what is on their screen. Educational only; never present results as clinical advice. Always read the 'warnings' field.",
+  live: "CoroSim is a stochastic, closed-loop cardiovascular teaching simulation. This connection is the user's own patient: when their CoroSim page is open every tool acts on the patient they are watching and changes appear on their screen at once; when it is closed, tools act on their saved patient and results carry a 'connection' note saying so. Start with corosim_get_state to see what they are looking at before changing anything; prefer corosim_adjust over corosim_set_scenario unless asked for a new patient, since set_scenario replaces what is on their screen. Educational only; never present results as clinical advice. Always read the 'warnings' field.",
 };
 
 /** One MCP server instance per session. */
@@ -92,78 +94,120 @@ export function openApi(serverUrl: string) {
   };
 }
 
-// ---------------------------------------------------------------- live rooms: pages that lend their patient to an AI
-interface Room { ws: WebSocket; pending: Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>; clients: Set<string>; lastTool: string | null; lastClient: string | null; alive: boolean }
+// ---------------------------------------------------------------- rooms: a connector URL's patient, live on a page or saved here
+interface Pending { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }
+interface Live { ws: WebSocket; pending: Map<string, Pending>; alive: boolean }
 
+const CLOSED_NOTE = "The user's CoroSim page is closed, so this ran on their saved patient. The change is kept, and they will see it the next time they open CoroSim.";
+const ACTIVE_MS = 10 * 60_000;
+
+/**
+ * Each room is a connector URL. Its patient lives on the user's page while one is open (calls are forwarded there)
+ * and is saved here, so the URL keeps working when no page is open (calls run on a server copy) and across
+ * restarts (the store is on disk). A page that connects gets the saved patient if an AI changed it meanwhile.
+ */
 export class Rooms {
-  private rooms = new Map<string, Room>();
-  constructor(private callTimeoutMs = 20_000, private maxRooms = 2000) {}
-  get size() { return this.rooms.size; }
-  has(id: string) { return this.rooms.has(id); }
+  private live = new Map<string, Live>();
+  private twins = new Map<string, Simulation>(); // server copies for rooms with no page open
+  private activity = new Map<string, { lastTool: string | null; lastClient: string | null; lastCallAt: number }>();
+  constructor(readonly store: RoomStore, private callTimeoutMs = 20_000, private maxRooms = 2000, private maxTwins = 200) {}
+  get size() { return this.live.size; }
+  has(id: string) { return this.live.has(id); }
 
   attach(id: string, ws: WebSocket) {
-    const old = this.rooms.get(id);
+    const old = this.live.get(id);
     if (old) { this.send(old.ws, { type: "replaced" }); this.detach(id, old.ws, "the page was opened in another tab"); old.ws.close(4000, "replaced"); }
-    if (this.rooms.size >= this.maxRooms) { ws.close(1013, "server busy"); return; }
-    const room: Room = { ws, pending: new Map(), clients: new Set(old?.clients ?? []), lastTool: null, lastClient: null, alive: true };
-    this.rooms.set(id, room);
+    if (this.live.size >= this.maxRooms) { ws.close(1013, "server busy"); return; }
+    const room: Live = { ws, pending: new Map(), alive: true };
+    this.live.set(id, room);
+    this.twins.delete(id); // the page is the live copy now
     ws.on("pong", () => { room.alive = true; });
     ws.on("message", (raw) => {
       let m: PageToServer;
       try { m = JSON.parse(String(raw)); } catch { return; }
-      if (m.type !== "result") return;
-      const p = room.pending.get(m.id);
-      if (!p) return;
-      clearTimeout(p.timer); room.pending.delete(m.id);
-      m.ok ? p.resolve(m.result) : p.reject(new Error(m.error));
+      if (m.type === "hello") {
+        const saved = this.store.get(id);
+        if (saved && saved.at > (m.since ?? 0)) this.send(ws, { type: "restore", scenario: saved.scenario, at: saved.at });
+        this.status(id);
+      } else if (m.type === "snapshot") {
+        if (m.scenario && typeof m.scenario === "object") this.store.put(id, m.scenario, { at: Number(m.at) || Date.now() });
+      } else if (m.type === "result") {
+        const p = room.pending.get(m.id);
+        if (!p) return;
+        clearTimeout(p.timer); room.pending.delete(m.id);
+        m.ok ? p.resolve(m.result) : p.reject(new Error(m.error));
+      }
     });
     ws.on("close", () => this.detach(id, ws, "the CoroSim page was closed or disconnected"));
     this.send(ws, { type: "welcome", protocol: PROTOCOL_VERSION });
-    this.status(id);
   }
 
   private detach(id: string, ws: WebSocket, why: string) {
-    const r = this.rooms.get(id);
+    const r = this.live.get(id);
     if (!r || r.ws !== ws) return;
     for (const p of r.pending.values()) { clearTimeout(p.timer); p.reject(new Error(`No answer: ${why}.`)); }
-    this.rooms.delete(id);
+    this.live.delete(id);
   }
 
-  /** An MCP session joined or left this room: the page shows who is connected. */
-  client(id: string, session: string, joined: boolean, name?: string) {
-    const r = this.rooms.get(id);
-    if (!r) return;
-    if (joined) { r.clients.add(session); if (name) r.lastClient = name; } else r.clients.delete(session);
+  /** An AI introduced itself on this room (its MCP initialize). */
+  noteClient(id: string, name?: string) {
+    const a = this.activity.get(id) ?? { lastTool: null, lastClient: null, lastCallAt: Date.now() };
+    if (name) a.lastClient = name;
+    a.lastCallAt = Date.now();
+    this.activity.set(id, a);
+    this.store.touch(id, name);
     this.status(id);
   }
 
-  call(id: string, tool: string, args: Record<string, unknown>): Promise<unknown> {
-    const r = this.rooms.get(id);
-    if (!r || r.ws.readyState !== WebSocket.OPEN) {
-      return Promise.reject(new Error("The CoroSim page for this connector is not open. Ask the user to open CoroSim and click 'Open a connection' under 'Connect your AI'."));
-    }
-    const callId = randomUUID();
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { r.pending.delete(callId); reject(new Error("The CoroSim page did not answer in time (the tab may be in the background or busy).")); }, this.callTimeoutMs);
-      r.pending.set(callId, { resolve, reject, timer });
-      r.lastTool = tool;
+  async call(id: string, tool: string, args: Record<string, unknown>): Promise<unknown> {
+    const a = this.activity.get(id) ?? { lastTool: null, lastClient: null, lastCallAt: 0 };
+    a.lastTool = tool; a.lastCallAt = Date.now(); this.activity.set(id, a);
+    const r = this.live.get(id);
+    if (r && r.ws.readyState === WebSocket.OPEN) {
+      const callId = randomUUID();
+      const out = new Promise<unknown>((resolve, reject) => {
+        const timer = setTimeout(() => { r.pending.delete(callId); reject(new Error("The CoroSim page did not answer in time (the tab may be in the background or busy). Try again.")); }, this.callTimeoutMs);
+        r.pending.set(callId, { resolve, reject, timer });
+      });
       this.send(r.ws, { type: "call", id: callId, tool, args });
       this.status(id);
-    });
+      return out;
+    }
+    // No page open: run on the saved patient, and save what changed.
+    const sim = this.twin(id);
+    const result = await localExec(sim)(tool, args);
+    const tool_ = TOOLS.find((t) => t.name === tool);
+    if (tool_ && !tool_.readOnly) this.store.put(id, sim.scenario());
+    else this.store.touch(id);
+    return result && typeof result === "object" && !Array.isArray(result) ? { ...(result as object), connection: { page: "closed", note: CLOSED_NOTE } } : result;
+  }
+
+  private twin(id: string): Simulation {
+    let sim = this.twins.get(id);
+    if (sim) { this.twins.delete(id); this.twins.set(id, sim); return sim; }
+    const saved = this.store.get(id);
+    sim = new Simulation();
+    sim.reset(saved?.scenario ?? { seed: 1 }, { settled: true });
+    sim.warmup(20);
+    this.twins.set(id, sim);
+    while (this.twins.size > this.maxTwins) this.twins.delete(this.twins.keys().next().value!);
+    return sim;
   }
 
   private status(id: string) {
-    const r = this.rooms.get(id);
-    if (r) this.send(r.ws, { type: "status", clients: r.clients.size, lastTool: r.lastTool, lastClient: r.lastClient });
+    const r = this.live.get(id), a = this.activity.get(id);
+    if (!r) return;
+    const active = !!a && Date.now() - a.lastCallAt < ACTIVE_MS;
+    this.send(r.ws, { type: "status", clients: active ? 1 : 0, lastTool: a?.lastTool ?? null, lastClient: a?.lastClient ?? null, saved: this.store.persistent });
   }
 
   private send(ws: WebSocket, m: ServerToPage) { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m)); }
 
-  /** Drop pages that stopped answering pings. */
+  /** Drop pages that stopped answering pings; refresh "AI connected" as activity ages out. */
   heartbeat() {
-    for (const [id, r] of this.rooms) {
+    for (const [id, r] of this.live) {
       if (!r.alive) { r.ws.terminate(); this.detach(id, r.ws, "the CoroSim page stopped responding"); continue; }
-      r.alive = false; r.ws.ping();
+      r.alive = false; r.ws.ping(); this.status(id);
     }
   }
 }
@@ -173,6 +217,7 @@ export interface HttpOptions {
   port: number; host?: string;
   allowedOrigins?: string[]; // pages allowed to open live rooms; default corosim.com and localhost
   sessionIdleMs?: number; maxSessions?: number; callsPerMinute?: number; callTimeoutMs?: number;
+  dataDir?: string; // where connector patients are saved; without it they last until the process ends
   log?: (m: string) => void;
 }
 
@@ -196,7 +241,7 @@ export function startHttp(o: HttpOptions): { http: HttpServer; rooms: Rooms; clo
   const idleMs = o.sessionIdleMs ?? 30 * 60_000, maxSessions = o.maxSessions ?? 1000;
   const origins: (string | RegExp)[] = o.allowedOrigins?.length ? o.allowedOrigins : DEFAULT_ORIGINS;
   const originOk = (origin?: string) => !!origin && origins.some((x) => (typeof x === "string" ? x === origin : x.test(origin)));
-  const rooms = new Rooms(o.callTimeoutMs);
+  const rooms = new Rooms(new RoomStore(o.dataDir, 90, 5000, log), o.callTimeoutMs);
   const limiter = new Limiter(o.callsPerMinute ?? 120);
   const sessions = new Map<string, { transport: StreamableHTTPServerTransport; room: string | null; last: number }>();
   const rest = new Map<string, { exec: Exec; last: number }>();
@@ -225,7 +270,7 @@ export function startHttp(o: HttpOptions): { http: HttpServer; rooms: Rooms; clo
       const base = `${req.headers["x-forwarded-proto"] ?? "http"}://${req.headers.host}`;
       if (req.method === "OPTIONS") return send(res, 204, "");
       if (url.pathname === "/" || url.pathname === "/health") {
-        return send(res, 200, { name: "corosim", version: VERSION, mcp: `${base}/mcp`, live: `${base}/mcp/<room>`, openapi: `${base}/openapi.json`, sessions: sessions.size, liveRooms: rooms.size });
+        return send(res, 200, { name: "corosim", version: VERSION, mcp: `${base}/mcp`, live: `${base}/mcp/<room>`, openapi: `${base}/openapi.json`, sessions: sessions.size, pagesOpen: rooms.size, persistent: rooms.store.persistent });
       }
       if (url.pathname === "/openapi.json") return send(res, 200, openApi(base));
       if (url.pathname === "/tools.openai.json") return send(res, 200, openAiTools());
@@ -243,27 +288,37 @@ export function startHttp(o: HttpOptions): { http: HttpServer; rooms: Rooms; clo
         catch (e) { return send(res, (e as { code?: number }).code ?? 400, { error: (e as Error).message }); }
       }
 
-      // MCP: /mcp is a private patient per session; /mcp/<room> is the user's live page.
+      // MCP: /mcp/<room> is a connector URL with a saved patient. It is stateless: no session to lose, so it keeps
+      // working across restarts, deploys and idle time. /mcp is a private patient per session (stateful).
       const m = url.pathname.match(/^\/mcp(?:\/([^/]+))?\/?$/);
+      if (m && m[1] !== undefined) {
+        const room = m[1];
+        if (!ROOM_RE.test(room)) return send(res, 404, { error: "Unknown connector URL." });
+        if (req.method !== "POST") { res.writeHead(405, { allow: "POST", "access-control-allow-origin": "*" }); return res.end(); }
+        const body = await readJson(req);
+        if (isInitializeRequest(body)) rooms.noteClient(room, (body as { params?: { clientInfo?: { name?: string } } }).params?.clientInfo?.name);
+        const exec: Exec = (tool, args) => (limiter.take(ip(req)) ? rooms.call(room, tool, args) : Promise.reject(new Error("Too many calls in a minute; slow down.")));
+        const server = buildServer(exec, "live");
+        const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
+        res.on("close", () => { void transport.close(); void server.close(); });
+        await server.connect(transport);
+        return await transport.handleRequest(req, res, body);
+      }
       if (m) {
-        const room = m[1] ?? null;
-        if (room !== null && !ROOM_RE.test(room)) return send(res, 404, { error: "Unknown connector URL." });
         const sid = req.headers["mcp-session-id"] as string | undefined;
         const body = req.method === "POST" ? await readJson(req) : undefined;
-        let entry = sid ? sessions.get(sid) : undefined;
-        if (entry && entry.room !== room) return send(res, 400, { jsonrpc: "2.0", error: { code: -32000, message: "Session belongs to a different connector URL." }, id: null });
+        const entry = sid ? sessions.get(sid) : undefined;
         if (!entry && req.method === "POST" && isInitializeRequest(body)) {
           evictIdle();
           if (sessions.size >= maxSessions) return send(res, 503, { jsonrpc: "2.0", error: { code: -32000, message: "Server busy; try again shortly." }, id: null });
-          const clientName = (body as { params?: { clientInfo?: { name?: string } } }).params?.clientInfo?.name;
-          const exec: Exec = room ? (tool, args) => rooms.call(room, tool, args) : localExec();
+          const exec = localExec();
           const transport: StreamableHTTPServerTransport = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
-            onsessioninitialized: (id) => { sessions.set(id, { transport, room, last: Date.now() }); if (room) rooms.client(room, id, true, clientName); },
+            onsessioninitialized: (id) => { sessions.set(id, { transport, room: null, last: Date.now() }); },
           });
-          transport.onclose = () => { const id = transport.sessionId; if (!id) return; sessions.delete(id); if (room) rooms.client(room, id, false); };
+          transport.onclose = () => { if (transport.sessionId) sessions.delete(transport.sessionId); };
           const limited: Exec = (tool, args) => (limiter.take(ip(req)) ? exec(tool, args) : Promise.reject(new Error("Too many calls in a minute; slow down.")));
-          await buildServer(limited, room ? "live" : "private").connect(transport);
+          await buildServer(limited, "private").connect(transport);
           return await transport.handleRequest(req, res, body);
         }
         if (!entry) return send(res, 404, { jsonrpc: "2.0", error: { code: -32001, message: "Session not found or expired; reconnect." }, id: null });
@@ -285,11 +340,12 @@ export function startHttp(o: HttpOptions): { http: HttpServer; rooms: Rooms; clo
     wss.handleUpgrade(req, socket, head, (ws) => rooms.attach(m[1], ws));
   });
   const beat = setInterval(() => { rooms.heartbeat(); evictIdle(); }, 25_000);
-  http.on("close", () => clearInterval(beat));
+  const purge = setInterval(() => rooms.store.purge(), 6 * 3600_000);
+  http.on("close", () => { clearInterval(beat); clearInterval(purge); rooms.store.flush(); });
 
   http.listen(o.port, o.host ?? "127.0.0.1", () => log(`CoroSim MCP ${VERSION}: http://${o.host ?? "127.0.0.1"}:${o.port}/mcp (private patient), /mcp/<room> (live page), /live/<room> (pages), /openapi.json`));
   const close = () => new Promise<void>((resolve) => {
-    clearInterval(beat);
+    clearInterval(beat); clearInterval(purge); rooms.store.flush();
     for (const s of sessions.values()) void s.transport.close();
     for (const c of wss.clients) c.terminate();
     wss.close(); http.close(() => resolve()); http.closeAllConnections?.();

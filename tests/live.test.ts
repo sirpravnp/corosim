@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { AddressInfo } from "node:net";
+import { mkdtempSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { WebSocket } from "ws";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -28,7 +31,7 @@ async function mcp(path: string) {
 }
 
 /** A stand-in for the CoroSim page: its own patient, answering forwarded calls exactly as the app does. */
-async function page(room: string, origin = "http://localhost:5173") {
+async function page(room: string, origin = "http://localhost:5173", since = 0) {
   const sim = new Simulation({ seed: 3 }), exec = localExec(sim), seen: ServerToPage[] = [];
   const ws = new WebSocket(`${base.replace("http", "ws")}/live/${room}`, { headers: { origin } });
   ws.on("message", async (raw) => {
@@ -39,7 +42,7 @@ async function page(room: string, origin = "http://localhost:5173") {
     catch (e) { ws.send(JSON.stringify({ type: "result", id: m.id, ok: false, error: (e as Error).message })); }
   });
   await new Promise<void>((res, rej) => { ws.once("open", () => res()); ws.once("unexpected-response", (_q, r) => rej(new Error(`HTTP ${r.statusCode}`))); ws.once("error", rej); });
-  ws.send(JSON.stringify({ type: "hello", protocol: 1, app: "corosim", version: "test" }));
+  ws.send(JSON.stringify({ type: "hello", protocol: 2, app: "corosim", version: "test", since }));
   return { sim, ws, seen };
 }
 const until = async (f: () => boolean, ms = 2000) => { const t0 = Date.now(); while (!f()) { if (Date.now() - t0 > ms) throw new Error("timed out"); await new Promise((r) => setTimeout(r, 10)); } };
@@ -80,14 +83,37 @@ describe("hosted MCP server: live connection to a page", () => {
     expect((await call("corosim_get_state")).data.scenario.lesions[0].artery).toBe("RCA");
     await client.close(); p.ws.close();
   });
-  it("tells the AI plainly when the page is not open, then works once it is", async () => {
+  it("with the page closed, the AI works on the saved patient; the page picks it up when it opens", async () => {
     const room = newRoomId();
     const { client, call } = await mcp(`/mcp/${room}`);
-    const r = await call("corosim_get_state");
-    expect(r.isError).toBe(true); expect(r.text).toMatch(/not open/);
+    const r = await call("corosim_adjust", { patch: { lesions: [{ artery: "LCX", stenosis: 0.9 }] }, runSeconds: 5 });
+    expect(r.isError).toBe(false);
+    expect(r.data.connection.page).toBe("closed");
+    expect((await call("corosim_get_state")).data.scenario.lesions[0].artery).toBe("LCX"); // remembered between calls
     const p = await page(room);
-    expect((await call("corosim_get_state")).isError).toBe(false);
+    await until(() => p.seen.some((m) => m.type === "restore"));
+    const restore = p.seen.find((m) => m.type === "restore") as Extract<ServerToPage, { type: "restore" }>;
+    expect(restore.scenario.lesions![0].artery).toBe("LCX");
     await client.close(); p.ws.close();
+  });
+  it("a page that already has the newest patient is not sent it again", async () => {
+    const room = newRoomId();
+    const { client, call } = await mcp(`/mcp/${room}`);
+    await call("corosim_adjust", { patch: { bloodLoss: 0.1 }, runSeconds: 1 });
+    const p = await page(room, undefined, Date.now() + 60_000);
+    await until(() => p.seen.some((m) => m.type === "status"));
+    expect(p.seen.some((m) => m.type === "restore")).toBe(false);
+    await client.close(); p.ws.close();
+  });
+  it("edits made on the page are what the AI sees after the page closes", async () => {
+    const room = newRoomId(), p = await page(room);
+    p.ws.send(JSON.stringify({ type: "snapshot", scenario: { bloodLoss: 0.25, seed: 4 }, at: Date.now() }));
+    await new Promise((r) => setTimeout(r, 50));
+    p.ws.close();
+    await new Promise((r) => setTimeout(r, 50));
+    const { client, call } = await mcp(`/mcp/${room}`);
+    expect((await call("corosim_get_state")).data.scenario.bloodLoss).toBe(0.25);
+    await client.close();
   });
   it("passes the page's own errors back to the AI", async () => {
     const room = newRoomId(), p = await page(room);
@@ -106,6 +132,33 @@ describe("hosted MCP server: live connection to a page", () => {
   });
   it("only pages from allowed origins can open a room", async () => {
     await expect(page(newRoomId(), "https://evil.example")).rejects.toThrow(/403/);
+  });
+});
+
+describe("hosted MCP server: connectors survive restarts", () => {
+  it("the same connector, the same client, across a server restart, with no reconnect", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "corosim-rooms-"));
+    const a = startHttp({ port: 0, dataDir: dir, log: () => {} });
+    await new Promise((r) => a.http.once("listening", r));
+    const port = (a.http.address() as AddressInfo).port, room = newRoomId();
+    const client = new Client({ name: "claude", version: "1" });
+    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp/${room}`)));
+    await client.callTool({ name: "corosim_adjust", arguments: { patch: { lesions: [{ artery: "RCA", occluded: true }] }, runSeconds: 1 } });
+    await a.close();
+    expect(readdirSync(dir).some((f) => f.startsWith(room))).toBe(true);
+
+    const b = startHttp({ port, dataDir: dir, log: () => {} });
+    await new Promise((r) => b.http.once("listening", r));
+    const r = await client.callTool({ name: "corosim_get_state", arguments: {} });
+    expect(r.isError).toBeFalsy();
+    expect(JSON.parse((r.content as { text: string }[])[0].text).scenario.lesions[0].artery).toBe("RCA");
+    await client.close(); await b.close();
+  });
+  it("a connector whose client kept an old session id still works (stateless)", async () => {
+    const room = newRoomId();
+    const res = await fetch(`${base}/mcp/${room}`, { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream", "mcp-session-id": "from-before-a-deploy" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) });
+    expect(res.status).toBe(200);
+    expect((await res.json()).result.tools.length).toBeGreaterThan(5);
   });
 });
 

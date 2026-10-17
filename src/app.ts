@@ -1009,8 +1009,10 @@ function runForAi(name: string, args: Record<string, unknown>) {
   const stream = sim.stream, t0 = sim.t, sig = JSON.stringify(sim.scenario());
   const result = tool.run({ sim, appUrl: appLink().split("#")[0] }, args);
   if (sim.stream !== stream || sim.t !== t0 || JSON.stringify(sim.scenario()) !== sig) adoptSimState(sim.stream !== stream);
+  live.snapshot(sim.scenario());
   return result;
 }
+let restored: { at: number; note: string } | null = null;
 const LIVE_LABEL: Record<LiveStatus["state"], string> = { off: "Connect AI", connecting: "Connecting…", open: "AI line open", retrying: "Reconnecting…", replaced: "In another tab" };
 function linkUi(st: LiveStatus) {
   const on = st.state !== "off" && st.state !== "replaced";
@@ -1020,10 +1022,11 @@ function linkUi(st: LiveStatus) {
   $("ln_cli").textContent = `claude mcp add --transport http corosim ${live.connectorUrl}`;
   const who = st.lastClient ? st.lastClient.replace(/-/g, " ") : "an AI";
   const [text, tone] = st.state === "open"
-    ? st.clients ? [`${who} is connected${st.lastTool ? ` · last: ${st.lastTool.replace("corosim_", "")}` : ""}.`, "ok"] : ["Open. Add the URL to your AI as a connector, then ask it about this patient.", "warn"]
+    ? st.clients ? [`${who} is connected${st.lastTool ? ` · last: ${st.lastTool.replace("corosim_", "")}` : ""}.`, "ok"] : [`Open. Add the URL to your AI as a connector${st.saved ? "; it keeps working when this page is closed, on the saved patient" : ""}.`, "warn"]
     : st.state === "off" ? ["Closed. The URL works again when you open the connection.", ""]
     : st.state === "replaced" ? ["This patient's line moved to another tab.", "bad"] : [st.detail ?? "Connecting to the CoroSim server…", "warn"];
-  $("ln_status").textContent = text; $("ln_status").className = "ln-status " + tone;
+  const fresh = restored && Date.now() - restored.at < 30_000; // say so for a while: the status line updates often
+  $("ln_status").textContent = fresh ? restored!.note : text; $("ln_status").className = "ln-status " + (fresh ? "ok" : tone);
   // the masthead button: what the line is doing, at a glance
   const connected = st.state === "open" && st.clients > 0;
   $("ln_sum").textContent = connected ? (st.lastClient ? `${who} connected` : "AI connected") : st.state === "open" ? "AI line open" : st.state === "off" ? "Connect AI" : LIVE_LABEL[st.state];
@@ -1036,10 +1039,26 @@ on("aibtn", () => aiPanel($("aipanel").hidden));
 on("ai_close", () => aiPanel(false));
 addEventListener("keydown", (e) => { if (e.key === "Escape") aiPanel(false); });
 addEventListener("pointerdown", (e) => { const t = e.target as Node; if (!$("aipanel").hidden && !$("aipanel").contains(t) && !$("aibtn").contains(t)) aiPanel(false); });
-const live = new LiveLink(runForAi, linkUi, "0.2.0");
+/** An AI changed the saved patient while this page was closed: pick up where it left off. */
+function restoreFromServer(sc: Scenario) {
+  if (G.phase !== "idle") return; // a game case owns the patient; the saved one waits for next time
+  const w = loadScenario(sc);
+  restored = { at: Date.now(), note: "Picked up the patient your AI left while this page was closed" + (w.length ? ` (adjusted: ${w.join("; ")})` : ".") };
+  linkUi(live.status);
+}
+const live = new LiveLink(runForAi, linkUi, restoreFromServer, "0.3.0");
+// Keep the server's copy of this patient current as it is edited here, so the connector works with the page closed.
+setInterval(() => { if (G.phase === "idle") live.snapshot(sim.scenario()); }, 3000);
 on("ln_open", () => live.open());
 on("ln_close", () => live.close());
 on("ln_new", () => { if (confirm("Retire this connector URL? Anyone using it, including your AI, will need the new one.")) live.rotate(); });
+on("ln_use", () => {
+  const txt = ($("ln_other") as HTMLInputElement).value;
+  if (!txt.trim()) return;
+  if (!live.useUrl(txt)) { $("ln_status").textContent = "That is not a CoroSim connector URL."; $("ln_status").className = "ln-status bad"; return; }
+  ($("ln_other") as HTMLInputElement).value = "";
+  if (live.status.state === "off") live.open();
+});
 on("ln_copy", async () => {
   try { await navigator.clipboard.writeText(live.connectorUrl); $("ln_copy").textContent = "Copied"; setTimeout(() => { $("ln_copy").textContent = "Copy"; }, 2000); }
   catch { ($("ln_url") as HTMLInputElement).select(); }
