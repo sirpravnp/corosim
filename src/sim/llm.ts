@@ -10,6 +10,8 @@ export const SCENARIO_REFERENCE = `Scenario JSON (all fields optional; omitted =
   "exertion": false,
   "bloodLoss": -0.3 .. 0.6   (fraction of blood volume; 0.15 = class II hemorrhage),
   "drugs": { "betaBlocker": 0..1, "atropine": 0..1, "vasopressor": -1 (vasodilator) .. 1 (phenylephrine-like) },
+  "patient": { "rhythm": "sinus|af", "bbb": "none|rbbb|lbbb" },
+  "support": { "fluids": 0..3 (litres), "norepinephrine": 0..1, "dobutamine": 0..1, "nitroglycerin": 0..1, "pacing": false, "paceRate": 40..120, "iabp": false, "impella": false },
   "autonomic": { "baroreflexGain": 0 (denervated) .. 1 (normal) .. 4, "respRate": 4..40, "respDepth": 0..2, "setPointShift": -30..60 mmHg, "noise": 0..3 },
   "seed": integer
 }`;

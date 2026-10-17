@@ -1,6 +1,9 @@
 import { Variant, TYPICAL, buildTree } from "../anatomy/tree";
 import { Lesion } from "../physics/network";
 import { AutonomicControls, defaultControls } from "../physics/autonomic";
+import { Patient, HEALTHY } from "../physics/rhythm";
+import { Support, noSupport } from "../physics/support";
+import { SUPPORT } from "../config/management";
 
 /**
  * The complete, serialisable description of a simulated patient and what is being done to them.
@@ -23,6 +26,10 @@ export interface Scenario {
     vasopressor?: number; // −1 (strong vasodilator) .. +1 (strong alpha agonist, e.g. phenylephrine)
   };
   autonomic?: Partial<Pick<AutonomicControls, "baroreflexGain" | "respRate" | "respDepth" | "setPointShift">> & { noise?: number };
+  /** What the patient brought with them. */
+  patient?: { rhythm?: "sinus" | "af"; bbb?: "none" | "rbbb" | "lbbb" };
+  /** Hemodynamic support the team is giving (the app's management panel). Atropine lives in `drugs`. */
+  support?: SupportSpec;
   /** Seed for every random process; the same scenario and seed give the same beats. */
   seed?: number;
 }
@@ -32,6 +39,13 @@ export interface LesionSpec {
   stenosis?: number; // 0..0.99
   occluded?: boolean;
   position?: number; // 0 (proximal) .. 1 (distal) along the artery
+}
+
+export interface SupportSpec {
+  fluids?: number; // litres given, 0..3
+  norepinephrine?: number; dobutamine?: number; nitroglycerin?: number; // 0..1 of a full dose
+  pacing?: boolean; paceRate?: number; // bpm, 40..120
+  iabp?: boolean; impella?: boolean;
 }
 
 export const DRUG_RANGES = { betaBlocker: [0, 1], atropine: [0, 1], vasopressor: [-1, 1] } as const;
@@ -53,6 +67,8 @@ export interface Normalized {
     anatomy: Variant; lesions: Lesion[]; lesionSpecs: Required<LesionSpec>[];
     drugs: { betaBlocker: number; atropine: number; vasopressor: number };
     autonomic: AutonomicControls;
+    patient: Patient;
+    support: Support; // atropine here is always false: it is derived from drugs.atropine
   };
   warnings: string[];
 }
@@ -115,12 +131,34 @@ export function normalizeScenario(input: Scenario = {}, base?: Normalized["scena
     set("baroreflexGain", 0, 4); set("respRate", 4, 40); set("respDepth", 0, 2); set("setPointShift", -30, 60);
     if (a.noise !== undefined) autonomic.noiseScale = clamp(num(a.noise) ? a.noise : 1, 0, 3);
   }
+  const patient: Patient = { ...(base?.patient ?? HEALTHY) };
+  if (input.patient?.rhythm !== undefined) { if (input.patient.rhythm === "af" || input.patient.rhythm === "sinus") patient.rhythm = input.patient.rhythm; else warnings.push(`patient.rhythm="${input.patient.rhythm}" is not sinus|af; ignored`); }
+  if (input.patient?.bbb !== undefined) { if (["none", "rbbb", "lbbb"].includes(input.patient.bbb)) patient.bbb = input.patient.bbb; else warnings.push(`patient.bbb="${input.patient.bbb}" is not none|rbbb|lbbb; ignored`); }
+
+  const support: Support = { ...(base?.support ?? noSupport()), atropine: false };
+  const sp = input.support;
+  if (sp) {
+    const level = (v: unknown, name: string, hi: number) => {
+      if (v === undefined) return undefined;
+      if (!num(v)) { warnings.push(`support.${name} is not a number; ignored`); return undefined; }
+      const c = clamp(v, 0, hi); if (c !== v) warnings.push(`support.${name} clamped to ${c}`); return c;
+    };
+    support.fluids = level(sp.fluids, "fluids", SUPPORT.maxFluids) ?? support.fluids;
+    support.norepi = level(sp.norepinephrine, "norepinephrine", 1) ?? support.norepi;
+    support.dobutamine = level(sp.dobutamine, "dobutamine", 1) ?? support.dobutamine;
+    support.nitro = level(sp.nitroglycerin, "nitroglycerin", 1) ?? support.nitro;
+    if (sp.pacing !== undefined) support.pacing = !!sp.pacing;
+    if (sp.paceRate !== undefined) { const r = num(sp.paceRate) ? clamp(Math.round(sp.paceRate), SUPPORT.paceMin, SUPPORT.paceMax) : support.paceRate; if (r !== sp.paceRate) warnings.push(`support.paceRate set to ${r}`); support.paceRate = r; }
+    if (sp.iabp !== undefined) support.iabp = !!sp.iabp;
+    if (sp.impella !== undefined) support.impella = !!sp.impella;
+  }
+
   const bl = input.bloodLoss ?? base?.bloodLoss ?? 0;
   const bloodLoss = clamp(num(bl) ? bl : 0, -0.3, 0.6);
   if (bloodLoss !== bl) warnings.push(`bloodLoss clamped to ${bloodLoss}`);
   return {
     scenario: {
-      anatomy: variant, lesions, lesionSpecs: specs, drugs, autonomic, bloodLoss,
+      anatomy: variant, lesions, lesionSpecs: specs, drugs, autonomic, bloodLoss, patient, support,
       exertion: input.exertion ?? base?.exertion ?? false, seed: Math.trunc(input.seed ?? base?.seed ?? 1) >>> 0,
     },
     warnings,
@@ -134,6 +172,13 @@ export function toScenario(n: Normalized["scenario"]): Scenario {
     anatomy: n.anatomy, lesions: n.lesionSpecs.map((l) => ({ ...l })), exertion: n.exertion, bloodLoss: n.bloodLoss,
     drugs: { ...n.drugs },
     autonomic: { baroreflexGain: a.baroreflexGain, respRate: a.respRate, respDepth: a.respDepth, setPointShift: a.setPointShift, noise: a.noiseScale },
+    patient: { ...n.patient },
+    support: supportSpec(n.support),
     seed: n.seed,
   };
+}
+
+/** Scenario form of a Support (the model's own names are short). */
+export function supportSpec(s: Support): SupportSpec {
+  return { fluids: s.fluids, norepinephrine: s.norepi, dobutamine: s.dobutamine, nitroglycerin: s.nitro, pacing: s.pacing, paceRate: s.paceRate, iabp: s.iabp, impella: s.impella };
 }

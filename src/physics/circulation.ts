@@ -1,5 +1,7 @@
 import { BedSite } from "./ecgLink";
 import { RhythmState } from "./rhythm";
+import { SUPPORT, INFARCT } from "../config/management";
+import { NO_SUPPORT, Support, demandFactor } from "./support";
 
 /**
  * Systemic circulation, lumped: MAP = cardiac output × systemic vascular resistance.
@@ -43,31 +45,53 @@ export function ventricularRate(r: RhythmState): number {
 export interface Circulation {
   hr: number; strokeVolume: number; cardiacOutput: number; // bpm, ml, L/min
   map: number; systolic: number; diastolic: number; svr: number; // mmHg, mmHg·min/L
-  lvIschemia: number; rvIschemia: number; // severity-weighted fraction of each ventricle
+  lvIschemia: number; rvIschemia: number; // severity-weighted fraction of each ventricle (ischemic or already infarcted)
+  coronaryPressure: number; // mmHg driving the coronary beds: MAP plus any balloon-pump diastolic augmentation
+  demandFactor: number; // myocardial oxygen demand relative to the patient's own, from drugs and devices
+  deviceFlow: number; // L/min pumped by a microaxial device (included in cardiacOutput)
+  congestion: number; // 0..1 pulmonary congestion from volume given to a failing left ventricle
+  ejectionFraction: number; // estimated LVEF
   state: "stable" | "hypotension" | "shock";
 }
 
 /**
- * `baroreflexRetained` is the static stand-in for pressure buffering. Pass 1 when a dynamic baroreflex
+ * `scar` is irreversible injury per bed (0..1); a bed contributes the worse of its ischemia and its scar,
+ * so a reperfused infarct keeps its lost contraction. `support` is what the team is giving.
+ * `baroreflexRetained` is the static stand-in for pressure buffering. Pass 1 when the dynamic baroreflex
  * (physics/autonomic.ts) closes the loop instead, so the buffering is not applied twice.
  */
-export function circulation(sites: BedSite[], sev: Record<string, number>, rhythm: RhythmState, baroreflexRetained = CIRC.baroreflexRetained): Circulation {
+export function circulation(sites: BedSite[], sev: Record<string, number>, rhythm: RhythmState, support: Support = NO_SUPPORT, scar: Record<string, number> = {}, baroreflexRetained = CIRC.baroreflexRetained): Circulation {
+  const K = SUPPORT;
   let lvMass = 0, lvIsch = 0, rvMass = 0, rvIsch = 0;
   for (const s of sites) {
     if (isNodal(s.key)) continue;
-    const k = (sev[s.key] ?? 0) * s.mass;
+    const k = Math.max(sev[s.key] ?? 0, scar[s.key] ?? 0) * s.mass;
     if (isRightVentricular(s.key)) { rvMass += s.mass; rvIsch += k; } else { lvMass += s.mass; lvIsch += k; }
   }
   const lvF = lvMass ? lvIsch / lvMass : 0, rvF = rvMass ? rvIsch / rvMass : 0;
   const hr = ventricularRate(rhythm);
   const filling = Math.min(CIRC.fillingMax, Math.max(CIRC.fillingMin, Math.pow(CIRC.baseRate / hr, CIRC.fillingExponent)));
-  const sv = CIRC.baseStrokeVolume * filling * (1 - CIRC.lvContractileLoss * lvF) * (1 - CIRC.rvPreloadLoss * rvF);
-  const co = (hr * sv) / 1000;
-  const svr = BASE_SVR * (1 + CIRC.sympatheticSvr * rhythm.sympathetic) * (1 - CIRC.vagalSvr * rhythm.vagal);
+  const fill = 1 - Math.exp(-support.fluids / K.fluidScale); // saturating volume effect
+  const congestion = Math.min(1, support.fluids * lvF * K.congestionGain);
+  const lvLoss = CIRC.lvContractileLoss * (1 - K.dobContractility * support.dobutamine) * lvF;
+  const rvLoss = CIRC.rvPreloadLoss * rvF * (1 - K.fluidRvRelief * fill);
+  const preload = 1 - Math.min(0.9, (K.nitroPreload + K.nitroPreloadRv * rvF) * support.nitro);
+  const afterload = 1 - K.norepiAfterloadLoss * support.norepi * lvF;
+  const balloon = 1 + (support.iabp ? K.iabpStrokeVolume * Math.min(1, lvF / 0.25) : 0);
+  const unload = support.impella ? 1 - K.impellaNativeSv : 1;
+  const sv = CIRC.baseStrokeVolume * filling * (1 - lvLoss) * (1 - rvLoss) * preload * afterload * balloon * unload * (1 - K.congestionSvLoss * congestion);
+  const deviceFlow = support.impella ? K.impellaFlow * (1 - K.impellaRvSuction * rvF) : 0;
+  const co = (hr * sv) / 1000 + deviceFlow;
+  const svr = BASE_SVR * (1 + CIRC.sympatheticSvr * rhythm.sympathetic) * (1 - CIRC.vagalSvr * rhythm.vagal)
+    * (1 + K.norepiSvr * support.norepi) * (1 - K.dobSvr * support.dobutamine) * (1 - K.nitroSvr * support.nitro);
   const open = co * svr;
   const map = CIRC.baseMap - (CIRC.baseMap - open) * baroreflexRetained;
   const pulse = sv / CIRC.arterialCompliance;
   const diastolic = map - pulse / 3, systolic = diastolic + pulse;
   const state = map < CIRC.shockMap ? "shock" : map < CIRC.hypotensionMap ? "hypotension" : "stable";
-  return { hr, strokeVolume: sv, cardiacOutput: co, map, systolic, diastolic, svr, lvIschemia: lvF, rvIschemia: rvF, state };
+  return {
+    hr, strokeVolume: sv, cardiacOutput: co, map, systolic, diastolic, svr, lvIschemia: lvF, rvIschemia: rvF,
+    coronaryPressure: map + (support.iabp ? K.iabpCoronaryAug : 0), demandFactor: demandFactor(support), deviceFlow, congestion,
+    ejectionFraction: INFARCT.lvefNormal * (1 - lvLoss), state,
+  };
 }

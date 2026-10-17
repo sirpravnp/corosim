@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" type="image/png" href="/favicon.png" />
+<link rel="apple-touch-icon" href="/logo.png" />
 <title>CoroSim</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,7 +13,11 @@
 </head>
 <body>
 <header class="masthead">
-  <h1>CoroSim <span class="kind">3D Coronary Vasculature Simulator</span></h1>
+  <h1><img class="logo" src="/logo.png" alt="" width="56" height="56">CoroSim <span class="kind" id="kind">3D Coronary Vasculature Simulator</span></h1>
+  <nav class="modes" aria-label="Version">
+    <a id="modeSim" href="./" class="on">Simulator</a>
+    <a id="modeGame" href="game/">Find the culprit</a>
+  </nav>
 </header>
 
 <main>
@@ -36,99 +42,189 @@
     <figure>
       <canvas id="ecg"></canvas>
       <div id="stmap" class="stmap"></div>
-      <figcaption><b>Figure 2.</b> Twelve-lead ECG at 25 mm/s and 10 mm/mV. ST shift is the sum of injury currents from every ischemic bed, each pointing out through its own patch of wall, so the lead pattern follows whichever artery is blocked. Numbers above are ST level in mm at J + 60 ms.</figcaption>
+      <figcaption><b>Figure 2.</b> Twelve-lead ECG at 25 mm/s and 10 mm/mV, with posterior leads V7–V9 as a fifth column when they are on. ST shift is the sum of injury currents from every ischemic bed, each pointing out through its own patch of wall, so the lead pattern follows whichever artery is blocked. Numbers above are ST level in mm at J + 60 ms.</figcaption>
     </figure>
 
-    <figure>
+    <figure id="tracefig">
       <canvas id="beats-trace"></canvas>
-      <figcaption><b>Figure 3.</b> Every beat is different. Pressure of each beat follows from its own filling interval; the baroreceptors sense it, and a fast vagal and a slow sympathetic arm change the next intervals, contractility and resistance. Respiration gates vagal tone, which gives the ~4-beat swing (respiratory sinus arrhythmia); the slower waves are the baroreflex responding to its own delayed correction, with noise in autonomic tone adding to both.</figcaption>
+      <figcaption><b>Figure 3.</b> Every beat is different. Each beat's pressure follows from its own filling interval; baroreceptors sense it, and a fast vagal and a slow sympathetic arm set the next intervals, contractility and resistance. Breathing gates vagal tone, which gives the swing every few beats (respiratory sinus arrhythmia); the slower waves are the reflex answering its own delayed correction, with noise in autonomic tone feeding both.</figcaption>
     </figure>
 
-    <figure>
+    <figure id="bedsfig">
       <div id="beds"></div>
       <figcaption><b>Table 1.</b> Perfusion of each myocardial bed (supply divided by demand) and its current ischemia.</figcaption>
     </figure>
   </section>
 
   <aside>
+    <section id="quiz" data-phase="idle" hidden>
+      <h2>Find the culprit</h2>
+      <div class="q-live">
+        <div class="q-status"><span id="qround"></span><span id="qclock"></span><span id="qscore"></span></div>
+      </div>
+      <div class="q-play">
+        <div class="q-call"><span>Your call</span><b id="qcall"></b></div>
+        <div class="q-call"><span>Right ventricle involved?</span><span class="q-rv"><button id="rv_yes">Yes</button><button id="rv_no">No</button></span></div>
+        <div class="row" style="margin-top:0">
+          <button id="qlock" class="primary" disabled>Lock in</button>
+          <button id="qreveal">Show me</button>
+        </div>
+        <p class="note">Click the spot on a vessel where you think the lesion is; click again to move it. Free within 7 mm (the lesion's own half-length), then points fall off with distance along the vessels. Then say whether the right ventricle is involved: 10 points either way. The clock is the patient's, running at 3×; ischemia takes about 20 s of it to develop.</p>
+      </div>
+      <div class="q-treat">
+        <p class="q-result" id="qcallresult"></p>
+        <div class="q-call"><span>Clinical time</span><b id="qclin"></b></div>
+        <div class="q-call"><span>Artery</span><b id="qartery"></b></div>
+        <div class="row" style="margin-top:0"><button id="qhand" class="primary">Hand over</button></div>
+        <p class="note">Now treat the patient. The lesion is shown; the Management panel below is live. Muscle dies while the artery stays closed, and orders take clinical minutes to arrive (2 a second). 40 points for muscle saved, against immediate PCI; 20 for the share of the time the pressure is held out of shock, less the share spent doing harm. The phase ends 20 min after reperfusion, at 150 min, or when you hand over.</p>
+      </div>
+      <div class="q-reveal">
+        <p class="q-result" id="qresult"></p>
+        <p class="note" id="qwhy"></p>
+        <p class="note" id="qtreatwhy"></p>
+        <div class="row" style="margin-top:0"><button id="qshare" class="primary">Share your score</button></div>
+        <p class="note">The next case comes tomorrow.</p>
+      </div>
+      <div class="row q-live"><button id="qquit">Leave the case</button></div>
+    </section>
+
     <section>
       <h2>Monitor</h2>
       <table class="readout">
-        <tr><td>Circulation</td><td id="circ"></td></tr>
+        <tr class="q-hide"><td>Circulation</td><td id="circ"></td></tr>
         <tr><td>Blood pressure (MAP)</td><td id="bp"></td></tr>
         <tr><td>Cardiac output</td><td id="co"></td></tr>
-        <tr><td>Autonomic tone</td><td id="tone"></td></tr>
-        <tr><td>HRV, last 60 s</td><td id="hrv"></td></tr>
-        <tr><td>Baroreflex gain (vagal)</td><td id="brs"></td></tr>
-        <tr><td>Rhythm</td><td id="rhythm"></td></tr>
+        <tr class="q-hide"><td>Autonomic tone</td><td id="tone"></td></tr>
+        <tr class="q-hide"><td>HRV, last 60 s</td><td id="hrv"></td></tr>
+        <tr class="q-hide"><td>Baroreflex gain (vagal)</td><td id="brs"></td></tr>
+        <tr class="q-hide"><td>Rhythm</td><td id="rhythm"></td></tr>
         <tr><td>Ventricular rate</td><td id="hr"></td></tr>
-        <tr><td>Atrial rate</td><td id="arate"></td></tr>
-        <tr><td>PR interval</td><td id="pr"></td></tr>
-        <tr><td>ST elevation</td><td id="stup"></td></tr>
-        <tr><td>ST depression</td><td id="stdown"></td></tr>
-        <tr><td>Ischemic myocardium</td><td id="burden"></td></tr>
-        <tr><td>Myocardium at risk</td><td id="risk"></td></tr>
-        <tr><td>Lesion FFR</td><td id="ffr"></td></tr>
+        <tr class="q-hide"><td>Atrial rate</td><td id="arate"></td></tr>
+        <tr class="q-hide"><td>PR interval</td><td id="pr"></td></tr>
+        <tr class="q-hide"><td>ST elevation</td><td id="stup"></td></tr>
+        <tr class="q-hide"><td>ST depression</td><td id="stdown"></td></tr>
+        <tr class="q-hide"><td>Ischemic myocardium</td><td id="burden"></td></tr>
+        <tr class="q-hide"><td>Myocardium at risk</td><td id="risk"></td></tr>
+        <tr class="q-hide"><td>Lesion FFR</td><td id="ffr"></td></tr>
+        <tr class="q-hide"><td>Ischemic time</td><td id="m_time"></td></tr>
+        <tr class="q-hide"><td>Infarct, left ventricle</td><td id="m_inf"></td></tr>
+        <tr class="q-hide"><td>Estimated LVEF</td><td id="m_ef"></td></tr>
+        <tr class="q-hide"><td>Coronary perfusion</td><td id="m_cpp"></td></tr>
       </table>
+      <p class="note q-hidden-note">Rate, output and pressure only while a case is running: the rest reads the tracing for you.</p>
     </section>
 
-    <section>
+    <section id="lesionsec">
       <h2>Lesion</h2>
-      <label for="lseg">Vessel</label>
-      <select id="lseg"></select>
-      <label for="pos">Position along the vessel <span class="val" id="posv"></span></label>
-      <input id="pos" type="range" min="5" max="95" value="15">
-      <label for="ds">Diameter stenosis <span class="val" id="dsv"></span></label>
-      <input id="ds" type="range" min="0" max="95" value="0">
-      <div class="row">
-        <button id="occ" class="primary">Occlude</button>
-        <button id="exert">Exertion (2×)</button>
+      <div id="lesionctl">
+        <label for="lseg" style="margin-top:0">Vessel</label>
+        <select id="lseg"></select>
+        <label for="pos">Position along the vessel <span class="val" id="posv"></span></label>
+        <input id="pos" type="range" min="5" max="95" value="15">
+        <label for="ds">Diameter stenosis <span class="val" id="dsv"></span></label>
+        <input id="ds" type="range" min="0" max="95" value="0">
+        <div class="row">
+          <button id="occ" class="primary">Occlude</button>
+          <button id="exert">Exertion (2×)</button>
+        </div>
+        <p class="glabel" id="ts-l">Time scale</p>
+        <div class="row" style="margin-top:0">
+          <button id="s1" class="on">1×</button>
+          <button id="s3">3×</button>
+          <button id="s6">6×</button>
+        </div>
       </div>
-      <p class="glabel" id="ts-l">Time scale</p>
-      <div class="row" style="margin-top:0">
-        <button id="s1" class="on">1×</button>
-        <button id="s3">3×</button>
-        <button id="s6">6×</button>
-      </div>
-      <p class="note">Ischemia develops over about 20 s after occlusion and resolves with a time constant of about 8 s after reperfusion. Rate and AV conduction follow the territory: anterior ischemia speeds the heart; inferior ischemia, and loss of the SA- or AV-node artery, slow it and block conduction. Lost contraction and slow rates lower blood pressure, and lower pressure then perfuses every coronary bed less.</p>
+      <p class="note q-hidden-note">The lesion is hidden while a case is running.</p>
+      <p class="note">Ischemia develops over about 20 s after occlusion and resolves with a time constant of about 8 s after reperfusion. Rate and AV conduction follow the territory; lost contraction and slow rates lower blood pressure, and lower pressure perfuses every coronary bed less.</p>
     </section>
 
-    <section>
-      <h2>Volume, drugs and reflex</h2>
-      <label for="bl">Blood loss <span class="val" id="blv"></span></label>
+    <section id="manage" data-tab="support">
+      <div class="tabs" role="tablist">
+        <h2>Management</h2>
+        <button class="tab on" data-tab="support" role="tab">Support</button>
+        <button class="tab" data-tab="revasc" role="tab">Reperfuse</button>
+        <button class="tab" data-tab="assess" role="tab">Assessment</button>
+      </div>
+      <div class="pane" data-pane="support">
+        <div class="ctl">
+          <label for="nor">Norepinephrine</label><input id="nor" type="range" min="0" max="100" value="0"><span class="val" id="norv"></span>
+          <label for="dob">Dobutamine</label><input id="dob" type="range" min="0" max="100" value="0"><span class="val" id="dobv"></span>
+          <span>IV fluid</span><button id="m_fluid">+500 ml</button><span class="val" id="fluidv"></span>
+          <span>Nitroglycerin</span><button id="m_nitro">Off</button><span class="val"></span>
+          <span>Atropine</span><button id="m_atropine">Off</button><span class="val"></span>
+          <span>Pacing</span><button id="m_pace">Off</button><span class="val" id="pacev"></span>
+          <label for="pacerate" class="pace-only">at rate</label><input id="pacerate" class="pace-only" type="range" min="40" max="120" value="70"><span class="val pace-only"></span>
+          <span>Balloon pump</span><button id="m_iabp">Off</button><span class="val"></span>
+          <span>Impella</span><button id="m_impella">Off</button><span class="val"></span>
+        </div>
+        <p class="note" id="fluidnote"></p>
+        <p class="note">Support changes what the patient can tolerate and how much oxygen the heart asks for; it does not open the artery. Each choice also has a cost: pressors add afterload, inotropes add demand and ectopy, volume congests a failing left ventricle, nitrates drop the preload a right ventricle depends on.</p>
+      </div>
+      <div class="pane" data-pane="revasc">
+        <div class="row" style="margin-top:0">
+          <button id="m_pci">Primary PCI</button>
+          <button id="m_lysis">Fibrinolytic</button>
+          <button id="m_cabg">CABG</button>
+          <button id="m_cancel">Cancel</button>
+        </div>
+        <p class="note" id="mstatus"></p>
+        <p class="note">Orders take clinical time to reach the artery (about 2 minutes pass per second at 1×), and muscle that stays ischemic dies as it waits. PCI stents the lesion; a fibrinolytic opens an occlusion in about half of patients and leaves a stenosis; a bypass feeds the vessel beyond the lesion and leaves the lesion itself.</p>
+      </div>
+      <div class="pane" data-pane="assess">
+        <div id="issues" class="issues"></div>
+        <div id="warns" class="warns"></div>
+        <div class="row"><button id="m_hint">What would the guidelines do?</button><button id="m_reset">Reset treatment</button></div>
+        <div id="steps" class="steps" hidden></div>
+      </div>
+    </section>
+
+    <details class="fold" id="patient">
+      <summary><h2>Patient</h2><span class="sum" id="patientsum"></span></summary>
+      <p class="glabel" style="margin-top:0">Rhythm</p>
+      <div class="row" style="margin-top:0">
+        <button id="r_sinus" class="on">Sinus</button>
+        <button id="r_af">Atrial fibrillation</button>
+      </div>
+      <p class="glabel">Conduction</p>
+      <div class="row" style="margin-top:0">
+        <button id="c_none" class="on">Normal</button>
+        <button id="c_rbbb">RBBB</button>
+        <button id="c_lbbb">LBBB</button>
+      </div>
+      <p class="note">What the patient brought with them. Fibrillation takes away the P waves, so the AV node shows only as a slowing of the irregular response. A left bundle branch block pushes every ST segment away from its QRS before any lesion does, so read it for change: concordant ST, or discordant elevation out of proportion to the S wave.</p>
+    </details>
+
+    <details class="fold" id="reflex">
+      <summary><h2>Reflex and volume</h2><span class="sum" id="reflexsum"></span></summary>
+      <label for="bl" style="margin-top:0">Blood loss <span class="val" id="blv"></span></label>
       <input id="bl" type="range" min="-20" max="50" value="0">
-      <label for="vp">Vasopressor (+) / vasodilator (−) <span class="val" id="vpv"></span></label>
-      <input id="vp" type="range" min="-100" max="100" value="0">
       <label for="bb">Beta blocker <span class="val" id="bbv"></span></label>
       <input id="bb" type="range" min="0" max="100" value="0">
-      <label for="at">Atropine (vagal block) <span class="val" id="atv"></span></label>
-      <input id="at" type="range" min="0" max="100" value="0">
       <label for="bg">Baroreflex gain <span class="val" id="bgv"></span></label>
       <input id="bg" type="range" min="0" max="300" value="100">
       <label for="rr">Breathing rate <span class="val" id="rrv"></span></label>
       <input id="rr" type="range" min="6" max="30" value="15">
       <div class="row">
-        <button id="r_bleed">Bleed 20%</button>
-        <button id="r_pressor">Pressor</button>
-        <button id="r_cut">Cut reflex</button>
-        <button id="r_reset">Reset</button>
+        <button id="x_bleed">Bleed 20%</button>
+        <button id="x_cut">Cut the reflex</button>
+        <button id="x_reset">Reset</button>
       </div>
-      <p class="note">Drugs and volume ramp in over about 10 s. The vagal arm answers within a beat or two, the sympathetic arm over several seconds. Try a pressor with and without the reflex, or turn the gain above 2 to make the loop oscillate (Mayer waves).</p>
-    </section>
+      <p class="note">Volume and beta blockade ramp in over about 10 s. The vagal arm answers within a beat or two, the sympathetic arm over several seconds. Give norepinephrine with the reflex intact and then cut it; or turn the gain above 2 to make the loop oscillate (Mayer waves).</p>
+    </details>
 
-    <section>
-      <h2>Ask an AI</h2>
-      <p class="note" style="margin-top:0">Copy this patient, with the model's own causal account of it, into Claude or ChatGPT. Or connect the CoroSim MCP server to let an assistant build and run patients itself.</p>
+    <details class="fold" id="ai">
+      <summary><h2>Ask an AI</h2><span class="sum">this patient, for Claude or ChatGPT</span></summary>
+      <p class="note" style="margin-top:0">Copies the patient, the numbers the model computed and its own causal account of them, ready to paste into Claude or ChatGPT. The assistant can answer with an edited scenario to paste back. With the CoroSim MCP server connected, an assistant can build and run patients itself.</p>
       <div class="row">
         <button id="ai_copy" class="primary">Copy for AI</button>
         <button id="ai_link">Copy link</button>
         <button id="ai_load">Paste scenario</button>
       </div>
       <p class="note" id="ai_msg"></p>
-    </section>
+    </details>
 
-    <section>
-      <h2>Anatomy</h2>
+    <details class="fold" id="anatomy">
+      <summary><h2>Anatomy</h2><span class="sum" id="anatomysum"></span></summary>
       <div class="row" style="margin-top:0">
         <button id="p_typ">Typical</button>
         <button id="p_left">Left-dominant</button>
@@ -145,11 +241,11 @@
       <select id="san"><option value="RCA">From the RCA</option><option value="LCx">From the circumflex</option></select>
       <label for="conus">Conus branch</label>
       <select id="conus"><option value="shared">From the RCA</option><option value="separate">Separate ostium</option></select>
-    </section>
+    </details>
 
-    <section>
-      <h2>Display</h2>
-      <p class="glabel">Color the vessels by</p>
+    <details class="fold" id="display">
+      <summary><h2>Display</h2><span class="sum" id="displaysum"></span></summary>
+      <p class="glabel" style="margin-top:0">Color the vessels by</p>
       <div class="row" style="margin-top:0">
         <button id="m_real" class="on">Anatomic</button>
         <button id="m_anat">Territory</button>
@@ -167,10 +263,26 @@
       <input id="ex" type="range" min="1" max="5" step="0.5" value="2.5">
       <div class="row">
         <button id="flowbtn">Show blood flow</button>
+        <button id="postbtn">Posterior leads V7–V9</button>
       </div>
-    </section>
+    </details>
   </aside>
 </main>
+<!-- The game's front door: over the blurred page until a case starts -->
+<div id="qgate" hidden>
+  <div class="q-card">
+    <h2>Find the culprit</h2>
+    <p class="q-day" id="qday"></p>
+    <p class="q-done" id="qdone" hidden></p>
+    <div class="q-strip" id="qstrip" title="The last seven days"></div>
+    <p class="q-streak" id="qstreak"></p>
+    <nav class="q-arch" aria-label="Archive"><a id="qprev" href="#" hidden></a><a id="qtoday" href="#" hidden>Today</a><a id="qnext" href="#" hidden></a></nav>
+    <p>One case a day, the same for everyone. A lesion is placed and hidden: any anatomy, any vessel, an occlusion or a tight stenosis under exertion, on a patient who may be in atrial fibrillation or have a bundle branch block; the heart keeps its ischemia to itself. Read the tracing and the monitor, then press the spot on the vessel where you think the lesion is. Then the case goes on: treat the patient while the muscle is dying.</p>
+    <p class="note">Up to 170 points. Finding it: full on the lesion, falling with distance from it along the tree but never below 25 in the right territory, decaying with every second of the patient's time; then 10 for calling the right ventricle correctly, or 10 lost for calling it wrong. Then treat the patient: 40 for the muscle you save by opening the artery in time, 20 for holding the pressure without doing harm. Earlier cases are in the archive, scored but outside the streak.</p>
+    <div class="row"><button id="qstart" class="primary">Start today's case</button></div>
+    <a class="q-plain" href="../">Just the simulator</a>
+  </div>
+</div>
 <footer class="foot">For education only; not for clinical decisions. Anatomy is schematic and model constants are assumptions.</footer>
 <script type="module" src="/src/app.ts"></script>
 </body>

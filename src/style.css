@@ -53,15 +53,27 @@ body {
   font: 15px/1.5 var(--font-ui);
 }
 
-/* Masthead */
-.masthead { padding-block: 28px 18px; }
+/* Masthead: the title, and the switch between the two versions */
+.masthead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 12px 24px; padding-block: 28px 18px; }
 .masthead { border-bottom: 1px solid var(--rule); }
+.modes { display: flex; gap: 6px; }
+.modes a { padding: 8px 11px; font: 700 12px/1 var(--font-ui); letter-spacing: 0.04em; text-transform: uppercase; text-decoration: none; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); }
+.modes a:hover { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.modes a.on, .modes a.on:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+#quiz[hidden] { display: none; }
 .masthead h1 { margin: 0; font: 700 40px/1 var(--font-ui); letter-spacing: -0.03em; text-wrap: balance; }
 
 /* Layout */
 main { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 24px; margin-top: 20px; align-items: start; }
-@media (max-width: 980px) { main { grid-template-columns: minmax(0, 1fr); } }
-main > section, aside { min-width: 0; display: grid; gap: 20px; }
+@media (max-width: 980px) {
+  main { grid-template-columns: minmax(0, 1fr); }
+  /* one column: the game panel first, so a call can be made without scrolling past the displays; then the displays; then the rail */
+  main > aside { display: contents; }
+  main > section { order: 0; }
+  aside > * { order: 1; }
+  #quiz { order: -1; }
+}
+main > section, aside { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
 
 /* Displays */
 figure { margin: 0; padding: 12px; background: var(--panel); border: 1px solid var(--rule); border-radius: 0; min-width: 0; }
@@ -84,12 +96,12 @@ figcaption b { color: var(--ink); font-weight: 700; letter-spacing: 0.06em; text
 .stmap b { display: block; font: 700 11px var(--font-ui); color: var(--muted); }
 .stmap .up { color: var(--bad); font-weight: 600; }
 .stmap .down { color: var(--down); font-weight: 600; }
-@media (max-width: 700px) { .stmap { grid-template-columns: repeat(6, minmax(0, 1fr)); } .viewport { height: 420px; } }
+.stmap.wide { grid-template-columns: repeat(15, minmax(0, 1fr)); }
+@media (max-width: 700px) { .stmap { grid-template-columns: repeat(6, minmax(0, 1fr)); } .stmap.wide { grid-template-columns: repeat(5, minmax(0, 1fr)); } .viewport { height: 420px; } }
 
 /* Rail */
 aside section { padding: 14px 14px 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: 0; }
 aside h2 { margin: 0 0 12px; font: 700 11px/1 var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink); }
-aside h2::before { content: "\201C"; } aside h2::after { content: "\201D"; }
 label { display: flex; justify-content: space-between; gap: 8px; margin: 12px 0 4px; font-size: 13px; }
 label .val { font-family: var(--font-data); color: var(--muted); font-variant-numeric: tabular-nums; }
 input[type="range"] { width: 100%; height: 22px; margin: 0; accent-color: var(--range); }
@@ -112,11 +124,62 @@ button.on, button.on:hover { background: var(--accent); border-color: var(--acce
 button.primary { border-color: var(--ink); border-width: 2px; padding: 7px 10px; }
 button.primary.on { border-color: var(--accent); }
 :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+button:disabled, button:disabled:hover { color: var(--muted); background: var(--panel); border-color: var(--rule-light); cursor: not-allowed; }
 .note { margin: 10px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+
+/* Game panel: which block shows follows the phase on the section */
+#quiz .q-live, #quiz .q-play, #quiz .q-treat, #quiz .q-reveal { display: none; }
+#quiz:not([data-phase="idle"]) .q-live, #quiz[data-phase="play"] .q-play, #quiz[data-phase="treat"] .q-treat, #quiz[data-phase="reveal"] .q-reveal { display: block; }
+#quiz:not([data-phase="idle"]) .row.q-live { display: flex; }
+
+/* The game's front door: a card over the blurred page */
+#qgate { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: color-mix(in srgb, var(--bg) 55%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+#qgate[hidden] { display: none; }
+body.gated { overflow: hidden; }
+@supports not (backdrop-filter: blur(1px)) { body.gated main, body.gated .masthead, body.gated .foot { filter: blur(8px); } }
+.q-card { width: min(460px, 100%); padding: 24px 24px 20px; background: var(--panel); border: 1px solid var(--ink); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35); }
+.q-card h2 { margin: 0 0 10px; font: 700 11px/1 var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; }
+.q-card p { margin: 0 0 12px; font-size: 14px; line-height: 1.5; }
+.q-card .q-day { font: 600 13px/1.5 var(--font-data); }
+.q-card .q-done { font-size: 13px; }
+.q-card .row { margin: 4px 0 14px; }
+.q-card .row button { padding: 11px 16px; font-size: 13px; }
+.q-plain { font-size: 12px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+.q-strip { display: flex; gap: 4px; align-items: flex-end; height: 30px; margin: 0 0 6px; }
+.q-strip i { flex: 1; background: var(--bar-track); }
+.q-strip i.on { background: var(--accent); }
+.q-strip i.here { outline: 1px solid var(--ink); outline-offset: 1px; }
+.q-card .q-streak { margin-bottom: 10px; font: 600 12px/1.5 var(--font-data); color: var(--muted); }
+.q-arch { display: flex; gap: 16px; margin: 0 0 12px; font-size: 12px; }
+.q-arch a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.q-arch a[hidden] { display: none; }
+.q-rv { display: flex; gap: 4px; }
+.q-rv button { padding: 5px 9px; font-size: 11px; }
+.q-plain:hover { color: var(--ink); }
+.q-status { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 4px; font: 600 12px/1.4 var(--font-data); font-variant-numeric: tabular-nums; color: var(--muted); }
+.q-status span:first-child { color: var(--ink); }
+.q-result { margin: 6px 0 0; font-size: 14px; line-height: 1.45; font-weight: 700; }
+.q-result.vessel { color: var(--ok); } .q-result.territory { color: var(--warn); } .q-result.miss { color: var(--bad); }
+.q-result .pts { display: block; margin-top: 2px; font: 600 12px/1.5 var(--font-data); color: var(--muted); }
+#qshare.done, #qshare.done:hover { background: var(--panel); border-color: var(--rule); color: var(--muted); cursor: default; }
+.q-day { margin: 0 0 8px; font: 600 12px/1.5 var(--font-data); }
+.q-done { margin: 0 0 10px; color: var(--ink); }
+.q-call { display: flex; justify-content: space-between; gap: 8px; margin: 0 0 8px; font-size: 13px; }
+.q-call b { font: 600 12px/1.5 var(--font-data); text-align: right; }
+.q-hidden-note { display: none; margin: 0 0 4px; }
+body[data-game="play"] .q-hidden-note { display: block; }
+body.game #lesionctl, body[data-game="play"] #bedsfig, body[data-game="play"] tr.q-hide { display: none; }
+body.game #lesionsec .note:not(.q-hidden-note), body[data-game="treat"] #lesionsec, body[data-game="reveal"] #lesionsec { display: none; }
+body.game #anatomy, body.game #patient, body.game #reflex { opacity: 0.45; pointer-events: none; }
+body.game #ai { display: none; } /* the scenario names the lesion */
+body[data-game="play"] #manage, body.gated #manage { display: none; }
+body[data-game="treat"] #manage .tab[data-tab="assess"], body.game #m_reset { display: none; } /* the assessment is the answer */
 
 /* Readouts */
 table.readout { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.readout td { padding: 5px 0; border-bottom: 1px solid var(--rule-light); vertical-align: baseline; }
+table.readout td:first-child { padding-right: 10px; }
+table.readout td:last-child { white-space: nowrap; }
 table.readout tr:last-child td { border-bottom: 0; }
 table.readout td:last-child { text-align: right; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
 table.readout td#stup, table.readout td#stdown, table.readout td#rhythm { white-space: normal; max-width: 170px; }
@@ -137,16 +200,59 @@ table.readout td#stup, table.readout td#stdown, table.readout td#rhythm { white-
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
 .glabel { margin: 12px 0 4px; font-size: 13px; }
 
-.masthead h1 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+.masthead h1 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
+.masthead .logo { width: 56px; height: 56px; border-radius: 50%; background: #fff; flex: none; }
 .masthead .kind { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
-.masthead .kind::before { content: "\201C"; } .masthead .kind::after { content: "\201D"; }
 
-/* Floating stenosis marker, positioned over the lesion by app.ts */
-#lesion { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 2; will-change: transform; transition: opacity .15s; }
-#lesion[hidden] { display: none; }
-#lesion.back { opacity: 0.35; }
+/* Floating markers, positioned over the lesion and over the player's call by app.ts */
+#lesion, #call { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 2; will-change: transform; transition: opacity .15s; }
+#lesion[hidden], #call[hidden] { display: none; }
+#lesion.back, #call.back { opacity: 0.35; }
+#call .lz-ring { border-style: dashed; animation: none; }
+#call .lz-line { transform: rotate(45deg); top: 13px; }
+#call .lz-tag { top: 26px; bottom: auto; color: var(--bg); background: var(--ink); }
 .lz-ring { position: absolute; left: -13px; top: -13px; width: 26px; height: 26px; border: 2px solid var(--ink); box-shadow: 0 0 0 1px var(--bg); animation: lz-pulse 1.6s ease-in-out infinite; }
 .lz-line { position: absolute; left: 13px; top: -13px; width: 20px; height: 2px; background: var(--ink); transform: rotate(-45deg); transform-origin: 0 50%; box-shadow: 0 0 0 1px var(--bg); }
 .lz-tag { position: absolute; left: 26px; bottom: 26px; white-space: nowrap; padding: 5px 8px; font: 700 11px/1 var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-ink); background: var(--accent); }
 @keyframes lz-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
 @media (prefers-reduced-motion: reduce) { .lz-ring { animation: none; } }
+
+/* Management: clinical issues, warnings and the stepwise hint */
+.issues, .warns, .steps { display: grid; gap: 4px; font-size: 13px; }
+.issues > div { padding: 5px 8px; border-left: 3px solid var(--rule); }
+.issues > div.bad { border-left-color: var(--bad); }
+.issues > div.warn { border-left-color: var(--warn); }
+.issues > div.ok { border-left-color: var(--ok); }
+.warns { margin-top: 6px; }
+.warns > div { padding: 5px 8px; color: var(--bad); border: 1px solid var(--bad); }
+.steps { margin-top: 8px; counter-reset: step; }
+.steps > div { padding: 6px 8px 7px 30px; position: relative; border-bottom: 1px solid var(--rule-light); }
+.steps > div::before { counter-increment: step; content: counter(step); position: absolute; left: 8px; font: 700 12px/1.6 var(--font-data); color: var(--muted); }
+.steps b { font-weight: 700; }
+.steps small { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+table.readout td.bad { color: var(--bad); }
+
+/* Folds: sections that stay out of the way, with their state in the header */
+details.fold { padding: 0 14px; background: var(--panel); border: 1px solid var(--rule); }
+details.fold summary { display: flex; align-items: baseline; gap: 10px; padding: 12px 0; cursor: pointer; list-style: none; }
+details.fold summary::-webkit-details-marker { display: none; }
+details.fold summary::after { content: "+"; margin-left: auto; font: 700 14px/1 var(--font-data); color: var(--muted); }
+details.fold[open] summary::after { content: "−"; }
+details.fold summary h2 { margin: 0; }
+details.fold .sum { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 11.5px/1.4 var(--font-data); color: var(--muted); }
+details.fold[open] .sum { display: none; }
+details.fold > :not(summary):last-child { margin-bottom: 16px; }
+
+/* Management tabs and the compact control grid */
+.tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-bottom: 12px; }
+.tabs h2 { grid-column: 1 / -1; margin: 0 0 6px; }
+.tab { padding: 7px 4px; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#manage .pane { display: none; }
+#manage[data-tab="support"] .pane[data-pane="support"], #manage[data-tab="revasc"] .pane[data-pane="revasc"], #manage[data-tab="assess"] .pane[data-pane="assess"] { display: block; }
+.ctl { display: grid; grid-template-columns: 1fr 104px 54px; align-items: center; gap: 7px 8px; font-size: 13px; }
+.ctl label { margin: 0; font-size: 13px; }
+.ctl input[type="range"] { height: 18px; }
+.ctl button { width: 100%; padding: 6px 4px; font-size: 11px; }
+.ctl .val { font: 500 12px/1 var(--font-data); color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.ctl .pace-only { display: none; }
+#manage.pacing .ctl .pace-only { display: block; }

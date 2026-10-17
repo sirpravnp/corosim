@@ -32,6 +32,7 @@ export interface BeatModifiers {
   contractility?: number; // stroke volume (sympathetic inotropy, beta blockade, noise)
   resistance?: number; // systemic resistance (sympathetic vasoconstriction, vasopressor, noise)
   preload?: number; // filling (blood volume, venous tone, breathing)
+  deviceFlow?: number; // ml/s of continuous flow from a microaxial pump, between and during beats
 }
 
 export class BeatHemodynamics {
@@ -53,7 +54,9 @@ export class BeatHemodynamics {
     // Windkessel: resistance from the settled mean state, decay over the preceding interval, then the stroke.
     const R = (fx.resistance ?? 1) * (c.map / ((c.cardiacOutput * 1000) / 60)); // mmHg·s/ml
     const tau = R * CIRC.arterialCompliance;
-    const diastolic = Number.isNaN(this.peak) ? c.diastolic : this.peak * Math.exp(-interval / tau);
+    // A continuous pump flow Q holds pressure up between beats: it decays toward Q·R instead of toward zero.
+    const floor = (fx.deviceFlow ?? 0) * R;
+    const diastolic = Number.isNaN(this.peak) ? c.diastolic : floor + (this.peak - floor) * Math.exp(-interval / tau);
     const systolic = diastolic + sv / CIRC.arterialCompliance;
     this.lastT = b.t; this.peak = systolic; this.afterPvc = b.pvc;
     return (this.last = { t: b.t, interval, strokeVolume: sv, systolic, diastolic, pvc: b.pvc, atrialKick });

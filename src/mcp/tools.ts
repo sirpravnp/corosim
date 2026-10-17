@@ -62,6 +62,19 @@ const scenarioSchema = {
         noise: { type: "number", minimum: 0, maximum: 3, description: "Scale of physiological noise. 0 = deterministic loop; 1 = normal." },
       },
     },
+    patient: {
+      type: "object", description: "What the patient brought with them.",
+      properties: { rhythm: { enum: ["sinus", "af"], description: "Baseline rhythm; af = atrial fibrillation (no P waves, irregular, no atrial kick)." }, bbb: { enum: ["none", "rbbb", "lbbb"], description: "Pre-existing bundle branch block." } },
+    },
+    support: {
+      type: "object", description: "Hemodynamic support (as in the app's management panel). Atropine is drugs.atropine.",
+      properties: {
+        fluids: { type: "number", minimum: 0, maximum: 3, description: "Litres of IV fluid given. Helps a right-ventricular infarct; congests the lungs of a failing left ventricle." },
+        norepinephrine: { type: "number", minimum: 0, maximum: 1 }, dobutamine: { type: "number", minimum: 0, maximum: 1 }, nitroglycerin: { type: "number", minimum: 0, maximum: 1 },
+        pacing: { type: "boolean" }, paceRate: { type: "number", minimum: 40, maximum: 120 },
+        iabp: { type: "boolean", description: "Intra-aortic balloon pump." }, impella: { type: "boolean", description: "Microaxial left-ventricular pump." },
+      },
+    },
     seed: { type: "integer", description: "Random seed. The same scenario and seed reproduce the same beats." },
   },
 } as const;
@@ -118,7 +131,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "corosim_set_scenario", title: "Build a patient", readOnly: false,
-    description: `Replace the current patient with this scenario, then run a warm-up so the baroreflex has settled. Returns the resulting state, plus warnings listing anything that was clamped or dropped (read them: they tell you what actually ran). Use settled=false to watch an occlusion develop from a healthy start. ${NOT_CLINICAL}`,
+    description: `Replace the current patient with this scenario, then run a warm-up so the baroreflex has settled. Returns the resulting state, plus warnings listing anything that was clamped or dropped (read them: they tell you what actually ran). Use settled=false to watch an occlusion develop from a healthy start. The warm-up does not advance the infarct clock; corosim_run and corosim_adjust do (2 clinical minutes per simulated second), so a closed artery loses muscle as you run it. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: { scenario: scenarioSchema, settled: { type: "boolean", description: "Start with ischemia already at its steady value (default true). False = ischemia develops over ~20 s." }, warmupSeconds: { type: "number", minimum: 0, maximum: 300, description: "Simulated seconds to run before returning (default 45)." } } },
     run({ sim }, a) {
       sim.reset((a.scenario ?? {}) as Scenario, { settled: a.settled !== false });

@@ -129,3 +129,39 @@ describe("metrics", () => {
     expect(m.hrv).toBeNull(); expect(m.beats).toBe(2);
   });
 });
+
+describe("GitHub's management model inside the shared core", () => {
+  const settle = (sc: Record<string, unknown>, warm = 40) => { const s = new Simulation(); s.reset({ seed: 5, ...sc }, { settled: true }); s.warmup(warm); s.history = []; return s; };
+  it("atrial fibrillation is irregular, has no atrial kick, and is labelled", () => {
+    const s = settle({ patient: { rhythm: "af" } }), b = s.run(60);
+    expect(b.every((x) => !x.atrialKick)).toBe(true);
+    expect(s.metrics(60).hrv!.rmssdMs!).toBeGreaterThan(60);
+    expect(s.state().rhythm.label).toMatch(/atrial fibrillation/);
+  });
+  it("pacing fixes the rate: the baroreflex and breathing no longer move it", () => {
+    const s = settle({ support: { pacing: true, paceRate: 90 } });
+    const m = (s.run(60), s.metrics(60));
+    expect(m.hr.mean!).toBeGreaterThan(88); expect(m.hr.mean!).toBeLessThan(92);
+    expect(m.hrv!.sdnnMs!).toBeLessThan(5);
+  });
+  it("an Impella's continuous flow keeps pressure up in cardiogenic shock", () => {
+    const sc = { lesions: [{ artery: "LM", occluded: true }] };
+    const without = settle(sc), withPump = settle({ ...sc, support: { impella: true } });
+    without.run(30); withPump.run(30);
+    expect(withPump.map).toBeGreaterThan(without.map + 5);
+    expect(withPump.state().support.deviceFlowLpm).toBeGreaterThan(1);
+  });
+  it("warm-up does not infarct; running with a closed artery does", () => {
+    const s = settle({ lesions: [{ artery: "LAD", occluded: true }] }, 60);
+    expect(s.state().ventricle.lvInfarctFraction).toBe(0);
+    s.run(60); // 120 clinical minutes
+    expect(s.state().ventricle.lvInfarctFraction).toBeGreaterThan(0.05);
+  });
+  it("support round-trips through the scenario, and atropine from the app's toggle is reported", () => {
+    const s = new Simulation({ support: { norepinephrine: 0.4, fluids: 9 } });
+    expect(s.warnings.join()).toMatch(/fluids clamped/);
+    s.support.atropine = true;
+    const sc = s.scenario();
+    expect(sc.support!.norepinephrine).toBe(0.4); expect(sc.support!.fluids).toBe(3); expect(sc.drugs!.atropine).toBe(1);
+  });
+});
