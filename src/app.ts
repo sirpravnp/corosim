@@ -8,6 +8,8 @@ import { V3 } from "./anatomy/curve";
 import { LEADS, ST } from "./config/ecg";
 import { Lesion, analyze, Analysis, solveNetwork } from "./physics/network";
 import { circulation, Circulation, CIRC } from "./physics/circulation";
+import { BeatStream } from "./physics/beatStream";
+import { BeatHemodynamics } from "./physics/beatHemo";
 import { FLOW } from "./config/tree";
 import { stepSeverity } from "./physics/ischemia";
 import { BedSite, bedSites, injuryVector, ischemicBurden, globalSeverity } from "./physics/ecgLink";
@@ -355,8 +357,10 @@ function liveUi() {
   $("stup").textContent = up.length ? up.join(", ") : "none"; $("stup").style.color = up.length ? "var(--bad)" : "var(--ink)";
   $("stdown").textContent = down.length ? down.join(", ") : "none";
   if (circ) {
-    const pulse = circ.systolic - circ.diastolic; // settled mean pressure, current pulse pressure
-    $("bp").textContent = `${Math.round(mapSm + (2 * pulse) / 3)}/${Math.round(mapSm - pulse / 3)} (${Math.round(mapSm)})`;
+    const lb = beatHemo.last; // the latest beat's own pressure; falls back to the settled mean before the first beat
+    const pulse = lb ? lb.systolic - lb.diastolic : circ.systolic - circ.diastolic;
+    $("bp").textContent = lb ? `${Math.round(lb.systolic)}/${Math.round(lb.diastolic)} (${Math.round(mapSm)})`
+      : `${Math.round(mapSm + (2 * pulse) / 3)}/${Math.round(mapSm - pulse / 3)} (${Math.round(mapSm)})`;
     $("bp").style.color = mapSm < CIRC.shockMap ? "var(--bad)" : mapSm < CIRC.hypotensionMap ? "var(--warn)" : "var(--ink)";
     $("co").textContent = `${circ.cardiacOutput.toFixed(1)} L/min · SV ${Math.round(circ.strokeVolume)} ml`;
     const st8 = mapSm < CIRC.shockMap ? "Shock" : mapSm < CIRC.hypotensionMap ? "Hypotension" : "Stable";
@@ -432,7 +436,8 @@ renderer.domElement.addEventListener("pointerup", (e) => {
 });
 
 // ---------------------------------------------------------------- loop
-const ecg = new EcgStrip($<HTMLCanvasElement>("ecg"));
+const stream = new BeatStream(1), beatHemo = new BeatHemodynamics();
+const ecg = new EcgStrip($<HTMLCanvasElement>("ecg"), stream);
 function resize() { const w = view.clientWidth, h = view.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 new ResizeObserver(resize).observe(view);
 // ---------------------------------------------------------------- lesion marker
@@ -485,6 +490,7 @@ function frame(now: number) {
   if ((mapClock += dt) > 0.5) { mapClock = 0; if (Math.abs(mapSm - solvedMap) > 2) resolveAtPressure(); }
   ecg.step(dt, injuryVector(sites, sev), ST.tBoost * g, rstate);
   ecg.draw();
+  for (const b of stream.drain(ecg.t)) beatHemo.onBeat(b, circ);
   if (S.flow) stepParticles(dt);
   if ((paintClock += dt) > 0.1) { paintClock = 0; paintMyocardium(); }
   if ((uiClock += dt) > 0.25) { uiClock = 0; liveUi(); }

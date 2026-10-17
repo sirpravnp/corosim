@@ -1,6 +1,7 @@
 import { LEADS, LeadName, Vec3 } from "./config/ecg";
 import { Beat, sampleLeadsVec, stLevelVec } from "./physics/ecg";
-import { Conduction, RhythmState } from "./physics/rhythm";
+import { RhythmState } from "./physics/rhythm";
+import { BeatStream } from "./physics/beatStream";
 
 const FS = 250, WIN = 2.5, N = Math.round(FS * WIN);
 const LAYOUT: LeadName[][] = [["I", "aVR", "V1", "V4"], ["II", "aVL", "V2", "V5"], ["III", "aVF", "V3", "V6"]];
@@ -13,25 +14,20 @@ const SANS = "-apple-system, Helvetica, Arial, sans-serif";
  */
 export class EcgStrip {
   private ring = Object.fromEntries(LEADS.map((l) => [l, new Float32Array(N).fill(NaN)])) as Record<LeadName, Float32Array>;
-  private beats: Beat[] = [];
-  private beatEnd = 0;
-  private conduction = new Conduction(1);
   private acc = 0;
   private idx = 0;
   t = 0;
   private injury: Vec3 = [0, 0, 0];
   private tBoost = 0;
 
-  constructor(private canvas: HTMLCanvasElement) {}
+  constructor(private canvas: HTMLCanvasElement, private stream: BeatStream = new BeatStream(1)) {}
+
+  private get beats(): Beat[] { return this.stream.beats; }
 
   step(dt: number, injury: Vec3, tBoost: number, state: RhythmState) {
     this.injury = injury; this.tBoost = tBoost;
-    // Short look-ahead so rate and conduction respond within about a beat of a state change.
-    if (this.beatEnd < this.t + 0.6) {
-      this.beatEnd = this.t + 1.0;
-      this.beats.push(...this.conduction.advance(this.beatEnd, state));
-    }
-    this.beats = this.beats.filter((b) => b.t > this.t - 12);
+    this.stream.extend(this.t, state);
+    this.stream.prune(this.t);
     this.acc += dt * FS;
     const n = Math.floor(this.acc);
     this.acc -= n;
