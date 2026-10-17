@@ -235,10 +235,13 @@ describe("limits and restarts", () => {
     await before.call("corosim_adjust", { patch: { lesions: [{ artery: "LCX", stenosis: 0.9 }] }, runSeconds: 1 });
     await before.client.close();
     await a.srv.close();
-    // A restarted server drops open connections, so the client reconnects, as any HTTP client must; it keeps its token.
+    // A real restart takes a moment, and Node's fetch pools connections process-wide: give the pool time to see that
+    // the old server's sockets closed, then reconnect (retrying once on a dropped socket, as clients do). Same token.
+    await new Promise((r) => setTimeout(r, 300));
     const b = await boot({ dbFile, port });
-    const after = await mcpClient(access, b.base);
-    expect((await after.call("corosim_get_state")).data.scenario.lesions[0].artery).toBe("LCX");
+    const once = async () => { const c = await mcpClient(access, b.base); return { c, r: await c.call("corosim_get_state") }; };
+    const { c: after, r } = await once().catch(async () => { await new Promise((w) => setTimeout(w, 300)); return once(); });
+    expect(r.data.scenario.lesions[0].artery).toBe("LCX");
     await after.client.close(); await b.srv.close();
   });
 });
