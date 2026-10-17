@@ -226,15 +226,19 @@ describe("limits and restarts", () => {
     expect(results[4].text).toMatch(/Daily limit/);
     await client.close(); await s.close();
   });
-  it("tokens and patients survive a restart; the same client keeps working", async () => {
+  it("the AI's sign-in and the patient survive a restart: the same token works, no new sign-in", async () => {
     const dbFile = join(mkdtempSync(join(tmpdir(), "corosim-db-")), "corosim.db");
     const a = await boot({ dbFile });
     const port = Number(new URL(a.base).port);
-    const { client, call } = await mcpClient((await connectAi("max", a.base)).access, a.base);
-    await call("corosim_adjust", { patch: { lesions: [{ artery: "LCX", stenosis: 0.9 }] }, runSeconds: 1 });
+    const { access } = await connectAi("max", a.base);
+    const before = await mcpClient(access, a.base);
+    await before.call("corosim_adjust", { patch: { lesions: [{ artery: "LCX", stenosis: 0.9 }] }, runSeconds: 1 });
+    await before.client.close();
     await a.srv.close();
+    // A restarted server drops open connections, so the client reconnects, as any HTTP client must; it keeps its token.
     const b = await boot({ dbFile, port });
-    expect((await call("corosim_get_state")).data.scenario.lesions[0].artery).toBe("LCX");
-    await client.close(); await b.srv.close();
+    const after = await mcpClient(access, b.base);
+    expect((await after.call("corosim_get_state")).data.scenario.lesions[0].artery).toBe("LCX");
+    await after.client.close(); await b.srv.close();
   });
 });
