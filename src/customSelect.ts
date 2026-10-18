@@ -28,12 +28,21 @@ function enhance(sel: HTMLSelectElement) {
   if (lab) { btn.id = `${id}-btn`; lab.setAttribute("for", btn.id); }
 
   let active = -1;
-  const items = () => Array.from(list.children) as HTMLElement[];
+  const items = () => Array.from(list.querySelectorAll<HTMLElement>('li[role="option"]'));
   const opts = () => Array.from(sel.options);
 
   function render() {
     list.innerHTML = "";
+    let group: HTMLOptGroupElement | null = null;
     opts().forEach((o, i) => {
+      // <optgroup> labels become headings in the list; they are not choosable
+      const g = o.parentElement instanceof HTMLOptGroupElement ? o.parentElement : null;
+      if (g && g !== group) {
+        const h = document.createElement("li");
+        h.className = "dd-group"; h.setAttribute("role", "presentation"); h.textContent = g.label;
+        list.append(h);
+      }
+      group = g;
       const li = document.createElement("li");
       li.setAttribute("role", "option");
       li.textContent = o.textContent;
@@ -71,11 +80,11 @@ function enhance(sel: HTMLSelectElement) {
   btn.addEventListener("click", () => (list.hidden ? open() : close()));
   list.addEventListener("mousedown", (e) => e.preventDefault());
   list.addEventListener("click", (e) => {
-    const li = (e.target as HTMLElement).closest("li");
+    const li = (e.target as HTMLElement).closest<HTMLElement>('li[role="option"]');
     if (li) choose(+li.dataset.i!);
   });
   list.addEventListener("mousemove", (e) => {
-    const li = (e.target as HTMLElement).closest("li");
+    const li = (e.target as HTMLElement).closest<HTMLElement>('li[role="option"]');
     if (li) highlight(+li.dataset.i!);
   });
   btn.addEventListener("keydown", (e) => {

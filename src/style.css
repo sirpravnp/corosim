@@ -115,6 +115,7 @@ button.dd-btn[aria-expanded="true"]::after { transform: translateY(2px) rotate(-
 .dd-list li { padding: 8px 10px 8px 12px; font-size: 13px; line-height: 1.25; cursor: pointer; border-left: 3px solid transparent; }
 .dd-list li[aria-selected="true"] { font-weight: 700; border-left-color: var(--accent); }
 .dd-list li.act { background: var(--ink); color: var(--bg); }
+.dd-list li.dd-group { padding: 10px 10px 4px; font: 700 10px/1 var(--font-ui); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); cursor: default; border-left: 0; }
 .row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .views { margin-top: 10px; }
 button { padding: 8px 11px; font: 700 12px/1 var(--font-ui); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 0; cursor: pointer; }

@@ -1,4 +1,5 @@
 import "./ekg.css";
+import "../customSelect";
 import { App } from "@modelcontextprotocol/ext-apps";
 import { ALL_LEADS, LEADS, LeadName } from "../config/ecg";
 import { Simulation } from "../sim/simulation";
