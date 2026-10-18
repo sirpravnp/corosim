@@ -167,3 +167,9 @@ body.embedded .viewport { height: 300px; }
 body.embedded .titlebar h2 { font-size: 20px; }
 body.embedded .notes { grid-template-columns: 1fr; }
 @media (max-width: 640px) { body.embedded main { grid-template-columns: minmax(0, 1fr); } }
+
+/* In a chat, the app is just the tracing and its gain: no heart, readings, title, or the other controls */
+body.embedded main { grid-template-columns: minmax(0, 1fr); }
+body.embedded .heart, body.embedded .titlebar, body.embedded #read, body.embedded .hidden-read,
+body.embedded .toolbar .rate, body.embedded .toolbar .chk, body.embedded #pause { display: none; }
+body.embedded .toolbar { justify-content: flex-start; }
