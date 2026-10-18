@@ -65,8 +65,11 @@ export function fieldFromLogo(img: HTMLImageElement, n: number, closing = 0.03, 
   return { n, rho, heat, box };
 }
 
-/** Thermal ramp, black-body style. The black end is the ground itself: the coldest dot is still a deep red. */
-const RAMP: [number, string][] = [[0, "#3a0603"], [0.22, "#8c130b"], [0.48, "#d8401a"], [0.7, "#f49218"], [0.86, "#fbd24a"], [1, "#fff6dc"]];
+/** Thermal ramp, black-body style. The black end is the ground itself: the coldest dot is still a deep red. The site's
+ *  one sequential map: the homepage's dots, the simulator's velocity and wall-shear colormaps, and the accent. */
+export const RAMP: [number, string][] = [[0, "#3a0603"], [0.22, "#8c130b"], [0.48, "#d8401a"], [0.7, "#f49218"], [0.86, "#fbd24a"], [1, "#fff6dc"]];
+/** The same stops as [position, 0xRRGGBB], ready for THREE.Color. */
+export const RAMP_STOPS: [number, number][] = RAMP.map(([t, c]) => [t, parseInt(c.slice(1), 16)]);
 const hex = (s: string) => [1, 3, 5].map((i) => parseInt(s.slice(i, i + 2), 16));
 export function thermal(t: number): string {
   t = Math.min(1, Math.max(0, t));

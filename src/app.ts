@@ -21,6 +21,8 @@ import { Scenario, LesionSpec } from "./sim/scenario";
 import { encodeScenario, decodeScenario } from "./sim/llm";
 import { TOOLS } from "./mcp/tools";
 import { Account, LiveLink, LiveStatus } from "./live";
+import { RAMP_STOPS, thermalGradient } from "./stipple";
+import { gateArt } from "./gateArt";
 import { Case, MAX_SCORE, POINTS, Point, TREAT, TreatRecord, TreatScore, dailyCase, dayKey, dayNumber, explain, explainTreatment, fullFindings, judge, keyOfDay, muscleSaved, parseDay, rvInvolvement, score, streaks, treatScore } from "./game";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -75,8 +77,17 @@ const heartGroup = new THREE.Group(); scene.add(heartGroup);
 const hash = (s: string) => { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return ((h >>> 0) % 10000) / 10000; };
 const smooth = (t: number) => { t = Math.min(1, Math.max(0, t)); return t * t * (3 - 2 * t); };
 const v3 = (p: V3) => new THREE.Vector3(p[0], p[1], p[2]);
-const VIRIDIS = ["#440154", "#3b528b", "#21908d", "#5dc863", "#fde725"], MAGMA = ["#000004", "#51127c", "#b73779", "#fc8961", "#fcfdbf"];
-const ramp = (stops: string[], t: number) => { t = Math.min(1, Math.max(0, t)) * (stops.length - 1); const k = Math.min(stops.length - 2, Math.floor(t)); return new THREE.Color(stops[k]).lerp(new THREE.Color(stops[k + 1]), t - k); };
+// Sequential maps as [position, color] stops: viridis (evenly spaced) for pressure, the homepage's thermal ramp for
+// velocity and wall shear stress.
+type Stops = [number, THREE.ColorRepresentation][];
+const VIRIDIS: Stops = ["#440154", "#3b528b", "#21908d", "#5dc863", "#fde725"].map((c, i, a) => [i / (a.length - 1), c]), THERMAL: Stops = RAMP_STOPS;
+const ramp = (stops: Stops, t: number) => {
+  t = Math.min(1, Math.max(0, t));
+  let k = 0;
+  while (k < stops.length - 2 && t > stops[k + 1][0]) k++;
+  const [t0, c0] = stops[k], [t1, c1] = stops[k + 1];
+  return new THREE.Color(c0).lerp(new THREE.Color(c1), (t - t0) / (t1 - t0));
+};
 const lg = (v: number, lo: number, hi: number) => (Math.log10(Math.max(v, lo)) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo));
 const GROUP_COLOR: Record<string, number> = { LAD: 0x1f5fa8, LCx: 0x2e7d4f, RCA: 0xc77c00 };
 const ARTERY = new THREE.Color(0xc2392f), ARTERY_DEEP = new THREE.Color(0x8a221d), GRAY = new THREE.Color(0x9a9a9a);
@@ -247,8 +258,8 @@ function shapeVessels() {
       else if (S.mode === "anat") c.setHex(GROUP_COLOR[b.seg.group]);
       else if (blocked) c.copy(GRAY);
       else if (S.mode === "pressure") c.copy(ramp(VIRIDIS, (r.P[i] / MMHG - 20) / 70));
-      else if (S.mode === "velocity") c.copy(ramp(MAGMA, lg(r.v[i], 0.01, 4)));
-      else c.copy(ramp(MAGMA, lg(r.wss[i], 0.1, 1000)));
+      else if (S.mode === "velocity") c.copy(ramp(THERMAL, lg(r.v[i], 0.01, 4)));
+      else c.copy(ramp(THERMAL, lg(r.wss[i], 0.1, 1000)));
       if (S.selected === b.seg.id) c.lerp(new THREE.Color(0xffffff), 0.35);
       for (let j = 0; j <= M; j++) {
         const th = (j / M) * Math.PI * 2, cs = Math.cos(th) * R, sn = Math.sin(th) * R, o = i * (M + 1) + j;
@@ -267,9 +278,9 @@ function legend() {
   const set = (g: string, a: string, m: string, z: string) => { bar.style.background = g; $("l0").textContent = a; $("lmid").textContent = m; $("l1").textContent = z; };
   if (S.mode === "real") set("linear-gradient(90deg,#8e3a33 0 50%,#4e3a5a 50%)", "Myocardium", "", "Ischemic");
   else if (S.mode === "anat") set("linear-gradient(90deg,#1f5fa8 0 33%,#2e7d4f 33% 66%,#c77c00 66%)", "LAD", "Circumflex", "RCA");
-  else if (S.mode === "pressure") set(`linear-gradient(90deg,${VIRIDIS.join(",")})`, "20 mmHg", "55", "90 mmHg");
-  else if (S.mode === "velocity") set(`linear-gradient(90deg,${MAGMA.join(",")})`, "0.01 m/s", "log", "4 m/s");
-  else set(`linear-gradient(90deg,${MAGMA.join(",")})`, "0.1 Pa", "log", "1000 Pa");
+  else if (S.mode === "pressure") set(`linear-gradient(90deg,${VIRIDIS.map(([, c]) => c).join(",")})`, "20 mmHg", "55", "90 mmHg");
+  else if (S.mode === "velocity") set(thermalGradient(), "0.01 m/s", "log", "4 m/s");
+  else set(thermalGradient(), "0.1 Pa", "log", "1000 Pa");
 }
 
 // ---------------------------------------------------------------- blood flow particles
@@ -867,10 +878,13 @@ function gameQuit() {
   controlsUi(); liveUi();
 }
 let inGame = false; // the page at /game
+const showGateArt = gateArt($("qart"), document.querySelector(".masthead .logo") as HTMLImageElement);
 function gameUi() {
   $("quiz").dataset.phase = G.phase; document.body.dataset.game = G.phase;
-  // idle: the front door over the blurred page; in a case: the panel in the rail
-  $("qgate").hidden = !(inGame && G.phase === "idle"); $("quiz").hidden = !(inGame && G.phase !== "idle");
+  // idle: the front door over the stippled heart; in a case: the panel in the rail
+  const gate = $("qgate"), opening = gate.hidden && inGame && G.phase === "idle";
+  gate.hidden = !(inGame && G.phase === "idle"); $("quiz").hidden = !(inGame && G.phase !== "idle");
+  if (opening) showGateArt();
   document.body.classList.toggle("gated", inGame && G.phase === "idle");
   if (G.phase === "idle") {
     const today = dayKey(), key = G.target || today, n = dayNumber(key), archive = key !== today, p = history[key];

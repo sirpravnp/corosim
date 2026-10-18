@@ -21,11 +21,19 @@ const gamePage = (): Plugin => ({
 });
 
 // Relative asset paths so the built site works when published under any URL.
-export default defineConfig({
-  base: "./",
-  plugins: [gamePage()],
-  // No module-preload polyfill: with two pages sharing style.css it would become a third chunk both bundles import,
-  // which scripts/prepare-publish.mjs (one script beside one page) could not carry.
-  build: { modulePreload: { polyfill: false }, rollupOptions: { input: { home: "index.html", sim: "sim/index.html" } } },
-  test: { include: ["tests/**/*.test.ts"] },
+// Each page is its own build (`vite build`, then `vite build --mode home` into the same dist): both import stipple.ts,
+// and built together it would become a third chunk both bundles import, which scripts/prepare-publish.mjs (one script
+// beside one page) could not carry. No module-preload polyfill, for the same reason.
+export default defineConfig(({ mode }) => {
+  const home = mode === "home";
+  return {
+    base: "./",
+    plugins: home ? [] : [gamePage()],
+    build: {
+      modulePreload: { polyfill: false },
+      emptyOutDir: !home, // the homepage lands beside the simulator
+      rollupOptions: { input: home ? { home: "index.html" } : { sim: "sim/index.html" } },
+    },
+    test: { include: ["tests/**/*.test.ts"] },
+  };
 });

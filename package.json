@@ -6,7 +6,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && vite build --mode home",
     "publish:prep": "npm run build && node scripts/prepare-publish.mjs",
     "mcp": "tsx src/mcp/main.ts",
     "mcp:http": "tsx src/mcp/main.ts --http 8787",

@@ -1,19 +1,21 @@
 /* Layout: an instrument console. The 3D heart and the 12-lead are the two working displays on the left;
    readouts and controls sit in a right-hand rail, monitor first. Scan-room black and bone, one hot-spot yellow,
    red and blue only where physiology goes wrong. Off-White structure: Helvetica Bold, quoted uppercase labels,
-   square hairline frames. The ECG is drawn on real paper in both themes. Dark is the default. */
-:root {
-  --bg: #05060a;          /* room */
+   square hairline frames. The ECG is drawn on real paper in both themes. Dark is the default.
+   One look across the site: the homepage's black ground and thermal ramp (RAMP in stipple.ts) are these tokens. The
+   dark set below is also the black stage: anything marked .on-black (the homepage, the 3D viewport, the game's front
+   door) keeps it in both themes, as the ECG keeps its paper. */
+:root, .on-black {
+  --bg: #000000;          /* room: pure black, the homepage's ground */
   --panel: #0b0d14;       /* console surfaces */
-  --stage: #000000;       /* behind the 3D heart */
-  --stage-2: #17181d;
+  --stage: #000000;       /* behind the 3D heart, in both themes */
   --ink: #f4f1ea;
   --muted: #98a0b8;
-  --rule: #2b2f45;
-  --rule-light: #1a1d2c;
-  --accent: #b8372e;      /* muted brick red: fills only, always with --accent-ink */
+  --rule: #303030;        /* neutral hairline on black */
+  --rule-light: #1c1c1c;
+  --accent: #d23d19;      /* the thermal ramp at 0.46, just under its #d8401a stop: fills only, always with --accent-ink (4.75:1) */
   --accent-ink: #ffffff;
-  --range: #d4574d;
+  --range: var(--accent);
   --link: #f4f1ea;
   --ok: #c9c6bd;
   --warn: #e0a447;
@@ -26,20 +28,22 @@
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg: #eeece6; --panel: #f7f5f0; --stage: #d9d6ce; --stage-2: #e6e4de;
+    --bg: #eeece6; --panel: #f7f5f0;
     --ink: #05060a; --muted: #5a5d6e; --rule: #05060a; --rule-light: #c4c1b9;
-    --range: #05060a; --link: #05060a;
+    --link: #05060a;
     --ok: #3a3a36; --warn: #8a5a00; --bad: #d1121b; --down: #1b3fd8; --bar-track: #dbd8d0;
     color-scheme: light;
   }
 }
 :root[data-theme="light"] {
-  --bg: #eeece6; --panel: #f7f5f0; --stage: #d9d6ce; --stage-2: #e6e4de;
+  --bg: #eeece6; --panel: #f7f5f0;
   --ink: #05060a; --muted: #5a5d6e; --rule: #05060a; --rule-light: #c4c1b9;
-  --range: #05060a; --link: #05060a;
+  --link: #05060a;
   --ok: #3a3a36; --warn: #8a5a00; --bad: #d1121b; --down: #1b3fd8; --bar-track: #dbd8d0;
   color-scheme: light;
 }
+
+.on-black { color: var(--ink); } /* the inherited text color was resolved against the theme's set */
 
 * { box-sizing: border-box; }
 html { background: var(--bg); }
@@ -53,15 +57,17 @@ body {
   font: 15px/1.5 var(--font-ui);
 }
 
-/* Masthead: the title, and the switch between the two versions */
+/* Masthead: the title, and the switch between the two versions, as the homepage sets them */
 .masthead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 12px 24px; padding-block: 28px 18px; }
 .masthead { position: relative; border-bottom: 1px solid var(--rule); }
-.modes { display: flex; gap: 6px; }
-.modes a { padding: 8px 11px; font: 700 12px/1 var(--font-ui); letter-spacing: 0.04em; text-transform: uppercase; text-decoration: none; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); }
-.modes a:hover { background: var(--ink); border-color: var(--ink); color: var(--bg); }
-.modes a.on, .modes a.on:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+/* The switch as the homepage's doors: uppercase, a hairline square frame, a trailing arrow, inverted on hover */
+.modes { display: flex; flex-wrap: wrap; gap: 6px; }
+.modes a { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 13px; font: 700 12px/1 var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase; text-decoration: none; color: var(--ink); border: 1px solid var(--rule); }
+.modes a::after { content: "→"; color: var(--muted); }
+.modes a:hover, .modes a:hover::after { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.modes a.on, .modes a.on:hover, .modes a.on::after { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 #quiz[hidden] { display: none; }
-.masthead h1 { margin: 0; font: 700 40px/1 var(--font-ui); letter-spacing: -0.03em; text-wrap: balance; }
+.masthead h1 { margin: 0; font: 700 clamp(40px, 6vw, 64px)/0.92 var(--font-ui); letter-spacing: -0.045em; text-wrap: balance; }
 
 /* Layout */
 main { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 24px; margin-top: 20px; align-items: start; }
@@ -79,7 +85,7 @@ main > section, aside { min-width: 0; display: grid; grid-template-columns: minm
 figure { margin: 0; padding: 12px; background: var(--panel); border: 1px solid var(--rule); border-radius: 0; min-width: 0; }
 figcaption { margin-top: 10px; font-size: 13px; line-height: 1.5; color: var(--muted); max-width: 72ch; }
 figcaption b { color: var(--ink); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
-.viewport { position: relative; height: 580px; overflow: hidden; border-radius: 0; background: radial-gradient(ellipse at 50% 38%, var(--stage-2) 0%, var(--stage) 100%); }
+.viewport { position: relative; height: 580px; overflow: hidden; border-radius: 0; background: var(--stage); }
 .viewport canvas { display: block; width: 100%; height: 100%; }
 #tag { position: absolute; left: 10px; top: 8px; font: 12px var(--font-data); color: var(--muted); pointer-events: none; }
 #legend { position: absolute; left: 10px; bottom: 10px; width: 220px; font: 11px/1.3 var(--font-data); color: var(--ink); pointer-events: none; }
@@ -131,12 +137,12 @@ button:disabled, button:disabled:hover { color: var(--muted); background: var(--
 #quiz:not([data-phase="idle"]) .q-live, #quiz[data-phase="play"] .q-play, #quiz[data-phase="treat"] .q-treat, #quiz[data-phase="reveal"] .q-reveal { display: block; }
 #quiz:not([data-phase="idle"]) .row.q-live { display: flex; }
 
-/* The game's front door: a card over the blurred page */
-#qgate { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: color-mix(in srgb, var(--bg) 55%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+/* The game's front door: a card of dark glass over the stippled heart, on black in both themes, like the homepage */
+#qgate { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; overflow-y: auto; background: var(--bg); }
 #qgate[hidden] { display: none; }
+#qgate .art { position: fixed; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
 body.gated { overflow: hidden; }
-@supports not (backdrop-filter: blur(1px)) { body.gated main, body.gated .masthead, body.gated .foot { filter: blur(8px); } }
-.q-card { width: min(460px, 100%); padding: 24px 24px 20px; background: var(--panel); border: 1px solid var(--ink); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35); }
+.q-card { position: relative; width: min(460px, 100%); padding: 24px 24px 20px; background: rgba(0, 0, 0, 0.62); border: 1px solid var(--rule); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .q-card h2 { margin: 0 0 10px; font: 700 11px/1 var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; }
 .q-card p { margin: 0 0 12px; font-size: 14px; line-height: 1.5; }
 .q-card .q-day { font: 600 13px/1.5 var(--font-data); }
@@ -200,8 +206,8 @@ table.readout td#stup, table.readout td#stdown, table.readout td#rhythm { white-
 
 .masthead h1 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
 .masthead .homelink { display: flex; flex: none; }
-.masthead .logo { width: 56px; height: 56px; flex: none; }
-.masthead .kind { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.masthead .logo { width: clamp(44px, 5.5vw, 60px); height: auto; flex: none; }
+.masthead .kind { flex-basis: 100%; margin-top: 10px; font: 500 11px/1.5 var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 
 /* Floating markers, positioned over the lesion and over the player's call by app.ts */
 #lesion, #call { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 2; will-change: transform; transition: opacity .15s; }
@@ -295,7 +301,7 @@ details.fold > :not(summary):last-child { margin-bottom: 16px; }
 
 /* Connect your AI: the masthead button and its panel */
 .mast-right { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.aibtn { display: inline-flex; align-items: center; gap: 7px; padding: 8px 11px; font: 700 12px/1 var(--font-ui); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); cursor: pointer; }
+.aibtn { display: inline-flex; align-items: center; gap: 7px; padding: 11px 13px; font: 700 12px/1 var(--font-ui); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); cursor: pointer; }
 .aibtn:hover, .aibtn[aria-expanded="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
 .aibtn .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
 .aibtn.wait .dot { background: var(--warn); } .aibtn.live .dot { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 30%, transparent); }
