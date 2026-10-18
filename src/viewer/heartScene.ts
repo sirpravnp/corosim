@@ -72,14 +72,23 @@ export class HeartScene {
     this.heartGeo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(n * 3), 3));
     this.heartGeo.setIndex(new THREE.BufferAttribute(m.indices, 1));
     const heartMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.55, clearcoat: 0.45, clearcoatRoughness: 0.3, sheen: 0.35, sheenColor: new THREE.Color(0xffc9b8), sheenRoughness: 0.6 });
+    this.heartMat = heartMat;
     this.group.add(new THREE.Mesh(this.heartGeo, heartMat), this.vesselGroup);
     this.view("anterior");
     new ResizeObserver(() => this.resize()).observe(host);
     this.resize();
   }
 
-  /** Closer than the full app: the chat panel is small, and the wall that darkens should be easy to see. */
-  view(name: keyof typeof VIEWS | string) { this.camera.position.set(...(VIEWS[name] ?? VIEWS.anterior)).multiplyScalar(0.72).add(TARGET); this.controls.target.copy(TARGET); }
+  /** Closer than the full app by default: the chat panel is small, and the wall that darkens should be easy to see. */
+  view(name: keyof typeof VIEWS | string, distance = this.distance) { this.distance = distance; this.camera.position.set(...(VIEWS[name] ?? VIEWS.anterior)).multiplyScalar(distance).add(TARGET); this.controls.target.copy(TARGET); }
+  private distance = 0.72;
+  private heartMat!: THREE.MeshPhysicalMaterial;
+
+  /** See-through muscle (1 = solid), so something drawn inside the heart shows. */
+  setOpacity(k: number) { this.heartMat.transparent = k < 1; this.heartMat.opacity = k; this.heartMat.depthWrite = k >= 1; this.heartMat.needsUpdate = true; }
+
+  /** Draw something else in the same scene, in the patient frame (x left, y up, z anterior), centred on the heart. */
+  addOverlay(obj: THREE.Object3D) { obj.position.add(TARGET); this.scene.add(obj); }
 
   resize() {
     const w = this.host.clientWidth || 1, h = this.host.clientHeight || 1;

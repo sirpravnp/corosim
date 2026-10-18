@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>CoroSim EKG test host</title>
+<style>body{margin:0;background:#202124;color:#ddd;font:13px sans-serif} #log{padding:6px 10px;white-space:pre-wrap} iframe{display:block;width:900px;height:760px;border:1px solid #444;margin:10px}</style>
+</head><body>
+<!-- Development only: a minimal MCP Apps host (what Claude does), to check the EKG viewer's handshake and tool results. -->
+<div id="log">host: starting</div>
+<iframe id="view" src="./index.html" sandbox="allow-scripts allow-same-origin"></iframe>
+<script type="module" src="../src/ekg/testhost.ts"></script>
+</body></html>

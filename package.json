@@ -10,9 +10,10 @@
     "publish:prep": "npm run build && node scripts/prepare-publish.mjs",
     "mcp": "tsx src/mcp/main.ts",
     "mcp:http": "tsx src/mcp/main.ts --http 8787",
-    "build:mcp": "npm run build:viewer && esbuild src/mcp/main.ts --bundle --platform=node --format=esm --target=node18 --outfile=dist-mcp/corosim-mcp.mjs --banner:js=\"import{createRequire as __corosimRequire}from'module';const require=__corosimRequire(import.meta.url);\" && cp dist-viewer/index.html dist-mcp/viewer.html",
+    "build:mcp": "npm run build:viewer && npm run build:ekg-viewer && esbuild src/mcp/main.ts --bundle --platform=node --format=esm --target=node18 --outfile=dist-mcp/corosim-mcp.mjs --banner:js=\"import{createRequire as __corosimRequire}from'module';const require=__corosimRequire(import.meta.url);\" && cp dist-viewer/index.html dist-mcp/viewer.html && cp dist-ekg-viewer/index.html dist-mcp/ekg-viewer.html",
     "export:tools": "tsx scripts/export-tools.ts",
-    "build:viewer": "vite build -c vite.viewer.config.ts"
+    "build:viewer": "vite build -c vite.viewer.config.ts",
+    "build:ekg-viewer": "vite build -c vite.ekg-viewer.config.ts"
   },
   "devDependencies": {
     "@types/d3-delaunay": "^6.0.4",

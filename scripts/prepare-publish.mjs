@@ -29,4 +29,11 @@ rmSync(out, { recursive: true, force: true });
 mkdirSync(`${out}/assets`, { recursive: true });
 writeFileSync(`${out}/index.html`, page + "\n");
 copyFileSync(`${dist}/assets/${js[0]}`, `${out}/assets/app.js`);
-console.log(`publish/index.html ${(page.length / 1024).toFixed(1)} kB, assets/app.js ${(readFileSync(`${out}/assets/app.js`).length / 1024).toFixed(0)} kB`);
+// The simulator shares code with the EKG page, so its script imports chunks ("./x.js"): ship those beside it too.
+const chunks = new Set(), queue = [js[0]];
+while (queue.length) {
+  const src = readFileSync(`${dist}/assets/${queue.pop()}`, "utf8");
+  for (const m of src.matchAll(/(?:from|import\()\s*["']\.\/([\w.-]+\.js)["']/g)) if (!chunks.has(m[1])) { chunks.add(m[1]); queue.push(m[1]); }
+}
+for (const c of chunks) copyFileSync(`${dist}/assets/${c}`, `${out}/assets/${c}`);
+console.log(`publish/index.html ${(page.length / 1024).toFixed(1)} kB, assets/app.js ${(readFileSync(`${out}/assets/app.js`).length / 1024).toFixed(0)} kB${chunks.size ? ` + ${chunks.size} shared chunk${chunks.size > 1 ? "s" : ""}` : ""}`);

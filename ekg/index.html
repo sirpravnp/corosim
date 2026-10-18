@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="/favicon.ico" sizes="any" />
+<link rel="icon" type="image/png" href="/favicon.png" />
+<title>CoroSim EKG</title>
+<meta name="description" content="Simulated 12-lead EKGs: common rhythms, blocks, STEMI and its mimics, with the leads drawn through a 3D heart.">
+</head>
+<body>
+<div class="app" id="app">
+<header class="masthead">
+  <h1><a class="homelink" href="../" aria-label="CoroSim home"><img class="logo" src="/logo-transparent.png" alt="" width="48" height="48"></a>CoroSim <span class="kind">EKG · simulated 12-lead</span></h1>
+  <div class="mast-right">
+    <nav class="modes" aria-label="Version">
+      <a id="modeSim" href="../sim/">Simulator</a>
+      <a id="modeGame" href="../game/">Find the culprit</a>
+      <a id="modeEkg" href="./" class="on" aria-current="page">EKG</a>
+    </nav>
+    <a id="askClaude" class="askbtn" target="_blank" rel="noopener" title="Open Claude with this tracing (needs the CoroSim connector)">Ask Claude<span aria-hidden="true">↗</span></a>
+  </div>
+</header>
+
+<main>
+  <nav class="library" aria-label="Presets">
+    <div class="lib-head">
+      <input id="search" type="search" placeholder="Search rhythms…" aria-label="Search presets" autocomplete="off">
+      <button id="quizBtn" class="primary">Quiz me</button>
+    </div>
+    <div id="list" class="list"></div>
+    <p class="lib-foot">Not in the list? Ask Claude to build it with the CoroSim connector, e.g. “show me sinus at 110 with LBBB and an inferior STEMI”.</p>
+  </nav>
+
+  <section class="work">
+    <div class="titlebar">
+      <div class="ttl">
+        <span class="cat" id="cat">Sinus</span>
+        <h2 id="title">Normal sinus rhythm</h2>
+        <p id="summary" class="summary"></p>
+      </div>
+      <div class="pickwrap" id="pickwrap" hidden><select id="pick" aria-label="Preset"></select></div>
+    </div>
+
+    <div class="quiz" id="quiz" hidden>
+      <div class="qhead"><b>What is this?</b><span id="qscore" class="qscore"></span></div>
+      <div class="choices" id="choices"></div>
+      <div class="qafter" id="qafter" hidden><span id="qverdict"></span><button id="qnext" class="primary">Next tracing</button><button id="qstop">Stop quiz</button></div>
+    </div>
+
+    <div class="paperwrap"><canvas id="paper"></canvas></div>
+
+    <div class="toolbar">
+      <div class="seg" role="group" aria-label="Gain">
+        <span>Gain</span><button data-gain="5">5</button><button data-gain="10" class="on">10</button><button data-gain="20">20</button>
+      </div>
+      <label class="rate" id="rateWrap"><span>Rate</span><input id="rate" type="range" min="20" max="240" step="1"><output id="rateVal"></output></label>
+      <label class="chk"><input id="posterior" type="checkbox"> V7–V9</label>
+      <label class="chk"><input id="artifact" type="checkbox"> Artifact</label>
+      <button id="pause">Pause</button>
+    </div>
+
+    <div class="read" id="read">
+      <div class="meas" id="meas"></div>
+      <div class="stmap" id="stmap"></div>
+      <div class="notes">
+        <div><h3>Look for</h3><ul id="features"></ul></div>
+        <div><h3>Teaching points</h3><ul id="pearls"></ul></div>
+        <div id="mimicsBox"><h3>Also looks like</h3><ul id="mimics"></ul></div>
+      </div>
+      <p class="next" id="next" hidden></p>
+    </div>
+    <div class="hidden-read" id="hiddenRead" hidden>Interpretation hidden while you decide. <button id="reveal">Reveal</button></div>
+  </section>
+
+  <aside class="heart">
+    <div class="viewport" id="stage">
+      <div class="lg"><i class="limb"></i>limb leads (frontal plane)<i class="chest"></i>chest leads (horizontal plane)<i class="vec"></i>heart vector now</div>
+      <div class="views" id="views">
+        <button data-view="anterior" class="on">Front</button><button data-view="left">Left</button><button data-view="inferior">Below</button><button data-view="posterior">Back</button>
+      </div>
+    </div>
+    <div class="leadctl">
+      <div class="seg" role="group" aria-label="Leads shown">
+        <button data-set="all" class="on">All leads</button><button data-set="limb">Limb</button><button data-set="chest">Chest</button>
+      </div>
+      <p class="leadnote" id="leadnote"></p>
+    </div>
+    <p class="fine">Educational simulation; not for clinical decisions. Waveforms come from a dipole model of the heart: real tracings vary, and findings spread to neighbouring leads more than in life.</p>
+  </aside>
+</main>
+</div>
+<script type="module" src="../src/ekg/page.ts"></script>
+</body>
+</html>

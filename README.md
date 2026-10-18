@@ -33,6 +33,7 @@ npm run build      # static site in dist/: index.html, sim/index.html, game/inde
 | Revascularization | Primary PCI, fibrinolytic (55% success), CABG (a graft that feeds the vessel beyond the lesion at aortic pressure less its own loss); each takes clinical minutes to arrive | `src/physics/revasc.ts`, `network.ts` |
 | Advice | Reads the live state and lists what is wrong and what guidelines would do next, in order | `src/physics/advice.ts` |
 | Simulation core | The whole model with no DOM, seeded and reproducible; the app, the MCP server and the tests all step this one object | `src/sim/` |
+| EKG page | Over fifty rhythm, block, ischemia and mimic presets on the same dipole heart; 3D lead axes and heart vector | `src/ekg/`, `ekg/index.html` |
 | AI connection | MCP server (Streamable HTTP and stdio); accounts (Google/GitHub) and OAuth for connectors; each account's patient runs on its open page or is saved in SQLite; REST/OpenAPI; `#s=` share links | `src/mcp/`, `src/live.ts` |
 
 All constants live in `src/config/`, tagged as literature-backed or assumed.
@@ -111,6 +112,27 @@ the tracing and why. The day's result is kept in the browser, so a day is played
 and "Share your score" copies a spoiler-free line (the case number, the score, how close and how soon) to paste anywhere.
 
 Case drawing, scoring and the debrief live in `src/game.ts`; the display logic is in `src/app.ts`.
+
+## EKG: simulated 12-leads
+
+`corosim.com/ekg` is a page for reading tracings: over fifty presets across sinus rhythms, atrial fibrillation and
+flutter, junctional and re-entrant rhythms (SVT, WPW), AV blocks, bundle branch and fascicular blocks, ventricular
+rhythms (PVCs, AIVR, monomorphic and polymorphic VT, torsades, VF, asystole, pacing), acute coronary patterns (anterior,
+inferior, lateral and posterior STEMI, hyperacute T, de Winter, Wellens, NSTEMI, aVR elevation, Sgarbossa) and STEMI
+mimics (pericarditis, early repolarization, LVH, Brugada, Takotsubo, PE, LV aneurysm, effusion, hyperkalemia,
+hypothermia). The 12-lead writes itself with a 10 s rhythm strip, and beside it the 3D heart is drawn see-through, with
+every lead as an axis through it (limb leads on the frontal plane, chest leads on the horizontal) and the heart's
+electrical vector moving with its loop, so a learner can see why each lead goes up or down. Click a lead to follow it.
+Rate, gain, posterior leads and artifact are adjustable; "Quiz me" hides the name and offers four choices.
+
+It uses the same dipole heart as the simulator's ECG (same lead axes, waves and bundle-branch vectors) through its own
+generator for rhythms the simulator does not make (`src/ekg/engine.ts`), and the acute coronary presets take their ST
+vector from the coronary model with a real lesion, settled (`src/ekg/presets.ts`). Rates, intervals, axis and ST levels
+on the page are measured from the waveform, not copied from labels. An AI draws the same page in the chat with
+`corosim_ekg_show` (below), and can build tracings the library does not have from a description ("sinus at 110 with
+LBBB and an inferior STEMI", "AF with a delta wave"): rhythm, conduction and territory-level ST/T changes in clinical
+terms (`src/ekg/custom.ts`), measured back so the AI can check what it drew, and shareable as `/ekg/#c=…` links.
+"Ask Claude" opens Claude with the tracing.
 
 ## Connecting an AI
 

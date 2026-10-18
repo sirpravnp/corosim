@@ -940,6 +940,7 @@ function applyMode() {
   const game = /\/game(\/(index\.html)?)?$/.test(location.pathname); // /game, /game/ or /game/index.html
   const root = /\/(sim|game)\/(index\.html)?$/.test(location.pathname) ? "../" : "./"; // the site's root: the homepage
   ($("modeSim") as HTMLAnchorElement).href = root + "sim/"; ($("modeGame") as HTMLAnchorElement).href = root + "game/";
+  ($("modeEkg") as HTMLAnchorElement).href = root + "ekg/";
   ($("home") as HTMLAnchorElement).href = root;
   (document.querySelector(".q-plain") as HTMLAnchorElement).href = root + "sim/";
   inGame = game;
