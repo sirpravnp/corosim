@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="/favicon.ico" sizes="any" />
+<link rel="icon" type="image/png" href="/favicon.png" />
+<title>CoroSim Structural</title>
+<meta name="description" content="Valve and congenital heart lesions on a closed-loop circulation: chamber pressures and oxygen saturations, Qp:Qs, valve gradients and regurgitant fractions, pressure traces and loops.">
+</head>
+<body>
+<div class="app" id="app">
+<header id="shell-head"></header>
+
+<main class="s-main">
+  <nav class="library" aria-label="Lesions">
+    <div id="list" class="list"></div>
+    <p class="lib-foot">Pressures, flows and saturations come from a lumped closed-loop model of the heart and lungs. Educational only.</p>
+  </nav>
+
+  <section class="room">
+    <div class="titlebar">
+      <h2 id="title">Normal heart</h2>
+      <p id="summary" class="summary"></p>
+    </div>
+    <div class="stage">
+      <div id="view3d" class="viewport3d" aria-label="3D heart, coloured by oxygen saturation"></div>
+      <div class="views">
+        <button data-view="anterior" class="on">Anterior</button><button data-view="left">Left</button><button data-view="posterior">Posterior</button><button data-view="right">Right</button><button data-view="superior">Superior</button>
+        <label class="cutlabel">Cutaway <input id="cut" type="range" min="0" max="100" value="0" aria-label="Cutaway depth"></label>
+        <span class="satbar" aria-hidden="true"><i id="satbar"></i><span>60%</span><span>O₂ saturation</span><span>98%</span><em class="nosat"></em><span>no blood</span></span>
+      </div>
+      <p class="fine">Schematic, not to scale: the simulator's own adult-proportioned heart is reshaped to illustrate each lesion. Walls have no thickness; valves are drawn as an annulus and its opening; the septa and jets are illustrative.</p>
+    </div>
+    <div id="controls" class="toolbar sliders"></div>
+    <div class="meas" id="meas"></div>
+    <ul class="findings" id="findings"></ul>
+    <div class="screen"><canvas id="trL" width="720" height="250" aria-label="Left heart pressure traces"></canvas></div>
+    <div class="screen"><canvas id="trR" width="720" height="250" aria-label="Right heart pressure traces"></canvas></div>
+  </section>
+
+  <section class="side">
+    <h2>Catheter data</h2>
+    <table class="data" id="sites"><thead><tr><th>Site</th><th>Pressure, mmHg</th><th>O₂ sat</th></tr></thead><tbody></tbody></table>
+    <h2>Valves</h2>
+    <table class="data" id="valves"><thead><tr><th>Valve</th><th>Stenosis</th><th>Regurgitation</th><th>Gradient</th></tr></thead><tbody></tbody></table>
+    <h2>Pressure–volume loops</h2>
+    <div class="loops">
+      <div class="screen"><canvas id="pvL" width="320" height="260" aria-label="Left ventricular pressure-volume loop"></canvas></div>
+      <div class="screen"><canvas id="pvR" width="320" height="260" aria-label="Right ventricular pressure-volume loop"></canvas></div>
+    </div>
+    <p class="note" id="murmur"></p>
+    <p class="note" id="warn" hidden></p>
+  </section>
+</main>
+<p class="fine" id="notes"></p>
+<footer id="shell-foot"></footer>
+</div>
+<script type="module" src="../src/structural/page.ts"></script>
+</body>
+</html>
