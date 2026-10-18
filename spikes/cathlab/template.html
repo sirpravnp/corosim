@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Virtual cath lab: look-and-feel prototype</title>
+<style>
+:root{--bg:#f6f5f1;--fg:#1d1d1b;--mut:#6b6a64;--card:#fff;--line:#dcdad2;--acc:#b3261e}
+@media (prefers-color-scheme:dark){:root{--bg:#141413;--fg:#ecebe4;--mut:#9a988f;--card:#1e1e1c;--line:#34342f;--acc:#ff8a7a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,sans-serif;padding:16px}
+h1{font-size:18px;margin:0 0 2px}p.sub{margin:0 0 12px;color:var(--mut)}
+.bar{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;margin-bottom:12px}
+select,button{font:inherit;padding:5px 9px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg)}
+button{cursor:pointer}label{color:var(--mut)}input[type=range]{vertical-align:middle;width:130px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px}
+.card h2{font-size:13px;margin:0 0 6px;color:var(--mut);font-weight:600;letter-spacing:.03em;text-transform:uppercase}
+canvas{width:100%;height:auto;display:block;border-radius:6px;background:#000}
+.stat{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:8px;font-variant-numeric:tabular-nums}.stat b{color:var(--fg)}.stat span{color:var(--mut)}
+.note{margin-top:14px;color:var(--mut);font-size:12.5px;max-width:900px}
+.bad{color:var(--acc)}
+</style></head><body>
+<h1>Virtual cath lab: look-and-feel prototype</h1>
+<p class="sub">Drawn from CoroSim's own coronary tree and solved flows (spikes/cathlab/export.ts). Schematic, not a clinical image.</p>
+<div class="bar">
+  <label>Patient <select id="case"></select></label>
+  <label>LAO/RAO <input id="rot" type="range" min="-60" max="60" value="30"> <span id="rotv"></span></label>
+  <label>Cranial/caudal <input id="tilt" type="range" min="-45" max="45" value="-20"> <span id="tiltv"></span></label>
+  <button id="inj">Inject contrast</button>
+  <label>Echo view <select id="view"></select></label>
+  <label>Omniplane <input id="omni" type="range" min="0" max="180" value="0"> <span id="omniv"></span></label>
+  <label><input id="lab" type="checkbox"> anatomical labels</label>
+  <label><input id="terr" type="checkbox"> show territories (echo)</label>
+</div>
+<div class="grid">
+  <div class="card"><h2>Angiogram</h2><canvas id="ang" width="560" height="560"></canvas>
+    <div class="stat" id="angstat"></div></div>
+  <div class="card"><h2>Transesophageal echo</h2><canvas id="echo" width="400" height="400"></canvas>
+    <div class="stat" id="echostat"></div></div>
+  <div class="card"><h2>Pressure wire pullback (adenosine), LAD</h2><canvas id="pull" width="560" height="260" style="background:#0b0b0b"></canvas>
+    <div class="stat" id="pullstat"></div></div>
+</div>
+<p class="note">Angiogram: each vessel is projected from the C-arm angle you pick; iodine thickness adds along the ray, so overlap and foreshortening come out of the geometry. The contrast front travels at each vessel's solved blood velocity, so a tight lesion fills late (TIMI 2) and an occlusion stops it (TIMI 0). Echo: a real CT-derived four-chamber heart (the average shape of a statistical model fitted to healthy adults; Rodero et al. 2021, CC BY 4.0, Zenodo 10.5281/zenodo.4593739) is cut by a transesophageal imaging plane set by the probe position and the omniplane angle; each wall segment moves according to the ischemia the simulation computed for the artery that supplies it, and the labels are read off the model. With labels on, the angiogram shows every vessel opacified. Neither image comes from acoustic or X-ray physics, and the view orientations should be checked by a clinician before any teaching use. Omniplane angles are measured in this model's own frame, so they will not match a probe's readout exactly; views are placed from anatomic landmarks (the four-chamber plane holds the long axis through the inferoseptal and anterolateral walls, the long-axis plane holds the aortic valve, and so on). The vessel stubs beyond the mesh (great veins, pulmonary veins, appendage, ascending aorta, arch, descending aorta) are drawn as simple tubes and are not anatomically measured.</p>
+<script>
+const D=/*DATA*/null;
+const $=id=>document.getElementById(id);
+const names=Object.keys(D.cases);names.forEach(n=>{const o=document.createElement("option");o.textContent=n;$("case").append(o)});
+const byId=Object.fromEntries(D.tree.map(t=>[t.id,t]));
+let cs=D.cases[names[0]], fill=null, t0=-1e9;
+const NS=240;
+const CEN=(()=>{let a=[0,0,0],n=0;D.tree.forEach(t=>t.samples.forEach(p=>{a[0]+=p[0];a[1]+=p[1];a[2]+=p[2];n++}));return a.map(v=>v/n)})();
+function interp(arr,sArr,s){let lo=0,hi=sArr.length-1;if(s<=sArr[0])return arr[0];if(s>=sArr[hi])return arr[hi];while(hi-lo>1){const m=(lo+hi)>>1;if(sArr[m]<=s)lo=m;else hi=m}const w=(s-sArr[lo])/((sArr[hi]-sArr[lo])||1);return arr[lo]*(1-w)+arr[hi]*w}
+// arrival time of the contrast front at every sample of every segment
+function buildFill(){
+  const arr={};const rest=D.tree.slice();
+  for(const t of D.tree){
+    const r=cs.seg[t.id];const a=new Float32Array(NS+1);
+    let T=0;
+    if(t.parent){const pa=arr[t.parent],pt=byId[t.parent];T=pa[Math.round(t.attach*NS)]}
+    a[0]=T;
+    for(let i=1;i<=NS;i++){
+      const s=i/NS*t.length;
+      if(!isFinite(T)||(r.blockedFrom!=null&&s>=r.blockedFrom)){T=Infinity;a[i]=T;continue}
+      const v=Math.max(0.01,interp(r.v,r.s,s));
+      T+=(t.length/NS/1000)/v;a[i]=T;
+    }
+    arr[t.id]=a;
+  }
+  fill=arr;
+  const L=arr.LAD[NS];
+  return L;
+}
+function setCase(){cs=D.cases[$("case").value];const L=buildFill();
+  const st=cs.ffr[0]?cs.ffr[0].ffr:null;
+  const lad=cs.seg.LAD, occl=lad.blockedFrom!=null, dmin=Math.min(...lad.d);
+  const tf=isFinite(L)?Math.round(L*30):null;
+  const timi=occl?"TIMI 0 (cut-off at "+lad.blockedFrom.toFixed(0)+" mm)":(tf>40?"TIMI 2, slow filling":"TIMI 3");
+  $("angstat").innerHTML=`<div><span>LAD flow</span> <b class="${occl||tf>40?'bad':''}">${timi}</b></div><div><span>LAD frame count</span> <b>${tf==null?"—":tf}</b></div><div><span>Narrowest LAD</span> <b>${(dmin).toFixed(1)} mm</b></div>`;
+  drawPull(st);
+  fillStart();
+}
+function fillStart(){t0=performance.now()}
+$("case").onchange=setCase;$("inj").onclick=fillStart;["rot","tilt"].forEach(i=>$(i).oninput=()=>{});
+for(const n of names)void 0;
+// ---------- angiogram ----------
+const ang=$("ang"),A=ang.getContext("2d"),W=ang.width,H=ang.height;
+const acc=document.createElement("canvas");acc.width=W;acc.height=H;const AC=acc.getContext("2d",{willReadFrequently:true});
+const bgNoise=new Float32Array(W*H);for(let i=0;i<bgNoise.length;i++)bgNoise[i]=Math.random();
+function proj(p,ry,rx){ // patient frame -> screen
+  const cy=Math.cos(ry),sy=Math.sin(ry),cx=Math.cos(rx),sx=Math.sin(rx);
+  let x=p[0]*cy+p[2]*sy,z=-p[0]*sy+p[2]*cy,y=p[1];
+  const y2=y*cx-z*sx,z2=y*sx+z*cx;
+  return [x,y2,z2];
+}
+function lerp(a,b,w){return a+(b-a)*w}
+function smooth(x){x=Math.min(1,Math.max(0,x));return x*x*(3-2*x)}
+function drawAng(now){
+  const ry=+$("rot").value*Math.PI/180,rx=+$("tilt").value*Math.PI/180;
+  $("rotv").textContent=(+$("rot").value<0?"RAO ":"LAO ")+Math.abs($("rot").value)+"°";
+  $("tiltv").textContent=(+$("tilt").value<0?"caud ":"cran ")+Math.abs($("tilt").value)+"°";
+  let t=(now-t0)/1000; const inj=3.2; if(t>7.5){t0=now;t=0}
+  const beat=(now/1000*1.1)%1, dx=Math.sin(beat*6.283)*1.4, dy=Math.cos(beat*6.283)*2.2;
+  AC.globalCompositeOperation="source-over";AC.fillStyle="#000";AC.fillRect(0,0,W,H);AC.globalCompositeOperation="lighter";
+  const sc=W/135, cm=proj(CEN,ry,rx), cx0=W/2+dx-cm[0]*sc, cy0=H/2+dy+cm[1]*sc;
+  for(const seg of D.tree){
+    const r=cs.seg[seg.id],f=fill[seg.id];
+    for(let i=0;i<NS;i++){
+      const u=i/NS;let c;
+      const ta=f[i];
+      if(!isFinite(ta)){c=0}else if($("lab").checked){c=1}else{const rise=smooth((t-ta)/0.25),wash=smooth((t-ta-inj)/0.5);c=rise*(1-wash)}
+      if(c<0.01)continue;
+      const s=u*seg.length;
+      const d=interp(r.d,r.s,s);// mm
+      const a=proj(seg.samples[i],ry,rx),b=proj(seg.samples[i+1],ry,rx);
+      const steps=2;
+      for(let k=0;k<steps;k++){
+        const w=k/steps,x=cx0+lerp(a[0],b[0],w)*sc,y=cy0-lerp(a[1],b[1],w)*sc;
+        const rad=Math.max(1.4,d*sc*0.62);
+        const g=AC.createRadialGradient(x,y,0,x,y,rad);
+        const al=0.55*c;g.addColorStop(0,`rgba(255,255,255,${al})`);g.addColorStop(0.7,`rgba(255,255,255,${al*0.8})`);g.addColorStop(1,"rgba(255,255,255,0)");
+        AC.fillStyle=g;AC.beginPath();AC.arc(x,y,rad,0,6.283);AC.fill();
+      }
+    }
+  }
+  // catheter from aortic root up and out
+  const lm=proj(D.tree[0].samples[0],ry,rx),ox=cx0+lm[0]*sc,oy=cy0-lm[1]*sc;
+  AC.strokeStyle="rgba(255,255,255,.16)";AC.lineWidth=5;AC.beginPath();AC.moveTo(ox,oy);AC.bezierCurveTo(ox-30,oy-40,ox-80,oy-90,ox-150,oy-220);AC.stroke();
+  const img=AC.getImageData(0,0,W,H),px=img.data;
+  const out=A.createImageData(W,H),o=out.data;
+  for(let j=0;j<H;j++)for(let i=0;i<W;i++){
+    const k=j*W+i,p=k*4;
+    const iod=px[p]/255; // summed iodine
+    // soft-tissue background: lung fields, spine, diaphragm hint
+    const X=(i-W/2)/W,Y=(j-H/2)/H;
+    let base=0.46+0.10*Math.exp(-((X-0.05)**2+(Y+0.05)**2)/0.05)-0.2*Math.exp(-((X+0.34)**2)/0.012)+0.12*Math.exp(-((Y-0.42)**2)/0.02)-0.08*Math.exp(-((X-0.36)**2+(Y-0.1)**2)/0.04);
+    base+=0.05*Math.sin(Y*60)*Math.exp(-((X+0.34)**2)/0.012);
+    const noise=(bgNoise[(k+(now/33|0)*977)%bgNoise.length]-0.5)*0.09;
+    let v=(base+noise)*Math.exp(-iod*2.6);
+    const rr=Math.hypot(X,Y);v*=rr>0.47?0:(1-Math.pow(rr/0.47,6)*0.5);
+    v=Math.max(0,Math.min(1,v));
+    const g=v*255;o[p]=g;o[p+1]=g;o[p+2]=g*1.02;o[p+3]=255;
+  }
+  A.putImageData(out,0,0);
+  A.fillStyle="rgba(220,220,210,.8)";A.font="13px ui-monospace,Menlo,monospace";
+  A.fillText(($("rot").value<0?"RAO ":"LAO ")+Math.abs($("rot").value)+"  "+($("tilt").value<0?"CAUD ":"CRAN ")+Math.abs($("tilt").value),14,24);
+  A.fillText("t "+Math.max(0,t).toFixed(1)+" s",14,H-14);
+  if(t>=0&&t<inj){A.fillStyle="rgba(255,235,120,.9)";A.fillText("INJECTING",W-100,24)}
+  if($("lab").checked)angLabels(ry,rx,cx0,cy0,sc);
+}
+const VNAME={LM:[["Left main",0.5]],LAD:[["prox LAD",0.18],["mid LAD",0.5],["distal LAD",0.86]],D1:[["D1",0.55]],D2:[["D2",0.55]],LCX:[["prox LCx",0.25],["distal LCx",0.8]],OM1:[["OM1",0.6]],OM2:[["OM2",0.6]],RCA:[["prox RCA",0.15],["mid RCA",0.5],["distal RCA",0.85]],AM:[["acute marginal",0.6]],CONUS:[["conus",0.6]],SAN:[["SA node a.",0.6]],AVN:[["AV node a.",0.6]],PDA_R:[["PDA",0.6]],PLV_R:[["PLV",0.6]]};
+function angLabels(ry,rx,cx0,cy0,sc){
+  A.font="12px system-ui,sans-serif";A.textBaseline="middle";const used=[];
+  for(const seg of D.tree){for(const [txt,u] of (VNAME[seg.id]||[])){
+    const i=Math.min(NS-1,Math.round(u*NS)),p=proj(seg.samples[i],ry,rx),x=cx0+p[0]*sc,y=cy0-p[1]*sc;
+    const dark=D.tree.length; const w=A.measureText(txt).width+6;let lx=Math.min(x+9,W-w-3),ly=y-9;
+    for(let tries=0;tries<8&&used.some(q=>lx<q[0]+q[2]&&lx+w>q[0]&&ly-8<q[1]+8&&ly+8>q[1]-8);tries++){ly+=14;if(tries===3){lx=x-w-9;ly=y-9}}
+    used.push([lx,ly,w]);A.strokeStyle="rgba(255,235,120,.55)";A.lineWidth=1;A.beginPath();A.moveTo(x,y);A.lineTo(lx,ly);A.stroke();
+    A.fillStyle="#ffe27a";A.beginPath();A.arc(x,y,2.4,0,6.283);A.fill();
+    A.fillStyle="rgba(0,0,0,.6)";A.fillRect(lx,ly-8,w,16);A.fillStyle="#ffe27a";A.fillText(txt,lx+3,ly)}}
+}
+// ---------- pullback ----------
+function drawPull(ffr){
+  const c=$("pull"),g=c.getContext("2d"),w=c.width,h=c.height;g.clearRect(0,0,w,h);g.fillStyle="#0b0b0b";g.fillRect(0,0,w,h);
+  const r=cs.seg.LAD,Pa=cs.seg.LM.hP[0];
+  g.strokeStyle="#2a2a2a";g.lineWidth=1;g.font="12px ui-monospace,Menlo,monospace";g.fillStyle="#8a8a80";
+  for(const f of [0.4,0.6,0.8,1]){const y=h-30-(f-0.3)/0.75*(h-60);g.beginPath();g.moveTo(40,y);g.lineTo(w-10,y);g.stroke();g.fillText(f.toFixed(1),8,y+4)}
+  const y80=h-30-(0.8-0.3)/0.75*(h-60);g.strokeStyle="#7a5";g.setLineDash([5,4]);g.beginPath();g.moveTo(40,y80);g.lineTo(w-10,y80);g.stroke();g.setLineDash([]);g.fillStyle="#7a5";g.fillText("0.80",w-42,y80-4);
+  g.strokeStyle="#ff6b5b";g.lineWidth=2.4;g.beginPath();
+  r.hP.forEach((p,i)=>{const x=40+i/(r.hP.length-1)*(w-50),f=Math.max(0.3,Math.min(1.05,p/Pa)),y=h-30-(f-0.3)/0.75*(h-60);i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke();
+  g.fillStyle="#8a8a80";g.fillText("ostium",40,h-10);g.fillText("distal LAD",w-90,h-10);g.fillText("Pd / Pa",8,16);
+  if(r.blockedFrom!=null){$("pullstat").innerHTML='<div><span>Occluded: the wire cannot cross, FFR not applicable</span></div>';g.fillStyle='#8a8a80';g.font='14px system-ui';g.clearRect(0,0,w,h);g.fillStyle='#0b0b0b';g.fillRect(0,0,w,h);g.fillStyle='#8a8a80';g.fillText('Total occlusion: no pullback',w/2-95,h/2);return}
+  const mn=r.hP[r.hP.length-1]/Pa;
+  $("pullstat").innerHTML=`<div><span>FFR (distal LAD, hyperemia)</span> <b class="${mn<=0.8?'bad':''}">${mn.toFixed(2)}</b></div><div><span>${mn<=0.8?"≤ 0.80: flow-limiting":"> 0.80: defer"}</span></div>`;
+}
+// ---------- echo: the real four-chamber CT-derived heart, cut by a TEE imaging plane ----------
+// Anatomy: Rodero et al. 2021, "Linking statistical shape models and simulated function in the healthy adult human heart" (average shape), CC BY 4.0, Zenodo 10.5281/zenodo.4593739.
+// Heart frame, cm: x lateral, y anterior, z toward the base; origin at the centre of the LV base, long axis along z.
+const HJ=/*HEART_JSON*/null,HB64="/*HEART_B64*/";
+const eco=$("echo"),E=eco.getContext("2d"),EW=eco.width,EH=eco.height,NPX=EW*EH,D2R=Math.PI/180;
+const SEGS=["anteroseptal","anterior","anterolateral","inferolateral","inferior","inferoseptal"];
+function gblur(arr,w,h,sx,sy,wrapX){
+  const kern=s=>{const r=Math.max(1,Math.ceil(s*2.5)),K=[];let z=0;for(let i=-r;i<=r;i++){const v=Math.exp(-i*i/(2*s*s));K.push(v);z+=v}return [K.map(v=>v/z),r]};
+  const [kx,rx]=kern(sx),[ky,ry]=kern(sy),tmp=new Float32Array(arr.length),out=new Float32Array(arr.length);
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){let a=0;for(let i=-rx;i<=rx;i++){let xx=x+i;xx=wrapX?(xx+w)%w:Math.min(w-1,Math.max(0,xx));a+=arr[y*w+xx]*kx[i+rx]}tmp[y*w+x]=a}
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){let a=0;for(let j=-ry;j<=ry;j++){const yy=Math.min(h-1,Math.max(0,y+j));a+=tmp[yy*w+x]*ky[j+ry]}out[y*w+x]=a}
+  return out;
+}
+function lognorm(arr,k){let m=0,v=0;arr.forEach(x=>m+=x);m/=arr.length;arr.forEach(x=>v+=(x-m)**2);v=Math.sqrt(v/arr.length)||1;let z=0;const o=arr.map(x=>Math.exp(k*(x-m)/v));o.forEach(x=>z+=x);z/=o.length;return o.map(x=>x/z)}
+const NRX=16,NU=720,TEX=(()=>{const n=new Float32Array(NU*NRX).map(()=>Math.random());return lognorm(gblur(n,NU,NRX,1.1,0.9,true),0.40)})();
+const BG=(()=>{const n=new Float32Array(NPX).map(()=>Math.random());return lognorm(gblur(n,EW,EH,1.7,1.0,false),0.42)})();
+const nrm=v=>{const l=Math.hypot(v[0],v[1],v[2])||1;return [v[0]/l,v[1]/l,v[2]/l]};
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]],add=(a,b,k=1)=>[a[0]+k*b[0],a[1]+k*b[1],a[2]+k*b[2]],sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+// ids shared with tools/fill2.py
+const ID={LV:1,RV:2,RA:3,LA:4,LAA:5,LVOT:6,AOROOT:7,ASCAO:8,SVC:9,IVC:10,RVOT:11,DAO:12,LUPV:13,LLPV:14,RUPV:15,RLPV:16,PA:17,ARCH:18,MV:20,AV:21,TV:22,PV:23,IAS:24,RVW:25,LAW:26,RAW:27,AOW:28,PERI:29,PMAL:30,PMPM:31,VW:32,SEG:40};
+const SEG17=[];["basal","mid"].forEach(l=>["anterolateral","anterior","anteroseptal","inferoseptal","inferior","inferolateral"].forEach(n=>SEG17.push(l+" "+n)));["apical anterior","apical septal","apical inferior","apical lateral","apex"].forEach(n=>SEG17.push(n));
+const LABELS={1:["LV","c"],2:["RV","c"],3:["RA","c"],4:["LA","c"],5:["LAA","c"],6:["LVOT","c"],7:["Ao root","v"],8:["Asc Ao","v"],9:["SVC","v"],10:["IVC","v"],11:["RVOT","v"],12:["Desc Ao","v"],13:["LUPV","v"],14:["LLPV","v"],15:["RUPV","v"],16:["RLPV","v"],17:["PA","v"],18:["Aortic arch","v"],20:["MV","x"],21:["AV","x"],22:["TV","x"],23:["PV","x"],24:["IAS","w"],25:["RV free wall","w"],29:["Pericardium","w"],30:["AL papillary","w"],31:["PM papillary","w"]};
+SEG17.forEach((n,i)=>LABELS[40+i]=[n,"s"]);
+// ---- volume ----
+let VOL=null,TRN=null,UQ=null,ZQ=null,NX=0,NY=0,NZ=0,LO=[0,0,0],heartReady=false,VIEWS={},UTAB=null;
+const UT=[];
+async function loadHeart(){
+  const bin=Uint8Array.from(atob(HB64),c=>c.charCodeAt(0));
+  const buf=await new Response(new Blob([bin]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+  const a=new Uint8Array(buf);[NX,NY,NZ]=HJ.shape;LO=HJ.origin_mm;const N=NX*NY*NZ;
+  VOL=a.subarray(0,N);TRN=a.subarray(N,2*N);UQ=a.subarray(2*N,3*N);ZQ=a.subarray(3*N,4*N);UTAB=HJ.u_table;
+  initAnatomy();initPoses();heartReady=true;
+}
+const vidx=(x,y,z)=>{const i=Math.round(x*10-LO[0]),j=Math.round(y*10-LO[1]),k=Math.round(z*10-LO[2]);return (i<0||j<0||k<0||i>=NX||j>=NY||k>=NZ)?-1:(i*NY+j)*NZ+k};
+const isLV=id=>id===1||id===6||(id>=40&&id<57);
+// ---- procedural continuations of the vessels the mesh cuts off, built from the mesh's landmarks ----
+let CAPS=[],ARCHP=[],LVLEN=8.8,PMS=[];
+const AOU=()=>nrm(HJ.tubes.ao.u);
+function initAnatomy(){
+  const T=HJ.tubes,O=HJ.ostia,u=AOU();
+  for(const nm of Object.keys(HJ.valves)){const v=HJ.valves[nm],n=nrm(v.n);let e1=cross(n,[0,0,1]);if(Math.hypot(...e1)<0.2)e1=cross(n,[1,0,0]);e1=nrm(e1);v.n=n;v.e1=e1;v.e2=cross(n,e1)}
+  CAPS=[];
+  const cap=(id,p,d,L,r,w)=>{const e=add(p,d,L),c=add(p,d,L/2);CAPS.push({id,p,d,L,r,w,c,br:L/2+r+w+0.2})};
+  [["SVC",ID.SVC,6.5,0.95],["IVC",ID.IVC,4.5,0.95],["LUPV",ID.LUPV,2.8,0.95],["LLPV",ID.LLPV,2.8,0.95],["RUPV",ID.RUPV,2.8,0.95],["RLPV",ID.RLPV,2.8,0.95],["LAA",ID.LAA,2.6,0.85]].forEach(([nm,id,L,f])=>{const o=O[nm];cap(id,add(o.c,o.n,-0.5),nrm(o.n),L,o.r*f,0.22)});
+  const ep=T.ao.end;cap(ID.ASCAO,add(ep,u,-0.3),u,3.3,T.ao.r,0.25);
+  cap(ID.PA,add(T.pa.end,nrm(T.pa.u),-0.3),nrm(T.pa.u),3.6,T.pa.r,0.22);
+  // arch: planar semi-ellipse from the end of the ascending aorta to the top of the descending aorta, which runs behind the left atrium
+  const E1=add(ep,u,3.0),LAc=HJ.centroids.LA;
+  let laYmin=9;for(let i=0;i<NX;i+=2)for(let j=0;j<NY;j+=2)for(let k=0;k<NZ;k+=3){if(VOL[(i*NY+j)*NZ+k]===ID.LA){const y=(j+LO[1])/10;if(y<laYmin)laYmin=y}}
+  const D0=[3.7,laYmin-2.6,LAc[2]];
+  const Dtop=add(D0,u,dot(sub(E1,D0),u)),M=[(E1[0]+Dtop[0])/2,(E1[1]+Dtop[1])/2,(E1[2]+Dtop[2])/2],Hv=sub(Dtop,E1),H=Math.hypot(...Hv)/2,hh=Math.min(3.4,Math.max(2.2,H*0.9));
+  ARCHP=[];for(let i=0;i<=20;i++){const f=i/20*Math.PI;ARCHP.push(add(add(M,Hv,-Math.cos(f)/2),u,Math.sin(f)*hh))}
+  CAPS.push({id:ID.DAO,p:add(Dtop,u,-24),d:u,L:24,r:1.25,w:0.25,c:add(Dtop,u,-12),br:12+1.8});
+  window.DESC={D0,Dtop,u,M,Hv,hh,E1};
+  // LV length from the apex
+  LVLEN=-HJ.lv_apex_cm[2];
+  // papillary muscles: found on the endocardium at mid-level in the anterolateral and posteromedial positions
+  PMS=[];
+  [[ID.PMAL,150,-0.50],[ID.PMPM,-65,-0.52]].forEach(([id,uu,zf])=>{const z=-LVLEN*(1-zf-0.0);let best=0,bd=1e9;for(let b=0;b<72;b++){const d=Math.abs(((UTAB[b]-uu+540)%360)-180);if(d<bd){bd=d;best=b}}
+    const psi=(best*5+2.5)*D2R;let rEnd=2;for(let r=0.2;r<5;r+=0.05){const ix=vidx(Math.cos(psi)*r,Math.sin(psi)*r,z);if(ix>=0&&VOL[ix]>=40&&VOL[ix]<57){rEnd=r;break}}
+    PMS.push({id,psi,r:rEnd*0.78,z});});
+}
+// ---- ischemia by wall position (u = angle about the LV axis, 0 at the septum, + toward the anterior wall; zf = 0 at the apex .. 1 at the base) ----
+function segSeverity(){
+  const grp={LAD:[],LCX:[],RCA:[]};
+  cs.allBeds.forEach(b=>{const g=/^(LAD|D1|D2)/.test(b.seg)?"LAD":/^(LCX|OM)/.test(b.seg)?"LCX":"RCA";grp[g].push(b.severity)});
+  const m=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;return {LAD:m(grp.LAD),LCX:m(grp.LCX),RCA:m(grp.RCA)};
+}
+let SEV6=null,SEV4=null,SEVC=0,WORST=0,SEGSEV=new Float32Array(17);
+const sstep=x=>{x=Math.min(1,Math.max(0,x));return x*x*(3-2*x)};
+function prepSev(){
+  const S=segSeverity();WORST=Math.max(S.LAD,S.LCX,S.RCA);SEVC=S.LAD;
+  const six=[[150,0.5*S.LAD+0.5*S.LCX],[90,S.LAD],[30,S.LAD],[-30,0.85*S.RCA+0.15*S.LAD],[-90,S.RCA],[-150,S.LCX]];
+  const four=[[90,S.LAD],[0,S.LAD],[-90,0.5*S.LAD+0.5*S.RCA],[180,0.5*S.LAD+0.5*S.LCX]];
+  const sm=(tab,kap)=>{const o=new Float32Array(361);for(let a=0;a<=360;a++){let w=0,v=0;tab.forEach(([c,s])=>{const k=Math.exp(kap*Math.cos((a-180-c)*D2R));w+=k;v+=k*s});o[a]=v/w}return o};
+  SEV6=sm(six,6);SEV4=sm(four,5);
+  // per-segment severity for the territory overlay
+  for(let i=0;i<17;i++){if(i<12){const c=[150,90,30,-30,-90,-150][i%6],a=Math.round(c+180);SEGSEV[i]=SEV6[a]}else if(i<16){const c=[90,0,-90,180][i-12];SEGSEV[i]=SEV4[Math.round(c+180)]}else SEGSEV[i]=SEVC}
+}
+function sevAt(ui,zf){const t=sstep((0.40-zf)/0.15);let s=SEV6[ui]*(1-t)+SEV4[ui]*t;const c=sstep((0.14-zf)/0.08);return s*(1-c)+SEVC*c}
+// ---- views: probe P, beam direction b, in-plane axes h0 (image right at 0 deg) and s0 (the plane turns toward it) ----
+let curView=null,Xb=new Float32Array(NPX*3),Mk=new Uint8Array(NPX);
+const SA=0.62,apxE=EW/2,apyE=-EH*0.02;
+function basis(v,ang){const a=(ang==null?v.ang:ang)*D2R,b=nrm(v.b);let h=v.h,d=dot(h,b);h=nrm(sub(h,[b[0]*d,b[1]*d,b[2]*d]));let s=v.s;d=dot(s,b);s=nrm(sub(s,[b[0]*d,b[1]*d,b[2]*d]));
+  return {b,hh:[Math.cos(a)*h[0]+Math.sin(a)*s[0],Math.cos(a)*h[1]+Math.sin(a)*s[1],Math.cos(a)*h[2]+Math.sin(a)*s[2]]}}
+function setView(name,ang){
+  const v=VIEWS[name];if(!v)return;curView=name;const {b,hh}=basis(v,ang);
+  const ppc=(EH*0.97)/v.depth;
+  for(let j=0;j<EH;j++)for(let i=0;i<EW;i++){const k=j*EW+i,xa=i-apxE,ya=j-apyE,rho=Math.hypot(xa,ya),ang2=Math.atan2(xa,ya);
+    Mk[k]=(Math.abs(ang2)<SA&&rho>EH*0.02&&rho<EH*0.97)?1:0;const r=rho/ppc,c=Math.cos(ang2),sn=Math.sin(ang2);
+    Xb[k*3]=v.P[0]+r*(c*b[0]+sn*hh[0]);Xb[k*3+1]=v.P[1]+r*(c*b[1]+sn*hh[1]);Xb[k*3+2]=v.P[2]+r*(c*b[2]+sn*hh[2])}
+  const shown=ang==null?v.ang:ang;$("omni").value=Math.round(shown);$("omniv").textContent=Math.round(shown)+"°";
+}
+function initPoses(){
+  const V=HJ.valves,O=HJ.ostia,T=HJ.tubes,C=HJ.centroids,z=[0,0,1],X=[1,0,0],Y=[0,1,0],u=AOU(),Dd=window.DESC;
+  const planeCost=(P,b,v,pts)=>{const n=cross(b,v);return pts.reduce((s,q)=>s+Math.abs(dot(sub(q,P),n)),0)};
+  const fit=(P,b,h0,s0,pts,lo=0,hi=180)=>{let best=lo,bc=1e9;const {b:bb}=basis({b,h:h0,s:s0,ang:0},0);for(let a=lo;a<=hi;a++){const {hh}=basis({b,h:h0,s:s0,ang:a});const c=planeCost(P,bb,hh,pts);if(c<bc){bc=c;best=a}}return best};
+  // ME: probe on the LV long axis above the heart. The four-chamber plane holds the axis and the tricuspid centre; the tricuspid side is image-left.
+  const psiU=uu=>{let best=0,bd=1e9;for(let b=0;b<72;b++){const d=Math.abs(((UTAB[b]-uu+540)%360)-180);if(d<bd){bd=d;best=b}}return (best*5+2.5)*D2R},pS=psiU(-30),h4=nrm([-Math.cos(pS),-Math.sin(pS),0]),s4=nrm(cross(z,h4)),sgn=dot(s4,Y)>=0?1:-1;
+  const me=(off,ang,depth=16.8)=>({P:add([0,0,6.9],s4,off*sgn),b:[0,0,-1],h:h4,s:[s4[0]*sgn,s4[1]*sgn,s4[2]*sgn],ang,depth});
+  const ca=V.AV.c,laxA=Math.round(((Math.atan2(dot(ca,[s4[0]*sgn,s4[1]*sgn,s4[2]*sgn]),dot(ca,h4))/D2R)+360)%180);
+  VIEWS["ME four-chamber"]=me(0,0);
+  VIEWS["ME five-chamber"]=me(1.6,0);
+  const dirU=uu=>{const p=psiU(uu);return [Math.cos(p),Math.sin(p),0]},s4s=[s4[0]*sgn,s4[1]*sgn,s4[2]*sgn],ang2=Math.round(((Math.atan2(dot(dirU(90),s4s),dot(dirU(90),h4))/D2R)+360)%180);
+  VIEWS["ME mitral commissural"]=me(0,Math.round(ang2*0.67));
+  VIEWS["ME two-chamber"]=me(0,ang2);
+  VIEWS["ME long-axis (three-chamber)"]=me(0,laxA);
+  // axial poses: a plane perpendicular to a vessel axis (angle 0) that turns into a long-axis plane at 90 degrees
+  const axial=(pt,ax,bpref,leftRef,depth,ang=0,D=7)=>{let b=nrm(sub(bpref,[ax[0]*dot(bpref,ax),ax[1]*dot(bpref,ax),ax[2]*dot(bpref,ax)]));let h=nrm(cross(ax,b));if(leftRef&&dot(sub(leftRef,pt),h)>0)h=[-h[0],-h[1],-h[2]];return {P:add(pt,b,-D),b,h,s:ax,ang,depth}};
+  const avN=nrm(V.AV.n);
+  VIEWS["ME aortic valve short-axis"]=axial(V.AV.c,avN,Y,C.RA,11);
+  VIEWS["ME aortic valve long-axis"]=axial(V.AV.c,avN,Y,C.RA,11,100);
+  const asc=add(T.ao.end,u,1.2);
+  VIEWS["ME ascending aortic short-axis"]=axial(asc,u,Y,C.RA,12);
+  VIEWS["ME ascending aortic long-axis"]=axial(asc,u,Y,C.RA,12,90);
+  { const a=axial(V.AV.c,avN,Y,C.RA,12);const ang=fit(a.P,a.b,a.h,a.s,[V.TV.c,V.PV.c]);VIEWS["ME RV inflow-outflow"]=Object.assign({},a,{ang}); }
+  { const mid=[(O.SVC.c[0]+O.IVC.c[0])/2,(O.SVC.c[1]+O.IVC.c[1])/2,(O.SVC.c[2]+O.IVC.c[2])/2];const a=axial(mid,avN,Y,null,12);const ang=fit(a.P,a.b,a.h,a.s,[O.SVC.c,O.IVC.c]);VIEWS["ME bicaval"]=Object.assign({},a,{ang}); }
+  { const mid=[(O.LAA.c[0]+O.LUPV.c[0])/2,(O.LAA.c[1]+O.LUPV.c[1])/2,(O.LAA.c[2]+O.LUPV.c[2])/2];const a=axial(mid,avN,Y,C.RA,11);const ang=fit(a.P,a.b,a.h,a.s,[O.LAA.c,O.LUPV.c]);VIEWS["ME LAA / left upper PV"]=Object.assign({},a,{ang}); }
+  // TG: probe beyond the inferior wall, looking along the LV short axis
+  const psiI=(()=>{let best=0,bd=1e9;for(let b=0;b<72;b++){const d=Math.abs(((UTAB[b]+90+540)%360)-180);if(d<bd){bd=d;best=b}}return (best*5+2.5)*D2R})();
+  const psiS=(()=>{let best=0,bd=1e9;for(let b=0;b<72;b++){const d=Math.abs(((UTAB[b]+540)%360)-180);if(d<bd){bd=d;best=b}}return (best*5+2.5)*D2R})();
+  const dI=[Math.cos(psiI),Math.sin(psiI),0],bT=[-dI[0],-dI[1],0],dS=[Math.cos(psiS),Math.sin(psiS),0];
+  let hT=nrm(cross(z,bT));if(dot(hT,dS)>0)hT=[-hT[0],-hT[1],-hT[2]];       // septum on the image-left
+  const tg=(zl,ang,depth=13)=>({P:add([0,0,zl],dI,10),b:bT,h:hT,s:z,ang,depth});
+  VIEWS["TG basal short-axis"]=tg(-0.9,0);VIEWS["TG mid short-axis"]=tg(-LVLEN*0.5,0);VIEWS["TG apical short-axis"]=tg(-LVLEN*0.78,0);
+  VIEWS["TG two-chamber"]=tg(-LVLEN*0.5,90,16);
+  { const a=tg(-LVLEN*0.5,0,16),ang=fit(a.P,a.b,a.h,a.s,[V.AV.c],90,170);VIEWS["TG long-axis"]=Object.assign({},a,{ang}); }
+  { // RV apex = lowest part of the RV cavity
+    let zmin=9;for(let i=0;i<NX;i+=2)for(let j=0;j<NY;j+=2)for(let k=0;k<NZ;k+=2){if(VOL[(i*NY+j)*NZ+k]===ID.RV){const zz=(k+LO[2])/10;if(zz<zmin)zmin=zz}}
+    let sx=0,sy=0,n=0;for(let i=0;i<NX;i+=2)for(let j=0;j<NY;j+=2)for(let k=0;k<NZ;k+=2){if(VOL[(i*NY+j)*NZ+k]===ID.RV&&(k+LO[2])/10<zmin+0.8){sx+=(i+LO[0])/10;sy+=(j+LO[1])/10;n++}}
+    const rva=[sx/n,sy/n,zmin+0.4];const a=tg(-2.5,0,16);const P=add(add(rva,dI,7.5),z,0);const ang=fit(P,bT,hT,z,[V.TV.c,rva],0,180);VIEWS["TG RV inflow"]=Object.assign({},a,{P,ang,depth:15}); }
+  { const apex=[0,0,-LVLEN+0.3],bd=nrm(sub(ca,apex)),P=add(apex,bd,-3.0);VIEWS["Deep TG long-axis"]={P,b:bd,h:[1,0,0],s:Y,ang:0,depth:17}; }
+  // thoracic aorta
+  { const a=axial(Dd.D0,Dd.u,Y,null,8,0,4.5);VIEWS["Descending aorta short-axis"]=a;VIEWS["Descending aorta long-axis"]=Object.assign({},a,{ang:90}); }
+  { const H=nrm(Dd.Hv),nA=nrm(cross(Dd.u,H)),Pa=add(add(Dd.M,H,-(Math.hypot(...Dd.Hv)/2+4)),nA,0),Tgt=add(Dd.M,Dd.u,Dd.hh*0.5),b=nrm(sub(Tgt,Pa));
+    VIEWS["UE aortic arch long-axis"]={P:Pa,b,h:nrm(cross(nA,b)),s:nA,ang:0,depth:13};VIEWS["UE aortic arch short-axis"]={P:Pa,b,h:nrm(cross(nA,b)),s:nA,ang:90,depth:13}; }
+  const sel=$("view");sel.innerHTML="";Object.keys(VIEWS).forEach(n=>{const o=document.createElement("option");o.textContent=n;sel.append(o)});
+  setView('ME four-chamber');
+}
+// ---- one frame ----
+const img0=E.createImageData(EW,EH),Ib=new Float32Array(NPX),Ik=new Uint8Array(NPX);
+const stC=new Float32Array(64),stX=new Float32Array(64),stY=new Float32Array(64);
+const BLOODID=new Uint8Array(64);[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].forEach(i=>BLOODID[i]=1);
+const UPSTREAM={20:ID.LA,22:ID.RA,21:ID.LVOT,23:ID.RVOT};
+function capHit(x,y,z){ // procedural vessels: [id, inLumen]; a lumen anywhere beats a wall elsewhere
+  let wall=false;
+  for(let q=0;q<CAPS.length;q++){const c=CAPS[q];const cx=x-c.c[0],cy=y-c.c[1],cz=z-c.c[2];if(cx*cx+cy*cy+cz*cz>c.br*c.br)continue;
+    const vx=x-c.p[0],vy=y-c.p[1],vz=z-c.p[2];let t=vx*c.d[0]+vy*c.d[1]+vz*c.d[2];t=t<0?0:t>c.L?c.L:t;
+    const d=Math.hypot(vx-t*c.d[0],vy-t*c.d[1],vz-t*c.d[2]);if(d<c.r)return [c.id,true];if(d<c.r+c.w)wall=true}
+  let dm=9;for(let i=0;i<ARCHP.length-1;i++){const a=ARCHP[i],b=ARCHP[i+1],ex=b[0]-a[0],ey=b[1]-a[1],ez=b[2]-a[2],L2=ex*ex+ey*ey+ez*ez;let t=((x-a[0])*ex+(y-a[1])*ey+(z-a[2])*ez)/L2;t=t<0?0:t>1?1:t;const d=Math.hypot(x-a[0]-t*ex,y-a[1]-t*ey,z-a[2]-t*ez);if(d<dm)dm=d}
+  if(dm<1.35)return [ID.ARCH,true];if(dm<1.6)wall=true;
+  return wall?[ID.VW,false]:null;
+}
+function drawEcho(now){
+  if(!heartReady||!curView)return;
+  const hr=cs.hr||75,beat=((now/1000)*hr/60)%1;
+  const sys=beat<0.36?Math.sin(beat/0.36*Math.PI*0.5)**1.3:Math.cos((beat-0.36)/0.64*Math.PI*0.5)**2;
+  const mvOpen=beat>0.40,tvOpen=mvOpen,avOpen=beat>0.04&&beat<0.36,show=$("terr").checked;
+  const gShort=0.30*Math.min(1,Math.max(0.35,cs.ef/0.6)),tf=Math.floor(now/70);stC.fill(0);stX.fill(0);stY.fill(0);
+  const V=HJ.valves,vlv=[["MV",mvOpen],["TV",tvOpen],["AV",avOpen],["PV",avOpen]];
+  for(let k=0;k<NPX;k++){
+    if(!Mk[k]){Ik[k]=255;Ib[k]=0;continue}
+    const x=Xb[k*3],y=Xb[k*3+1],z=Xb[k*3+2],bg=BG[(k+tf*7919)%NPX];
+    let id=0,I=0.11*(0.55+0.7*bg),vi=-1,rx=x,ry=y,rz=z,mm=0,r0=0;
+    // left ventricle: sample the end-diastolic volume at the reference position of this point
+    const r2=x*x+y*y;
+    if(r2<20&&z<0.7&&z>-LVLEN-1){
+      const r=Math.sqrt(r2),psi=Math.atan2(y,x);let pd=psi/D2R;if(pd<0)pd+=360;const ui=Math.round(UTAB[Math.min(71,(pd/5)|0)]+180),zf=Math.max(0,Math.min(1,(z+LVLEN)/LVLEN));
+      const sv=sevAt(Math.min(360,Math.max(0,ui)),zf);mm=sys*gShort*(1-0.96*sv)*(1+0.22*(1-sv)*WORST);
+      const cp=Math.cos(psi),sp=Math.sin(psi);let w=1;
+      for(let it=0;it<2;it++){r0=r/(1-mm*w);const z0=z/(1-0.3*mm),j=vidx(cp*r0,sp*r0,z0);
+        if(j>=0&&isLV(VOL[j])){vi=j;rx=cp*r0;ry=sp*r0;rz=z0;const rho=TRN[j]/254;w=VOL[j]>=40?1-0.55*(rho>1?0:rho):1}else{vi=-1;break}}
+    }
+    if(vi<0){vi=vidx(x,y,z);rx=x;ry=y;rz=z}
+    id=vi>=0?VOL[vi]:0;
+    // valve leaflets: cone-shaped pair (mitral, tricuspid) or three radial sheets (aortic, pulmonary), open or closed
+    let leaf=0;
+    for(let q=0;q<4;q++){const nm=vlv[q][0],open=vlv[q][1],Vv=V[nm],ox=x-Vv.c[0],oy=y-Vv.c[1],oz=z-Vv.c[2];
+      if(Math.abs(ox)>Vv.R+0.6||Math.abs(oy)>Vv.R+0.6||Math.abs(oz)>Vv.R+1.5)continue;
+      const h=ox*Vv.n[0]+oy*Vv.n[1]+oz*Vv.n[2],px=ox-h*Vv.n[0],py=oy-h*Vv.n[1],pz=oz-h*Vv.n[2],rho=Math.hypot(px,py,pz);
+      if(rho>Vv.R)continue;
+      if(nm==="MV"||nm==="TV"){
+        if(open){if(h>0&&h<1.2&&Math.abs(rho-Vv.R*0.95*(1-0.62*h/1.2))<0.09){leaf=ID[nm];break}}
+        else if(Math.abs(h+0.38*(1-rho/Vv.R))<0.06){leaf=ID[nm];break}}
+      else{
+        if(open){if(h>0&&h<0.9&&Math.abs(rho-Vv.R*0.93)<0.08){leaf=ID[nm];break}}
+        else if(h>-0.05&&h<0.55&&rho<Vv.R*0.95){const ang=Math.atan2(px*Vv.e2[0]+py*Vv.e2[1]+pz*Vv.e2[2],px*Vv.e1[0]+py*Vv.e1[1]+pz*Vv.e1[2]),a3=((ang%(2.0944))+2.0944)%2.0944;if(rho*Math.sin(Math.min(a3,2.0944-a3))<0.07){leaf=ID[nm];break}}}}
+    if(leaf){id=leaf;I=0.62+0.2*bg}
+    else if(id>=20&&id<=23){id=UPSTREAM[id];I=0.02+0.04*bg*bg}
+    else if(id===0||id===29){const hit=capHit(x,y,z);if(hit){id=hit[0];I=hit[1]?0.02+0.04*bg*bg:0.28*(0.6+0.8*bg)}else if(id===29)I=0.38*(0.6+0.8*bg)}
+    else if(BLOODID[id])I=0.02+0.04*bg*bg;
+    else if(id>=40&&id<57){const f=Math.min(NRX-1,(TRN[vi]/254*NRX)|0),uu=(UQ[vi]*2.83+ZQ[vi]*5)|0;I=0.27*TEX[f*NU+((uu%NU)+NU)%NU]}
+    else if(id===ID.IAS)I=0.34*(0.6+0.8*bg);else if(id===ID.RVW)I=0.26*(0.6+0.8*bg);else if(id===ID.LAW||id===ID.RAW)I=0.22*(0.6+0.8*bg);else if(id===ID.AOW||id===ID.VW)I=0.28*(0.6+0.8*bg);
+    // papillary muscles ride with the contracting wall
+    if(id===ID.LV&&mm>=0){for(let q=0;q<2;q++){const p=PMS[q],cx0=Math.cos(p.psi)*p.r,cy0=Math.sin(p.psi)*p.r,dx=rx-cx0,dy=ry-cy0,dz=rz-p.z;
+      const rad=(dx*Math.cos(p.psi)+dy*Math.sin(p.psi)),tan=(-dx*Math.sin(p.psi)+dy*Math.cos(p.psi));if((rad*rad)/0.30+(tan*tan)/0.30+(dz*dz)/1.5<1){id=p.id;I=0.26*(0.6+0.8*bg)}}}
+    Ib[k]=I;Ik[k]=id;
+  }
+  // axial edge enhancement, depth gain, sector falloff
+  const o=img0.data;
+  for(let j=0;j<EH;j++)for(let i=0;i<EW;i++){
+    const k=j*EW+i,p=k*4;
+    if(!Mk[k]){o[p]=o[p+1]=o[p+2]=0;o[p+3]=255;continue}
+    const up=j>0?Ib[k-EW]:Ib[k],dn=j<EH-1?Ib[k+EW]:Ib[k];let I=Ib[k]+0.26*Math.abs(dn-up);
+    const depth=Math.hypot(i-apxE,j-apyE)/EH;I*=(0.6+0.9*depth)*(1-Math.pow(Math.abs(Math.atan2(i-apxE,j-apyE))/SA,7)*0.8);
+    const id=Ik[k];if(id>0&&id<64){stC[id]++;stX[id]+=i;stY[id]+=j}
+    const v=Math.pow(Math.min(1,Math.max(0,I)),0.82)*255;let r=v,g=v,b=v*1.03;
+    if(show&&id>=40&&id<57){const t=Math.min(1,SEGSEV[id-40]*1.6),al=0.34;r=r*(1-al)+(70+185*t)*al;g=g*(1-al)+(200-130*t)*al;b=b*(1-al)+(110-60*t)*al}
+    o[p]=r;o[p+1]=g;o[p+2]=b;o[p+3]=255;
+  }
+  E.putImageData(img0,0,0);
+  E.fillStyle="rgba(235,235,225,.85)";E.font="13px ui-monospace,Menlo,monospace";
+  E.fillText(curView.replace(/ \(.*\)/,"")+"  "+$("omni").value+"°",14,24);E.fillText("HR "+hr+"  EF "+Math.round(cs.ef*100)+"%",14,EH-14);
+  if($("lab").checked)drawEchoLabels();
+}
+function drawEchoLabels(){
+  const best={};for(let j=0;j<EH;j+=3)for(let i=0;i<EW;i+=3){const k=j*EW+i,id=Ik[k];if(id<1||id>=64||!stC[id])continue;const cx=stX[id]/stC[id],cy=stY[id]/stC[id],d=(i-cx)**2+(j-cy)**2;if(!best[id]||d<best[id][0])best[id]=[d,i,j]}
+  const col={c:"#8fd3ff",v:"#9be39b",x:"#ffe27a",w:"#ffb27a",s:"#ffb27a"};
+  E.font="12px system-ui,sans-serif";E.textBaseline="middle";const used=[];
+  const order=Object.keys(best).map(Number).sort((a,b)=>(stC[b]*(LABELS[b]&&LABELS[b][1]==="x"?6:1))-(stC[a]*(LABELS[a]&&LABELS[a][1]==="x"?6:1)));
+  for(const id of order){const L=LABELS[id];if(!L)continue;const minPx=L[1]==="x"||L[1]==="w"?18:90;if(stC[id]<minPx)continue;
+    const [,x,y]=best[id],w=E.measureText(L[0]).width+6,rx=x-w/2,ry=y-8;
+    if(rx<2||rx+w>EW-2)continue;if(used.some(u=>rx<u[0]+u[2]&&rx+w>u[0]&&ry<u[1]+u[3]&&ry+16>u[1]))continue;used.push([rx,ry,w,16]);
+    E.fillStyle="rgba(0,0,0,.55)";E.fillRect(rx,ry,w,16);E.fillStyle=col[L[1]];E.fillText(L[0],rx+3,y)}
+}
+function stats(){
+  const S=segSeverity(),bad=[];if(S.LAD>0.3)bad.push("LAD territory");if(S.LCX>0.3)bad.push("circumflex territory");if(S.RCA>0.3)bad.push("RCA territory");
+  $("echostat").innerHTML=`<div><span>EF</span> <b class="${cs.ef<0.5?'bad':''}">${Math.round(cs.ef*100)}%</b></div><div><span>Hypo/akinetic</span> <b class="${bad.length?'bad':''}">${bad.length?bad.join(", "):"none"}</b></div>`;
+}
+const _sc=setCase;setCase=function(){_sc();prepSev();stats()};
+$("case").onchange=setCase;
+$("view").onchange=()=>setView($("view").value);
+$("omni").oninput=()=>setView($("view").value,+$("omni").value);
+function loop(now){drawAng(now);drawEcho(now);requestAnimationFrame(loop)}
+setCase();requestAnimationFrame(loop);loadHeart().then(()=>{prepSev();setCase()});
+</script></body></html>

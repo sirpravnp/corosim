@@ -1,0 +1,6 @@
+data/average/
+data/average.tar.gz
+data/*.npz
+data/*.npy
+data/*.png
+data/landmarks_raw.json

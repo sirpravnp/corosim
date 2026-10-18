@@ -1,0 +1,8 @@
+<!doctype html><meta charset="utf-8"><title>svZeroD WASM bench</title>
+<pre id="out">running…</pre>
+<script>
+const w = new Worker('worker.js');
+w.onmessage = e => { document.getElementById('out').textContent = JSON.stringify(e.data, null, 1); };
+w.onerror = e => { document.getElementById('out').textContent = 'ERR ' + e.message; };
+w.postMessage(1);
+</script>
