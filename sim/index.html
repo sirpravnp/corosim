@@ -59,7 +59,7 @@
 <main>
   <section>
     <figure>
-      <div id="view" class="viewport">
+      <div id="view" class="viewport on-black">
         <div id="tag"></div>
         <div id="pick"></div>
         <div id="legend"><div id="bar"></div><div class="lg"><span id="l0"></span><span id="lmid"></span><span id="l1"></span></div></div>
@@ -269,6 +269,7 @@
       <p class="glabel">Myocardium</p>
       <div class="row" style="margin-top:0">
         <button id="h_solid" class="on">Solid</button>
+        <button id="h_thermal">Thermal</button>
         <button id="h_ghost">See-through</button>
         <button id="h_none">Hidden</button>
       </div>
@@ -281,8 +282,9 @@
     </details>
   </aside>
 </main>
-<!-- The game's front door: over the blurred page until a case starts -->
-<div id="qgate" hidden>
+<!-- The game's front door: over the stippled heart, on black, until a case starts -->
+<div id="qgate" class="on-black" hidden>
+  <canvas id="qart" class="art" aria-hidden="true"></canvas>
   <div class="q-card">
     <h2>Find the culprit</h2>
     <p class="q-day" id="qday"></p>

@@ -65,8 +65,11 @@ export function fieldFromLogo(img: HTMLImageElement, n: number, closing = 0.03, 
   return { n, rho, heat, box };
 }
 
-/** Thermal ramp, black-body style. The black end is the ground itself: the coldest dot is still a deep red. */
-const RAMP: [number, string][] = [[0, "#3a0603"], [0.22, "#8c130b"], [0.48, "#d8401a"], [0.7, "#f49218"], [0.86, "#fbd24a"], [1, "#fff6dc"]];
+/** Thermal ramp, black-body style. The black end is the ground itself: the coldest dot is still a deep red. The site's
+ *  one sequential map: the homepage's dots, the simulator's velocity and wall-shear colormaps, and the accent. */
+export const RAMP: [number, string][] = [[0, "#3a0603"], [0.22, "#8c130b"], [0.48, "#d8401a"], [0.7, "#f49218"], [0.86, "#fbd24a"], [1, "#fff6dc"]];
+/** The same stops as [position, 0xRRGGBB], ready for THREE.Color. */
+export const RAMP_STOPS: [number, number][] = RAMP.map(([t, c]) => [t, parseInt(c.slice(1), 16)]);
 const hex = (s: string) => [1, 3, 5].map((i) => parseInt(s.slice(i, i + 2), 16));
 export function thermal(t: number): string {
   t = Math.min(1, Math.max(0, t));
@@ -75,7 +78,8 @@ export function thermal(t: number): string {
   const [t0, c0] = RAMP[k], [t1, c1] = RAMP[k + 1], u = (t - t0) / (t1 - t0), a = hex(c0), b = hex(c1);
   return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * u)).join(",")})`;
 }
-export const thermalGradient = () => `linear-gradient(90deg,${RAMP.map(([t, c]) => `${c} ${t * 100}%`).join(",")})`;
+/** The ramp as a CSS gradient, from 0 up to `to`, which must be one of its stops. */
+export const thermalGradient = (to = 1) => `linear-gradient(90deg,${RAMP.filter(([t]) => t <= to).map(([t, c]) => `${c} ${(t / to) * 100}%`).join(",")})`;
 
 /** A set of points under Lloyd relaxation on the field. Coordinates are in raster pixels, 0..n. */
 export class Stipple {
