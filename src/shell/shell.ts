@@ -8,6 +8,7 @@ export const PAGES: ShellPage[] = [
   { id: "ekg", label: "EKG", path: "ekg/", blurb: "Twelve-lead rhythms and mimics" },
   { id: "cath", label: "Cath lab", path: "cath/", blurb: "Angiogram and pressure wire" },
   { id: "structural", label: "Structural", path: "structural/", blurb: "Valve and congenital lesions" },
+  { id: "echo", label: "Echo", path: "echo/", blurb: "Standard views: the probe on the 3D heart, beside a real loop" },
 ];
 
 /** The one disclaimer, shown in the footer of every page and nowhere else. */

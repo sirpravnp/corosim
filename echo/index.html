@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="/favicon.ico" sizes="any" />
+<link rel="icon" type="image/png" href="/favicon.png" />
+<title>CoroSim Echo atlas</title>
+<meta name="description" content="The standard transthoracic echo views: where the probe goes on the simulator's 3D heart, which way it looks, beside a clean open-licensed echo loop of the view.">
+</head>
+<body>
+<div class="app" id="app">
+<header id="shell-head"></header>
+
+<main class="echomain">
+  <nav class="library" aria-label="Views">
+    <div class="lib-head">View</div>
+    <div id="list" class="list"></div>
+  </nav>
+
+  <section class="room">
+    <div class="titlebar">
+      <h2 id="title">Parasternal long axis</h2>
+      <p id="summary" class="summary"></p>
+    </div>
+    <div class="echo-stage">
+      <figure class="echo-pane">
+        <div class="screen echo-3d" id="scene" aria-label="3D heart with the probe and imaging sector"><p class="echo-load" id="loading">Drawing the heart…</p></div>
+        <figcaption id="posenote"></figcaption>
+      </figure>
+      <figure class="echo-pane" id="refpane"></figure>
+    </div>
+    <div class="echo-cards">
+      <div class="echo-card"><b>Probe placement</b><p id="placement"></p><b>Index mark</b><p id="marker"></p></div>
+      <div class="echo-card"><b>Structures in the sector</b><ul id="shows"></ul></div>
+      <div class="echo-card"><b>What to look for</b><p id="look"></p></div>
+    </div>
+  </section>
+</main>
+
+<p class="fine echo-note">The 3D heart is the simulator's schematic heart, so a pose shows where the probe has to be on that shape, not what any one patient looks like. Ribs, lungs and sternum are not modelled, so a pose does not show whether the acoustic window exists. Each loop keeps its own license, listed under it.</p>
+<footer id="shell-foot"></footer>
+</div>
+<script type="module" src="/src/echo/page.ts"></script>
+</body>
+</html>

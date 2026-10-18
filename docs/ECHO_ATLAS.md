@@ -98,3 +98,70 @@ Open-i returned an error page, so this used the Europe PMC REST API with `LICENS
 Full-text searches for the ME four-chamber, two-chamber, long-axis, bicaval, A5C and RV inflow views found no review or teaching article with CC BY figures. Individual case reports with a normal frame may exist, but finding them by caption means reading figures one at a time.
 
 Conclusion so far: open coverage is real for PLAX, PSAX, A4C and subcostal TTE, partial for A2C, and almost absent for TEE. A fully real-image TEE atlas is not achievable from what I can find; TEE would need our own slice, a licensed contribution, or a clinician providing images.
+
+## Decision, 2026-10-18: atlas is TTE-only for now
+
+TEE is dropped from scope: open coverage is near zero (see the audits above) and the existing TEE slicer stays in the cath lab untouched. The view list is the TTE set: PLAX, RV inflow, PSAX at the aortic valve, mitral valve and papillary levels, A4C, A5C, A2C, A3C, subcostal 4C, IVC, suprasternal.
+
+## Candidate review (images viewed), corrects the Commons table above
+
+| File | Actually is | Verdict |
+|---|---|---|
+| `Echoparasternallongaxis.jpg`, `Echoapicalfourchamber.jpg`, `Echoapicalshortaxis.jpg` (Balaji.md, CC BY-SA 4.0) | Hand drawings from the Wikibooks "Intensive Care Medicine" pages: labelled sector, plus a torso with probe position and a probe-orientation clock | **Not echo images.** But the torso drawings carry exactly the probe position and orientation data the atlas needs (reference for our poses). Note the "apical short axis" one shows a short axis, so it is not mislabelled. |
+| `Echocardiogram 4chambers.jpg` (public domain) | Real A4C frame, 636x434, Norwegian machine overlay | **Usable** as the A4C real image; slightly dark, patient and abnormality unknown, check the title text |
+| `Apical2Chamber.png`, `Aortic valve sa.png` (Lynch, Jaffe, CC BY 2.5) | ~400 px composite: small real echo inset next to an anatomical cutaway with matching labels | Real but tiny (inset about 200 px), labelled. Good for the pairing idea, poor as the main image |
+| `Heart subcostal echocardiography view.jpg` (Lynch, CC BY 2.5) | Pure illustration, no echo | Not an echo image |
+| `Apical 4 chamber view.png` | not viewed | |
+| PMC8662909 figs 3-6 | could not download (the PMC and publisher hosts refused scripted requests) | still unverified |
+
+So the real-image count is lower than I said: one clean real A4C, two small real insets (A2C, PSAX at the AV), and the CardioNetworks normal subcostal and A4C videos (still to check). PLAX has no real still yet. The next sources worth trying are CardioNetworks ECHOpedia normal-view videos, the PMC8662909 sonograms (open them in a browser), and a hand search of PMC case reports for normal frames.
+
+## Browser check: PMC8662909 and the CardioNetworks videos (viewed)
+
+- **PMC8662909 figs 3 to 6** (subcostal, PSAX, PLAX; fig 4 is a second subxiphoid): each is a banner from a commercial teaching site (TwinOaksAnesthesia) with its logo and URL, a stock heart graphic, and a small dark sonogram. The article is CC BY, but the figure is third-party branded teaching material, so the license may not cover it. Image quality is low and the "sub-costal" sonogram looks like an apical-style frame. **Rejected.**
+- **`Subcostal normal` (CardioNetworks ECHOpedia, CC BY-SA 3.0)**: a real normal subcostal loop, 500x385, with ECG trace and an ECHOpedia watermark ("Courtesy of Dept. of Echocardiography AMC, I.A.C. van der Bilt"). **Usable**, keep the watermark and attribution.
+- **`A4CTTS`**: the name suggests a Takotsubo case, not a normal heart, and the sector is cropped. **Not usable as the normal A4C.**
+
+Where this leaves TTE real-image coverage: A4C has one clean PD frame, subcostal has one normal loop, A2C and PSAX-AV have small CC BY insets, and PLAX, RV inflow, PSAX MV and papillary, A5C, A3C, IVC and suprasternal have nothing. Searching further on Commons and PMC is unlikely to close that; the gaps need contributed images. A practical split: ship the four views that have something, mark the rest "image pending", and ask for contributions.
+
+## Built, 2026-10-18: `/echo/`
+
+A TTE-only atlas page: `echo/index.html`, `src/echo/` (`volume.ts` label volume and surface, `poses.ts` probe poses from the CT heart's landmarks, `views.ts` the 10 views and the image manifest, `scene.ts` three.js probe and sector, `page.ts`), tests in `tests/echoPoses.test.ts`. Images sit in `src/echo/media/` with license and source in `views.ts`.
+
+- 10 views: PLAX, RV inflow, PSAX at AV, MV and papillary level, A4C, A5C, A2C, A3C, subcostal 4C. IVC and suprasternal are left out for now: the model has no vena cava or arch to aim at.
+- 4 have real images (A4C, A2C, PSAX AV, subcostal); the other 6 show "Image pending" and the page lists what a contribution needs.
+- Poses are derived, not hand-placed: A4C is the plane through the apex, mitral and tricuspid valves; A3C is the plane through the aortic valve (it comes out 52 degrees from A4C, close to the textbook 60); A2C sits 60 degrees the other way. Tests check each plane holds what it should.
+- Not modelled: ribs, lungs, sternum, so a pose does not show whether the window exists. A pose also does not show a patient's heart; the shape is the CT average.
+- The masthead is a static copy because another session is moving every page onto `src/shell/`. When that lands, add one line to `PAGES` in `src/shell/shell.ts` and switch this page to `mountShell`.
+
+### Update: simulator heart, four views
+
+The 3D pane now draws the simulator's own heart (`src/anatomy/heartSurface.ts`, the one the main page shows), not the CT volume, and only the four views with a reference image have a probe: A4C, A2C, PSAX at the aortic valve and subcostal. The other six are listed with "image pending" and no 3D probe. `volume.ts` and the CT loading were removed from the atlas; `src/echo/poses.ts` holds hand-placed landmarks on the schematic heart (apex, mitral, tricuspid, aortic root) and derives each plane from them: A4C is the plane through the apex, mitral and tricuspid valves; A2C is 60 degrees from it, turned toward the left atrium; PSAX AV is cut across the aortic root, beam front to back; subcostal is the A4C plane entered from below and the right. Tests in `tests/echoPoses.test.ts` check each plane holds what it should. Units are now mm in the patient frame (x left, y up, z anterior).
+
+### Update: tabs and the cross-section
+
+Each view now has four tabs: **Probe** (the 3D heart with probe and sector), **Slice**, **TTE image**, and **Compare** (slice and image side by side, the default). The slice is a cross-section of the simulator's 3D heart along the probe's plane: `src/echo/slice.ts` classifies every point of the plane (muscle wall, LV, RV, RA, LA, aortic root) from the same surface the 3D view draws, adding wall thickness (LV 10 mm, septum 9, RV free wall 3.5, atria 2.5), the interatrial septum and open valves; `src/echo/render.ts` paints it flat with outlines, laid out like the echo picture (probe at top, index mark on the right, sector outlined, the rest of the cut dimmed) with optional chamber labels. The RV is a crescent around an LV envelope, so the A2C cut shows no right ventricle. Landmarks were nudged (mitral and tricuspid posterior, aortic root a little below the valve plane) so A4C shows no aorta and PSAX AV shows RA, Ao, LA and RVOT. Not modelled: leaflets, papillary muscles, trabeculae.
+
+### Update: better images from the Yale/Lynch atlas, 6 of 10 views covered
+
+A closer look at Commons found Patrick J. Lynch's (Yale) figure [Heart normal tte views.jpg](https://commons.wikimedia.org/wiki/File:Heart_normal_tte_views.jpg), CC BY 2.5, 1897x757: eight panels of normal transthoracic frames, each with the matching anatomical cutaway. Four panels are now cropped into the atlas, replacing the earlier weaker images: A4C, A2C, PLAX and PSAX at the papillary level (about 450x360 each, with the frame lines trimmed). PSAX at the aortic valve still uses the small Yale composite (`Aortic valve sa.png`, CC BY 2.5), and subcostal still uses the ECHOpedia loop (CC BY-SA 3.0). The public-domain A4C frame is gone from the atlas.
+
+Coverage is now 6 of 10 views, and PLAX and PSAX PM got probe poses and slices (8 pose tests, 10 slice tests). Still without an image: RV inflow, PSAX at the mitral level, A5C and A3C.
+
+Not found, and why: the ASE chamber-quantification and TTE-protocol guideline figures are the official reference, but they are copyrighted (Elsevier/ASE), so they cannot be used here without a licence. ECHOpedia also has normal loops for PLAX, short axis at the apical and papillary levels, and suprasternal that could be added as moving alternatives (CC BY-SA 3.0).
+
+### Update: clean images only, 3 of 10 views
+
+"Clean" means the ultrasound picture and nothing else: no anatomical cutaway, no labels, no ECG, text, depth scale or watermark. The Yale/Lynch panels fail that (their anatomy artwork overlaps the echo frame) and so do the small Yale composites, so they were dropped. The public-domain A4C frame turned out to be displayed upside down (probe at the bottom), so it was dropped too.
+
+What remains are three ECHOpedia normal loops (CC BY-SA 3.0, I.A.C. van der Bilt, AMC): PLAX, PSAX at the papillary level and subcostal. `src/echo/cleanVideo.ts` plays each one into a canvas, cropped to the sector's bounding box, with everything outside the sector wedge painted black and saturated (yellow) marker pixels blacked out; the ultrasound itself is untouched. The wedge angles and radius per loop are in `views.ts`. The credit and license stay in the caption. The papillary-level loop is dark and low-gain in the source.
+
+Pending (no clean open image found): A4C, A5C, A2C, A3C, RV inflow, PSAX at the aortic and mitral levels. Commons has no normal-view category for these; ECHOpedia's other loops are pathology cases. Fastest fix is a contributed set (see "Images wanted" on the page).
+
+### Update: slice and tabs removed
+
+The cross-section (`slice.ts`, `render.ts`, their tests) and the four tabs are gone. Each view is now the simulator's 3D heart with the probe and imaging sector on the left, seen square onto the plane with the probe at the top as on an echo screen, and the clean echo loop on the right where one exists. Poses stay for the six views that have them (A4C, A2C, PLAX, PSAX AV, PSAX PM, subcostal); `tests/echoPoses.test.ts` (10 tests) covers them. Three views have a clean loop: PLAX, PSAX PM, subcostal.
+
+### Update: only views with both a probe and an image
+
+The atlas now lists three views: PLAX, PSAX at the papillary level and subcostal four-chamber, the ones that have both a probe pose on the 3D heart and a clean echo loop. The other seven (RV inflow, PSAX at the aortic and mitral levels, A4C, A5C, A2C, A3C) were removed from the page, along with their poses, the "Images wanted" section and the pending badges. They can come back one at a time when a clean open image exists: add a pose in `src/echo/poses.ts`, a `ViewDef` and an image in `src/echo/views.ts`, and the loop's crop and sector in its `clean` spec. Earlier notes above record what was tried for each.
