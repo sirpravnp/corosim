@@ -23,32 +23,34 @@
   </div>
   <section id="aipanel" class="aipanel" hidden aria-label="Connect your AI">
     <div class="ai-head"><h2>Connect your AI</h2><button id="ai_close" class="ai-x" aria-label="Close">×</button></div>
-    <p class="note" style="margin-top:0">Let Claude work with your patient: read the monitor, change the patient, run the clock and show you the heart and ECG in the chat. With this page open you watch it happen here too.</p>
-    <a id="ln_claude" class="addbtn" target="_blank" rel="noopener">Add to Claude</a>
-    <p class="note ln-after">Claude opens with CoroSim filled in. Click <b>Add</b>, then <b>Connect</b>, sign in with Google or GitHub and allow it. Nothing to copy.</p>
-    <p class="ln-status" id="ln_status"></p>
-    <div id="ac_out">
-      <p class="note">Or sign in here first; the same sign-in then covers your AI. <a href="privacy.html">Privacy</a></p>
-      <div id="ac_providers"></div>
-    </div>
-    <div id="ac_in" hidden>
-      <p class="ac-who">Signed in as <b id="ac_name"></b>. <span id="ac_connected"></span></p>
-    </div>
-    <details class="ln-more">
-      <summary>ChatGPT, Claude Code and other apps</summary>
-      <div class="ln-url"><input id="ln_url" readonly spellcheck="false" aria-label="Connector URL"><button id="ln_copy">Copy</button></div>
-      <ul class="note ln-how">
-        <li><b>ChatGPT</b>: Settings → Apps &amp; Connectors → Advanced → Developer mode, then Create, paste the URL, and sign in.</li>
-        <li><b>Claude Code</b>: <code id="ln_cli"></code>, then <code>/mcp</code> to sign in.</li>
-        <li><b>Any MCP client</b>: add the URL as a remote (HTTP) server; it asks you to sign in.</li>
-      </ul>
-    </details>
-    <div id="ac_in2" hidden>
-      <div class="row">
-        <button id="ac_disconnect">Disconnect AIs</button>
-        <button id="ac_signout">Sign out</button>
+    <p class="ai-lede">Your AI reads the monitor, changes the patient and draws the heart and ECG right in the chat.</p>
+    <a id="ln_claude" class="addbtn" target="_blank" rel="noopener">Add to Claude<span aria-hidden="true">↗</span></a>
+    <ol class="ai-steps" aria-label="In Claude">
+      <li><i>1</i>Add</li><li><i>2</i>Connect</li><li><i>3</i>Allow</li>
+    </ol>
+    <p class="ln-status" id="ln_status" role="status"></p>
+
+    <div class="ai-sec">
+      <h3>Other apps</h3>
+      <div class="ai-tabs" role="tablist">
+        <button role="tab" data-app="chatgpt" aria-selected="true">ChatGPT</button><button role="tab" data-app="code" aria-selected="false">Claude Code</button><button role="tab" data-app="any" aria-selected="false">Any MCP app</button>
       </div>
-      <p class="note"><a href="#" id="ac_delete">Delete my account</a>: removes your account, your saved patient and every AI connection.</p>
+      <p class="ai-how" id="ln_how"></p>
+      <div class="ln-url"><code id="ln_field"></code><button id="ln_copy">Copy</button></div>
+    </div>
+
+    <div class="ai-foot" id="ac_out">
+      <span class="ai-label">Sign in here first</span>
+      <div id="ac_providers"></div>
+      <p class="ai-fine">One sign-in covers this page and your AI. We keep your name, email and patient, nothing else. <a href="privacy.html">Privacy</a></p>
+    </div>
+    <div class="ai-foot" id="ac_in" hidden>
+      <div class="ai-who"><span class="ai-label">Signed in</span><b id="ac_name"></b></div>
+      <p class="ai-fine" id="ac_connected"></p>
+      <div class="ai-acts">
+        <button id="ac_disconnect">Disconnect AIs</button><button id="ac_signout">Sign out</button>
+        <a href="#" id="ac_delete" class="ai-del">Delete account</a>
+      </div>
     </div>
   </section>
 </header>

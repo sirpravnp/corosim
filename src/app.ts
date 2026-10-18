@@ -1016,19 +1016,32 @@ function runForAi(name: string, args: Record<string, unknown>) {
 }
 let restored: { at: number; note: string } | null = null;
 const LIVE_LABEL: Record<LiveStatus["state"], string> = { off: "AI paused", connecting: "Connecting…", open: "AI ready", retrying: "Reconnecting…", replaced: "In another tab", signedout: "Connect AI" };
-const PROVIDER_LABEL: Record<string, string> = { google: "Continue with Google", github: "Continue with GitHub", dev: "Continue with a development account" };
+const PROVIDER_LABEL: Record<string, string> = { google: "Google", github: "GitHub", dev: "Development account" };
+/** Other apps: one short instruction and the one thing to copy for each. */
+let app_: "chatgpt" | "code" | "any" = "chatgpt";
+function otherApp() {
+  const url = account.connectorUrl;
+  const [how, copy] = app_ === "chatgpt" ? ["Settings → Apps & Connectors → Advanced → Developer mode. Create a connector, paste this URL and sign in.", url]
+    : app_ === "code" ? ["Run this, then type /mcp in Claude Code to sign in.", `claude mcp add --transport http corosim ${url}`]
+    : ["Add this as a remote (HTTP) MCP server. It asks you to sign in.", url];
+  $("ln_how").textContent = how; $("ln_field").textContent = copy;
+  for (const b of document.querySelectorAll<HTMLButtonElement>(".ai-tabs button")) b.setAttribute("aria-selected", String(b.dataset.app === app_));
+}
+document.querySelector(".ai-tabs")!.addEventListener("click", (e) => {
+  const a = (e.target as HTMLElement).closest("button")?.dataset.app as typeof app_ | undefined;
+  if (a) { app_ = a; otherApp(); }
+});
 function linkUi(st: LiveStatus) {
   const signedIn = !!account.user;
-  $("ac_out").hidden = signedIn; $("ac_in").hidden = $("ac_in2").hidden = !signedIn;
+  $("ac_out").hidden = signedIn; $("ac_in").hidden = !signedIn;
   ($("ln_claude") as HTMLAnchorElement).href = account.claudeInstallUrl;
-  ($("ln_url") as HTMLInputElement).value = account.connectorUrl;
-  $("ln_cli").textContent = `claude mcp add --transport http corosim ${account.connectorUrl}`;
+  otherApp();
   if (!signedIn) {
     const html = account.providers.map((p) => `<button data-provider="${p}">${PROVIDER_LABEL[p] ?? p}</button>`).join("");
-    if ($("ac_providers").innerHTML !== html) $("ac_providers").innerHTML = html || `<p class="ln-status warn">Cannot reach the CoroSim server to sign in right now.</p>`;
+    if ($("ac_providers").innerHTML !== html) $("ac_providers").innerHTML = html || `<p class="ai-fine">Cannot reach the CoroSim server to sign in right now.</p>`;
   } else {
     $("ac_name").textContent = account.user!.name ?? account.user!.email ?? "you";
-    $("ac_connected").textContent = account.connected.length ? `Connected: ${account.connected.join(", ")}.` : "No AI connected yet.";
+    $("ac_connected").textContent = account.connected.length ? `Connected: ${account.connected.join(", ")}` : "No AI connected yet";
   }
   const who = st.lastClient ? st.lastClient.replace(/-/g, " ") : "Your AI";
   const [text, tone] = st.state === "open"
@@ -1075,8 +1088,9 @@ on("ac_delete", async (e?: Event) => {
   linkUi(live.status);
 });
 on("ln_copy", async () => {
-  try { await navigator.clipboard.writeText(account.connectorUrl); $("ln_copy").textContent = "Copied"; setTimeout(() => { $("ln_copy").textContent = "Copy"; }, 2000); }
-  catch { ($("ln_url") as HTMLInputElement).select(); }
+  const f = $("ln_field");
+  try { await navigator.clipboard.writeText(f.textContent ?? ""); $("ln_copy").textContent = "Copied"; setTimeout(() => { $("ln_copy").textContent = "Copy"; }, 2000); }
+  catch { getSelection()?.selectAllChildren(f); }
 });
 /** Who is signed in decides whether the line opens; refresh the list of connected AIs now and then. */
 async function startAccount() {
