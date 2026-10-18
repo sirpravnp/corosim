@@ -1,11 +1,13 @@
-// The homepage: the thermogram settles on load, then stands still.
+// The homepage: the thermogram settles on load and stands still; a cursor over it stirs the dots, which flow back.
 import { Stipple, draw, fieldFromLogo, thermalGradient } from "./stipple";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>("art"), tag = $("tag");
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const hovers = matchMedia("(hover: hover)").matches; // a mouse or pen: a finger would be scrolling
 const MAX_STEPS = 90, SETTLED = 0.05; // Lloyd steps, and the largest move (raster px) at which the dots count as settled
 const OMEGA = 0.5; // animated: each frame goes halfway to the centroid, so the settling takes about a second to watch
+const STIR = { radius: 0.11, push: 2.0, warmth: 0.55 }; // the cursor's reach (fraction of the raster), shove (px per frame) and heat
 $("bar").style.background = thermalGradient();
 
 const img = new Image();
@@ -26,8 +28,32 @@ function start() {
   const label = (state: string) => { tag.innerHTML = `${count.toLocaleString("en")} points · <span class="wide">weighted voronoi · </span>${state}`; };
   new ResizeObserver(paint).observe(canvas);
 
+  // Once settled, the cursor stirs the dots: each frame pushes those under it aside and warms them, and a Lloyd step
+  // draws everything back toward its cell's centroid, so the disturbance heals behind the pointer.
+  const pointer = { x: 0, y: 0, over: false };
+  let running = false;
+  const stirring = () => {
+    if (!running) return;
+    if (pointer.over) st.stir(pointer.x, pointer.y, STIR.radius * n, STIR.push, STIR.warmth);
+    const moved = st.step(0.4);
+    paint();
+    if (!pointer.over && moved < SETTLED) { running = false; label(hovers ? "settled · stir with the cursor" : "settled"); return; }
+    requestAnimationFrame(stirring);
+  };
+  const wake = () => { if (!running) { running = true; label("stirred"); requestAnimationFrame(stirring); } };
+  const listen = () => {
+    if (!hovers || reduced) return;
+    canvas.addEventListener("pointermove", (e) => {
+      if (e.pointerType === "touch") return;
+      const r = canvas.getBoundingClientRect();
+      pointer.x = ((e.clientX - r.left) / r.width) * n; pointer.y = ((e.clientY - r.top) / r.height) * n; pointer.over = true;
+      wake();
+    });
+    canvas.addEventListener("pointerleave", () => { pointer.over = false; wake(); });
+  };
+
   let done = false;
-  const finish = () => { done = true; paint(); label(`settled in ${st.iterations} steps`); };
+  const finish = () => { done = true; st.settle(); paint(); label(`settled in ${st.iterations} steps${hovers && !reduced ? " · stir with the cursor" : ""}`); listen(); };
   if (reduced) {
     // No animation: relax in chunks that leave the page responsive, and draw once, settled.
     label("relaxing");

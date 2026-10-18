@@ -84,15 +84,17 @@ export class Stipple {
   readonly points: Float64Array; // x0, y0, x1, y1, ...
   readonly count: number;
   readonly heat: Float32Array; // per point, read from the field under it
+  readonly warm: Float32Array; // per point, extra heat from being touched; fades with every step
   private delaunay: Delaunay<Delaunay.Point>;
   private cx: Float64Array; private cy: Float64Array; private mass: Float64Array;
+  private home: Float64Array | null = null; // where each point last settled, for one pushed clear of the heart
   iterations = 0;
   /** Points are drawn from a flattened density so they start as a soft cloud and sharpen as they relax. */
   constructor(readonly field: Field, count: number, random = Math.random) {
     const { n, rho } = field;
     this.count = count;
     this.points = new Float64Array(count * 2);
-    this.heat = new Float32Array(count);
+    this.heat = new Float32Array(count); this.warm = new Float32Array(count);
     this.cx = new Float64Array(count); this.cy = new Float64Array(count); this.mass = new Float64Array(count);
     for (let i = 0; i < count; ) {
       const x = random() * n, y = random() * n, r = rho[Math.floor(y) * n + Math.floor(x)];
@@ -122,15 +124,32 @@ export class Stipple {
     }
     let moved = 0;
     for (let j = 0; j < this.count; j++) {
-      if (!mass[j]) continue; // a cell with no density keeps its point
-      const dx = (cx[j] / mass[j] - points[2 * j]) * omega, dy = (cy[j] / mass[j] - points[2 * j + 1]) * omega;
+      let tx: number, ty: number;
+      if (mass[j]) { tx = cx[j] / mass[j]; ty = cy[j] / mass[j]; }
+      else if (this.home) { tx = this.home[2 * j]; ty = this.home[2 * j + 1]; } // stirred clear of the heart: come home
+      else continue; // a cell with no density keeps its point
+      const dx = (tx - points[2 * j]) * omega, dy = (ty - points[2 * j + 1]) * omega;
       moved = Math.max(moved, Math.hypot(dx, dy));
       points[2 * j] += dx; points[2 * j + 1] += dy;
+      this.warm[j] *= 0.88;
     }
     delaunay.update();
     this.iterations++;
     this.sample();
     return moved;
+  }
+  /** Remember the settled positions, so a point stirred out of the heart knows where to return. */
+  settle() { this.home = Float64Array.from(this.points); }
+  /** A touch at (x, y): points within `radius` are pushed outward, up to `push` pixels, and warmed by up to `warmth`. */
+  stir(x: number, y: number, radius: number, push: number, warmth: number) {
+    const { points, count } = this;
+    for (let j = 0; j < count; j++) {
+      const dx = points[2 * j] - x, dy = points[2 * j + 1] - y, d = Math.hypot(dx, dy);
+      if (d >= radius) continue;
+      const k = (1 - d / radius) ** 2, u = d > 1e-6 ? 1 / d : 0;
+      points[2 * j] += dx * u * push * k; points[2 * j + 1] += dy * u * push * k;
+      this.warm[j] = Math.max(this.warm[j], warmth * k);
+    }
   }
 }
 
@@ -138,7 +157,7 @@ export class Stipple {
 export function draw(ctx: CanvasRenderingContext2D, st: Stipple, size: number, dot: number) {
   const BINS = 32, n = st.field.n, s = size / n;
   const byBin: number[][] = Array.from({ length: BINS }, () => []);
-  for (let i = 0; i < st.count; i++) byBin[Math.min(BINS - 1, Math.floor(st.heat[i] * BINS))].push(i);
+  for (let i = 0; i < st.count; i++) byBin[Math.min(BINS - 1, Math.floor(Math.min(1, st.heat[i] + st.warm[i]) * BINS))].push(i);
   ctx.clearRect(0, 0, size, size);
   for (let b = 0; b < BINS; b++) {
     if (!byBin[b].length) continue;
