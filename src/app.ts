@@ -936,11 +936,21 @@ on("qshare", share);
 // ---------------------------------------------------------------- versions: the simulator alone, or with the game
 /** The page at /game/ is the game version; anywhere else (/sim/) it is the plain simulator. The links between them
  *  and to the homepage are relative, so the site still works under any URL. */
+/** The cath lab link opens the patient on screen (/cath/#s=…) when it is followed. In the game it stays plain: the angiogram would show the culprit. */
+let cathBase = "./cath/";
+function cathLinkUi() {
+  const a = $("modeCath") as HTMLAnchorElement;
+  const point = () => { a.href = inGame ? cathBase : `${cathBase}#s=${encodeScenario(sim.scenario())}`; };
+  for (const ev of ["pointerdown", "focus", "mouseenter", "contextmenu", "touchstart"]) a.addEventListener(ev, point);
+  a.title = "Open this patient in the cath lab"; a.setAttribute("aria-label", "Open in cath lab");
+}
 function applyMode() {
   const game = /\/game(\/(index\.html)?)?$/.test(location.pathname); // /game, /game/ or /game/index.html
   const root = /\/(sim|game)\/(index\.html)?$/.test(location.pathname) ? "../" : "./"; // the site's root: the homepage
   ($("modeSim") as HTMLAnchorElement).href = root + "sim/"; ($("modeGame") as HTMLAnchorElement).href = root + "game/";
   ($("modeEkg") as HTMLAnchorElement).href = root + "ekg/";
+  cathBase = root + "cath/";
+  ($("modeCath") as HTMLAnchorElement).href = cathBase;
   ($("home") as HTMLAnchorElement).href = root;
   (document.querySelector(".q-plain") as HTMLAnchorElement).href = root + "sim/";
   inGame = game;
@@ -1123,6 +1133,7 @@ function openShared() {
 }
 openShared();
 addEventListener("hashchange", openShared);
+cathLinkUi();
 linkUi(live.status);
 void startAccount();
 /** Handle for scripts and browser-driving assistants: corosim.sim, corosim.load(scenario), corosim.live. */
