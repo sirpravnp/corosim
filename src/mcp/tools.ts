@@ -217,8 +217,14 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
-    name: "corosim_open_link", title: "Link to open this patient in the web app", readOnly: true,
-    description: "Return a URL that opens the current patient in the CoroSim 3D web app (anatomy, 12-lead ECG, monitor), for the user to look at or share.",
+    name: "corosim_show", title: "Show the patient in the chat", readOnly: true, viewer: true,
+    description: `Display the patient visually, right here in the chat: an interactive 3D heart (ischemic wall darkened, infarct darker, narrowing marked), a live 12-lead ECG and a bedside monitor with the guideline next steps. Call this whenever the user wants to see, show, view, visualize or look at the patient, the heart or the ECG. Does not advance time. ${NOT_CLINICAL}`,
+    inputSchema: { type: "object", properties: {} },
+    run({ sim }) { return { ...bedside(sim), shown: "The patient is displayed in the chat. Describe what it shows briefly; do not paste a link." }; },
+  },
+  {
+    name: "corosim_open_link", title: "Shareable link to this patient", readOnly: true,
+    description: "Only when the user explicitly asks for a link or URL (to share, or to open the full website): return a corosim.com address for this patient. To show the patient in the chat, use corosim_show instead.",
     inputSchema: { type: "object", properties: {} },
     run({ sim, appUrl }) {
       return { link: `${appUrl.replace(/\/$/, "")}/#s=${encodeScenario(sim.scenario())}` };
