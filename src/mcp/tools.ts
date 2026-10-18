@@ -145,11 +145,12 @@ function runReport(ctx: ToolContext, seconds: number, beatsMode: string, maxBeat
 export const TOOLS: ToolDef[] = [
   {
     name: "corosim_get_schema", title: "Describe the scenario format", readOnly: true,
-    description: `Return the Scenario JSON schema, valid artery ids for the current anatomy, units and what every knob does. Call this first when you are asked to build a patient. ${NOT_CLINICAL}`,
+    description: `Return the Scenario JSON schema, valid artery ids for the current anatomy, units and what every knob does. Call this first when you are asked to build a patient. Not for showing a rhythm or EKG pattern (AF, flutter, SVT, blocks, VT, torsades, VF, STEMI mimics, electrolytes): use corosim_ekg_show, which draws any of them. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: {} },
     run({ sim }) {
       return {
         reference: SCENARIO_REFERENCE, schema: scenarioSchema,
+        ekg: "The patient makes only the rhythms its coronary physiology causes (ischemic ST change, PVCs, AV block, AF if given). To show or teach any other rhythm or 12-lead pattern (flutter, SVT, WPW, VT, polymorphic VT, torsades, VF, long QT, hyperkalemia, Brugada, pericarditis, de Winter, Wellens...), call corosim_ekg_show (a preset, or custom for anything else): it does not touch this patient.",
         arteriesInCurrentAnatomy: buildTree(sim.n.anatomy).segments.map((s) => ({ id: s.id, name: s.name, supplies: `${(s.subMass * 100).toFixed(0)}% of myocardium` })),
         referenceAdult: { hr: 72, strokeVolumeMl: 70, mapMmHg: 90, bp: "120/72" },
         howItWorks: "Pressure of each beat is sensed by baroreceptors; a fast vagal arm (~0.6 s) and a slow sympathetic arm (~2 s) change heart rate, contractility and resistance. Respiration gates vagal tone (RSA). Noise in tone makes every beat different. Coronary lesions cause ischemia over ~20 s, which causes AV block, ectopy and pump failure; pressure then feeds back on coronary perfusion.",
@@ -158,7 +159,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "corosim_set_scenario", title: "Build a patient", readOnly: false,
-    description: `Replace the current patient with this scenario, then run a warm-up so the reflexes have settled. Returns the monitor, the 12-lead ECG, the guideline assessment and a grounded explanation, plus warnings listing anything that was clamped or dropped (read them: they tell you what actually ran). Use settled=false to watch an occlusion develop from a healthy start. The warm-up does not advance the infarct clock; corosim_run and corosim_adjust do (2 clinical minutes per simulated second), so a closed artery loses muscle as you run it. ${NOT_CLINICAL}`,
+    description: `Replace the current patient with this scenario, then run a warm-up so the reflexes have settled. Returns the monitor, the 12-lead ECG, the guideline assessment and a grounded explanation, plus warnings listing anything that was clamped or dropped (read them: they tell you what actually ran). Use settled=false to watch an occlusion develop from a healthy start. The warm-up does not advance the infarct clock; corosim_run and corosim_adjust do (2 clinical minutes per simulated second), so a closed artery loses muscle as you run it. Not for showing a rhythm or EKG pattern (AF, flutter, SVT, blocks, VT, torsades, VF, STEMI mimics, electrolytes): use corosim_ekg_show, which draws any of them. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: { scenario: scenarioSchema, settled: { type: "boolean", description: "Start with ischemia already at its steady value (default true). False = ischemia develops over ~20 s." }, warmupSeconds: { type: "number", minimum: 0, maximum: 300, description: "Simulated seconds to run before returning (default 45)." } } },
     run({ sim }, a) {
       sim.reset((a.scenario ?? {}) as Scenario, { settled: a.settled !== false });
@@ -225,7 +226,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "corosim_show", title: "Show the patient in the chat", readOnly: true, viewer: true,
-    description: `Display the patient visually, right here in the chat: an interactive 3D heart (ischemic wall darkened, infarct darker, narrowing marked), a live 12-lead ECG and a bedside monitor with the guideline next steps. Call this whenever the user wants to see, show, view, visualize or look at the patient, the heart or the ECG. Does not advance time. ${NOT_CLINICAL}`,
+    description: `Display the patient visually, right here in the chat: an interactive 3D heart (ischemic wall darkened, infarct darker, narrowing marked), a live 12-lead ECG and a bedside monitor with the guideline next steps. Call this whenever the user wants to see, show, view, visualize or look at the patient, the heart or the ECG. Does not advance time. For a rhythm strip or EKG pattern on its own, use corosim_ekg_show instead. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: {} },
     run({ sim }) { return { ...bedside(sim), shown: "The patient is displayed in the chat. Describe what it shows briefly; do not paste a link." }; },
   },
@@ -246,8 +247,8 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
-    name: "corosim_ekg_show", title: "Show a simulated 12-lead EKG", readOnly: true, stateless: true, viewer: "ekg",
-    description: `Display a simulated 12-lead EKG right here in the chat: the tracing writing itself on paper, and a 3D heart with every lead drawn as an axis through it and the heart's electrical vector moving in real time, so the learner sees why each lead looks as it does. Returns the measurements (rates, PR, QRS, QTc, axis, ST by lead) taken from the waveform, so you can check what was drawn, and the teaching notes. Either name a library preset (an id from corosim_ekg_list or a common name: "afib", "torsades", "de winter", "inferior stemi"), or build any other tracing with custom: a rhythm, its conduction and what the complexes look like by territory (e.g. sinus 110 with LBBB and 3 mm inferior ST elevation; AF at 180 with a delta wave; Wenckebach 3:2 with anterior Q waves), optionally starting from a preset with custom.base. It does not change the patient (use corosim_show for that). quiz: true hides the name on screen and returns the answer as answerKey: do not reveal it until the learner has read the tracing and committed. ${NOT_CLINICAL}`,
+    name: "corosim_ekg_show", title: "Show any EKG rhythm or 12-lead pattern", readOnly: true, stateless: true, viewer: "ekg",
+    description: `Show any heart rhythm or EKG pattern (arrhythmia, block, ischemia, STEMI mimic, electrolyte or drug effect) as a simulated 12-lead right here in the chat. Use this for any request to see, draw, show or practise a rhythm or EKG: torsades, VT, VF, flutter, SVT, heart block, hyperkalemia and so on. It displays the tracing writing itself on paper, and a 3D heart with every lead drawn as an axis through it and the heart's electrical vector moving in real time, so the learner sees why each lead looks as it does. Returns the measurements (rates, PR, QRS, QTc, axis, ST by lead) taken from the waveform, so you can check what was drawn, and the teaching notes. Either name a library preset (an id from corosim_ekg_list or a common name: "afib", "torsades", "de winter", "inferior stemi"), or build any other tracing with custom: a rhythm, its conduction and what the complexes look like by territory (e.g. sinus 110 with LBBB and 3 mm inferior ST elevation; AF at 180 with a delta wave; Wenckebach 3:2 with anterior Q waves), optionally starting from a preset with custom.base. It does not change the patient (use corosim_show for that). quiz: true hides the name on screen and returns the answer as answerKey: do not reveal it until the learner has read the tracing and committed. ${NOT_CLINICAL}`,
     inputSchema: {
       type: "object", properties: {
         preset: { type: "string", description: "Preset id or common name. Omit with quiz: true for a random tracing, or use custom instead." },
