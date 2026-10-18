@@ -525,7 +525,8 @@ export function resolveSpec(p: EkgPreset, sim?: Simulation): EkgSpec {
   if (!p.coronary) return p.spec;
   const s = coronarySim(p, sim), { injury, tBoost } = s.ecgInputs(), k = p.coronary.scale ?? 1;
   const morph: Morph = { ...(p.spec.morph ?? {}) };
-  morph.injury = [injury[0] * k, injury[1] * k, injury[2] * k];
+  const own = morph.injury ?? [0, 0, 0]; // a custom tracing may add its own ST change on top of the lesion's
+  morph.injury = [own[0] + injury[0] * k, own[1] + injury[1] * k, own[2] + injury[2] * k];
   morph.tBoost = (morph.tBoost ?? 0) + tBoost * k;
   return { ...p.spec, morph };
 }

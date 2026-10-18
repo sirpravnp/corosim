@@ -191,3 +191,61 @@ describe("EKG tools (MCP)", async () => {
     expect(() => run("corosim_ekg_show", { preset: "not a rhythm" })).toThrow(/corosim_ekg_list/);
   });
 });
+
+import { buildCustom, decodeCustom, encodeCustom } from "../src/ekg/custom";
+describe("custom tracings (built from a description)", () => {
+  const mc = (c: Parameters<typeof buildCustom>[0]) => measure(resolveSpec(buildCustom(c).preset));
+  it("puts the asked-for ST elevation in the lead facing the wall, with reciprocal change", () => {
+    const r = mc({ morph: { st: [{ territory: "anterior", mm: 2 }] } });
+    expect(r.stMm!.V3).toBeCloseTo(2, 0); expect(r.stMm!.III).toBeLessThan(0);
+    const inf = mc({ morph: { st: [{ territory: "inferior", mm: 3 }] } });
+    expect(inf.stMm!.aVF).toBeCloseTo(3, 0); expect(inf.stMm!.aVL).toBeLessThan(-1);
+  });
+  it("combines rhythm, conduction and morphology: sinus 110 with LBBB and inferior STE", () => {
+    const r = mc({ rhythm: { rate: 110 }, morph: { bbb: "lbbb", st: [{ territory: "inferior", mm: 3 }] } });
+    expect(r.ventricularRate).toBeCloseTo(110, -1); expect(r.qrsMs!).toBeGreaterThanOrEqual(120); expect(r.stMm!.III).toBeGreaterThan(2);
+  });
+  it("hits a target axis, PR and QRS width", () => {
+    const r = mc({ rhythm: { prMs: 260 }, morph: { axisDeg: -60, qrsWidthMs: 130 } });
+    expect(r.axisDeg!).toBeCloseTo(-60, -1); expect(r.prMs).toBe(260); expect(r.qrsMs).toBe(130);
+  });
+  it("inverts the T wave to the asked depth", () => {
+    const { preset } = buildCustom({ morph: { tInversion: [{ territory: "anterior", mm: 5 }] } });
+    const e = new EkgEngine(resolveSpec(preset)); e.ensure(6);
+    const b = e.beats.find((x) => x.kind === "sv" && x.t > 2)!;
+    let lo = 0; for (let t = b.t + 0.15; t < b.t + 0.45; t += 0.002) lo = Math.min(lo, e.leads(t).V3);
+    expect(lo).toBeCloseTo(-0.5, 1);
+  });
+  it("builds rhythms the library does not have (AF with pre-excitation, 3:2 Wenckebach, VT at 220)", () => {
+    const af = mc({ rhythm: { kind: "af", rate: 180 }, morph: { deltaWave: true } });
+    expect(af.regular).toBe(false); expect(af.qrsMs!).toBeGreaterThan(110);
+    const w = buildCustom({ rhythm: { av: "wenckebach", dropEvery: 3 } }).preset;
+    const e = new EkgEngine(resolveSpec(w)); e.ensure(10);
+    const kinds = e.beats.filter((b) => b.t > 1 && b.t < 9).map((b) => b.kind).join("");
+    expect(kinds).toMatch(/svsvp/);
+    expect(mc({ rhythm: { kind: "vt", rate: 220 } }).ventricularRate).toBeCloseTo(220, -1);
+  });
+  it("starts from a preset and changes only what is given", () => {
+    const { preset } = buildCustom({ base: "hyperk", rhythm: { rate: 40 } });
+    expect(preset.spec.morph?.tNarrow).toBe(0.5); expect(measure(resolveSpec(preset)).ventricularRate).toBeCloseTo(40, -1);
+  });
+  it("uses the coronary model for lesions", () => {
+    const r = mc({ lesions: [{ artery: "RCA", occluded: true }] });
+    expect(r.stMm!.III).toBeGreaterThan(1.5);
+  });
+  it("clamps and reports what it could not do", () => {
+    const { warnings } = buildCustom({ rhythm: { kind: "nope" as never, rate: 999 }, morph: { st: [{ territory: "moon" as never, mm: 2 }] } });
+    expect(warnings.join(" ")).toMatch(/unknown.*clamped|clamped.*unknown/s); expect(warnings.some((w) => w.includes("moon"))).toBe(true);
+  });
+  it("round-trips through a share link", () => {
+    const c = { name: "Test ✓", rhythm: { kind: "af" as const, rate: 120 } };
+    expect(decodeCustom(encodeCustom(c))).toEqual(c);
+  });
+  it("the MCP tool draws a custom tracing, reports its measurements and links it", async () => {
+    const { TOOLS } = await import("../src/mcp/tools");
+    const r = TOOLS.find((t) => t.name === "corosim_ekg_show")!.run({ sim: undefined as never, appUrl: "https://corosim.com/" }, { custom: { name: "Sinus with LBBB", morph: { bbb: "lbbb" } } }) as Record<string, any>;
+    expect(r.ekg.preset).toBe("custom"); expect(r.ekg.custom.morph.bbb).toBe("lbbb");
+    expect(r.tracing.name).toBe("Sinus with LBBB"); expect(r.tracing.measurements.qrsMs).toBeGreaterThanOrEqual(120);
+    expect(r.link).toMatch(/^https:\/\/corosim\.com\/ekg\/#c=/);
+  });
+});

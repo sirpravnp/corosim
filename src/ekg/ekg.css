@@ -64,6 +64,8 @@ main > * { min-width: 0; }
 .list a { display: block; padding: 6px 10px 6px 12px; font-size: 13.5px; line-height: 1.3; color: var(--ink); text-decoration: none; border-left: 3px solid transparent; }
 .list a:hover { background: var(--rule-light); }
 .list a.on { font-weight: 700; border-left-color: var(--accent); background: var(--rule-light); }
+.lib-foot { margin: 0; padding: 10px 12px; font-size: 12px; line-height: 1.45; color: var(--muted); border-top: 1px solid var(--rule); }
+.qnote { margin: 0; color: var(--muted); }
 .list .empty { padding: 10px 12px; color: var(--muted); font-size: 13px; }
 
 /* Title */

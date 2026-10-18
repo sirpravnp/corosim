@@ -6,6 +6,7 @@ import { Simulation } from "../sim/simulation";
 import { HeartScene } from "../viewer/heartScene";
 import { EkgEngine, EkgSpec, Measurements, measure } from "./engine";
 import { CATEGORIES, EkgPreset, PRESETS, PRESET_BY_ID, findPreset, resolveSpec } from "./presets";
+import { CustomEkg, buildCustom, decodeCustom, encodeCustom } from "./custom";
 import { Paper } from "./paper";
 import { LeadAxes, LeadSet } from "./leadScene";
 
@@ -84,7 +85,7 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 
 const pick = $<HTMLSelectElement>("pick");
 pick.innerHTML = CATEGORIES.map((c) => `<optgroup label="${esc(c)}">${PRESETS.filter((p) => p.category === c).map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}</optgroup>`).join("");
-pick.addEventListener("change", () => { stopQuiz(); load(PRESET_BY_ID[pick.value]); });
+pick.addEventListener("change", () => { if (pick.value === "custom") { if (customDesc) loadCustom(customDesc); } else { stopQuiz(); load(PRESET_BY_ID[pick.value]); } });
 if (embedded) $("pickwrap").hidden = false;
 
 // ---------------------------------------------------------------- load a preset
@@ -104,8 +105,21 @@ function rebuildEngine(prefill = true) {
   if (prefill) for (let i = 0; i < paper.fs * 10; i++) step1();
 }
 
+/** A tracing built from a description (by Claude, or opened from a #c= link). */
+let customDesc: CustomEkg | null = null;
+function loadCustom(c: CustomEkg, opts: { quiz?: boolean } = {}) {
+  const { preset: p } = buildCustom(c);
+  customDesc = c;
+  let opt = pick.querySelector<HTMLOptionElement>('option[value="custom"]');
+  if (!opt) { const g = document.createElement("optgroup"); g.label = "Custom"; opt = document.createElement("option"); opt.value = "custom"; g.append(opt); pick.prepend(g); }
+  opt.textContent = p.name;
+  if (opts.quiz) startQuiz(p); else { stopQuiz(); load(p); }
+}
+const isCustom = (p: EkgPreset) => p.id === "custom";
+
 function load(p: EkgPreset, opts: { quiz?: boolean } = {}) {
   preset = p; rate = null;
+  if (!isCustom(p)) customDesc = null;
   if (p.coronary) spec = resolveSpec(p, sim);
   else { sim.reset({}, { settled: true }); spec = p.spec; }
   scene.rebuild();
@@ -115,7 +129,7 @@ function load(p: EkgPreset, opts: { quiz?: boolean } = {}) {
   if (hasRate(spec)) { r.value = String((spec.rhythm as { rate: number }).rate); $("rateVal").textContent = `${r.value} bpm`; }
   if (p.leads?.length) select(p.leads[0]); else select(selected);
   pick.value = p.id;
-  if (!opts.quiz && !embedded) history.replaceState(null, "", `#p=${p.id}`);
+  if (!opts.quiz && !embedded) history.replaceState(null, "", customDesc ? `#c=${encodeCustom(customDesc)}` : `#p=${p.id}`);
   render();
 }
 
@@ -127,7 +141,7 @@ function axisWord(a: number | null) {
 }
 function render() {
   const hidden = quiz.on && !quiz.answered;
-  $("cat").textContent = hidden ? "Quiz" : preset.category;
+  $("cat").textContent = hidden ? "Quiz" : isCustom(preset) ? "Custom tracing" : preset.category;
   $("title").textContent = hidden ? "Unknown tracing" : preset.name;
   $("summary").textContent = hidden ? "Read it the usual way (rate, rhythm, axis, intervals, morphology), then choose." : preset.summary;
   $("read").hidden = hidden; $("hiddenRead").hidden = !hidden;
@@ -151,6 +165,7 @@ function render() {
   const li = (xs: string[] | undefined) => (xs ?? []).map((x) => `<li>${esc(x)}</li>`).join("");
   $("features").innerHTML = li(preset.features);
   $("pearls").innerHTML = li(preset.pearls);
+  $("features").parentElement!.hidden = !preset.features.length; $("pearls").parentElement!.hidden = !preset.pearls.length; // a custom tracing may have none
   $("mimics").innerHTML = li(preset.mimics); $("mimicsBox").hidden = !preset.mimics?.length;
   $("next").hidden = !preset.next; $("next").textContent = preset.next ? `Next: ${preset.next}` : "";
   for (const a of document.querySelectorAll<HTMLAnchorElement>("#list a")) a.classList.toggle("on", a.dataset.id === preset.id && !hidden);
@@ -193,9 +208,10 @@ function startQuiz(target?: EkgPreset) {
   const answer = target ?? PRESETS[Math.floor(Math.random() * PRESETS.length)];
   const same = shuffle(PRESETS.filter((p) => p.id !== answer.id && p.category === answer.category)).slice(0, 2);
   const others = shuffle(PRESETS.filter((p) => p.id !== answer.id && !same.includes(p))).slice(0, 3 - same.length);
-  const choices = shuffle([answer, ...same, ...others]);
+  // A custom tracing has no library look-alikes to choose from: the learner answers in the chat.
+  const choices = isCustom(answer) ? [] : shuffle([answer, ...same, ...others]);
   $("quiz").hidden = false; $("qafter").hidden = true;
-  $("choices").innerHTML = "";
+  $("choices").innerHTML = isCustom(answer) ? `<p class="qnote">Give your reading in the chat, then reveal.</p>` : "";
   for (const c of choices) {
     const b = document.createElement("button"); b.textContent = c.name;
     b.addEventListener("click", () => answerQuiz(c, answer, b));
@@ -234,7 +250,9 @@ function askLink() {
   const hidden = quiz.on && !quiz.answered;
   const text = hidden
     ? "Use the CoroSim connector to quiz me on EKGs: call corosim_ekg_show with quiz true for a random preset, ask me to read it step by step (rate, rhythm, axis, intervals, morphology), and only reveal the answer after I commit."
-    : `Use the CoroSim connector: call corosim_ekg_show for the EKG preset "${preset.id}" (${preset.name}) and teach me to read it. Ask me what I see before you explain, and point to the leads and the 3D heart vector.`;
+    : customDesc
+      ? `Use the CoroSim connector: call corosim_ekg_show with custom ${JSON.stringify(customDesc)} and teach me to read this tracing. Ask me what I see before you explain, and point to the leads and the 3D heart vector.`
+      : `Use the CoroSim connector: call corosim_ekg_show for the EKG preset "${preset.id}" (${preset.name}) and teach me to read it. Ask me what I see before you explain, and point to the leads and the 3D heart vector.`;
   $<HTMLAnchorElement>("askClaude").href = `https://claude.ai/new?q=${encodeURIComponent(text)}`;
 }
 
@@ -264,14 +282,17 @@ function frame(now: number) {
 }
 
 // ---------------------------------------------------------------- in a chat: the AI picks the tracing
-interface Shown { ekg?: { preset?: string; quiz?: boolean; rate?: number; lead?: string } }
+interface Shown { ekg?: { preset?: string; custom?: CustomEkg; quiz?: boolean; rate?: number; lead?: string } }
 if (embedded) {
   const app = new App({ name: "CoroSim EKG", version: "0.5.0" }, {}, { autoResize: true });
   app.ontoolresult = (r) => {
     const e = ((r.structuredContent ?? {}) as Shown).ekg;
-    const p = e?.preset ? findPreset(e.preset) : undefined;
-    if (!p) return;
-    if (e?.quiz) startQuiz(p); else { stopQuiz(); load(p); }
+    if (e?.custom) loadCustom(e.custom, { quiz: e.quiz });
+    else {
+      const p = e?.preset ? findPreset(e.preset) : undefined;
+      if (!p) return;
+      if (e?.quiz) startQuiz(p); else { stopQuiz(); load(p); }
+    }
     if (e?.rate && hasRate(spec)) { rate = Math.round(e.rate); $<HTMLInputElement>("rate").value = String(rate); $("rateVal").textContent = `${rate} bpm`; rebuildEngine(); render(); }
     if (e?.lead && (ALL_LEADS as readonly string[]).includes(e.lead)) select(e.lead as LeadName);
   };
@@ -281,13 +302,17 @@ if (embedded) {
 }
 
 // ---------------------------------------------------------------- start
-const fromHash = location.hash.match(/p=([\w-]+)/)?.[1];
+/** #p=id opens a preset, #c=… a custom tracing (the links Claude hands out), #quiz a quiz. */
+function fromHash(initial: boolean) {
+  const h = location.hash, c = h.match(/c=([\w-]+)/)?.[1], id = h.match(/p=([\w-]+)/)?.[1];
+  if (/quiz/.test(h)) return startQuiz();
+  if (c) { try { return loadCustom(decodeCustom(c)); } catch { /* a damaged link: fall through */ } }
+  const p = id ? findPreset(id) : undefined;
+  if (p && (initial || p.id !== preset.id)) { stopQuiz(); load(p); }
+  else if (initial) load(PRESETS[0]);
+}
 renderList();
-if (/quiz/.test(location.hash)) startQuiz();
-else load((fromHash && findPreset(fromHash)) || PRESETS[0]);
-window.addEventListener("hashchange", () => {
-  const id = location.hash.match(/p=([\w-]+)/)?.[1], p = id ? findPreset(id) : undefined;
-  if (/quiz/.test(location.hash)) startQuiz(); else if (p && p.id !== preset.id) { stopQuiz(); load(p); }
-});
+fromHash(true);
+window.addEventListener("hashchange", () => fromHash(false));
 requestAnimationFrame(frame);
-(window as unknown as { corosimEkg: object }).corosimEkg = { load: (id: string) => { const p = findPreset(id); if (p) load(p); }, presets: PRESETS, measure: () => meas };
+(window as unknown as { corosimEkg: object }).corosimEkg = { load: (id: string) => { const p = findPreset(id); if (p) load(p); }, loadCustom, presets: PRESETS, measure: () => meas };

@@ -127,7 +127,10 @@ It uses the same dipole heart as the simulator's ECG (same lead axes, waves and 
 generator for rhythms the simulator does not make (`src/ekg/engine.ts`), and the acute coronary presets take their ST
 vector from the coronary model with a real lesion, settled (`src/ekg/presets.ts`). Rates, intervals, axis and ST levels
 on the page are measured from the waveform, not copied from labels. An AI draws the same page in the chat with
-`corosim_ekg_show` (below); "Ask Claude" opens Claude with the tracing.
+`corosim_ekg_show` (below), and can build tracings the library does not have from a description ("sinus at 110 with
+LBBB and an inferior STEMI", "AF with a delta wave"): rhythm, conduction and territory-level ST/T changes in clinical
+terms (`src/ekg/custom.ts`), measured back so the AI can check what it drew, and shareable as `/ekg/#c=…` links.
+"Ask Claude" opens Claude with the tracing.
 
 ## Connecting an AI
 

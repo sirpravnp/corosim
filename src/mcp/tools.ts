@@ -6,6 +6,7 @@ import { SCENARIO_REFERENCE, encodeScenario } from "../sim/llm";
 import { buildTree } from "../anatomy/tree";
 import { CATEGORIES, PRESETS, EkgPreset, findPreset, resolveSpec } from "../ekg/presets";
 import { EkgSpec, measure } from "../ekg/engine";
+import { CustomEkg, TERRITORIES, buildCustom, encodeCustom } from "../ekg/custom";
 
 /**
  * Tool definitions in one place, as plain JSON Schema. The MCP server, the HTTP/OpenAPI adapter and the
@@ -241,43 +242,92 @@ export const TOOLS: ToolDef[] = [
     description: `List the simulated 12-lead EKG presets by category: sinus rhythms, atrial fibrillation and flutter, junctional and re-entrant rhythms (SVT, WPW), AV blocks (first degree, Wenckebach, Mobitz II, 2:1, complete), bundle branch and fascicular blocks, ventricular rhythms (PVCs, AIVR, monomorphic and polymorphic VT, torsades, VF, asystole, paced), acute coronary patterns (anterior, inferior, lateral and posterior STEMI, hyperacute T, de Winter, Wellens, NSTEMI, aVR elevation, Sgarbossa) and STEMI mimics (pericarditis, early repolarization, LVH, Brugada, Takotsubo, PE, LV aneurysm, hyperkalemia, hypothermia). Does not touch the patient. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: {} },
     run() {
-      return { categories: CATEGORIES.map((c) => ({ category: c, presets: PRESETS.filter((p) => p.category === c).map((p) => ({ id: p.id, name: p.name })) })), use: "Show one with corosim_ekg_show { preset: id }; add quiz: true to hide the answer." };
+      return { categories: CATEGORIES.map((c) => ({ category: c, presets: PRESETS.filter((p) => p.category === c).map((p) => ({ id: p.id, name: p.name })) })), use: "Show one with corosim_ekg_show { preset: id }; add quiz: true to hide the answer. For anything not listed, build it with corosim_ekg_show { custom: {...} }." };
     },
   },
   {
     name: "corosim_ekg_show", title: "Show a simulated 12-lead EKG", readOnly: true, stateless: true, viewer: "ekg",
-    description: `Display a simulated 12-lead EKG right here in the chat: the tracing writing itself on paper, and a 3D heart with every lead drawn as an axis through it and the heart's electrical vector moving in real time, so the learner sees why each lead looks as it does. Returns the measurements (rates, PR, QRS, QTc, axis, ST by lead) taken from the waveform and the teaching notes. Use for rhythm and EKG teaching; it does not change the patient (use corosim_show for that). preset accepts an id from corosim_ekg_list or a common name ("afib", "torsades", "de winter", "inferior stemi"). quiz: true hides the name on screen and returns the answer as answerKey: do not reveal it until the learner has read the tracing and committed. ${NOT_CLINICAL}`,
+    description: `Display a simulated 12-lead EKG right here in the chat: the tracing writing itself on paper, and a 3D heart with every lead drawn as an axis through it and the heart's electrical vector moving in real time, so the learner sees why each lead looks as it does. Returns the measurements (rates, PR, QRS, QTc, axis, ST by lead) taken from the waveform, so you can check what was drawn, and the teaching notes. Either name a library preset (an id from corosim_ekg_list or a common name: "afib", "torsades", "de winter", "inferior stemi"), or build any other tracing with custom: a rhythm, its conduction and what the complexes look like by territory (e.g. sinus 110 with LBBB and 3 mm inferior ST elevation; AF at 180 with a delta wave; Wenckebach 3:2 with anterior Q waves), optionally starting from a preset with custom.base. It does not change the patient (use corosim_show for that). quiz: true hides the name on screen and returns the answer as answerKey: do not reveal it until the learner has read the tracing and committed. ${NOT_CLINICAL}`,
     inputSchema: {
       type: "object", properties: {
-        preset: { type: "string", description: "Preset id or common name. Omit with quiz: true for a random tracing." },
+        preset: { type: "string", description: "Preset id or common name. Omit with quiz: true for a random tracing, or use custom instead." },
+        custom: {
+          type: "object", description: "Build a tracing that is not in the library. Every field optional; anything omitted is a normal adult (or the base preset). Out-of-range values are clamped and listed in warnings.",
+          properties: {
+            name: { type: "string", description: "What to call it on screen (hidden in quiz mode)." },
+            base: { type: "string", description: "Start from this preset and change only what you give." },
+            summary: { type: "string" }, teachingPoints: { type: "array", items: { type: "string" }, maxItems: 6 },
+            rhythm: {
+              type: "object", properties: {
+                kind: { enum: ["sinus", "af", "flutter", "svt", "junctional", "mat", "vt", "idioventricular", "paced", "torsades", "vf", "asystole"] },
+                rate: { type: "number", description: "bpm: the sinus rate for sinus rhythms (so 2:1 block halves it), else the ventricular rate." },
+                prMs: { type: "number" },
+                av: { enum: ["normal", "first", "wenckebach", "mobitz2", "2:1", "complete"], description: "AV conduction of a sinus rhythm." },
+                dropEvery: { type: "integer", minimum: 2, maximum: 8, description: "P waves per group in Wenckebach or Mobitz II (4 = 4:3)." },
+                escape: { enum: ["junctional", "ventricular"], description: "Escape rhythm in complete block." }, escapeRate: { type: "number" },
+                pvcEvery: { type: "integer", minimum: 1, maximum: 10, description: "A PVC after every Nth sinus beat (1 = bigeminy, 2 = trigeminy)." },
+                pvcOrigin: { enum: ["rvot", "lv"] },
+                atrialRate: { type: "number", description: "Flutter rate (~300), or the dissociated sinus rate under VT, pacing or asystole." },
+                flutterRatio: { description: "2, 3, 4 or 'variable'." },
+                irregularity: { type: "number", minimum: 0, maximum: 0.6, description: "AF R–R spread." },
+                vtMorphology: { enum: ["rbbb", "lbbb"] }, polymorphic: { type: "boolean" }, vfAmplitude: { enum: ["coarse", "fine"] },
+                sinusArrhythmia: { type: "boolean" }, alternans: { type: "boolean", description: "Electrical alternans." },
+              },
+            },
+            morph: {
+              type: "object", properties: {
+                bbb: { enum: ["none", "rbbb", "lbbb"] },
+                axisDeg: { type: "number", description: "Target frontal QRS axis (−60 for LAFB, +120 for LPFB)." },
+                qrsWidthMs: { type: "number" }, qrsVoltage: { type: "number", description: "× normal: 0.4 low voltage, 2 LVH." },
+                pAmplitude: { type: "number", description: "× normal; 0 hides P waves." }, pWide: { type: "boolean" },
+                tAmplitude: { type: "number", description: "× normal." }, peakedT: { type: "boolean" },
+                qtMultiplier: { type: "number", description: "Repolarization time × (1.5 = long QT, 0.8 = short)." },
+                st: { type: "array", items: { type: "object", required: ["territory", "mm"], properties: { territory: { enum: TERRITORIES }, mm: { type: "number", description: "+ elevation / − depression in the lead facing the wall; the opposite leads show the reciprocal." }, shape: { enum: ["plateau", "upsloping", "coved"] } } } },
+                tInversion: { type: "array", items: { type: "object", required: ["territory", "mm"], properties: { territory: { enum: TERRITORIES }, mm: { type: "number", description: "Depth of the inverted T." } } } },
+                qWaves: { type: "array", items: { enum: TERRITORIES }, description: "Pathological Q waves (old infarct) facing these walls." },
+                deltaWave: { type: "boolean", description: "Pre-excitation: short PR, slurred upstroke." },
+                osbornMm: { type: "number" }, uWaveMm: { type: "number" }, prDepressionMm: { type: "number" }, tremor: { type: "boolean" },
+              },
+            },
+            lesions: { ...scenarioSchema.properties.lesions, description: "Coronary lesions run through the simulator's coronary model for a physiological ST pattern (and the 3D heart shows the ischemic wall)." },
+            exertion: { type: "boolean", description: "With a stenosis: demand (subendocardial) ischemia." },
+          },
+        },
         quiz: { type: "boolean", description: "Hide the answer on screen; the result's answerKey is for you, not to be read out before the learner commits." },
-        rate: { type: "number", minimum: 20, maximum: 240, description: "Override the rate (bpm) for rhythms that have one (sinus, AF ventricular response, junctional, SVT, VT, paced)." },
+        rate: { type: "number", minimum: 20, maximum: 240, description: "Override the rate (bpm) of a preset (sinus, AF ventricular response, junctional, SVT, VT, paced)." },
         lead: { type: "string", description: "Lead to highlight first, e.g. 'V2' or 'aVR'." },
       },
     },
     run({ appUrl }, a) {
-      const quiz = a.quiz === true;
-      let p: EkgPreset | undefined = typeof a.preset === "string" && a.preset ? findPreset(a.preset) : undefined;
-      if (!p && typeof a.preset === "string" && a.preset) throw new Error(`No EKG preset matches "${a.preset}". Call corosim_ekg_list for the ids.`);
-      if (!p) { if (!quiz) throw new Error("Give a preset (see corosim_ekg_list), or quiz: true for a random one."); p = PRESETS[Math.floor(Math.random() * PRESETS.length)]; }
+      const quiz = a.quiz === true, root = appUrl.replace(/\/$/, "");
+      let p: EkgPreset | undefined, warnings: string[] = [], custom: CustomEkg | undefined;
+      if (a.custom && typeof a.custom === "object") {
+        custom = a.custom as CustomEkg;
+        ({ preset: p, warnings } = buildCustom(custom));
+      } else {
+        p = typeof a.preset === "string" && a.preset ? findPreset(a.preset) : undefined;
+        if (!p && typeof a.preset === "string" && a.preset) throw new Error(`No EKG preset matches "${a.preset}". Call corosim_ekg_list for the ids, or describe it with custom.`);
+        if (!p) { if (!quiz) throw new Error("Give a preset (see corosim_ekg_list), custom for anything else, or quiz: true for a random one."); p = PRESETS[Math.floor(Math.random() * PRESETS.length)]; }
+      }
       let spec: EkgSpec = resolveSpec(p);
-      const rate = typeof a.rate === "number" && Number.isFinite(a.rate) && "rate" in spec.rhythm && spec.rhythm.kind !== "torsades" ? Math.min(240, Math.max(20, Math.round(a.rate))) : undefined;
+      const rate = !custom && typeof a.rate === "number" && Number.isFinite(a.rate) && "rate" in spec.rhythm && spec.rhythm.kind !== "torsades" ? Math.min(240, Math.max(20, Math.round(a.rate))) : undefined;
       if (rate) spec = { ...spec, rhythm: { ...spec.rhythm, rate } as EkgSpec["rhythm"] };
       const m = measure(spec);
       const tracing = {
-        name: p.name, category: p.category, summary: p.summary,
+        name: p.name, category: custom ? "Custom" : p.category, summary: p.summary,
         measurements: { ventricularRateBpm: m.ventricularRate, atrialRate: m.atrialRate, regular: m.regular, prMs: m.prMs, pr: m.prPattern, qrsMs: m.qrsMs, qtcMs: m.qtcMs, axisDeg: m.axisDeg, stMm: m.stMm, stElevation: m.stElevation, stDepression: m.stDepression, meetsStemiCriteria: m.meetsStemiCriteria },
         lookFor: p.features, teachingPoints: p.pearls, alsoLooksLike: p.mimics ?? [], next: p.next ?? null, leadsToLookAt: p.leads ?? [],
-        model: p.coronary ? "ST vector from the simulator's coronary model (this lesion, settled)." : "Dipole model; morphology set for this pattern.",
+        model: p.coronary ? "ST vector from the simulator's coronary model (this lesion, settled)." : custom ? "Built from your description on the dipole model; check the measurements against what you intended." : "Dipole model; morphology set for this pattern.",
       };
       const lead = typeof a.lead === "string" ? a.lead : undefined;
       return {
-        ekg: { preset: p.id, quiz, rate, lead }, // what the in-chat EKG viewer draws
+        ekg: { preset: p.id, custom, quiz, rate, lead }, // what the in-chat EKG viewer draws
+        ...(warnings.length ? { warnings } : {}),
         shown: quiz
           ? "A simulated 12-lead is displayed with its name hidden. Ask the learner to read it in order (rate, rhythm, axis, intervals, P/QRS/ST/T) and commit to an answer before revealing answerKey."
           : "The 12-lead and the 3D lead view are displayed in the chat. Describe what to notice briefly; do not paste a link.",
         ...(quiz ? { answerKey: tracing } : { tracing }),
-        link: `${appUrl.replace(/\/$/, "")}/ekg/#p=${p.id}`,
+        link: custom ? `${root}/ekg/#c=${encodeCustom(custom)}` : `${root}/ekg/#p=${p.id}`,
       };
     },
   },

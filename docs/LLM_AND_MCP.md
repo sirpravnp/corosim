@@ -54,7 +54,7 @@ address, a 20 s answer deadline for pages, pings every 25 s that drop dead pages
 | `corosim_compare` | Counterfactuals from the same seed in separate simulations; the patient is untouched. |
 | `corosim_open_link` | A URL that opens this patient in the app. |
 | `corosim_ekg_list` | The EKG page's presets by category (rhythms, blocks, STEMI and its mimics). Does not touch the patient. |
-| `corosim_ekg_show` | Draws a simulated 12-lead in the chat with the leads through a 3D heart; returns measurements and teaching notes. `quiz: true` hides the answer on screen and returns it as `answerKey`. |
+| `corosim_ekg_show` | Draws a simulated 12-lead in the chat with the leads through a 3D heart; returns measurements and teaching notes. `quiz: true` hides the answer on screen and returns it as `answerKey`. `custom` builds a tracing that is not in the library from clinical terms (rhythm kind, rate, AV conduction, PVCs, axis, QRS width, BBB, ST/T change and Q waves by territory, delta/Osborn/U waves, or real coronary lesions), optionally from a `base` preset; its link opens it on the site (`/ekg/#c=…`). |
 
 The EKG tools need no patient, so they run on the server even while the user's page is open and never change it.
 `corosim_ekg_show` has its own MCP App, `ui://corosim/ekg.html` (the `/ekg/` page built as one file by
