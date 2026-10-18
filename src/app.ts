@@ -939,9 +939,9 @@ on("qshare", share);
 /** The cath lab link opens the patient on screen (/cath/#s=…) when it is followed. In the game it stays plain: the angiogram would show the culprit. */
 let cathBase = "./cath/";
 function cathLinkUi() {
-  const a = $("modeCath") as HTMLAnchorElement;
-  const point = () => { a.href = inGame ? cathBase : `${cathBase}#s=${encodeScenario(sim.scenario())}`; };
-  for (const ev of ["pointerdown", "focus", "mouseenter", "contextmenu", "touchstart"]) a.addEventListener(ev, point);
+  const a = $("modeCath") as HTMLAnchorElement, b = $("openCath") as HTMLAnchorElement; // the masthead link and the Reperfuse tab's
+  const point = () => { a.href = b.href = inGame ? cathBase : `${cathBase}#s=${encodeScenario(sim.scenario())}`; };
+  for (const el of [a, b]) for (const ev of ["pointerdown", "focus", "mouseenter", "contextmenu", "touchstart"]) el.addEventListener(ev, point);
   a.title = "Open this patient in the cath lab"; a.setAttribute("aria-label", "Open in cath lab");
 }
 function applyMode() {
@@ -950,7 +950,8 @@ function applyMode() {
   ($("modeSim") as HTMLAnchorElement).href = root + "sim/"; ($("modeGame") as HTMLAnchorElement).href = root + "game/";
   ($("modeEkg") as HTMLAnchorElement).href = root + "ekg/";
   cathBase = root + "cath/";
-  ($("modeCath") as HTMLAnchorElement).href = cathBase;
+  ($("modeCath") as HTMLAnchorElement).href = cathBase; ($("openCath") as HTMLAnchorElement).href = cathBase;
+  $("openCath").hidden = game; // the game keeps the culprit hidden
   ($("home") as HTMLAnchorElement).href = root;
   (document.querySelector(".q-plain") as HTMLAnchorElement).href = root + "sim/";
   inGame = game;
