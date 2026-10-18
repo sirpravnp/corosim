@@ -7,8 +7,11 @@
 // black → deep red → orange → yellow → near-white, so the vessels read hot against a cooler myocardium.
 import { Delaunay } from "d3-delaunay";
 
-/** Square rasters, n × n, row-major: density (0..1, 0 outside the heart) and heat (0 cold .. 1 on a vessel). */
-export interface Field { n: number; rho: Float32Array; heat: Float32Array }
+/** Square rasters, n × n, row-major: density (0..1, 0 outside the heart) and heat (0 cold .. 1 on a vessel), and the
+ *  box the heart occupies, in raster pixels, for fitting it to a screen. */
+export interface Field { n: number; rho: Float32Array; heat: Float32Array; box: { x0: number; y0: number; x1: number; y1: number } }
+/** How the raster lands on a canvas: device pixels per raster pixel, and the raster origin in device pixels. */
+export interface Placement { s: number; ox: number; oy: number }
 
 /** The square of the stamp around the heart, in logo pixels, and the radius inside which there is no ring (the
  *  rings start 410 px from the center). The heart is 557 × 756 px, so it fills about four fifths of the height. */
@@ -57,14 +60,16 @@ export function fieldFromLogo(img: HTMLImageElement, n: number, closing = 0.03, 
   const body = erode(dilate(stamp, n, k), n, k); // the stamp with its grooves closed over
   const groove = dilate(erode(mask(n, (i) => !!body[i] && !stamp[i]), n, 1.5), n, 1.5); // the grooves, less the stamp's speckle
   const dv = distanceTo(groove, n), s = sigma * n;
-  const rho = new Float32Array(n * n), heat = new Float32Array(n * n);
+  const rho = new Float32Array(n * n), heat = new Float32Array(n * n), box = { x0: n, y0: n, x1: 0, y1: 0 };
   for (let i = 0; i < n * n; i++) {
     if (!body[i]) continue;
     const h = Math.exp(-((dv[i] / s) ** 2));
     heat[i] = h;
     rho[i] = 0.22 + 0.78 * h * h; // hot regions are denser as well as brighter
+    const x = i % n, y = (i - x) / n;
+    box.x0 = Math.min(box.x0, x); box.y0 = Math.min(box.y0, y); box.x1 = Math.max(box.x1, x + 1); box.y1 = Math.max(box.y1, y + 1);
   }
-  return { n, rho, heat };
+  return { n, rho, heat, box };
 }
 
 /** Thermal ramp, black-body style. The black end is the ground itself: the coldest dot is still a deep red. */
@@ -153,18 +158,19 @@ export class Stipple {
   }
 }
 
-/** Draw the dots on a canvas, batched by color, with hotter dots slightly larger. `size` is the canvas size in device pixels. */
-export function draw(ctx: CanvasRenderingContext2D, st: Stipple, size: number, dot: number) {
-  const BINS = 32, n = st.field.n, s = size / n;
+/** Draw the dots on a canvas of `w` × `h` device pixels, batched by color, hotter dots slightly larger; `dot` is the
+ *  dot radius in raster pixels. */
+export function draw(ctx: CanvasRenderingContext2D, st: Stipple, w: number, h: number, at: Placement, dot: number) {
+  const BINS = 32, { s, ox, oy } = at;
   const byBin: number[][] = Array.from({ length: BINS }, () => []);
   for (let i = 0; i < st.count; i++) byBin[Math.min(BINS - 1, Math.floor(Math.min(1, st.heat[i] + st.warm[i]) * BINS))].push(i);
-  ctx.clearRect(0, 0, size, size);
+  ctx.clearRect(0, 0, w, h);
   for (let b = 0; b < BINS; b++) {
     if (!byBin[b].length) continue;
     const t = (b + 0.5) / BINS, r = dot * s * (0.85 + 0.3 * t);
     ctx.fillStyle = thermal(t);
     ctx.beginPath();
-    for (const i of byBin[b]) { const x = st.points[2 * i] * s, y = st.points[2 * i + 1] * s; ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, 6.283); }
+    for (const i of byBin[b]) { const x = ox + st.points[2 * i] * s, y = oy + st.points[2 * i + 1] * s; ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, 6.283); }
     ctx.fill();
   }
 }

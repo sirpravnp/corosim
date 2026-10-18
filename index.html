@@ -18,21 +18,20 @@ if (/^#s=/.test(location.hash)) location.replace("sim/" + location.hash);
 <link rel="stylesheet" href="/src/home.css">
 </head>
 <body class="home">
+<canvas id="art" class="art" aria-label="The heart as a thermogram: stippled, its coronary arteries hot against the muscle"></canvas>
 <main class="home-main">
   <header class="home-head">
     <h1>CoroSim</h1>
     <p class="kind">3D Coronary Vasculature Simulator</p>
   </header>
-  <figure class="thermo" aria-label="The heart as a thermogram: stippled, its coronary arteries hot against the muscle">
-    <canvas id="art"></canvas>
-    <div class="tag" id="tag"></div>
-    <div class="legend"><div class="bar" id="bar"></div><div class="lg"><span>Myocardium</span><span>Coronary</span></div></div>
-  </figure>
   <nav class="doors" aria-label="Pages">
     <a href="sim/">Simulator</a>
     <a href="game/">Find the culprit</a>
   </nav>
-  <a class="privacy" href="privacy.html">Privacy</a>
+  <aside class="corner">
+    <div class="legend"><div class="bar" id="bar"></div><div class="lg"><span>Myocardium</span><span>Coronary</span></div></div>
+    <a class="privacy" href="privacy.html">Privacy</a>
+  </aside>
 </main>
 <script type="module" src="/src/home.ts"></script>
 </body>
