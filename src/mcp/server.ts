@@ -5,6 +5,9 @@ import {
   ListPromptsRequestSchema, GetPromptRequestSchema, isInitializeRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 import { createServer, IncomingMessage, ServerResponse, Server as HttpServer } from "node:http";
+import { readFileSync, existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { WebSocketServer, WebSocket } from "ws";
 import { Simulation } from "../sim/simulation";
@@ -16,7 +19,20 @@ import { PROTOCOL_VERSION, PageToServer, ServerToPage } from "./protocol";
 import { Store } from "./db";
 import { Accounts, ProviderKeys, page } from "./accounts";
 
-export const VERSION = "0.4.0";
+export const VERSION = "0.5.0";
+
+// ---------------------------------------------------------------- the in-chat viewer (an MCP App)
+export const VIEWER_URI = "ui://corosim/viewer.html";
+export const VIEWER_MIME = "text/html;profile=mcp-app";
+let viewerCache: string | null | undefined;
+/** The single-file viewer: next to the bundled server, or the build output in a checkout. Null if not built. */
+export function viewerHtml(): string | null {
+  if (viewerCache !== undefined) return viewerCache;
+  const here = (() => { try { return dirname(fileURLToPath(import.meta.url)); } catch { return process.cwd(); } })();
+  const file = [process.env.COROSIM_VIEWER_HTML, join(here, "viewer.html"), join(process.cwd(), "dist-viewer", "index.html")].find((f) => f && existsSync(f));
+  viewerCache = file ? readFileSync(file, "utf8") : null;
+  return viewerCache;
+}
 const APP_URL = process.env.COROSIM_APP_URL ?? "https://corosim.com";
 
 /** Runs a tool somewhere: on a local patient (stdio), on the user's open page, or on their saved patient. */
@@ -41,7 +57,12 @@ const INSTRUCTIONS = {
 export function buildServer(exec: Exec = localExec(), mode: keyof typeof INSTRUCTIONS = "local"): Server {
   const server = new Server({ name: "corosim", version: VERSION }, { capabilities: { tools: {}, resources: {}, prompts: {} }, instructions: INSTRUCTIONS[mode] });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: TOOLS.map((t) => ({ name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema as { type: "object" }, annotations: { title: t.title, readOnlyHint: t.readOnly, destructiveHint: false, idempotentHint: t.readOnly, openWorldHint: false } })),
+    tools: TOOLS.map((t) => ({
+      name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema as { type: "object" },
+      annotations: { title: t.title, readOnlyHint: t.readOnly, destructiveHint: false, idempotentHint: t.readOnly, openWorldHint: false },
+      // MCP Apps: hosts that support it render the viewer with this tool's result; others ignore the key.
+      ...(t.viewer && viewerHtml() ? { _meta: { ui: { resourceUri: VIEWER_URI }, "ui/resourceUri": VIEWER_URI } } : {}),
+    })),
   }));
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const args = (req.params.arguments ?? {}) as Record<string, unknown>;
@@ -57,12 +78,14 @@ export function buildServer(exec: Exec = localExec(), mode: keyof typeof INSTRUC
     resources: [
       { uri: "corosim://model-card", name: "Model card", description: "What is simulated, what is not, calibration and how to read the numbers.", mimeType: "text/markdown" },
       { uri: "corosim://scenario-reference", name: "Scenario reference", description: "Compact scenario JSON format.", mimeType: "text/plain" },
+      ...(viewerHtml() ? [{ uri: VIEWER_URI, name: "CoroSim viewer", description: "The patient in 3D with a live 12-lead ECG and monitor, shown in the chat.", mimeType: VIEWER_MIME }] : []),
     ],
   }));
   server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
     const uri = req.params.uri;
     if (uri === "corosim://model-card") return { contents: [{ uri, mimeType: "text/markdown", text: MODEL_CARD }] };
     if (uri === "corosim://scenario-reference") return { contents: [{ uri, mimeType: "text/plain", text: SCENARIO_REFERENCE }] };
+    if (uri === VIEWER_URI) { const html = viewerHtml(); if (html) return { contents: [{ uri, mimeType: VIEWER_MIME, text: html }] }; }
     throw new Error(`Unknown resource ${uri}`);
   });
   server.setRequestHandler(ListPromptsRequestSchema, async () => ({

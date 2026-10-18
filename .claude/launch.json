@@ -1,6 +1,29 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "corosim-dev", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--", "--port", "5173"], "port": 5173 }
+    {
+      "name": "corosim-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5173"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "corosim-viewer",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vite",
+        "-c",
+        "vite.viewer.config.ts",
+        "--port",
+        "5180"
+      ],
+      "port": 5180
+    }
   ]
 }

@@ -41,7 +41,7 @@ export function assess(s: Situation): Assessment {
   const restIschemia = s.hasLesion && !stemi && !s.reperfused && !s.exertion && s.lvIschemia + s.rvIschemia > 0.02;
   if (restIschemia) issues.push({ tone: "bad", text: "Ischemia at rest without ST elevation: a non-ST-elevation ACS picture" });
   if (s.diffuseDepressionAvr && !stemi) issues.push({ tone: "bad", text: "Diffuse ST depression with ST elevation in aVR: think left main or three-vessel disease" });
-  else if (s.hasLesion && !s.reperfused && (s.ds >= 0.7 || (s.ffr !== null && s.ffr <= 0.8))) issues.push({ tone: "warn", text: `Flow-limiting stenosis${s.ffr !== null ? ` (FFR ${s.ffr.toFixed(2)})` : ""}` });
+  if (!stemi && s.hasLesion && !s.reperfused && (s.ds >= 0.7 || (s.ffr !== null && s.ffr <= 0.8))) issues.push({ tone: "warn", text: `Flow-limiting stenosis${s.ffr !== null ? ` (FFR ${s.ffr.toFixed(2)})` : ""}` });
   if (shock(s)) issues.push({ tone: "bad", text: `Shock: MAP ${Math.round(s.map)}, output ${s.cardiacOutput.toFixed(1)} L/min` });
   else if (s.map < CIRC.hypotensionMap) issues.push({ tone: "warn", text: `Hypotension: MAP ${Math.round(s.map)}` });
   if (s.rvIschemia > 0.3) issues.push({ tone: "warn", text: "Right-ventricular infarct: preload-dependent" });

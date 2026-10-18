@@ -221,6 +221,7 @@ describe("subendocardial and transmural ischemia, and the transition between the
   });
   it("an occlusion is transmural from the start", () => {
     const { e, a } = ecgOf({ lesions: [{ artery: "RCA", occluded: true, position: 0.2 }] });
+    expect(a.issues.map((i) => i.text).join(" ")).not.toMatch(/Flow-limiting stenosis/); // an occlusion is not also a stenosis
     expect(e.ischemia).toBe("transmural"); expect(e.stElevation).toEqual(expect.arrayContaining(["II", "III", "aVF"]));
     expect(a.steps[0].text).toMatch(/PCI/);
   });

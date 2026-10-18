@@ -94,3 +94,27 @@ describe("export formats", () => {
     expect(decodeScenario(encodeScenario(s))).toEqual(s);
   });
 });
+
+import { VIEWER_URI, VIEWER_MIME, viewerHtml } from "../src/mcp/server";
+describe("the in-chat viewer (MCP Apps)", () => {
+  it.runIf(!!viewerHtml())("is served as a ui:// resource and attached to the tools that show a patient", async () => {
+    const { client } = await connect();
+    const { tools } = await client.listTools();
+    const withUi = tools.filter((t) => (t._meta as { ui?: { resourceUri?: string } } | undefined)?.ui?.resourceUri === VIEWER_URI).map((t) => t.name).sort();
+    expect(withUi).toEqual(["corosim_adjust", "corosim_get_state", "corosim_run", "corosim_set_scenario", "corosim_treat"]);
+    expect(tools.find((t) => t.name === "corosim_get_state")!._meta!["ui/resourceUri"]).toBe(VIEWER_URI); // legacy key for older hosts
+    expect(tools.find((t) => t.name === "corosim_compare")!._meta).toBeUndefined();
+    const res = await client.readResource({ uri: VIEWER_URI });
+    const c = res.contents[0] as { mimeType: string; text: string };
+    expect(c.mimeType).toBe(VIEWER_MIME);
+    expect(c.text).toContain("<canvas id=\"ecg\"");
+    expect(c.text).not.toMatch(/<script[^>]+src=/); // everything inlined: the sandbox has no network
+  });
+  it("every patient-showing result carries the scenario the viewer replays", async () => {
+    const { call } = await connect();
+    for (const [tool, args] of [["corosim_get_state", {}], ["corosim_run", { seconds: 2 }], ["corosim_adjust", { patch: { bloodLoss: 0.1 }, runSeconds: 1 }]] as const) {
+      const r = await call(tool, args as Record<string, unknown>);
+      expect(r.data.scenario ?? r.data.applied).toBeTruthy();
+    }
+  });
+});

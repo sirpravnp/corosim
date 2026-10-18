@@ -8,3 +8,4 @@ publish/
 *.log
 dist-mcp/
 .data/
+dist-viewer/
