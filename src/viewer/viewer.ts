@@ -68,7 +68,7 @@ for (const b of document.querySelectorAll<HTMLButtonElement>(".views button")) {
 interface Structured { scenario?: Scenario; applied?: Scenario; state?: { ventricle?: { lvInfarctFraction?: number } }; assessment?: { problems?: string[]; guidelineNextSteps?: { step: string }[] }; explanation?: { headline?: string }; outcome?: { result?: string } }
 const embedded = window.parent !== window;
 let app: App | null = null;
-const appUrl = () => `https://corosim.com/#s=${encodeScenario(sim.scenario())}`;
+const appUrl = () => `https://corosim.com/sim/#s=${encodeScenario(sim.scenario())}`;
 
 if (embedded) {
   app = new App({ name: "CoroSim viewer", version: "0.5.0" }, {}, { autoResize: true });

@@ -6,6 +6,7 @@ import { buildServer, startHttp } from "./server";
 // Hosted, with accounts:                                                                  corosim-mcp --http [port]
 //   PORT, HOST                     listen address (HOST=0.0.0.0 in a container)
 //   COROSIM_PUBLIC_URL             public base, the OAuth issuer, e.g. https://mcp.corosim.com
+//   COROSIM_APP_URL                the simulator page that share links open (default https://corosim.com/sim/)
 //   COROSIM_DATA_DIR / COROSIM_DB  where the SQLite database lives (default $COROSIM_DATA_DIR/corosim.db)
 //   GITHUB_CLIENT_ID/_SECRET, GOOGLE_CLIENT_ID/_SECRET   sign-in providers (each optional)
 //   COROSIM_DEV_LOGIN=1            development sign-in, honoured only when the public URL is localhost

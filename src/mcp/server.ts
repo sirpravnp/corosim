@@ -33,7 +33,7 @@ export function viewerHtml(): string | null {
   viewerCache = file ? readFileSync(file, "utf8") : null;
   return viewerCache;
 }
-const APP_URL = process.env.COROSIM_APP_URL ?? "https://corosim.com";
+const APP_URL = process.env.COROSIM_APP_URL ?? "https://corosim.com/sim/"; // the simulator page, where #s= links open
 
 /** Runs a tool somewhere: on a local patient (stdio), on the user's open page, or on their saved patient. */
 export type Exec = (tool: string, args: Record<string, unknown>) => Promise<unknown>;

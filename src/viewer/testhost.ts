@@ -13,7 +13,7 @@ iframe.addEventListener("load", async () => {
     log("host: view initialized");
     const sim = new Simulation();
     const tool = TOOLS.find((t) => t.name === "corosim_set_scenario")!;
-    const result = tool.run({ sim, appUrl: "https://corosim.com" }, { scenario: { lesions: [{ artery: "RCA", occluded: true, position: 0.1 }] }, warmupSeconds: 20 }) as Record<string, unknown>;
+    const result = tool.run({ sim, appUrl: "https://corosim.com/sim/" }, { scenario: { lesions: [{ artery: "RCA", occluded: true, position: 0.1 }] }, warmupSeconds: 20 }) as Record<string, unknown>;
     await bridge.sendToolResult({ content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result });
     log("host: sent corosim_set_scenario result (proximal RCA occlusion)");
     (window as unknown as { hostDone: boolean }).hostDone = true;
