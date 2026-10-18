@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CoroSim TEE test host</title>
+<style>
+body{margin:0;background:#16181b;color:#ddd;font:13px system-ui,sans-serif}
+header{padding:10px 14px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;border-bottom:1px solid #333}
+select,input,button{font:inherit}
+main{display:grid;grid-template-columns:minmax(300px,420px) 1fr;gap:14px;padding:14px}
+#big{width:100%;max-width:420px;aspect-ratio:1;background:#000;border:1px solid #333;display:block}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+#grid canvas{width:100%;aspect-ratio:1;background:#000;border:1px solid #333;cursor:pointer}
+figure{margin:0}figcaption{font-size:11px;color:#aaa;padding:2px 0}
+#info{white-space:pre-wrap;color:#aab;font-size:12px;margin-top:8px}
+footer{padding:10px 14px;color:#889;font-size:11px}
+@media(max-width:760px){main{grid-template-columns:1fr}}
+</style></head><body>
+<header>
+  <b>TEE echo, test host</b>
+  <label>Patient <select id="case"></select></label>
+  <label>View <select id="view"></select></label>
+  <label>Omniplane <input id="omni" type="range" min="0" max="180" step="1"> <span id="omniv"></span></label>
+  <label><input id="lab" type="checkbox" checked> labels</label>
+  <label><input id="terr" type="checkbox"> territories</label>
+  <span id="ms"></span>
+</header>
+<main>
+  <section><canvas id="big"></canvas><div id="info"></div></section>
+  <section><div id="grid"></div></section>
+</main>
+<footer id="credit"></footer>
+<script type="module" src="../src/cath/echo/testhost.ts"></script>
+</body></html>
