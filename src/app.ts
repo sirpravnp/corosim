@@ -940,6 +940,7 @@ function applyMode() {
   const game = /\/game(\/(index\.html)?)?$/.test(location.pathname); // /game, /game/ or /game/index.html
   const root = game && !location.pathname.endsWith("/game") ? "../" : "./";
   ($("modeSim") as HTMLAnchorElement).href = root; ($("modeGame") as HTMLAnchorElement).href = root + "game/";
+  ($("modeEkg") as HTMLAnchorElement).href = root + "ekg/";
   (document.querySelector(".q-plain") as HTMLAnchorElement).href = root;
   inGame = game;
   G.target = parseDay(new URLSearchParams(location.search).get("day"), dayKey()) ?? dayKey();

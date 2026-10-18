@@ -4,6 +4,8 @@ import { BeatRecord, computeMetrics } from "../sim/metrics";
 import { explain } from "../sim/explain";
 import { SCENARIO_REFERENCE, encodeScenario } from "../sim/llm";
 import { buildTree } from "../anatomy/tree";
+import { CATEGORIES, PRESETS, EkgPreset, findPreset, resolveSpec } from "../ekg/presets";
+import { EkgSpec, measure } from "../ekg/engine";
 
 /**
  * Tool definitions in one place, as plain JSON Schema. The MCP server, the HTTP/OpenAPI adapter and the
@@ -14,9 +16,12 @@ export interface ToolDef {
   name: string; title: string; description: string;
   inputSchema: Record<string, unknown>;
   readOnly: boolean;
-  /** Shows the patient: hosts that support MCP Apps render the in-chat viewer with its result. Only corosim_show, so a
-   *  turn that looks at the patient and then shows it draws one panel, not one per tool call. */
-  viewer?: boolean;
+  /** Shows something: hosts that support MCP Apps render a viewer with its result. `true` is the patient viewer (only
+   *  corosim_show, so a turn that looks at the patient and then shows it draws one panel, not one per tool call);
+   *  "ekg" is the EKG page (corosim_ekg_show). */
+  viewer?: true | "ekg";
+  /** Needs no patient: runs on the server even while the user's page is open, and does not change what they see there. */
+  stateless?: boolean;
   run(ctx: ToolContext, args: Record<string, unknown>): unknown;
 }
 
@@ -229,6 +234,51 @@ export const TOOLS: ToolDef[] = [
     inputSchema: { type: "object", properties: {} },
     run({ sim, appUrl }) {
       return { link: `${appUrl.replace(/\/$/, "")}/#s=${encodeScenario(sim.scenario())}` };
+    },
+  },
+  {
+    name: "corosim_ekg_list", title: "EKG library", readOnly: true, stateless: true,
+    description: `List the simulated 12-lead EKG presets by category: sinus rhythms, atrial fibrillation and flutter, junctional and re-entrant rhythms (SVT, WPW), AV blocks (first degree, Wenckebach, Mobitz II, 2:1, complete), bundle branch and fascicular blocks, ventricular rhythms (PVCs, AIVR, monomorphic and polymorphic VT, torsades, VF, asystole, paced), acute coronary patterns (anterior, inferior, lateral and posterior STEMI, hyperacute T, de Winter, Wellens, NSTEMI, aVR elevation, Sgarbossa) and STEMI mimics (pericarditis, early repolarization, LVH, Brugada, Takotsubo, PE, LV aneurysm, hyperkalemia, hypothermia). Does not touch the patient. ${NOT_CLINICAL}`,
+    inputSchema: { type: "object", properties: {} },
+    run() {
+      return { categories: CATEGORIES.map((c) => ({ category: c, presets: PRESETS.filter((p) => p.category === c).map((p) => ({ id: p.id, name: p.name })) })), use: "Show one with corosim_ekg_show { preset: id }; add quiz: true to hide the answer." };
+    },
+  },
+  {
+    name: "corosim_ekg_show", title: "Show a simulated 12-lead EKG", readOnly: true, stateless: true, viewer: "ekg",
+    description: `Display a simulated 12-lead EKG right here in the chat: the tracing writing itself on paper, and a 3D heart with every lead drawn as an axis through it and the heart's electrical vector moving in real time, so the learner sees why each lead looks as it does. Returns the measurements (rates, PR, QRS, QTc, axis, ST by lead) taken from the waveform and the teaching notes. Use for rhythm and EKG teaching; it does not change the patient (use corosim_show for that). preset accepts an id from corosim_ekg_list or a common name ("afib", "torsades", "de winter", "inferior stemi"). quiz: true hides the name on screen and returns the answer as answerKey: do not reveal it until the learner has read the tracing and committed. ${NOT_CLINICAL}`,
+    inputSchema: {
+      type: "object", properties: {
+        preset: { type: "string", description: "Preset id or common name. Omit with quiz: true for a random tracing." },
+        quiz: { type: "boolean", description: "Hide the answer on screen; the result's answerKey is for you, not to be read out before the learner commits." },
+        rate: { type: "number", minimum: 20, maximum: 240, description: "Override the rate (bpm) for rhythms that have one (sinus, AF ventricular response, junctional, SVT, VT, paced)." },
+        lead: { type: "string", description: "Lead to highlight first, e.g. 'V2' or 'aVR'." },
+      },
+    },
+    run({ appUrl }, a) {
+      const quiz = a.quiz === true;
+      let p: EkgPreset | undefined = typeof a.preset === "string" && a.preset ? findPreset(a.preset) : undefined;
+      if (!p && typeof a.preset === "string" && a.preset) throw new Error(`No EKG preset matches "${a.preset}". Call corosim_ekg_list for the ids.`);
+      if (!p) { if (!quiz) throw new Error("Give a preset (see corosim_ekg_list), or quiz: true for a random one."); p = PRESETS[Math.floor(Math.random() * PRESETS.length)]; }
+      let spec: EkgSpec = resolveSpec(p);
+      const rate = typeof a.rate === "number" && Number.isFinite(a.rate) && "rate" in spec.rhythm && spec.rhythm.kind !== "torsades" ? Math.min(240, Math.max(20, Math.round(a.rate))) : undefined;
+      if (rate) spec = { ...spec, rhythm: { ...spec.rhythm, rate } as EkgSpec["rhythm"] };
+      const m = measure(spec);
+      const tracing = {
+        name: p.name, category: p.category, summary: p.summary,
+        measurements: { ventricularRateBpm: m.ventricularRate, atrialRate: m.atrialRate, regular: m.regular, prMs: m.prMs, pr: m.prPattern, qrsMs: m.qrsMs, qtcMs: m.qtcMs, axisDeg: m.axisDeg, stMm: m.stMm, stElevation: m.stElevation, stDepression: m.stDepression, meetsStemiCriteria: m.meetsStemiCriteria },
+        lookFor: p.features, teachingPoints: p.pearls, alsoLooksLike: p.mimics ?? [], next: p.next ?? null, leadsToLookAt: p.leads ?? [],
+        model: p.coronary ? "ST vector from the simulator's coronary model (this lesion, settled)." : "Dipole model; morphology set for this pattern.",
+      };
+      const lead = typeof a.lead === "string" ? a.lead : undefined;
+      return {
+        ekg: { preset: p.id, quiz, rate, lead }, // what the in-chat EKG viewer draws
+        shown: quiz
+          ? "A simulated 12-lead is displayed with its name hidden. Ask the learner to read it in order (rate, rhythm, axis, intervals, P/QRS/ST/T) and commit to an answer before revealing answerKey."
+          : "The 12-lead and the 3D lead view are displayed in the chat. Describe what to notice briefly; do not paste a link.",
+        ...(quiz ? { answerKey: tracing } : { tracing }),
+        link: `${appUrl.replace(/\/$/, "")}/ekg/#p=${p.id}`,
+      };
     },
   },
 ];

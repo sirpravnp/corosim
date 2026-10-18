@@ -46,6 +46,10 @@ export const PROMPTS: Record<string, { description: string; text: string }> = {
     description: "Compare hemorrhage classes, and what the reflexes contribute.",
     text: "Use corosim_compare with bloodLoss 0, 0.15, 0.30 and 0.45. Tabulate heart rate, systolic and diastolic pressure, pulse pressure, stroke volume and MAP. Explain what compensates at each step and which number changes first. Then rerun 0.15 with autonomic.baroreflexGain 0 and say what the reflex was contributing.",
   },
+  ekg_quiz: {
+    description: "EKG practice: show simulated 12-leads one at a time, have the learner read them, then teach.",
+    text: "Quiz me on EKGs with CoroSim. Call corosim_ekg_show with quiz: true (pick a preset suited to a {{level}}, or a random one). Do not name the rhythm. Ask me to read it in order: rate, rhythm, axis, intervals, then P, QRS, ST and T by lead, and to commit to a diagnosis. Then compare my reading with answerKey: what I got right, what I missed, and which leads and features settle it (point me to the 3D lead view where it helps). Give one teaching point and one look-alike to tell it from, then show the next tracing. Keep each turn short.",
+  },
   explain_current_state: {
     description: "Explain the current patient to a learner.",
     text: "Call corosim_get_state and corosim_explain. Explain the patient to a {{level}}: the clinical picture first (vitals, ECG, the problem), then the mechanism, then what should happen next and why. Be concise.",

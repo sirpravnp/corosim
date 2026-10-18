@@ -33,6 +33,17 @@ export function viewerHtml(): string | null {
   viewerCache = file ? readFileSync(file, "utf8") : null;
   return viewerCache;
 }
+/** The EKG page as an in-chat viewer (corosim_ekg_show): next to the bundled server, or the build output. */
+export const EKG_VIEWER_URI = "ui://corosim/ekg.html";
+let ekgViewerCache: string | null | undefined;
+export function ekgViewerHtml(): string | null {
+  if (ekgViewerCache !== undefined) return ekgViewerCache;
+  const here = (() => { try { return dirname(fileURLToPath(import.meta.url)); } catch { return process.cwd(); } })();
+  const file = [process.env.COROSIM_EKG_VIEWER_HTML, join(here, "ekg-viewer.html"), join(process.cwd(), "dist-ekg-viewer", "index.html")].find((f) => f && existsSync(f));
+  ekgViewerCache = file ? readFileSync(file, "utf8") : null;
+  return ekgViewerCache;
+}
+const uiFor = (t: { viewer?: true | "ekg" }) => (t.viewer === "ekg" ? (ekgViewerHtml() ? EKG_VIEWER_URI : null) : t.viewer && viewerHtml() ? VIEWER_URI : null);
 const APP_URL = process.env.COROSIM_APP_URL ?? "https://corosim.com";
 
 /** Runs a tool somewhere: on a local patient (stdio), on the user's open page, or on their saved patient. */
@@ -47,7 +58,7 @@ export function localExec(sim = new Simulation({ seed: 1 }), appUrl = APP_URL): 
 }
 
 /** How to be useful with this server: the same for every connection. */
-const STYLE = " To show the patient (the 3D heart, live ECG and monitor appear right in the chat), call corosim_show once, after any changes you are making in that turn; no other tool displays it. Do not hand the user a link unless they ask for one. How to be useful: lead with the clinical picture (vitals, rhythm, 12-lead ST findings, the main problem), then the mechanism, then what to do next. corosim_get_state includes the guideline assessment; act on it with corosim_adjust (support) and corosim_treat (PCI, fibrinolysis, CABG) and show what changed, before → after. When teaching, ask the learner before revealing answers (the 'rounds' prompt does this). Pick sensible values for anything a case leaves unstated and say so in one line. Mention a model limit only when it changes the answer, in one sentence. Do not report internal model parameters (autonomic tone, reflex gains, HRV) unless the user asks about autonomic physiology.";
+const STYLE = " To show the patient (the 3D heart, live ECG and monitor appear right in the chat), call corosim_show once, after any changes you are making in that turn; no other tool displays it. Do not hand the user a link unless they ask for one. How to be useful: lead with the clinical picture (vitals, rhythm, 12-lead ST findings, the main problem), then the mechanism, then what to do next. corosim_get_state includes the guideline assessment; act on it with corosim_adjust (support) and corosim_treat (PCI, fibrinolysis, CABG) and show what changed, before → after. When teaching, ask the learner before revealing answers (the 'rounds' prompt does this). Pick sensible values for anything a case leaves unstated and say so in one line. Mention a model limit only when it changes the answer, in one sentence. Do not report internal model parameters (autonomic tone, reflex gains, HRV) unless the user asks about autonomic physiology. For EKG and rhythm practice (arrhythmias, blocks, STEMI and its mimics) use corosim_ekg_list and corosim_ekg_show: they display a simulated 12-lead with the leads drawn through a 3D heart and do not touch the patient; with quiz true, do not name the rhythm until the learner commits (the 'ekg_quiz' prompt runs this).";
 const INSTRUCTIONS = {
   local: "CoroSim is a stochastic, closed-loop cardiovascular teaching simulation (coronary lesions → ischemia → rhythm → beat-by-beat pressure → autonomic reflexes). This connection has its own local patient. Build one with corosim_set_scenario (read corosim_get_schema first), change it with corosim_adjust, observe with corosim_run, ground explanations with corosim_explain, and use corosim_compare for what-if questions. Educational only; never present results as clinical advice. Always read the 'warnings' field: it lists anything that was clamped or dropped." + STYLE,
   // account: the signed-in user's own patient. On their screen when their page is open, saved otherwise.
@@ -61,7 +72,7 @@ export function buildServer(exec: Exec = localExec(), mode: keyof typeof INSTRUC
       name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema as { type: "object" },
       annotations: { title: t.title, readOnlyHint: t.readOnly, destructiveHint: false, idempotentHint: t.readOnly, openWorldHint: false },
       // MCP Apps: hosts that support it render the viewer with this tool's result; others ignore the key.
-      ...(t.viewer && viewerHtml() ? { _meta: { ui: { resourceUri: VIEWER_URI }, "ui/resourceUri": VIEWER_URI } } : {}),
+      ...((u) => (u ? { _meta: { ui: { resourceUri: u }, "ui/resourceUri": u } } : {}))(uiFor(t)),
     })),
   }));
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
@@ -79,6 +90,7 @@ export function buildServer(exec: Exec = localExec(), mode: keyof typeof INSTRUC
       { uri: "corosim://model-card", name: "Model card", description: "What is simulated, what is not, calibration and how to read the numbers.", mimeType: "text/markdown" },
       { uri: "corosim://scenario-reference", name: "Scenario reference", description: "Compact scenario JSON format.", mimeType: "text/plain" },
       ...(viewerHtml() ? [{ uri: VIEWER_URI, name: "CoroSim viewer", description: "The patient in 3D with a live 12-lead ECG and monitor, shown in the chat.", mimeType: VIEWER_MIME }] : []),
+      ...(ekgViewerHtml() ? [{ uri: EKG_VIEWER_URI, name: "CoroSim EKG", description: "A simulated 12-lead EKG with the leads drawn through a 3D heart, shown in the chat.", mimeType: VIEWER_MIME }] : []),
     ],
   }));
   server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
@@ -86,6 +98,7 @@ export function buildServer(exec: Exec = localExec(), mode: keyof typeof INSTRUC
     if (uri === "corosim://model-card") return { contents: [{ uri, mimeType: "text/markdown", text: MODEL_CARD }] };
     if (uri === "corosim://scenario-reference") return { contents: [{ uri, mimeType: "text/plain", text: SCENARIO_REFERENCE }] };
     if (uri === VIEWER_URI) { const html = viewerHtml(); if (html) return { contents: [{ uri, mimeType: VIEWER_MIME, text: html }] }; }
+    if (uri === EKG_VIEWER_URI) { const html = ekgViewerHtml(); if (html) return { contents: [{ uri, mimeType: VIEWER_MIME, text: html }] }; }
     throw new Error(`Unknown resource ${uri}`);
   });
   server.setRequestHandler(ListPromptsRequestSchema, async () => ({
@@ -187,6 +200,8 @@ export class Rooms {
   async call(id: string, tool: string, args: Record<string, unknown>): Promise<unknown> {
     const a = this.activity.get(id) ?? { lastTool: null, lastClient: null, lastCallAt: 0 };
     a.lastTool = tool; a.lastCallAt = Date.now(); this.activity.set(id, a);
+    const def = TOOLS.find((t) => t.name === tool);
+    if (def?.stateless) return def.run({ sim: undefined as unknown as Simulation, appUrl: APP_URL }, args); // nothing of the patient's: run here
     const r = this.live.get(id);
     if (r && r.ws.readyState === WebSocket.OPEN) {
       const callId = randomUUID();

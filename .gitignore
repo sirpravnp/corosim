@@ -9,3 +9,4 @@ publish/
 dist-mcp/
 .data/
 dist-viewer/
+dist-ekg-viewer/

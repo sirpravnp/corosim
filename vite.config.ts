@@ -15,4 +15,10 @@ const gamePage = (): Plugin => ({
 });
 
 // Relative asset paths so the built page works when published under any URL.
-export default defineConfig({ base: "./", plugins: [gamePage()], test: { include: ["tests/**/*.test.ts"] } });
+// Two pages: the simulator (index.html, also served at /game/) and the EKG page (ekg/index.html, at /ekg/).
+export default defineConfig({
+  base: "./",
+  plugins: [gamePage()],
+  build: { rollupOptions: { input: { main: "index.html", ekg: "ekg/index.html" } } },
+  test: { include: ["tests/**/*.test.ts"] },
+});

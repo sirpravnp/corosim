@@ -118,3 +118,25 @@ describe("the in-chat viewer (MCP Apps)", () => {
     }
   });
 });
+
+import { EKG_VIEWER_URI, ekgViewerHtml } from "../src/mcp/server";
+describe("the in-chat EKG viewer", () => {
+  it.runIf(!!ekgViewerHtml())("is served as its own ui:// resource and attached only to corosim_ekg_show", async () => {
+    const { client } = await connect();
+    const { tools } = await client.listTools();
+    const withUi = tools.filter((t) => (t._meta as { ui?: { resourceUri?: string } } | undefined)?.ui?.resourceUri === EKG_VIEWER_URI).map((t) => t.name);
+    expect(withUi).toEqual(["corosim_ekg_show"]);
+    const res = await client.readResource({ uri: EKG_VIEWER_URI });
+    const c = res.contents[0] as { mimeType: string; text: string };
+    expect(c.mimeType).toBe(VIEWER_MIME);
+    expect(c.text).toContain("<canvas id=\"paper\"");
+    expect(c.text).not.toMatch(/<script[^>]+src=/);
+  });
+  it("runs EKG tools without touching the patient", async () => {
+    const { call } = await connect();
+    const before = (await call("corosim_get_state")).data.scenario;
+    const r = await call("corosim_ekg_show", { preset: "torsades" });
+    expect(r.data.ekg.preset).toBe("torsades");
+    expect((await call("corosim_get_state")).data.scenario).toEqual(before);
+  });
+});
