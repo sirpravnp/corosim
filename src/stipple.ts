@@ -1,7 +1,8 @@
 // Weighted Voronoi stippling (Secord 2002) of the heart on the homepage, colored as a thermogram.
 //
-// The density comes from the logo: the heart's body is its opaque stamp with the coronary grooves closed over, and
-// "heat" is nearness to a groove, which is where the arteries run. Points are sampled by density and relaxed with
+// The density comes from a picture of the heart: its body, and "heat", which is nearness to a vessel (the arteries
+// and great vessels, or the grooves of the logo). A heart is drawn from the logo, from a hand-built outline of an
+// animal's heart, or from the simulator's own coronary tree; all three arrive here as masks. Points are sampled by density and relaxed with
 // Lloyd's algorithm: each point moves to the density-weighted centroid of its Voronoi cell, found by walking the
 // Delaunay triangulation (d3-delaunay) over every pixel of the raster. Each dot is then colored by the heat under it:
 // black → deep red → orange → yellow → near-white, so the vessels read hot against a cooler myocardium.
@@ -9,7 +10,7 @@ import { Delaunay } from "d3-delaunay";
 
 /** Square rasters, n × n, row-major: density (0..1, 0 outside the heart) and heat (0 cold .. 1 on a vessel), and the
  *  box the heart occupies, in raster pixels, for fitting it to a screen. */
-export interface Field { n: number; rho: Float32Array; heat: Float32Array; box: { x0: number; y0: number; x1: number; y1: number } }
+export interface Field { n: number; rho: Float32Array; heat: Float32Array; box: { x0: number; y0: number; x1: number; y1: number }; mass: number }
 /** How the raster lands on a canvas: device pixels per raster pixel, and the raster origin in device pixels. */
 export interface Placement { s: number; ox: number; oy: number }
 
@@ -33,17 +34,40 @@ function distanceTo(inside: Uint8Array, n: number): Float32Array {
   for (let i = 0; i < n * n; i++) d[i] /= 3;
   return d;
 }
-const mask = (n: number, f: (i: number) => boolean) => { const m = new Uint8Array(n * n); for (let i = 0; i < n * n; i++) m[i] = f(i) ? 1 : 0; return m; };
-const dilate = (m: Uint8Array, n: number, r: number) => { const d = distanceTo(m, n); return mask(n, (i) => d[i] <= r); };
+export const mask = (n: number, f: (i: number) => boolean) => { const m = new Uint8Array(n * n); for (let i = 0; i < n * n; i++) m[i] = f(i) ? 1 : 0; return m; };
+export const dilate = (m: Uint8Array, n: number, r: number) => { const d = distanceTo(m, n); return mask(n, (i) => d[i] <= r); };
 const not = (m: Uint8Array, n: number) => mask(n, (i) => !m[i]);
 const erode = (m: Uint8Array, n: number, r: number) => not(dilate(not(m, n), n, r), n);
 
+/** A set of vessels on the heart and how hot they run: 1 for the vessels the picture is about, less for ones in the background. */
+export type Layer = [mask: Uint8Array, level: number];
+/**
+ * Density and heat from masks: `body` is the heart, and each layer a set of vessels on it. Heat is nearness to a
+ * vessel, a Gaussian `sigma` (a fraction of n) wide and scaled by the layer's level, so a dot on a vessel is 1 and the
+ * muscle between vessels falls toward 0; density follows heat, so the vessels are denser as well as hotter.
+ */
+export function fieldFromMasks(n: number, body: Uint8Array, layers: Layer[], sigma = 0.024): Field {
+  const s = sigma * n, dist = layers.map(([m]) => distanceTo(m, n));
+  const rho = new Float32Array(n * n), heat = new Float32Array(n * n), box = { x0: n, y0: n, x1: 0, y1: 0 };
+  let mass = 0;
+  for (let i = 0; i < n * n; i++) {
+    if (!body[i]) continue;
+    let h = 0;
+    for (let k = 0; k < layers.length; k++) h = Math.max(h, layers[k][1] * Math.exp(-((dist[k][i] / s) ** 2)));
+    heat[i] = h;
+    rho[i] = 0.22 + 0.78 * h * h; // hot regions are denser as well as brighter
+    mass += rho[i];
+    const x = i % n, y = (i - x) / n;
+    box.x0 = Math.min(box.x0, x); box.y0 = Math.min(box.y0, y); box.x1 = Math.max(box.x1, x + 1); box.y1 = Math.max(box.y1, y + 1);
+  }
+  return { n, rho, heat, box, mass };
+}
+
 /**
  * Density and heat from the logo (public/logo-transparent.png: the heart alone on a transparent ground, square, its
- * coronary grooves cut through it). `closing` is the radius (as a fraction of n) that fills the widest groove; `sigma`
- * is how far, in the same units, the heat of a vessel reaches into the muscle.
+ * coronary grooves cut through it). `closing` is the radius (as a fraction of n) that fills the widest groove.
  */
-export function fieldFromLogo(img: HTMLImageElement, n: number, closing = 0.03, sigma = 0.024): Field {
+export function fieldFromLogo(img: HTMLImageElement, n: number, closing = 0.03): Field {
   const c = document.createElement("canvas"); c.width = c.height = n;
   const g = c.getContext("2d", { willReadFrequently: true })!;
   g.drawImage(img, 0, 0, n, n);
@@ -52,18 +76,13 @@ export function fieldFromLogo(img: HTMLImageElement, n: number, closing = 0.03, 
   const k = closing * n;
   const body = erode(dilate(stamp, n, k), n, k); // the stamp with its grooves closed over
   const groove = dilate(erode(mask(n, (i) => !!body[i] && !stamp[i]), n, 1.5), n, 1.5); // the grooves, less the stamp's speckle
-  const dv = distanceTo(groove, n), s = sigma * n;
-  const rho = new Float32Array(n * n), heat = new Float32Array(n * n), box = { x0: n, y0: n, x1: 0, y1: 0 };
-  for (let i = 0; i < n * n; i++) {
-    if (!body[i]) continue;
-    const h = Math.exp(-((dv[i] / s) ** 2));
-    heat[i] = h;
-    rho[i] = 0.22 + 0.78 * h * h; // hot regions are denser as well as brighter
-    const x = i % n, y = (i - x) / n;
-    box.x0 = Math.min(box.x0, x); box.y0 = Math.min(box.y0, y); box.x1 = Math.max(box.x1, x + 1); box.y1 = Math.max(box.y1, y + 1);
-  }
-  return { n, rho, heat, box };
+  return fieldFromMasks(n, body, [[groove, 1]]);
 }
+
+/** How many dots a field gets at `scale` screen pixels per raster pixel: its density summed over the raster, times the
+ *  area one raster pixel covers, over `perPx2` dots per screen pixel. Every heart gets the same spacing, whatever its
+ *  shape; the device's cap is the caller's. */
+export const dotsFor = (f: Field, scale: number, perPx2 = 0.0415) => Math.round(f.mass * scale * scale * perPx2);
 
 /** Thermal ramp, black-body style. The black end is the ground itself: the coldest dot is still a deep red. */
 const RAMP: [number, string][] = [[0, "#3a0603"], [0.22, "#8c130b"], [0.48, "#d8401a"], [0.7, "#f49218"], [0.86, "#fbd24a"], [1, "#fff6dc"]];
