@@ -67,12 +67,28 @@ In the daily game the treatment is the second half of the case (below).
 
 ## Three pages
 
-One build, a few front doors. `corosim.com` is the homepage: the title, the heart as a stippled thermogram, and the
-two links. `corosim.com/sim` is the simulator alone; `corosim.com/game` is "Find the culprit", the simulator with the
+One build, a few front doors. `corosim.com` is the homepage: the title, a heart as a stippled thermogram, a fact about
+it, and the links. `corosim.com/sim` is the simulator alone; `corosim.com/game` is "Find the culprit", the simulator with the
 game panel at the top of the right-hand rail. The switch in the masthead moves between the two, and the logo goes
 home. The homepage is `index.html` (`src/home.ts`, `src/stipple.ts`); the simulator is `sim/index.html`, and the build
 writes the same page to `dist/game/index.html` (see `vite.config.ts`), which the dev server serves at `/game/` by a
 rewrite. Older share links of the form `corosim.com/#s=…` are forwarded by the homepage to `/sim/#s=…`.
+
+### The heart of the day
+
+The homepage shows a different heart each day, with a "Did you know" fact: an animal's heart, or a variation of the
+human coronary tree. `src/specimens.ts` is the list (animals and human anatomy alternate, the cycle repeats) and the
+day's pick, from the visitor's local date; add a heart by appending to it and, for an animal, drawing it in
+`src/specimenArt.ts`. `/?heart=octopus` or `/?day=2026-10-21` shows a chosen heart.
+
+Every heart goes through the same stippling (`src/stipple.ts`): a weighted Voronoi stipple, points sampled by density
+and relaxed with Lloyd's algorithm on a Delaunay triangulation, colored by heat (black, red, orange, yellow, white)
+where heat is nearness to a vessel. Each heart is fitted to the same stage by its own bounding box, and gets the same
+dot spacing, whatever its shape. An animal's heart is a short list of ellipses, tubes and blobs. A human variant is
+drawn from the simulator's own coronary tree (`buildTree`, read only), seen from the front through the heart's
+outline, with the arteries that make the variant what it is hottest. That outline is baked
+(`src/heartOutline.ts`, by `scripts/bake-home-outline.ts`: run it after changing `src/anatomy/heartSurface.ts`;
+a test fails when it is out of date). The textbook heart is the logo.
 
 ## Game mode: find the culprit
 

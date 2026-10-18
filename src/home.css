@@ -1,23 +1,31 @@
-/* The homepage: the thermogram is the page. The heart, stippled and thermally colored, fills the viewport on a black
-   screen in both themes (as the ECG is drawn on paper in both), and the title, the two doors and the legend are laid
-   over it. Type and hairlines are the site's own (style.css); the only color is the thermal ramp. */
+/* The homepage: the thermogram is the page. The heart of the day, stippled and thermally colored, fills the viewport on
+   a black screen in both themes (as the ECG is drawn on paper in both), and the title, the fact, the doors and the
+   legend are laid over it. Type and hairlines are the site's own (style.css); the only color is the thermal ramp. */
 body.home { --bg: #000; --panel: #0b0d14; --ink: #f4f1ea; --muted: #98a0b8; --rule: #2b2f45; --link: #f4f1ea; max-width: none; min-height: 100dvh; padding: 0; background: #000; color: var(--ink); overflow: hidden; }
 .art { position: fixed; inset: 0; width: 100%; height: 100%; display: block; background: #000; }
 @media (hover: hover) { .art { cursor: crosshair; } }
 
 /* The overlay lets the pointer through to the dots everywhere but on the links. */
-.home-main { position: relative; z-index: 1; pointer-events: none; min-height: 100dvh; margin: 0; padding: 24px 16px 20px; display: grid; grid-template-rows: auto 1fr auto auto; gap: 16px; }
+.home-main { position: relative; z-index: 1; pointer-events: none; min-height: 100dvh; margin: 0; padding: 24px 16px 20px; display: grid; grid-template-rows: auto 1fr auto auto auto; gap: 14px; }
 .home-main a { pointer-events: auto; }
 .home-head h1 { margin: 0; font: 700 clamp(48px, 9vw, 104px)/0.92 var(--font-ui); letter-spacing: -0.045em; }
 .home-head .kind { margin: 14px 0 0; font: 500 11px/1.5 var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 
-/* The two doors: square-framed, uppercase, inverted on hover, like every control on the site; dark glass over the dots. */
-.doors { grid-row: 3; display: grid; gap: 8px; }
-.doors a { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 15px 16px; font: 700 13px/1 var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase; text-decoration: none; color: var(--ink); background: rgba(0, 0, 0, 0.62); border: 1px solid var(--rule); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+/* The fact: a square-framed card of dark glass, like the doors. */
+.fact { display: block; grid-row: 3; padding: 12px 14px 13px; background: rgba(0, 0, 0, 0.62); border: 1px solid var(--rule); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.fact[hidden] { display: none; }
+.fact p { margin: 0; }
+.fact-k { font: 700 11px/1.3 var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.fact-k b { color: var(--ink); font-weight: 700; }
+.fact-t { margin-top: 8px !important; font: 400 13px/1.5 var(--font-ui); color: var(--ink); }
+
+/* The doors: square-framed, uppercase, inverted on hover, like every control on the site; dark glass over the dots. */
+.doors { grid-row: 4; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.doors a { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 14px 12px; font: 700 12px/1 var(--font-ui); letter-spacing: 0.05em; text-transform: uppercase; text-decoration: none; color: var(--ink); background: rgba(0, 0, 0, 0.62); border: 1px solid var(--rule); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .doors a::after { content: "→"; color: var(--muted); }
 .doors a:hover, .doors a:hover::after { background: var(--ink); border-color: var(--ink); color: var(--bg); }
 
-.corner { grid-row: 4; display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
+.corner { grid-row: 5; display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
 .legend { width: 180px; font: 11px/1.3 var(--font-data); color: var(--ink); }
 .legend .bar { height: 8px; margin-bottom: 3px; }
 .legend .lg { display: flex; justify-content: space-between; gap: 6px; }
@@ -25,8 +33,11 @@ body.home { --bg: #000; --panel: #0b0d14; --ink: #f4f1ea; --muted: #98a0b8; --ru
 .privacy:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 
 @media (min-width: 820px) {
-  .home-main { grid-template-columns: minmax(300px, 420px) 1fr auto; grid-template-rows: 1fr auto; grid-template-areas: "head . ." "doors . corner"; padding: 40px; row-gap: 28px; column-gap: 32px; align-items: end; }
+  .home-main { grid-template-columns: minmax(300px, 420px) 1fr minmax(240px, 320px); grid-template-rows: 1fr auto; grid-template-areas: "head . fact" "doors . corner"; padding: 40px; row-gap: 28px; column-gap: 32px; align-items: end; }
   .home-head { grid-area: head; }
-  .doors { grid-area: doors; }
+  .fact { grid-area: fact; align-self: start; padding: 14px 16px 15px; }
+  .fact-t { font-size: 14px; }
+  .doors { grid-area: doors; grid-template-columns: 1fr; }
+  .doors a { padding: 15px 16px; font-size: 13px; letter-spacing: 0.06em; }
   .corner { grid-area: corner; flex-direction: column; align-items: flex-end; gap: 14px; }
 }
