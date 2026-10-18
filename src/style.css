@@ -309,3 +309,8 @@ details.fold > :not(summary):last-child { margin-bottom: 16px; }
 .ai-x:hover { color: var(--ink); }
 body.game .aibtn, body.game .aipanel { display: none; } /* an AI on the line could read the lesion */
 .aibtn[hidden] { display: none; }
+
+/* Link beside the Reperfuse buttons that opens this patient in the cath lab */
+a.askbtn { padding: 8px 11px; font: 700 12px/1 var(--font-ui); letter-spacing: 0.04em; text-transform: uppercase; text-decoration: none; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); }
+a.askbtn:hover { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+a.askbtn span { margin-left: 5px; }

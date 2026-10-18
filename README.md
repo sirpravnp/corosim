@@ -33,6 +33,7 @@ npm run build      # static site in dist/: index.html, sim/index.html, game/inde
 | Revascularization | Primary PCI, fibrinolytic (55% success), CABG (a graft that feeds the vessel beyond the lesion at aortic pressure less its own loss); each takes clinical minutes to arrive | `src/physics/revasc.ts`, `network.ts` |
 | Advice | Reads the live state and lists what is wrong and what guidelines would do next, in order | `src/physics/advice.ts` |
 | Simulation core | The whole model with no DOM, seeded and reproducible; the app, the MCP server and the tests all step this one object | `src/sim/` |
+| Cath lab page | Angiogram with contrast filling at each vessel's solved flow (TIMI grade and frame count), pressure-wire pullback at rest and hyperemia with FFR, wall motion by AHA segment; treatment before and after | `src/sim/cath.ts`, `src/cath/`, `cath/index.html` |
 | EKG page | Over fifty rhythm, block, ischemia and mimic presets on the same dipole heart; 3D lead axes and heart vector | `src/ekg/`, `ekg/index.html` |
 | AI connection | MCP server (Streamable HTTP and stdio); accounts (Google/GitHub) and OAuth for connectors; each account's patient runs on its open page or is saved in SQLite; REST/OpenAPI; `#s=` share links | `src/mcp/`, `src/live.ts` |
 
@@ -66,7 +67,7 @@ In the daily game the treatment is the second half of the case (below).
 
 ## Three pages
 
-One build, three front doors. `corosim.com` is the homepage: the title, the heart as a stippled thermogram, and the
+One build, a few front doors. `corosim.com` is the homepage: the title, the heart as a stippled thermogram, and the
 two links. `corosim.com/sim` is the simulator alone; `corosim.com/game` is "Find the culprit", the simulator with the
 game panel at the top of the right-hand rail. The switch in the masthead moves between the two, and the logo goes
 home. The homepage is `index.html` (`src/home.ts`, `src/stipple.ts`); the simulator is `sim/index.html`, and the build
@@ -134,6 +135,24 @@ LBBB and an inferior STEMI", "AF with a delta wave"): rhythm, conduction and ter
 terms (`src/ekg/custom.ts`), measured back so the AI can check what it drew, and shareable as `/ekg/#c=…` links.
 "Ask Claude" opens Claude with the tracing.
 
+## Cath lab
+
+`corosim.com/cath` is a virtual cath lab on the simulator's own patient. It opens a small library of cases (normal,
+mid-LAD 50% and 75%, proximal LAD, RCA and circumflex occlusions, left main) or the patient in a simulator link (`/cath/#s=…`,
+which the simulator's **Cath lab** link builds). The angiogram is drawn from a C-arm angle you choose (LAO/RAO, cranial/caudal);
+the contrast front travels at each vessel's solved blood velocity, so a tight lesion fills late (TIMI 2), an occlusion stops
+the dye (TIMI 0), and overlap and foreshortening come out of the geometry. The pressure wire pulls back along any vessel at rest
+and at adenosine hyperemia and reads Pd/Pa and FFR; PCI, fibrinolytic and CABG run the same `Simulation.revascularize` as the
+simulator, so the lab shows before and after. What the lab reads is DOM-free in `src/sim/cath.ts` (`angioModel`, `timi`,
+`wireModel`, `echoModel`, `cathReport`); the page only draws it. The coronary tree is the simulator's procedural one, thinner and
+smoother than a real patient's, and the display has not yet been reviewed by a cardiologist.
+
+The echo panel (phase 2) will draw from a real CT-derived heart. The baked anatomy is `src/cath/data/heart.bin.gz` with
+`heart.json`, made by `scripts/cath/` (`npm run build:heart`, which downloads the 58 MB source mesh and needs python3 with numpy and scipy).
+**Credit (CC BY 4.0):** Rodero C, Strocchi M, Marciniak M, et al. *Linking statistical shape models and simulated function in the
+healthy adult human heart.* PLoS Comput Biol 17(4): e1008851 (2021); data: "Virtual cohort of extreme and average four-chamber heart
+meshes from statistical shape model", Zenodo, doi:10.5281/zenodo.4593739. It is the average shape of healthy adult CT hearts, not a patient.
+
 ## Connecting an AI
 
 CoroSim is a teaching layer beside image-based solvers such as SimVascular, not a competitor to them. An assistant
@@ -179,4 +198,4 @@ with no atrial ischemia or thrombus. Variant frequencies in the literature vary 
 
 ## Third-party
 
-three.js (MIT). Fonts: Public Sans and IBM Plex Mono (SIL Open Font License), loaded from Google Fonts.
+three.js (MIT). Cath-lab heart anatomy: Rodero et al. 2021, CC BY 4.0 (see Cath lab above). Fonts: Public Sans and IBM Plex Mono (SIL Open Font License), loaded from Google Fonts.

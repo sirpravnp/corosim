@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="/favicon.ico" sizes="any" />
+<link rel="icon" type="image/png" href="/favicon.png" />
+<title>CoroSim Cath lab</title>
+<meta name="description" content="A virtual cath lab on the simulator's own patient: an angiogram with contrast filling at each vessel's solved flow, TIMI flow, and a pressure-wire pullback with FFR.">
+</head>
+<body>
+<div class="app" id="app">
+<header class="masthead">
+  <h1><a class="homelink" href="../" aria-label="CoroSim home"><img class="logo" src="/logo-transparent.png" alt="" width="48" height="48"></a>CoroSim <span class="kind">Cath lab · angiogram and pressure wire</span></h1>
+  <div class="mast-right">
+    <nav class="modes" aria-label="Version">
+      <a id="modeSim" href="../sim/">Simulator</a>
+      <a id="modeGame" href="../game/">Find the culprit</a>
+      <a id="modeEkg" href="../ekg/">EKG</a>
+      <a id="modeCath" href="./" class="on" aria-current="page">Cath lab</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <nav class="library" aria-label="Patients">
+    <div class="lib-head">Patient</div>
+    <div id="list" class="list"></div>
+    <p class="lib-foot">Or <a id="fromSim" href="../sim/">set up a patient in the simulator</a> and use “Open in cath lab” to bring them here.</p>
+  </nav>
+
+  <section class="room">
+    <div class="titlebar">
+      <span class="cat">Angiogram</span>
+      <h2 id="title">Normal coronaries</h2>
+      <p id="summary" class="summary"></p>
+    </div>
+    <div class="screen"><canvas id="ang" width="560" height="560" aria-label="Coronary angiogram"></canvas></div>
+    <div class="toolbar">
+      <label><span>LAO / RAO</span><input id="rot" type="range" min="-60" max="60" value="30"><output id="rotv"></output></label>
+      <label><span>Cranial / caudal</span><input id="tilt" type="range" min="-45" max="45" value="-20"><output id="tiltv"></output></label>
+      <label class="field"><span>Injection</span>
+        <select id="inj" aria-label="Injection site"><option value="both">Aortic root</option><option value="left">Left coronary</option><option value="right">Right coronary</option></select></label>
+      <button id="inject" class="primary">Inject contrast</button>
+      <label class="chk"><input id="lab" type="checkbox"> Labels</label>
+    </div>
+    <div class="meas" id="flow"></div>
+    <ul class="findings" id="findings"></ul>
+  </section>
+
+  <section class="wire">
+    <h2>Pressure wire</h2>
+    <div class="toolbar">
+      <label class="field"><span>Vessel</span><select id="artery" aria-label="Vessel"></select></label>
+      <label><span>Wire</span><input id="pos" type="range" min="0" max="100" value="100"><output id="posv"></output></label>
+    </div>
+    <div class="screen"><canvas id="pull" width="560" height="360" aria-label="Pressure wire pullback"></canvas></div>
+    <div class="meas" id="wirestat"></div>
+    <div class="treat" id="treat"><span>Treat</span>
+      <button data-proc="pci">PCI</button><button data-proc="lysis">Fibrinolytic</button><button data-proc="cabg">CABG</button><button id="reset">Reset patient</button>
+      <p class="result" id="treatResult" role="status"></p></div>
+    <p class="note">Schematic, not a clinical image: the coronary tree is the simulator's procedural one, thinner and smoother than a real patient's, and the display has not been reviewed by a cardiologist. Educational; not for clinical decisions.</p>
+  </section>
+</main>
+<p class="fine" id="credit">Flows, pressures and FFR come from the same coronary model as the simulator (<a href="../sim/">Simulator</a>); contrast moves at each vessel's solved blood velocity, so a tight lesion fills late and an occlusion stops the dye.</p>
+</div>
+<script type="module" src="../src/cath/page.ts"></script>
+</body>
+</html>
