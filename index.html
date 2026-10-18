@@ -23,22 +23,27 @@
   </div>
   <section id="aipanel" class="aipanel" hidden aria-label="Connect your AI">
     <div class="ai-head"><h2>Connect your AI</h2><button id="ai_close" class="ai-x" aria-label="Close">×</button></div>
+    <p class="note" style="margin-top:0">Let Claude work with your patient: read the monitor, change the patient, run the clock and show you the heart and ECG in the chat. With this page open you watch it happen here too.</p>
+    <a id="ln_claude" class="addbtn" target="_blank" rel="noopener">Add to Claude</a>
+    <p class="note ln-after">Claude opens with CoroSim filled in. Click <b>Add</b>, then <b>Connect</b>, sign in with Google or GitHub and allow it. Nothing to copy.</p>
+    <p class="ln-status" id="ln_status"></p>
     <div id="ac_out">
-      <p class="note" style="margin-top:0">Sign in to let Claude, ChatGPT or any MCP client work with your patient: read the monitor, change the patient, run the clock. When this page is open you watch it happen; when it is closed your AI works on your saved patient, which is here when you come back.</p>
+      <p class="note">Or sign in here first; the same sign-in then covers your AI. <a href="privacy.html">Privacy</a></p>
       <div id="ac_providers"></div>
-      <p class="note">CoroSim keeps your name, email and your simulated patient, nothing else. <a href="privacy.html">Privacy</a></p>
     </div>
     <div id="ac_in" hidden>
-      <p class="ac-who">Signed in as <b id="ac_name"></b></p>
-      <label for="ln_url">Connector URL</label>
-      <div class="ln-url"><input id="ln_url" readonly spellcheck="false"><button id="ln_copy">Copy</button></div>
-      <p class="ln-status" id="ln_status"></p>
+      <p class="ac-who">Signed in as <b id="ac_name"></b>. <span id="ac_connected"></span></p>
+    </div>
+    <details class="ln-more">
+      <summary>ChatGPT, Claude Code and other apps</summary>
+      <div class="ln-url"><input id="ln_url" readonly spellcheck="false" aria-label="Connector URL"><button id="ln_copy">Copy</button></div>
       <ul class="note ln-how">
-        <li><b>Claude</b>: Settings → Connectors → Add custom connector, paste the URL, then Connect: it asks you to sign in to CoroSim and allow access.</li>
         <li><b>ChatGPT</b>: Settings → Apps &amp; Connectors → Advanced → Developer mode, then Create, paste the URL, and sign in.</li>
         <li><b>Claude Code</b>: <code id="ln_cli"></code>, then <code>/mcp</code> to sign in.</li>
+        <li><b>Any MCP client</b>: add the URL as a remote (HTTP) server; it asks you to sign in.</li>
       </ul>
-      <p class="note" id="ac_connected"></p>
+    </details>
+    <div id="ac_in2" hidden>
       <div class="row">
         <button id="ac_disconnect">Disconnect AIs</button>
         <button id="ac_signout">Sign out</button>

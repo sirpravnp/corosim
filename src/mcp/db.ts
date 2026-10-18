@@ -106,6 +106,11 @@ export class Store {
     this.db.prepare("INSERT INTO oauth_clients (client_id, name, redirect_uris, created_at) VALUES (?, ?, ?, ?)").run(clientId, name, JSON.stringify(redirectUris), now());
     return { clientId, name, redirectUris };
   }
+  /** A client known by its metadata document URL (CIMD): its id is the URL, refreshed whenever it is fetched again. */
+  saveClient(clientId: string, name: string, redirectUris: string[]): OAuthClient {
+    this.db.prepare("INSERT INTO oauth_clients (client_id, name, redirect_uris, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(client_id) DO UPDATE SET name = excluded.name, redirect_uris = excluded.redirect_uris, created_at = excluded.created_at").run(clientId, name, JSON.stringify(redirectUris), now());
+    return { clientId, name, redirectUris };
+  }
   client(clientId: string): OAuthClient | undefined {
     const r = this.db.prepare("SELECT * FROM oauth_clients WHERE client_id = ?").get(clientId) as Record<string, string> | undefined;
     return r ? { clientId: r.client_id, name: r.name, redirectUris: JSON.parse(r.redirect_uris) } : undefined;

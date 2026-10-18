@@ -250,6 +250,7 @@ export interface HttpOptions {
   requestsPerMinutePerAddress?: number; // all HTTP requests from one address (a classroom shares one)
   trustProxy?: boolean; // behind Fly's proxy: take the client address from its header, not the socket
   log?: (m: string) => void; fetch?: typeof fetch;
+  publicHost?: (host: string) => Promise<boolean>; // which hosts a client metadata document may come from (tests)
 }
 
 /** Token bucket per key: bounds how fast one account or one address can call. */
@@ -378,7 +379,7 @@ export function startHttp(o: HttpOptions) {
   });
 
   // The OAuth issuer is this server's public URL; without one configured it is localhost on the port actually bound.
-  const makeAccounts = (base: string) => new Accounts(store, { publicUrl: base, siteOrigins: origins, github: o.github, google: o.google, devLogin: o.devLogin, fetch: o.fetch });
+  const makeAccounts = (base: string) => new Accounts(store, { publicUrl: base, siteOrigins: origins, github: o.github, google: o.google, devLogin: o.devLogin, fetch: o.fetch, publicHost: o.publicHost });
   if (o.publicUrl) accounts = makeAccounts(o.publicUrl);
   http.listen(o.port, o.host ?? "127.0.0.1", () => {
     const addr = http.address(), port = typeof addr === "object" && addr ? addr.port : o.port;

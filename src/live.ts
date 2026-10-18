@@ -29,9 +29,12 @@ export class Account {
   providers: string[] = [];
 
   get connectorUrl() { return `${this.server}/mcp`; }
+  /** Claude's own "Add custom connector" dialog with CoroSim filled in: the person clicks Add, then signs in. */
+  get claudeInstallUrl() { return `https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=CoroSim&connectorUrl=${encodeURIComponent(this.connectorUrl)}`; }
 
   private async api(path: string, init: RequestInit = {}) {
-    const res = await fetch(this.server + path, { ...init, headers: { ...(init.headers ?? {}), ...(this.token ? { authorization: `Bearer ${this.token}` } : {}), ...(init.body ? { "content-type": "application/json" } : {}) } });
+    // credentials: the server's sign-in cookie, so one sign-in (here or while connecting an AI) covers both
+    const res = await fetch(this.server + path, { credentials: "include", ...init, headers: { ...(init.headers ?? {}), ...(this.token ? { authorization: `Bearer ${this.token}` } : {}), ...(init.body ? { "content-type": "application/json" } : {}) } });
     const body = await res.json().catch(() => ({}));
     if (res.status === 401) this.forget();
     if (!res.ok) throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
@@ -53,7 +56,14 @@ export class Account {
       catch { /* expired: the person signs in again */ }
     }
     try { this.providers = ((await this.api("/auth/providers")).providers as string[]) ?? []; } catch { this.providers = []; }
+    await this.pickUp();
     await this.refresh();
+  }
+  /** Signed in on the server but not on this page (say, while connecting Claude): carry that sign-in over. */
+  async pickUp(): Promise<boolean> {
+    if (this.token) return false;
+    try { const r = await this.api("/auth/session", { method: "POST" }); this.token = r.token as string; store.set(TOKEN_KEY, this.token); return true; }
+    catch { return false; }
   }
 
   async refresh() {

@@ -273,3 +273,78 @@ describe("limits and restarts", () => {
     await after.client.close(); await b.srv.close();
   });
 });
+
+describe("Claude's published identity (a client ID metadata document)", () => {
+  const ID = "https://claude.ai/oauth/mcp-oauth-client-metadata", CB = "https://claude.ai/api/mcp/auth_callback";
+  let docs: Record<string, unknown> = {};
+  const fakeFetch = (async (u: string | URL | Request) => {
+    const d = docs[String(u)];
+    return d === undefined ? new Response("not found", { status: 404 }) : new Response(JSON.stringify(d), { headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  const authorize = (b: string, clientId: string, redirect = CB, challenge = "abc") =>
+    get(`${b}/oauth/authorize?` + new URLSearchParams({ response_type: "code", client_id: clientId, redirect_uri: redirect, code_challenge: challenge, code_challenge_method: "S256", state: "s" }));
+
+  it("is advertised, and a client can connect with no registration step", async () => {
+    docs = { [ID]: { client_id: ID, client_name: "Claude", redirect_uris: [CB], token_endpoint_auth_method: "none" } };
+    const { srv: s, base: b } = await boot({ fetch: fakeFetch, publicHost: async () => true });
+    expect((await (await fetch(`${b}/.well-known/oauth-authorization-server`)).json()).client_id_metadata_document_supported).toBe(true);
+    const verifier = randomBytes(32).toString("base64url"), challenge = createHash("sha256").update(verifier).digest("base64url");
+    const toSignin = await authorize(b, ID, CB, challenge);
+    expect(toSignin.status).toBe(302);
+    const pending = new URL(toSignin.headers.get("location")!).searchParams.get("pending")!;
+    const cb = await get((await get(`${b}/auth/login?provider=dev&as=kim&return=${encodeURIComponent(`/oauth/consent?pending=${pending}`)}`)).headers.get("location")!);
+    const cookie = cb.headers.get("set-cookie")!.split(";")[0];
+    expect(await (await get(cb.headers.get("location")!, cookie)).text()).toContain("Claude");
+    const allow = await fetch(`${b}/oauth/consent`, { method: "POST", redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded", cookie }, body: new URLSearchParams({ pending, decision: "allow" }) });
+    const code = new URL(allow.headers.get("location")!).searchParams.get("code")!;
+    const tok = await (await fetch(`${b}/oauth/token`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: CB, client_id: ID, code_verifier: verifier }) })).json();
+    expect(tok.token_type).toBe("Bearer");
+    const { client, call } = await mcpClient(tok.access_token, b);
+    expect((await call("corosim_get_state")).isError).toBe(false);
+    await client.close(); await s.close();
+  });
+  it("refuses a document that does not name itself, a return address it does not list, and private hosts", async () => {
+    const other = "https://claude.ai/other-client";
+    docs = { [ID]: { client_id: ID, client_name: "Claude", redirect_uris: [CB] }, [other]: { client_id: ID, redirect_uris: [CB] } };
+    const { srv: s, base: b } = await boot({ fetch: fakeFetch, publicHost: async (h) => h === "claude.ai" });
+    expect((await authorize(b, other)).status).toBe(400); // claims to be someone else
+    expect((await authorize(b, ID, "https://evil.example/cb")).status).toBe(400);
+    expect((await authorize(b, "https://claude.ai/missing")).status).toBe(400);
+    for (const bad of ["https://10.0.0.1/meta", "https://localhost/meta", "https://internal.example/meta", "https://claude.ai/", "http://claude.ai/meta"]) {
+      docs[bad] = { client_id: bad, redirect_uris: [CB] };
+      expect((await authorize(b, bad)).status, bad).toBe(400);
+    }
+    await s.close();
+  });
+});
+
+describe("one sign-in covers the site and the AI", () => {
+  const site = { origin: "http://localhost:5173" };
+  const cookieFor = async (as: string) => (await get((await get(`${base}/auth/login?provider=dev&as=${as}&return=${encodeURIComponent(SITE)}`)).headers.get("location")!)).headers.get("set-cookie")!.split(";")[0];
+  it("the site picks up a sign-in made on the server", async () => {
+    const cookie = await cookieFor("lee");
+    const r = await fetch(`${base}/auth/session`, { method: "POST", headers: { ...site, cookie } });
+    expect(r.status).toBe(200); expect(r.headers.get("access-control-allow-credentials")).toBe("true");
+    const { token } = await r.json();
+    const me = await (await fetch(`${base}/auth/me`, { headers: { ...site, authorization: `Bearer ${token}` } })).json();
+    expect(me.user.name).toBe("lee");
+  });
+  it("only for a signed-in browser on an allowed site", async () => {
+    expect((await fetch(`${base}/auth/session`, { method: "POST", headers: site })).status).toBe(401);
+    const cookie = await cookieFor("max");
+    expect((await fetch(`${base}/auth/session`, { method: "POST", headers: { origin: "https://evil.example", cookie } })).status).toBe(401);
+  });
+  it("signed in on the site, connecting an AI goes straight to Allow", async () => {
+    const cookie = await cookieFor("ned");
+    const reg = await (await fetch(`${base}/oauth/register`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ client_name: "Claude", redirect_uris: ["https://claude.ai/cb"] }) })).json();
+    const r = await get(`${base}/oauth/authorize?${new URLSearchParams({ response_type: "code", client_id: reg.client_id, redirect_uri: "https://claude.ai/cb", code_challenge: "abc", code_challenge_method: "S256" })}`, cookie);
+    expect(new URL(r.headers.get("location")!).pathname).toBe("/oauth/consent");
+  });
+  it("signing out of the site signs out of the server too", async () => {
+    const cookie = await cookieFor("oli");
+    const { token } = await (await fetch(`${base}/auth/session`, { method: "POST", headers: { ...site, cookie } })).json();
+    const out = await fetch(`${base}/auth/logout`, { method: "POST", headers: { ...site, cookie, authorization: `Bearer ${token}` } });
+    expect(out.headers.get("set-cookie")).toMatch(/Max-Age=0/);
+    expect((await fetch(`${base}/auth/session`, { method: "POST", headers: { ...site, cookie } })).status).toBe(401);
+  });
+});

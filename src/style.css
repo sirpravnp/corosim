@@ -260,6 +260,12 @@ details.fold > :not(summary):last-child { margin-bottom: 16px; }
 .ln-url input { flex: 1; min-width: 0; padding: 7px 8px; font: 12px/1.3 var(--font-data); color: var(--ink); background: var(--bg, transparent); border: 1px solid var(--rule); }
 .ln-status { margin: 10px 0 0; font: 600 12px/1.45 var(--font-data); color: var(--muted); }
 .ln-status.ok { color: var(--ok); } .ln-status.warn { color: var(--warn); } .ln-status.bad { color: var(--bad); }
+.addbtn { display: block; padding: 11px 12px; font: 700 13px/1 var(--font-ui); letter-spacing: 0.04em; text-transform: uppercase; text-align: center; text-decoration: none; color: var(--accent-ink); background: var(--accent); border: 1px solid var(--accent); }
+.addbtn:hover { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.ln-after { margin: 8px 0 0; }
+.ln-more { margin-top: 12px; border-top: 1px solid var(--rule); padding-top: 8px; }
+.ln-more summary { cursor: pointer; font: 600 12px/1.4 var(--font-ui); color: var(--muted); }
+.ln-more[open] summary { margin-bottom: 8px; }
 .ln-how { padding-left: 16px; } .ln-how li { margin: 3px 0; } .ln-how code { font: 11px var(--font-data); word-break: break-all; }
 
 /* Connect your AI: the masthead button and its panel */

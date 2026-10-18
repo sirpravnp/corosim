@@ -1,6 +1,8 @@
 import { IncomingMessage, ServerResponse } from "node:http";
 import { createHash } from "node:crypto";
-import { Store, User } from "./db";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
+import { OAuthClient, Store, User } from "./db";
 
 /**
  * Accounts for the hosted server: sign-in with Google or GitHub, and the OAuth 2.1 authorization server that AI
@@ -10,8 +12,15 @@ import { Store, User } from "./db";
  *      → /.well-known/oauth-authorization-server → POST /oauth/register (dynamic client registration)
  *      → browser: /oauth/authorize (sign in, consent) → redirect with code → POST /oauth/token (PKCE) → Bearer token
  *
+ * A client may skip registration by using the URL of its own metadata document as its client_id (a Client ID
+ * Metadata Document, CIMD): Claude's recommended "published identity". The server fetches and checks that document.
+ *
  * The site (corosim.com) signs people in through the same providers: /auth/login → provider → /auth/callback →
  * back to the site with a one-time code → POST /auth/exchange → a page token for the live connection.
+ *
+ * Both sign-ins leave the same session cookie on this server, so one sign-in covers both: connecting an AI after
+ * signing in on the site goes straight to Allow, and the site picks up a sign-in made while connecting an AI
+ * (POST /auth/session; corosim.com and mcp.corosim.com are the same site, so the Lax cookie is sent).
  */
 
 export interface ProviderKeys { clientId: string; clientSecret: string }
@@ -22,6 +31,7 @@ export interface AccountsConfig {
   google?: ProviderKeys;
   devLogin?: boolean; // a no-provider sign-in for development; refused unless publicUrl is on localhost
   fetch?: typeof fetch; // injectable for tests
+  publicHost?: (host: string) => Promise<boolean>; // may a client metadata document be fetched from this host? (tests)
 }
 
 const SESSION_COOKIE = "corosim_session";
@@ -111,7 +121,7 @@ export class Accounts {
   /** CORS for the site's own calls (/auth/exchange, /auth/me…): only the allowed site origins, never "*". */
   siteCors(req: IncomingMessage): Record<string, string> {
     const o = String(req.headers.origin ?? "");
-    return o && this.siteAllowed(o) ? { "access-control-allow-origin": o, "access-control-allow-headers": "authorization, content-type", "access-control-allow-methods": "GET, POST, DELETE, OPTIONS", vary: "origin" } : {};
+    return o && this.siteAllowed(o) ? { "access-control-allow-origin": o, "access-control-allow-headers": "authorization, content-type", "access-control-allow-methods": "GET, POST, DELETE, OPTIONS", "access-control-allow-credentials": "true", vary: "origin" } : {};
   }
 
   /** Handles every /auth, /oauth and /.well-known route. Returns false for anything else. */
@@ -130,6 +140,7 @@ export class Accounts {
         registration_endpoint: `${this.issuer}/oauth/register`, revocation_endpoint: `${this.issuer}/oauth/revoke`,
         response_types_supported: ["code"], grant_types_supported: ["authorization_code", "refresh_token"],
         code_challenge_methods_supported: ["S256"], token_endpoint_auth_methods_supported: ["none"], scopes_supported: ["corosim"],
+        client_id_metadata_document_supported: true,
       }, { "access-control-allow-origin": "*" });
       return true;
     }
@@ -149,7 +160,7 @@ export class Accounts {
     // ---------------- authorization: sign in, then consent
     if (p === "/oauth/authorize" && method === "GET") {
       const q = Object.fromEntries(url.searchParams);
-      const client = q.client_id ? this.store.client(q.client_id) : undefined;
+      const client = q.client_id ? await this.clientFor(q.client_id) : undefined;
       // Never redirect to an unregistered address: show the error here instead.
       if (!client || !q.redirect_uri || !client.redirectUris.includes(q.redirect_uri)) { this.html(res, 400, "Cannot connect", `<p>This connection request is not valid (unknown app or return address). Start again from your AI app.</p>`); return true; }
       const back = (err: string, desc: string) => { const r = new URL(q.redirect_uri); r.searchParams.set("error", err); r.searchParams.set("error_description", desc); if (q.state) r.searchParams.set("state", q.state); this.redirect(res, r.toString()); };
@@ -270,6 +281,14 @@ export class Accounts {
       this.json(res, 200, { token: this.store.createSession(user.id, "page"), user: { name: user.name, email: user.email, provider: user.provider } }, cors);
       return true;
     }
+    if (p === "/auth/session" && method === "POST") {
+      // The site asks with credentials: a sign-in made on this server (say, while connecting an AI) becomes a page
+      // token. Only an allowed site origin gets an answer it can read (CORS above).
+      const user = cors["access-control-allow-origin"] ? this.webUser(req) : undefined;
+      if (!user) { this.json(res, 401, { error: "signed out" }, cors); return true; }
+      this.json(res, 200, { token: this.store.createSession(user.id, "page"), user: { name: user.name, email: user.email, provider: user.provider } }, cors);
+      return true;
+    }
     const pageUser = () => { const a = this.bearer(req); return a?.via === "page" ? a.user : undefined; };
     if (p === "/auth/me" && method === "GET") {
       const u = pageUser();
@@ -280,7 +299,9 @@ export class Accounts {
     if (p === "/auth/logout" && method === "POST") {
       const m = String(req.headers.authorization ?? "").match(/^Bearer\s+(\S+)$/i);
       if (m) this.store.endSession(m[1]);
-      this.json(res, 200, { ok: true }, cors);
+      const web = cookies(req)[SESSION_COOKIE]; // signing out of the site signs out of this server too
+      if (web) this.store.endSession(web);
+      this.json(res, 200, { ok: true }, { ...cors, "set-cookie": this.setSession(res, null) });
       return true;
     }
     if (p === "/auth/disconnect" && method === "POST") {
@@ -299,6 +320,28 @@ export class Accounts {
     }
     if (p === "/auth/providers" && method === "GET") { this.json(res, 200, { providers: this.providers }, cors); return true; }
     return false;
+  }
+
+  /** A registered client, or a client identified by its metadata document URL (CIMD), fetched and checked. */
+  private async clientFor(id: string): Promise<OAuthClient | undefined> {
+    if (!id.startsWith("https://")) return this.store.client(id);
+    try { return await this.metadataClient(id); } catch { return undefined; }
+  }
+  private async metadataClient(id: string): Promise<OAuthClient | undefined> {
+    const u = new URL(id);
+    // The client_id is an https URL with a path; never a bare IP, a private host, credentials or a fragment.
+    if (u.pathname === "/" || u.hash || u.username || u.password || (u.port && u.port !== "443") || isIP(u.hostname.replace(/^\[|\]$/g, "")) || !u.hostname.includes(".") || /(^|\.)(localhost|internal|local)$/i.test(u.hostname)) return undefined;
+    if (!(await (this.cfg.publicHost ?? publicHost)(u.hostname))) return undefined;
+    const res = await this.fetch(id, { headers: { accept: "application/json" }, redirect: "error", signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return undefined;
+    const text = await res.text();
+    if (text.length > 20_000) return undefined;
+    const d = JSON.parse(text) as { client_id?: unknown; client_name?: unknown; redirect_uris?: unknown; token_endpoint_auth_method?: unknown };
+    if (d.client_id !== id) return undefined; // the document must name itself
+    if (d.token_endpoint_auth_method !== undefined && d.token_endpoint_auth_method !== "none") return undefined; // public clients only
+    const uris = Array.isArray(d.redirect_uris) ? d.redirect_uris.filter((x): x is string => typeof x === "string") : [];
+    if (!uris.length || uris.length > 10 || !uris.every((x) => /^https:\/\/[^\s]+$/.test(x) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(x))) return undefined;
+    return this.store.saveClient(id, String(d.client_name ?? u.hostname).slice(0, 80), uris);
   }
 
   /** Exchange a provider's code for who the person is. */
@@ -346,4 +389,12 @@ h1 { margin: 0 0 14px; font: 700 12px/1 -apple-system, Arial, sans-serif; letter
 .btn:hover, button:hover { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 .primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 </style></head><body><main><div class="brand">CoroSim</div><h1>${esc(title)}</h1>${body}</main></body></html>`;
+}
+
+/** Does this host resolve only to public addresses? (A client metadata URL must not reach this server's network.) */
+async function publicHost(host: string): Promise<boolean> {
+  const addrs = await lookup(host, { all: true });
+  return addrs.length > 0 && addrs.every(({ address: a, family }) => family === 4
+    ? !/^(0|10|127|169\.254|172\.(1[6-9]|2\d|3[01])|192\.168|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7]))\./.test(a + ".") && !a.startsWith("0.")
+    : !/^(::1?$|f[cd]|fe[89ab]|::ffff:)/i.test(a));
 }

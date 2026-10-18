@@ -1019,14 +1019,15 @@ const LIVE_LABEL: Record<LiveStatus["state"], string> = { off: "AI paused", conn
 const PROVIDER_LABEL: Record<string, string> = { google: "Continue with Google", github: "Continue with GitHub", dev: "Continue with a development account" };
 function linkUi(st: LiveStatus) {
   const signedIn = !!account.user;
-  $("ac_out").hidden = signedIn; $("ac_in").hidden = !signedIn;
+  $("ac_out").hidden = signedIn; $("ac_in").hidden = $("ac_in2").hidden = !signedIn;
+  ($("ln_claude") as HTMLAnchorElement).href = account.claudeInstallUrl;
+  ($("ln_url") as HTMLInputElement).value = account.connectorUrl;
+  $("ln_cli").textContent = `claude mcp add --transport http corosim ${account.connectorUrl}`;
   if (!signedIn) {
     const html = account.providers.map((p) => `<button data-provider="${p}">${PROVIDER_LABEL[p] ?? p}</button>`).join("");
     if ($("ac_providers").innerHTML !== html) $("ac_providers").innerHTML = html || `<p class="ln-status warn">Cannot reach the CoroSim server to sign in right now.</p>`;
   } else {
     $("ac_name").textContent = account.user!.name ?? account.user!.email ?? "you";
-    ($("ln_url") as HTMLInputElement).value = account.connectorUrl;
-    $("ln_cli").textContent = `claude mcp add --transport http corosim ${account.connectorUrl}`;
     $("ac_connected").textContent = account.connected.length ? `Connected: ${account.connected.join(", ")}.` : "No AI connected yet.";
   }
   const who = st.lastClient ? st.lastClient.replace(/-/g, " ") : "Your AI";
@@ -1082,6 +1083,12 @@ async function startAccount() {
   await account.load();
   if (account.user && !inGame) live.open(); else linkUi(live.status);
   setInterval(async () => { if (account.user) { await account.refresh(); linkUi(live.status); } }, 60_000);
+  // Back from connecting Claude in another tab: that sign-in counts here too, with no second sign-in.
+  addEventListener("visibilitychange", async () => {
+    if (document.visibilityState !== "visible" || account.user || inGame || !(await account.pickUp())) return;
+    await account.refresh();
+    if (account.user) live.open(); else linkUi(live.status);
+  });
 }
 
 // Browsers restore form values on reload; force every control to match the model's starting state.
