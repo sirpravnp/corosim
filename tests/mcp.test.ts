@@ -140,3 +140,13 @@ describe("the in-chat EKG viewer", () => {
     expect((await call("corosim_get_state")).data.scenario).toEqual(before);
   });
 });
+
+describe("routing rhythm requests to the EKG tool", () => {
+  it("says up front, and in the patient tools, that rhythms go to corosim_ekg_show", async () => {
+    const { client } = await connect();
+    expect(client.getInstructions()!.slice(0, 400)).toContain("corosim_ekg_show");
+    const { tools } = await client.listTools();
+    for (const n of ["corosim_get_schema", "corosim_set_scenario", "corosim_show"]) expect(tools.find((t) => t.name === n)!.description).toContain("corosim_ekg_show");
+    expect(tools.find((t) => t.name === "corosim_ekg_show")!.description).toMatch(/torsades/);
+  });
+});
