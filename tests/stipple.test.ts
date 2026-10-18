@@ -21,4 +21,7 @@ describe("thermal ramp", () => {
     expect(RAMP_STOPS.map(([t, c]) => [t, "#" + c.toString(16).padStart(6, "0")])).toEqual(RAMP);
     for (const [, c] of RAMP) expect(thermalGradient()).toContain(c);
   });
+  it("cuts the CSS gradient at a stop, rescaled to the full width", () => {
+    expect(thermalGradient(0.7)).toBe("linear-gradient(90deg,#3a0603 0%,#8c130b 31.428571428571434%,#d8401a 68.57142857142857%,#f49218 100%)");
+  });
 });

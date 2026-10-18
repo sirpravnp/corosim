@@ -78,7 +78,8 @@ export function thermal(t: number): string {
   const [t0, c0] = RAMP[k], [t1, c1] = RAMP[k + 1], u = (t - t0) / (t1 - t0), a = hex(c0), b = hex(c1);
   return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * u)).join(",")})`;
 }
-export const thermalGradient = () => `linear-gradient(90deg,${RAMP.map(([t, c]) => `${c} ${t * 100}%`).join(",")})`;
+/** The ramp as a CSS gradient, from 0 up to `to`, which must be one of its stops. */
+export const thermalGradient = (to = 1) => `linear-gradient(90deg,${RAMP.filter(([t]) => t <= to).map(([t, c]) => `${c} ${(t / to) * 100}%`).join(",")})`;
 
 /** A set of points under Lloyd relaxation on the field. Coordinates are in raster pixels, 0..n. */
 export class Stipple {

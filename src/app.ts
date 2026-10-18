@@ -28,7 +28,7 @@ import { Case, MAX_SCORE, POINTS, Point, TREAT, TreatRecord, TreatScore, dailyCa
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const MMHG = 133.322;
 type Mode = "real" | "anat" | "pressure" | "velocity" | "wss";
-type HeartView = "solid" | "ghost" | "none";
+type HeartView = "solid" | "thermal" | "ghost" | "none";
 
 const V: Variant = { ...TYPICAL };
 const S = {
@@ -154,9 +154,22 @@ function prepareMyocardium() {
     for (let k = 0; k < NB; k++) bedW[i * NB + k] /= sum || 1;
   }
 }
+// Thermal myocardium: ventricular muscle on the thermal ramp by the perfusion of its beds (supply over demand, 0..1),
+// well perfused warm and starved beds cold; the atria and great vessels, which the model does not perfuse, at the cold end.
+const THERMAL_TOP = 0.7; // full perfusion reads orange: the ramp above it washes out under the lights
+const thermalHeart = () => S.heart === "thermal" && !S.hideIsch; // in a case the colors would give the lesion away
 function paintMyocardium() {
   const ca = heartGeo.attributes.color as THREE.BufferAttribute, c = new THREE.Color();
+  let perf: number[] | null = null; // per bed
+  if (thermalHeart()) { const r: Record<string, number> = {}; for (const t of A.cond.terminals) r[t.key] = t.ratio; perf = sites.map((s) => Math.min(1, r[s.key] ?? 1)); }
   for (let i = 0; i < hRef.length; i++) {
+    if (perf) {
+      let p = 0;
+      if (isVentricle(i)) { for (let k = 0; k < NB; k++) p += bedW[i * NB + k] * perf[bedIdx[i * NB + k]]; p = 1 - cover[i] * (1 - p); }
+      c.copy(ramp(THERMAL, THERMAL_TOP * p)).multiplyScalar(grain[i]);
+      ca.setXYZ(i, c.r, c.g, c.b);
+      continue;
+    }
     c.copy(PART_COLOR[hPart[i] as Part]).multiplyScalar(grain[i]);
     if (isVentricle(i)) {
       let isch = 0;
@@ -173,7 +186,8 @@ function applyHeartView() {
   heartMesh.visible = S.heart !== "none";
   heartMat.transparent = S.heart === "ghost"; heartMat.opacity = S.heart === "ghost" ? 0.28 : 1; heartMat.depthWrite = S.heart !== "ghost";
   heartMat.needsUpdate = true;
-  for (const k of ["solid", "ghost", "none"] as const) $("h_" + k).classList.toggle("on", S.heart === k);
+  for (const k of ["solid", "thermal", "ghost", "none"] as const) $("h_" + k).classList.toggle("on", S.heart === k);
+  paintMyocardium(); legend();
 }
 
 // ---------------------------------------------------------------- vessels
@@ -276,7 +290,8 @@ function shapeVessels() {
 function legend() {
   const bar = $("bar");
   const set = (g: string, a: string, m: string, z: string) => { bar.style.background = g; $("l0").textContent = a; $("lmid").textContent = m; $("l1").textContent = z; };
-  if (S.mode === "real") set("linear-gradient(90deg,#8e3a33 0 50%,#4e3a5a 50%)", "Myocardium", "", "Ischemic");
+  if (S.mode === "real" && thermalHeart()) set(thermalGradient(THERMAL_TOP), "Starved", "perfusion", "Perfused");
+  else if (S.mode === "real") set("linear-gradient(90deg,#8e3a33 0 50%,#4e3a5a 50%)", "Myocardium", "", "Ischemic");
   else if (S.mode === "anat") set("linear-gradient(90deg,#1f5fa8 0 33%,#2e7d4f 33% 66%,#c77c00 66%)", "LAD", "Circumflex", "RCA");
   else if (S.mode === "pressure") set(`linear-gradient(90deg,${VIRIDIS.map(([, c]) => c).join(",")})`, "20 mmHg", "55", "90 mmHg");
   else if (S.mode === "velocity") set(thermalGradient(), "0.01 m/s", "log", "4 m/s");
@@ -382,7 +397,7 @@ function controlsUi() {
   $("anatomysum").textContent = `${DOM[V.dominance]} · ${LMP[V.lm]} · ${LADC[V.ladCourse]} · SA node from ${V.saNodeFrom}`;
   const MODE = { real: "Anatomic", anat: "Territory", pressure: "Pressure", velocity: "Velocity", wss: "Wall shear" };
   $("volumesum").textContent = volumeSummary();
-  $("displaysum").textContent = `${MODE[S.mode]} · ${S.heart === "solid" ? "solid" : S.heart === "ghost" ? "see-through" : "no"} heart · ${S.exag}×${S.flow ? " · flow" : ""}${S.posterior ? " · V7–V9" : ""}`;
+  $("displaysum").textContent = `${MODE[S.mode]} · ${S.heart === "solid" ? "solid" : S.heart === "thermal" ? "thermal" : S.heart === "ghost" ? "see-through" : "no"} heart · ${S.exag}×${S.flow ? " · flow" : ""}${S.posterior ? " · V7–V9" : ""}`;
   for (const r of ["sinus", "af"]) $("r_" + r).classList.toggle("on", S.rhythm === r);
   for (const b of ["none", "rbbb", "lbbb"]) $("c_" + b).classList.toggle("on", S.bbb === b);
   $("postbtn").classList.toggle("on", S.posterior); $("stmap").classList.toggle("wide", S.posterior); ecg.posterior = S.posterior;
@@ -611,7 +626,7 @@ for (const r of ["sinus", "af"] as Rhythm[]) on("r_" + r, () => { S.rhythm = r; 
 for (const b of ["none", "rbbb", "lbbb"] as Bbb[]) on("c_" + b, () => { S.bbb = b; controlsUi(); });
 on("postbtn", () => { S.posterior = !S.posterior; controlsUi(); liveUi(); });
 (["real", "anat", "pressure", "velocity", "wss"] as Mode[]).forEach((m) => on("m_" + m, () => { S.mode = m; shapeVessels(); controlsUi(); }));
-(["solid", "ghost", "none"] as HeartView[]).forEach((h) => on("h_" + h, () => { S.heart = h; applyHeartView(); controlsUi(); }));
+(["solid", "thermal", "ghost", "none"] as HeartView[]).forEach((h) => on("h_" + h, () => { S.heart = h; applyHeartView(); controlsUi(); }));
 on("flowbtn", () => { S.flow = !S.flow; points.visible = S.flow; shapeVessels(); controlsUi(); });
 for (const k of Object.keys(VIEWS)) on(k, () => setView(k));
 on("spin", () => { controls.autoRotate = !controls.autoRotate; controls.autoRotateSpeed = 1.2; $("spin").classList.toggle("on", controls.autoRotate); });
