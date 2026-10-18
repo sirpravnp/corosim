@@ -13,9 +13,6 @@ export interface Field { n: number; rho: Float32Array; heat: Float32Array; box: 
 /** How the raster lands on a canvas: device pixels per raster pixel, and the raster origin in device pixels. */
 export interface Placement { s: number; ox: number; oy: number }
 
-/** The square of the stamp around the heart, in logo pixels, and the radius inside which there is no ring (the
- *  rings start 410 px from the center). The heart is 557 × 756 px, so it fills about four fifths of the height. */
-const LOGO_CROP = { x: 77, y: 69, size: 920, radius: 398 };
 
 /** Distance (in pixels, 3-4 chamfer) from every pixel to the nearest pixel where `inside` is true. */
 function distanceTo(inside: Uint8Array, n: number): Float32Array {
@@ -42,20 +39,16 @@ const not = (m: Uint8Array, n: number) => mask(n, (i) => !m[i]);
 const erode = (m: Uint8Array, n: number, r: number) => not(dilate(not(m, n), n, r), n);
 
 /**
- * Density and heat from the logo. `closing` is the radius (as a fraction of n) that fills the widest groove; `sigma`
+ * Density and heat from the logo (public/logo-transparent.png: the heart alone on a transparent ground, square, its
+ * coronary grooves cut through it). `closing` is the radius (as a fraction of n) that fills the widest groove; `sigma`
  * is how far, in the same units, the heat of a vessel reaches into the muscle.
  */
 export function fieldFromLogo(img: HTMLImageElement, n: number, closing = 0.03, sigma = 0.024): Field {
   const c = document.createElement("canvas"); c.width = c.height = n;
   const g = c.getContext("2d", { willReadFrequently: true })!;
-  g.drawImage(img, LOGO_CROP.x, LOGO_CROP.y, LOGO_CROP.size, LOGO_CROP.size, 0, 0, n, n);
+  g.drawImage(img, 0, 0, n, n);
   const px = g.getImageData(0, 0, n, n).data;
-  const stamp = new Uint8Array(n * n), rmax = (LOGO_CROP.radius / LOGO_CROP.size) * n;
-  const cx = ((532 - LOGO_CROP.x) / LOGO_CROP.size) * n, cy = ((532 - LOGO_CROP.y) / LOGO_CROP.size) * n; // the stamp's center
-  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-    const inRing = Math.hypot(x + 0.5 - cx, y + 0.5 - cy) > rmax;
-    stamp[y * n + x] = !inRing && px[4 * (y * n + x) + 3] > 128 ? 1 : 0;
-  }
+  const stamp = mask(n, (i) => px[4 * i + 3] > 128);
   const k = closing * n;
   const body = erode(dilate(stamp, n, k), n, k); // the stamp with its grooves closed over
   const groove = dilate(erode(mask(n, (i) => !!body[i] && !stamp[i]), n, 1.5), n, 1.5); // the grooves, less the stamp's speckle
