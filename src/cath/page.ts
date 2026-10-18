@@ -1,5 +1,6 @@
 import "./cath.css";
 import "../customSelect";
+import { mountShell } from "../shell/shell";
 import { Simulation } from "../sim/simulation";
 import { Scenario } from "../sim/scenario";
 import { decodeScenario } from "../sim/llm";
@@ -17,6 +18,7 @@ import { CASES, CASE_BY_ID, CathCase } from "./cases";
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
 
+mountShell({ page: "cath", root: "../" }).ai.start();
 const sim = new Simulation({ seed: 1 });
 const view = new AngioView($<HTMLCanvasElement>("ang"));
 let current: CathCase = CASES[0];

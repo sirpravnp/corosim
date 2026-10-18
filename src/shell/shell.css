@@ -1,0 +1,92 @@
+/* The shared header and footer (every page but the homepage) and the Connect-your-AI control, which the homepage uses too.
+   Sentence case, one hairline weight, 10px radii; colors come from each page's own tokens so dark and light both hold. */
+:root {
+  --sh-line: color-mix(in srgb, var(--ink) 16%, transparent);
+  --sh-line-strong: color-mix(in srgb, var(--ink) 30%, transparent);
+  --sh-hover: color-mix(in srgb, var(--ink) 8%, transparent);
+  --sh-radius: 10px;
+  --sh-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Header */
+.shell-head { position: relative; z-index: 30; display: flex; align-items: center; gap: 10px; padding: 16px 0; border-bottom: 1px solid var(--sh-line); }
+.shell-brand { display: flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; font: 650 20px/1 var(--font-ui); letter-spacing: -0.02em; }
+.shell-brand img { display: block; width: 32px; height: 32px; }
+.shell-sep { color: var(--sh-line-strong); font: 300 22px/1 var(--font-ui); }
+.shell-ai { margin-left: auto; }
+.shell-pages { position: relative; }
+.shell-cur, .ai-btn {
+  display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; font: 550 14px/1 var(--font-ui); letter-spacing: 0; text-transform: none;
+  color: var(--ink); background: transparent; border: 1px solid var(--sh-line); border-radius: var(--sh-radius); cursor: pointer;
+  transition: background-color 0.15s var(--sh-ease), border-color 0.15s var(--sh-ease);
+}
+.shell-cur:hover, .ai-btn:hover, .shell-cur[aria-expanded="true"], .ai-btn[aria-expanded="true"] { background: var(--sh-hover); border-color: var(--sh-line-strong); color: var(--ink); }
+.shell-cur svg { color: var(--muted); transition: transform 0.2s var(--sh-ease); }
+.shell-cur[aria-expanded="true"] svg { transform: rotate(180deg); }
+.shell-cur:focus-visible, .ai-btn:focus-visible, .shell-menu a:focus-visible, .ai-panel button:focus-visible, .ai-primary:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+.shell-menu, .ai-panel { position: absolute; z-index: 40; background: var(--panel); border: 1px solid var(--sh-line-strong); border-radius: 14px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18), 0 18px 40px rgba(0, 0, 0, 0.28); }
+.shell-menu { top: calc(100% + 8px); left: 0; width: 280px; margin: 0; padding: 6px; list-style: none; animation: sh-in 0.16s var(--sh-ease); }
+.shell-menu[hidden], .ai-panel[hidden] { display: none; }
+.shell-menu a { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 10px; border-radius: 8px; color: var(--ink); text-decoration: none; }
+.shell-menu a:hover { background: var(--sh-hover); }
+.shell-menu a svg { flex: none; opacity: 0; }
+.shell-menu a[aria-current="page"] svg { opacity: 1; }
+.shell-mi { display: grid; gap: 2px; }
+.shell-mi b { font: 600 14px/1.2 var(--font-ui); }
+.shell-mi small { font: 400 12.5px/1.3 var(--font-ui); color: var(--muted); }
+@keyframes sh-in { from { opacity: 0; transform: translateY(-4px); } }
+
+/* Connect your AI */
+.ai { position: relative; }
+.ai[hidden] { display: none; }
+.ai-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.ai-btn.wait .ai-dot { background: var(--warn); }
+.ai-btn.live .ai-dot { background: #3fb67a; box-shadow: 0 0 0 3px color-mix(in srgb, #3fb67a 28%, transparent); }
+.ai-btn.bad .ai-dot { background: var(--bad); }
+.ai-panel { top: calc(100% + 8px); right: 0; width: min(400px, calc(100vw - 32px)); padding: 16px; text-align: left; animation: sh-in 0.16s var(--sh-ease); }
+.ai-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.ai-top h2 { margin: 0; font: 650 16px/1.2 var(--font-ui); letter-spacing: -0.01em; color: var(--ink); text-transform: none; }
+.ai-x { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; color: var(--muted); background: none; border: 0; border-radius: 8px; cursor: pointer; }
+.ai-x:hover { color: var(--ink); background: var(--sh-hover); }
+.ai-lede { margin: 0 0 14px; font: 400 14px/1.5 var(--font-ui); color: var(--muted); }
+.ai-primary { display: flex; align-items: center; justify-content: center; gap: 6px; height: 40px; border-radius: var(--sh-radius); background: var(--ink); color: var(--bg); font: 600 14px/1 var(--font-ui); text-decoration: none; transition: opacity 0.15s var(--sh-ease); }
+.ai-primary:hover { opacity: 0.88; }
+.ai-status { margin: 10px 0 0; font: 500 12.5px/1.45 var(--font-ui); color: var(--muted); }
+.ai-status:empty { display: none; }
+.ai-status.ok { color: var(--ink); } .ai-status.warn { color: var(--warn); } .ai-status.bad { color: var(--bad); }
+.ai-sec { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--sh-line); }
+.ai-sec[hidden] { display: none; }
+.ai-sec h3 { margin: 0 0 8px; font: 600 13px/1.2 var(--font-ui); letter-spacing: 0; text-transform: none; color: var(--ink); }
+.ai-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 2px; background: var(--sh-hover); border-radius: var(--sh-radius); }
+.ai-tabs button { height: 30px; padding: 0 6px; font: 550 12.5px/1 var(--font-ui); letter-spacing: 0; text-transform: none; color: var(--muted); background: none; border: 0; border-radius: 8px; cursor: pointer; }
+.ai-tabs button:hover { color: var(--ink); background: none; }
+.ai-tabs button[aria-selected="true"] { color: var(--ink); background: var(--panel); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); }
+.ai-how { margin: 10px 0 8px; font: 400 13px/1.5 var(--font-ui); color: var(--muted); }
+.ai-url { display: flex; gap: 6px; }
+.ai-url code { flex: 1; min-width: 0; padding: 8px 10px; overflow-x: auto; white-space: nowrap; font: 12px/1.3 var(--font-data); color: var(--ink); background: var(--sh-hover); border-radius: 8px; user-select: all; }
+.ai-providers { display: flex; flex-wrap: wrap; gap: 6px; }
+.ai-panel .ai-providers button, .ai-copy, .ai-acts button { height: 32px; padding: 0 12px; font: 550 13px/1 var(--font-ui); letter-spacing: 0; text-transform: none; color: var(--ink); background: transparent; border: 1px solid var(--sh-line-strong); border-radius: 8px; cursor: pointer; }
+.ai-panel .ai-providers button:hover, .ai-copy:hover, .ai-acts button:hover { background: var(--sh-hover); color: var(--ink); border-color: var(--sh-line-strong); }
+.ai-fine { margin: 10px 0 0; font: 400 12.5px/1.5 var(--font-ui); color: var(--muted); }
+.ai-fine a, .ai-del { color: var(--muted); text-underline-offset: 2px; }
+.ai-fine a:hover, .ai-del:hover { color: var(--ink); }
+.ai-who { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.ai-who h3 { margin: 0; flex: none; }
+.ai-who b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 13px/1.2 var(--font-ui); }
+.ai-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
+.ai-del { margin-left: auto; font: 400 12.5px/1 var(--font-ui); }
+
+/* Footer: the site's one disclaimer */
+.shell-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 32px; margin-top: 40px; padding: 20px 0 8px; border-top: 1px solid var(--sh-line); font: 400 13px/1.55 var(--font-ui); color: var(--muted); }
+.shell-foot p { max-width: 72ch; margin: 0; text-wrap: pretty; }
+.shell-foot a { color: var(--muted); text-underline-offset: 3px; }
+.shell-foot a:hover { color: var(--ink); }
+
+@media (max-width: 560px) {
+  .shell-head { gap: 8px; padding: 12px 0; }
+  .shell-brand span, .shell-sep { display: none; }
+  .shell-ai .ai-sum { max-width: 11ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .shell-menu { width: min(280px, calc(100vw - 32px)); }
+}
+@media (prefers-reduced-motion: reduce) { .shell-menu, .ai-panel { animation: none; } .shell-cur svg { transition: none; } }

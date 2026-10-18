@@ -1,5 +1,6 @@
 import "./ekg.css";
 import "../customSelect";
+import { mountShell } from "../shell/shell";
 import { App } from "@modelcontextprotocol/ext-apps";
 import { ALL_LEADS, LEADS, LeadName } from "../config/ecg";
 import { Simulation } from "../sim/simulation";
@@ -17,6 +18,7 @@ import { LeadAxes, LeadSet } from "./leadScene";
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const embedded = window.parent !== window;
 if (embedded) document.body.classList.add("embedded");
+else mountShell({ page: "ekg", root: "../" }).ai.start();
 
 const sim = new Simulation({ seed: 1 });
 const scene = new HeartScene($("stage"), sim);

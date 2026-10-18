@@ -35,9 +35,13 @@ body.home { --bg: #000; --panel: #0b0d14; --ink: #f4f1ea; --muted: #98a0b8; --ru
 @media (min-width: 820px) {
   .home-main { grid-template-columns: minmax(300px, 420px) 1fr minmax(240px, 320px); grid-template-rows: 1fr auto; grid-template-areas: "head . fact" "doors . corner"; padding: 40px; row-gap: 28px; column-gap: 32px; align-items: end; }
   .home-head { grid-area: head; }
-  .fact { grid-area: fact; align-self: start; padding: 14px 16px 15px; }
+  .fact { grid-area: fact; align-self: start; margin-top: 56px; padding: 14px 16px 15px; } /* below the Connect AI control that sits at the top right */
   .fact-t { font-size: 14px; }
   .doors { grid-area: doors; grid-template-columns: 1fr; }
   .doors a { padding: 15px 16px; font-size: 13px; letter-spacing: 0.06em; }
   .corner { grid-area: corner; flex-direction: column; align-items: flex-end; gap: 14px; }
 }
+
+/* Connect your AI: the same control as every other page, over the thermogram */
+#home-ai.home-ai { position: fixed; z-index: 3; top: 24px; right: 16px; }
+@media (min-width: 820px) { #home-ai.home-ai { top: 40px; right: 40px; } }
