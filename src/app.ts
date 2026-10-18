@@ -934,14 +934,15 @@ async function share() {
 on("qshare", share);
 
 // ---------------------------------------------------------------- versions: the simulator alone, or with the game
-/** The page at /game/ is the game version; anywhere else it is the plain simulator. The links between them are
- *  relative, so the site still works under any URL. */
+/** The page at /game/ is the game version; anywhere else (/sim/) it is the plain simulator. The links between them
+ *  and to the homepage are relative, so the site still works under any URL. */
 function applyMode() {
   const game = /\/game(\/(index\.html)?)?$/.test(location.pathname); // /game, /game/ or /game/index.html
-  const root = game && !location.pathname.endsWith("/game") ? "../" : "./";
-  ($("modeSim") as HTMLAnchorElement).href = root; ($("modeGame") as HTMLAnchorElement).href = root + "game/";
+  const root = /\/(sim|game)\/(index\.html)?$/.test(location.pathname) ? "../" : "./"; // the site's root: the homepage
+  ($("modeSim") as HTMLAnchorElement).href = root + "sim/"; ($("modeGame") as HTMLAnchorElement).href = root + "game/";
   ($("modeEkg") as HTMLAnchorElement).href = root + "ekg/";
-  (document.querySelector(".q-plain") as HTMLAnchorElement).href = root;
+  ($("home") as HTMLAnchorElement).href = root;
+  (document.querySelector(".q-plain") as HTMLAnchorElement).href = root + "sim/";
   inGame = game;
   G.target = parseDay(new URLSearchParams(location.search).get("day"), dayKey()) ?? dayKey();
   $("modeSim").classList.toggle("on", !game); $("modeGame").classList.toggle("on", game);
@@ -1001,7 +1002,8 @@ function loadScenario(sc: Scenario): string[] {
   adoptSimState(true);
   return sim.warnings;
 }
-const appLink = () => `${location.origin}${location.pathname.replace(/game\/(index\.html)?$/, "")}#s=${encodeScenario(sim.scenario())}`;
+/** A link that opens this patient in the simulator: /sim/#s=…, from either page. */
+const appLink = () => `${location.origin}${location.pathname.replace(/(sim|game)\/?(index\.html)?$/, "")}sim/#s=${encodeScenario(sim.scenario())}`;
 
 // ---------------------------------------------------------------- connect your AI: a live MCP line to this page
 /** Each tool call from the AI runs here, on the patient on screen; the controls then follow what it changed. */

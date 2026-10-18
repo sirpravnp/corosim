@@ -97,6 +97,7 @@ Keep it to **one machine**: a page's live line is held by one process. Scale up 
 | Setting | Default | |
 |---|---|---|
 | `COROSIM_PUBLIC_URL` | `http://localhost:<port>` | The public base and OAuth issuer (`https://mcp.corosim.com` in `fly.toml`). |
+| `COROSIM_APP_URL` | `https://corosim.com/sim/` | The simulator page; `corosim_open_link` builds its `#s=` links on it. |
 | `COROSIM_DATA_DIR` / `COROSIM_DB` | memory only | SQLite location (`/data/corosim.db` in the image). |
 | `GITHUB_CLIENT_ID/_SECRET`, `GOOGLE_CLIENT_ID/_SECRET` | none | Sign-in providers; each optional. |
 | `COROSIM_ALLOWED_ORIGINS` | corosim.com, www.corosim.com, localhost | Sites that may open a line and receive sign-ins. |

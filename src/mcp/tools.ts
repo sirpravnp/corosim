@@ -299,7 +299,7 @@ export const TOOLS: ToolDef[] = [
       },
     },
     run({ appUrl }, a) {
-      const quiz = a.quiz === true, root = appUrl.replace(/\/$/, "");
+      const quiz = a.quiz === true, root = appUrl.replace(/\/$/, "").replace(/\/sim$/, ""); // appUrl is the simulator page; /ekg/ sits beside it
       let p: EkgPreset | undefined, warnings: string[] = [], custom: CustomEkg | undefined;
       if (a.custom && typeof a.custom === "object") {
         custom = a.custom as CustomEkg;

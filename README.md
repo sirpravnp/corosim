@@ -11,9 +11,9 @@ are assumptions, marked as such in the code. It has not been compared with patie
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173
+npm run dev        # http://localhost:5173 (homepage), /sim/ (simulator), /game/ (the daily game)
 npm test           # 280+ tests
-npm run build      # static site in dist/
+npm run build      # static site in dist/: index.html, sim/index.html, game/index.html
 ```
 
 ## How it works
@@ -64,12 +64,14 @@ display sections fold away with their state in the header.
 Choices are the teaching points of STEMI and infarct shock care (ACC/AHA; SHOCK, IABP-SHOCK II), not a decision aid.
 In the daily game the treatment is the second half of the case (below).
 
-## Two versions
+## Three pages
 
-One build, two front doors. `corosim.com` is the simulator alone; `corosim.com/game` is "Find the culprit", the
-simulator with the game panel at the top of the right-hand rail. The switch in the masthead moves between them. The
-build writes the same page to `dist/game/index.html` (see `vite.config.ts`); in development Vite serves it at `/game`
-by its usual fallback.
+One build, three front doors. `corosim.com` is the homepage: the title, the heart as a stippled thermogram, and the
+two links. `corosim.com/sim` is the simulator alone; `corosim.com/game` is "Find the culprit", the simulator with the
+game panel at the top of the right-hand rail. The switch in the masthead moves between the two, and the logo goes
+home. The homepage is `index.html` (`src/home.ts`, `src/stipple.ts`); the simulator is `sim/index.html`, and the build
+writes the same page to `dist/game/index.html` (see `vite.config.ts`), which the dev server serves at `/game/` by a
+rewrite. Older share links of the form `corosim.com/#s=…` are forwarded by the homepage to `/sim/#s=…`.
 
 ## Game mode: find the culprit
 
