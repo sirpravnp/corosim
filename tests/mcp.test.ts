@@ -97,12 +97,12 @@ describe("export formats", () => {
 
 import { VIEWER_URI, VIEWER_MIME, viewerHtml } from "../src/mcp/server";
 describe("the in-chat viewer (MCP Apps)", () => {
-  it.runIf(!!viewerHtml())("is served as a ui:// resource and attached to the tools that show a patient", async () => {
+  it.runIf(!!viewerHtml())("is served as a ui:// resource and attached only to corosim_show", async () => {
     const { client } = await connect();
     const { tools } = await client.listTools();
     const withUi = tools.filter((t) => (t._meta as { ui?: { resourceUri?: string } } | undefined)?.ui?.resourceUri === VIEWER_URI).map((t) => t.name).sort();
-    expect(withUi).toEqual(["corosim_adjust", "corosim_get_state", "corosim_run", "corosim_set_scenario", "corosim_show", "corosim_treat"]);
-    expect(tools.find((t) => t.name === "corosim_get_state")!._meta!["ui/resourceUri"]).toBe(VIEWER_URI); // legacy key for older hosts
+    expect(withUi).toEqual(["corosim_show"]); // one panel per turn: only the show tool draws it
+    expect(tools.find((t) => t.name === "corosim_show")!._meta!["ui/resourceUri"]).toBe(VIEWER_URI); // legacy key for older hosts
     expect(tools.find((t) => t.name === "corosim_compare")!._meta).toBeUndefined();
     const res = await client.readResource({ uri: VIEWER_URI });
     const c = res.contents[0] as { mimeType: string; text: string };

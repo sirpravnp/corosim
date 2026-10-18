@@ -14,7 +14,8 @@ export interface ToolDef {
   name: string; title: string; description: string;
   inputSchema: Record<string, unknown>;
   readOnly: boolean;
-  /** Shows the patient: hosts that support MCP Apps render the in-chat viewer with its result. */
+  /** Shows the patient: hosts that support MCP Apps render the in-chat viewer with its result. Only corosim_show, so a
+   *  turn that looks at the patient and then shows it draws one panel, not one per tool call. */
   viewer?: boolean;
   run(ctx: ToolContext, args: Record<string, unknown>): unknown;
 }
@@ -150,7 +151,7 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
-    name: "corosim_set_scenario", title: "Build a patient", readOnly: false, viewer: true,
+    name: "corosim_set_scenario", title: "Build a patient", readOnly: false,
     description: `Replace the current patient with this scenario, then run a warm-up so the reflexes have settled. Returns the monitor, the 12-lead ECG, the guideline assessment and a grounded explanation, plus warnings listing anything that was clamped or dropped (read them: they tell you what actually ran). Use settled=false to watch an occlusion develop from a healthy start. The warm-up does not advance the infarct clock; corosim_run and corosim_adjust do (2 clinical minutes per simulated second), so a closed artery loses muscle as you run it. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: { scenario: scenarioSchema, settled: { type: "boolean", description: "Start with ischemia already at its steady value (default true). False = ischemia develops over ~20 s." }, warmupSeconds: { type: "number", minimum: 0, maximum: 300, description: "Simulated seconds to run before returning (default 45)." } } },
     run({ sim }, a) {
@@ -160,7 +161,7 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
-    name: "corosim_adjust", title: "Change the patient while it runs", readOnly: false, viewer: true,
+    name: "corosim_adjust", title: "Change the patient while it runs", readOnly: false,
     description: `Apply a change to the running patient (give a drug, start a hemorrhage, occlude an artery) and optionally run on to watch the response. Fields you leave out are unchanged; drug and volume changes ramp in over ~10 s like a real bolus. Returns the response time course. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", required: ["patch"], properties: { patch: scenarioSchema, runSeconds: { type: "number", minimum: 0, maximum: 600, description: "Simulated seconds to run after the change (default 60)." } } },
     run(ctx, a) {
@@ -170,19 +171,19 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
-    name: "corosim_run", title: "Advance the simulation", readOnly: false, viewer: true,
+    name: "corosim_run", title: "Advance the simulation", readOnly: false,
     description: `Run the current patient forward (the infarct clock runs: 2 clinical minutes per second) and return rate, pressures, stroke volume and ectopy, a time course, the monitor, ECG and guideline assessment at the end, and optionally the individual beats. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: { seconds: { type: "number", minimum: 1, maximum: 900, description: "Simulated seconds (default 60)." }, beats: { enum: ["none", "all"], description: "'all' adds a beat-by-beat table (decimated to maxBeats)." }, maxBeats: { type: "integer", minimum: 5, maximum: 500, description: "Row cap for the beat table (default 120)." }, autonomic: { type: "boolean", description: "Also return heart-rate variability and baroreflex-sensitivity statistics. Only for autonomic-physiology questions." } } },
     run(ctx, a) { return runReport(ctx, num(a.seconds, 60, 1, 900), a.beats === "all" ? "all" : "none", Math.trunc(num(a.maxBeats, 120, 5, 500)), a.autonomic === true); },
   },
   {
-    name: "corosim_get_state", title: "Current hemodynamic state", readOnly: true, viewer: true,
+    name: "corosim_get_state", title: "Current hemodynamic state", readOnly: true,
     description: `The patient right now, as at the bedside: monitor (10 s rolling vitals), 12-lead ECG ST levels by lead, rhythm, ventricle and infarct size, support running, ischemic beds, FFR, and the guideline assessment (problems, anything harmful being done, next steps in order). Does not advance time. Read this first. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: {} },
     run({ sim }) { return { warnings: sim.warnings, ...bedside(sim) }; },
   },
   {
-    name: "corosim_treat", title: "Revascularize: PCI, fibrinolysis or CABG", readOnly: false, viewer: true,
+    name: "corosim_treat", title: "Revascularize: PCI, fibrinolysis or CABG", readOnly: false,
     description: `Treat the culprit artery. The order's real delay runs first on the infarct clock (primary PCI 60 min, fibrinolytic 40 min, CABG 4 h), so muscle keeps dying while the team gets there; then PCI stents the lesion open, a fibrinolytic opens an occlusion in about half of patients (fixed per patient) and leaves a 50% stenosis, CABG grafts beyond the lesion. Returns what happened, infarct size before and at arrival, and the patient afterwards. For support (fluids, pressors, inotropes, nitrates, atropine, pacing, balloon pump, Impella) use corosim_adjust. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", required: ["procedure"], properties: { procedure: { enum: ["pci", "lysis", "cabg"] }, runSecondsAfter: { type: "number", minimum: 0, maximum: 300, description: "Seconds to run after the procedure lands, to watch recovery (default 30)." } } },
     run(ctx, a) {
