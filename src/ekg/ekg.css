@@ -115,12 +115,12 @@ button.dd-btn[aria-expanded="true"]::after { transform: translateY(2px) rotate(-
 .notes h3 { margin: 0 0 8px; font: 600 13px/1 var(--font-ui); letter-spacing: 0; }
 .notes ul { margin: 0; padding-left: 18px; font-size: 14px; }
 .notes li { margin: 4px 0; }
-.next { margin: 0; padding: 10px 14px; border-left: 4px solid var(--accent); background: var(--panel); font-size: 14px; }
+.next { margin: 0; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--sh-line)); background: var(--panel); font-size: 14px; }
 .hidden-read { padding: 14px; background: var(--panel); border: 1px dashed var(--rule); color: var(--muted); }
 .hidden-read button { margin-left: 8px; }
 
 /* Quiz */
-.quiz { padding: 12px 14px; background: var(--panel); border: 1px solid var(--sh-line); border-left: 4px solid var(--vec); }
+.quiz { padding: 12px 14px; background: var(--panel); border: 1px solid color-mix(in srgb, var(--vec) 55%, var(--sh-line)); }
 .qhead { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
 .qhead b { font: 600 13px/1 var(--font-ui); letter-spacing: 0; }
 .qscore { font: 13px var(--font-data); color: var(--muted); }
@@ -144,7 +144,7 @@ button.dd-btn[aria-expanded="true"]::after { transform: translateY(2px) rotate(-
 .views { position: absolute; left: 6px; bottom: 6px; display: flex; gap: 4px; flex-wrap: wrap; }
 .views button { padding: 5px 7px; font-size: 10px; }
 .leadctl { display: grid; gap: 8px; }
-.leadnote { margin: 0; padding: 10px 12px; font-size: 13.5px; background: var(--panel); border: 1px solid var(--sh-line); border-left: 4px solid var(--vec); }
+.leadnote { margin: 0; padding: 10px 12px; font-size: 13.5px; background: var(--panel); border: 1px solid color-mix(in srgb, var(--vec) 55%, var(--sh-line)); }
 .leadnote b { font-family: var(--font-data); }
 .fine { margin: 0; font-size: 12px; color: var(--muted); }
 
