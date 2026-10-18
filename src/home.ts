@@ -1,5 +1,6 @@
 // The homepage: a different heart each day, stippled as a thermogram. The dots settle on load and stand still; a cursor
 // over them stirs them, and they flow back. The title, the fact and the doors are laid over the picture (home.css).
+import { mountAi } from "./shell/ai";
 import { Placement, Stipple, draw, dotsFor, thermalGradient } from "./stipple";
 import { fieldFor, usesLogo } from "./specimenArt";
 import { specimenFor } from "./specimens";
@@ -13,6 +14,7 @@ const OMEGA = 0.5; // animated: each frame goes halfway to the centroid, so the 
 const STIR = { reach: 100, push: 4.5, warmth: 0.55 }; // the cursor's reach and shove per frame (screen px, so the same on every heart) and heat
 const DOTS = { min: 3000, max: 8000, perPx2: 0.0415, dot: 0.43 }; // the budget: dots per screen pixel² of density-weighted heart (about 7 000 on the logo heart on a desktop), the caps, and the dot's radius as a share of the dot spacing
 $("bar").style.background = thermalGradient();
+void mountAi($("home-ai"), "./").start();
 
 // ?heart=<id> or ?day=YYYY-MM-DD pick a heart; with neither it is today's.
 const sp = specimenFor(location.search);

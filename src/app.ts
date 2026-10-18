@@ -20,7 +20,7 @@ import { Simulation } from "./sim/simulation";
 import { Scenario, LesionSpec } from "./sim/scenario";
 import { encodeScenario, decodeScenario } from "./sim/llm";
 import { TOOLS } from "./mcp/tools";
-import { Account, LiveLink, LiveStatus } from "./live";
+import { mountShell } from "./shell/shell";
 import { Case, MAX_SCORE, POINTS, Point, TREAT, TreatRecord, TreatScore, dailyCase, dayKey, dayNumber, explain, explainTreatment, fullFindings, judge, keyOfDay, muscleSaved, parseDay, rvInvolvement, score, streaks, treatScore } from "./game";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -938,8 +938,10 @@ on("qshare", share);
  *  and to the homepage are relative, so the site still works under any URL. */
 /** The cath lab link opens the patient on screen (/cath/#s=…) when it is followed. In the game it stays plain: the angiogram would show the culprit. */
 let cathBase = "./cath/";
+/** The shared header and footer; its AI control runs the tools on the patient on screen (see runForAi). */
+const shell = mountShell({ page: "sim", root: "../", ai: { run: (name, args) => runForAi(name, args), restore: (sc) => restoreFromServer(sc), version: "0.4.0" } });
 function cathLinkUi() {
-  const a = $("modeCath") as HTMLAnchorElement, b = $("openCath") as HTMLAnchorElement; // the masthead link and the Reperfuse tab's
+  const a = shell.menuLink("cath")!, b = $("openCath") as HTMLAnchorElement; // the page menu's link and the Reperfuse tab's
   const point = () => { a.href = b.href = inGame ? cathBase : `${cathBase}#s=${encodeScenario(sim.scenario())}`; };
   for (const el of [a, b]) for (const ev of ["pointerdown", "focus", "mouseenter", "contextmenu", "touchstart"]) el.addEventListener(ev, point);
   a.title = "Open this patient in the cath lab"; a.setAttribute("aria-label", "Open in cath lab");
@@ -947,18 +949,14 @@ function cathLinkUi() {
 function applyMode() {
   const game = /\/game(\/(index\.html)?)?$/.test(location.pathname); // /game, /game/ or /game/index.html
   const root = /\/(sim|game)\/(index\.html)?$/.test(location.pathname) ? "../" : "./"; // the site's root: the homepage
-  ($("modeSim") as HTMLAnchorElement).href = root + "sim/"; ($("modeGame") as HTMLAnchorElement).href = root + "game/";
-  ($("modeEkg") as HTMLAnchorElement).href = root + "ekg/";
   cathBase = root + "cath/";
-  ($("modeCath") as HTMLAnchorElement).href = cathBase; ($("openCath") as HTMLAnchorElement).href = cathBase;
+  shell.menuLink("cath")!.href = cathBase; ($("openCath") as HTMLAnchorElement).href = cathBase;
   $("openCath").hidden = game; // the game keeps the culprit hidden
-  ($("home") as HTMLAnchorElement).href = root;
   (document.querySelector(".q-plain") as HTMLAnchorElement).href = root + "sim/";
   inGame = game;
   G.target = parseDay(new URLSearchParams(location.search).get("day"), dayKey()) ?? dayKey();
-  $("modeSim").classList.toggle("on", !game); $("modeGame").classList.toggle("on", game);
-  $("aibtn").hidden = game; // the game page has no AI line
-  $("kind").textContent = game ? "Find the culprit · a game on the simulator" : "3D Coronary Vasculature Simulator";
+  shell.setPage(game ? "game" : "sim");
+  shell.ai.setHidden(game); // the game page has no AI line: an AI on the line could read the lesion
   document.title = game ? "CoroSim · Find the culprit" : "CoroSim";
   gameUi();
 }
@@ -1025,99 +1023,17 @@ function runForAi(name: string, args: Record<string, unknown>) {
   const stream = sim.stream, t0 = sim.t, sig = JSON.stringify(sim.scenario());
   const result = tool.run({ sim, appUrl: appLink().split("#")[0] }, args);
   if (sim.stream !== stream || sim.t !== t0 || JSON.stringify(sim.scenario()) !== sig) adoptSimState(sim.stream !== stream);
-  live.snapshot(sim.scenario());
+  shell.ai.live!.snapshot(sim.scenario());
   return result;
 }
-let restored: { at: number; note: string } | null = null;
-const LIVE_LABEL: Record<LiveStatus["state"], string> = { off: "AI paused", connecting: "Connecting…", open: "AI ready", retrying: "Reconnecting…", replaced: "In another tab", signedout: "Connect AI" };
-const PROVIDER_LABEL: Record<string, string> = { google: "Google", github: "GitHub", dev: "Development account" };
-/** Other apps: one short instruction and the one thing to copy for each. */
-let app_: "chatgpt" | "code" | "any" = "chatgpt";
-function otherApp() {
-  const url = account.connectorUrl;
-  const [how, copy] = app_ === "chatgpt" ? ["Settings → Apps & Connectors → Advanced → Developer mode. Create a connector, paste this URL and sign in.", url]
-    : app_ === "code" ? ["Run this, then type /mcp in Claude Code to sign in.", `claude mcp add --transport http corosim ${url}`]
-    : ["Add this as a remote (HTTP) MCP server. It asks you to sign in.", url];
-  $("ln_how").textContent = how; $("ln_field").textContent = copy;
-  for (const b of document.querySelectorAll<HTMLButtonElement>(".ai-tabs button")) b.setAttribute("aria-selected", String(b.dataset.app === app_));
-}
-document.querySelector(".ai-tabs")!.addEventListener("click", (e) => {
-  const a = (e.target as HTMLElement).closest("button")?.dataset.app as typeof app_ | undefined;
-  if (a) { app_ = a; otherApp(); }
-});
-function linkUi(st: LiveStatus) {
-  const signedIn = !!account.user;
-  $("ac_out").hidden = signedIn; $("ac_in").hidden = !signedIn;
-  ($("ln_claude") as HTMLAnchorElement).href = account.claudeInstallUrl;
-  otherApp();
-  if (!signedIn) {
-    const html = account.providers.map((p) => `<button data-provider="${p}">${PROVIDER_LABEL[p] ?? p}</button>`).join("");
-    if ($("ac_providers").innerHTML !== html) $("ac_providers").innerHTML = html || `<p class="ai-fine">Cannot reach the CoroSim server to sign in right now.</p>`;
-  } else {
-    $("ac_name").textContent = account.user!.name ?? account.user!.email ?? "you";
-    $("ac_connected").textContent = account.connected.length ? `Connected: ${account.connected.join(", ")}` : "No AI connected yet";
-  }
-  const who = st.lastClient ? st.lastClient.replace(/-/g, " ") : "Your AI";
-  const [text, tone] = st.state === "open"
-    ? st.clients ? [`${who} is working with this patient${st.lastTool ? ` · last: ${st.lastTool.replace("corosim_", "")}` : ""}.`, "ok"] : ["Ready. Ask your AI about this patient; it works here while this page is open, and on your saved patient when it is not.", "ok"]
-    : st.state === "replaced" ? ["Your AI is working with CoroSim in another tab.", "bad"]
-    : st.state === "off" || st.state === "signedout" ? ["", ""] : [st.detail ?? "Connecting to the CoroSim server…", "warn"];
-  const fresh = restored && Date.now() - restored.at < 30_000; // say so for a while: the status line updates often
-  $("ln_status").textContent = fresh ? restored!.note : text; $("ln_status").className = "ln-status " + (fresh ? "ok" : tone);
-  // the masthead button: what the line is doing, at a glance
-  const working = st.state === "open" && st.clients > 0;
-  $("ln_sum").textContent = !signedIn ? "Connect AI" : working ? `${who} connected` : LIVE_LABEL[st.state];
-  const btn = $("aibtn");
-  btn.classList.toggle("live", signedIn && st.state === "open"); btn.classList.toggle("wait", signedIn && (st.state === "connecting" || st.state === "retrying")); btn.classList.toggle("bad", st.state === "replaced");
-}
-/** The panel under the masthead button: opens on click, closes on ×, Escape or a click elsewhere. */
-function aiPanel(open: boolean) { $("aipanel").hidden = !open; $("aibtn").setAttribute("aria-expanded", String(open)); }
-on("aibtn", () => aiPanel($("aipanel").hidden));
-on("ai_close", () => aiPanel(false));
-addEventListener("keydown", (e) => { if (e.key === "Escape") aiPanel(false); });
-addEventListener("pointerdown", (e) => { const t = e.target as Node; if (!$("aipanel").hidden && !$("aipanel").contains(t) && !$("aibtn").contains(t)) aiPanel(false); });
 /** An AI changed the saved patient while this page was closed: pick up where it left off. */
 function restoreFromServer(sc: Scenario) {
   if (G.phase !== "idle") return; // a game case owns the patient; the saved one waits for next time
   const w = loadScenario(sc);
-  restored = { at: Date.now(), note: "Picked up the patient your AI left while this page was closed" + (w.length ? ` (adjusted: ${w.join("; ")})` : ".") };
-  linkUi(live.status);
+  shell.ai.note("Picked up the patient your AI left while this page was closed" + (w.length ? ` (adjusted: ${w.join("; ")})` : "."));
 }
-const account = new Account();
-const live = new LiveLink(account, runForAi, linkUi, restoreFromServer, "0.4.0");
 // Keep the server's copy of this patient current as it is edited here, so the AI works on it with the page closed.
-setInterval(() => { if (G.phase === "idle") live.snapshot(sim.scenario()); }, 3000);
-$("ac_providers").addEventListener("click", (e) => { const p = (e.target as HTMLElement).closest("button")?.dataset.provider; if (p) account.signIn(p); });
-on("ac_signout", async () => { live.close(); await account.signOut(); linkUi(live.status); });
-on("ac_disconnect", async () => {
-  if (!confirm("Disconnect every AI from your CoroSim account? They will ask you to sign in again.")) return;
-  try { await account.disconnectAIs(); } catch (e) { alert((e as Error).message); }
-  linkUi(live.status);
-});
-on("ac_delete", async (e?: Event) => {
-  e?.preventDefault();
-  if (!confirm("Delete your CoroSim account? This removes your saved patient and every AI connection, and cannot be undone. The patient on this page stays until you leave it.")) return;
-  live.close();
-  try { await account.deleteAccount(); } catch (err) { alert((err as Error).message); }
-  linkUi(live.status);
-});
-on("ln_copy", async () => {
-  const f = $("ln_field");
-  try { await navigator.clipboard.writeText(f.textContent ?? ""); $("ln_copy").textContent = "Copied"; setTimeout(() => { $("ln_copy").textContent = "Copy"; }, 2000); }
-  catch { getSelection()?.selectAllChildren(f); }
-});
-/** Who is signed in decides whether the line opens; refresh the list of connected AIs now and then. */
-async function startAccount() {
-  await account.load();
-  if (account.user && !inGame) live.open(); else linkUi(live.status);
-  setInterval(async () => { if (account.user) { await account.refresh(); linkUi(live.status); } }, 60_000);
-  // Back from connecting Claude in another tab: that sign-in counts here too, with no second sign-in.
-  addEventListener("visibilitychange", async () => {
-    if (document.visibilityState !== "visible" || account.user || inGame || !(await account.pickUp())) return;
-    await account.refresh();
-    if (account.user) live.open(); else linkUi(live.status);
-  });
-}
+setInterval(() => { if (G.phase === "idle") shell.ai.live!.snapshot(sim.scenario()); }, 3000);
 
 // Browsers restore form values on reload; force every control to match the model's starting state.
 $<HTMLInputElement>("pos").value = String(S.pos * 100);
@@ -1135,9 +1051,8 @@ function openShared() {
 openShared();
 addEventListener("hashchange", openShared);
 cathLinkUi();
-linkUi(live.status);
-void startAccount();
+void shell.ai.start();
 /** Handle for scripts and browser-driving assistants: corosim.sim, corosim.load(scenario), corosim.live. */
-(window as unknown as { corosim: object }).corosim = { sim, load: loadScenario, live, account, refresh: () => { controlsUi(); liveUi(); linkUi(live.status); } };
+(window as unknown as { corosim: object }).corosim = { sim, load: loadScenario, live: shell.ai.live, account: shell.ai.account, refresh: () => { controlsUi(); liveUi(); } };
 requestAnimationFrame(frame);
 void LEADS;

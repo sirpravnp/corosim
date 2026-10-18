@@ -13,50 +13,7 @@
 <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
-<header class="masthead">
-  <h1><a id="home" class="homelink" href="../" aria-label="CoroSim home"><img class="logo" src="/logo-transparent.png" alt="" width="56" height="56"></a>CoroSim <span class="kind" id="kind">3D Coronary Vasculature Simulator</span></h1>
-  <div class="mast-right">
-    <nav class="modes" aria-label="Version">
-      <a id="modeSim" href="../sim/" class="on">Simulator</a>
-      <a id="modeGame" href="../game/">Find the culprit</a>
-      <a id="modeEkg" href="../ekg/">EKG</a>
-      <a id="modeCath" href="../cath/">Cath lab</a>
-    </nav>
-    <button id="aibtn" class="aibtn" aria-expanded="false" aria-controls="aipanel"><i class="dot"></i><span id="ln_sum">Connect AI</span></button>
-  </div>
-  <section id="aipanel" class="aipanel" hidden aria-label="Connect your AI">
-    <div class="ai-head"><h2>Connect your AI</h2><button id="ai_close" class="ai-x" aria-label="Close">×</button></div>
-    <p class="ai-lede">Your AI reads the monitor, changes the patient and draws the heart and ECG right in the chat.</p>
-    <a id="ln_claude" class="addbtn" target="_blank" rel="noopener">Add to Claude<span aria-hidden="true">↗</span></a>
-    <ol class="ai-steps" aria-label="In Claude">
-      <li><i>1</i>Add</li><li><i>2</i>Connect</li><li><i>3</i>Allow</li>
-    </ol>
-    <p class="ln-status" id="ln_status" role="status"></p>
-
-    <div class="ai-sec">
-      <h3>Other apps</h3>
-      <div class="ai-tabs" role="tablist">
-        <button role="tab" data-app="chatgpt" aria-selected="true">ChatGPT</button><button role="tab" data-app="code" aria-selected="false">Claude Code</button><button role="tab" data-app="any" aria-selected="false">Any MCP app</button>
-      </div>
-      <p class="ai-how" id="ln_how"></p>
-      <div class="ln-url"><code id="ln_field"></code><button id="ln_copy">Copy</button></div>
-    </div>
-
-    <div class="ai-foot" id="ac_out">
-      <span class="ai-label">Sign in here first</span>
-      <div id="ac_providers"></div>
-      <p class="ai-fine">One sign-in covers this page and your AI. We keep your name, email and patient, nothing else. <a href="../privacy.html">Privacy</a></p>
-    </div>
-    <div class="ai-foot" id="ac_in" hidden>
-      <div class="ai-who"><span class="ai-label">Signed in</span><b id="ac_name"></b></div>
-      <p class="ai-fine" id="ac_connected"></p>
-      <div class="ai-acts">
-        <button id="ac_disconnect">Disconnect AIs</button><button id="ac_signout">Sign out</button>
-        <a href="#" id="ac_delete" class="ai-del">Delete account</a>
-      </div>
-    </div>
-  </section>
-</header>
+<header id="shell-head"></header>
 
 <main>
   <section>
@@ -299,7 +256,7 @@
     <a class="q-plain" href="../sim/">Just the simulator</a>
   </div>
 </div>
-<footer class="foot">For education only; not for clinical decisions. Anatomy is schematic and model constants are assumptions.</footer>
+<footer id="shell-foot"></footer>
 <script type="module" src="/src/app.ts"></script>
 </body>
 </html>

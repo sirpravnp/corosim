@@ -10,18 +10,7 @@
 </head>
 <body>
 <div class="app" id="app">
-<header class="masthead">
-  <h1><a class="homelink" href="../" aria-label="CoroSim home"><img class="logo" src="/logo-transparent.png" alt="" width="48" height="48"></a>CoroSim <span class="kind">EKG · simulated 12-lead</span></h1>
-  <div class="mast-right">
-    <nav class="modes" aria-label="Version">
-      <a id="modeSim" href="../sim/">Simulator</a>
-      <a id="modeGame" href="../game/">Find the culprit</a>
-      <a id="modeEkg" href="./" class="on" aria-current="page">EKG</a>
-      <a id="modeCath" href="../cath/">Cath lab</a>
-    </nav>
-    <a id="askClaude" class="askbtn" target="_blank" rel="noopener" title="Open Claude with this tracing (needs the CoroSim connector)">Ask Claude<span aria-hidden="true">↗</span></a>
-  </div>
-</header>
+<header id="shell-head"></header>
 
 <main>
   <nav class="library" aria-label="Presets">
@@ -41,6 +30,7 @@
         <p id="summary" class="summary"></p>
       </div>
       <div class="pickwrap" id="pickwrap" hidden><select id="pick" aria-label="Preset"></select></div>
+      <a id="askClaude" class="askbtn" target="_blank" rel="noopener" title="Open Claude with this tracing (needs the CoroSim connector)">Ask Claude<span aria-hidden="true">↗</span></a>
     </div>
 
     <div class="quiz" id="quiz" hidden>
@@ -87,9 +77,9 @@
       </div>
       <p class="leadnote" id="leadnote"></p>
     </div>
-    <p class="fine">Educational simulation; not for clinical decisions. Waveforms come from a dipole model of the heart: real tracings vary, and findings spread to neighbouring leads more than in life.</p>
   </aside>
 </main>
+<footer id="shell-foot"></footer>
 </div>
 <script type="module" src="../src/ekg/page.ts"></script>
 </body>
