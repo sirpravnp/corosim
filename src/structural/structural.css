@@ -24,7 +24,7 @@ table.data td:first-child { font-weight: 600; }
 table.data .bad { color: var(--bad); font-weight: 600; } table.data .warn { color: var(--warn); } table.data .dim { color: var(--muted); }
 .loops { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .note[hidden] { display: none; }
-#warn { border-left-color: var(--warn); color: var(--ink); }
+#warn { border-color: color-mix(in srgb, var(--warn) 60%, var(--sh-line)); color: var(--ink); }
 
 table.data tr.dim td { color: var(--muted); }
 .screen canvas { aspect-ratio: auto; }
