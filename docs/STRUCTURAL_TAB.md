@@ -1,6 +1,27 @@
 # Structural tab: congenital and valve variants on the simulator's own 3D heart, with hemodynamic estimates
 
-Status: plan, no app code. Revised after clarifying scope: the base is the **procedural heart the sim and EKG pages already draw** (`src/anatomy/heartSurface.ts`, rendered in `src/app.ts` and `src/viewer/heartScene.ts`), not the CT volume used by the cath lab spike.
+Status: **Phases 0, 1 and 2 are built** (engine, 17 lesions, the page at `/structural/`, and the 3D heart with a cutaway). Phases 3 to 7 are still plan. Each phase is built by one model and reviewed by another (five Opus review passes so far; the findings that changed the design are listed under "What the reviews changed"). TAPVR and HLHS are the next lesions (Phase 3).
+
+Built: `src/config/structural.ts`, `src/physics/structural.ts` (engine), `src/sim/structural.ts` (lesion presets, grading, murmur, URL hash), `src/structural/` and `structural/index.html` (page), `tests/structural*.test.ts`. Phase 2 adds `src/anatomy/heartSurface.ts` (`HeartMorph`, `heartSdfMorph`, great vessels; the default heart is bit-identical), `src/structural/{morph,heartView,meshWorker,props}.ts`, and `tests/structuralHeart.test.ts`, `tests/structuralProps.test.ts`. Run the page with `npm run dev` and open `/structural/#lesion=tof`.
+
+Lesions now in the library: aortic, mitral, tricuspid and pulmonary stenosis and regurgitation; PDA, ASD, VSD; tetralogy of Fallot; pulmonary atresia with VSD and with intact septum; tricuspid atresia; Ebstein anomaly. Still to come: TAPVR and HLHS (Phase 3), treatments (Phase 4), MCP tools (Phase 5), ECG patterns (Phase 6), 3D heart and cutaway (Phase 2, next).
+
+## What the reviews changed
+
+- The baseline is designed from the patient's resting heart rate and pulmonary resistance; an override (rate, PVR, SVR) changes only its own parameter. Blood volume is the patient's and is conserved across every lesion and chamber resize.
+- Ventricular activation is a double-Hill curve (ejection about 280 ms in the adult); the first sine version ejected for half that and made normal valves look stenotic.
+- The venous side is split into SVC and IVC; the report separates ventricular stroke volume (EDV − ESV) from net forward flow; Qp:Qs by oxygen uses each bed's own content. That check is bookkeeping, not an independent model.
+- Grading is per valve, stenosis and regurgitation separately, worst of the two for the headline; stenosis by Gorlin area as a fraction of that patient's normal valve (so a newborn's valve is judged against its own size), regurgitation by regurgitant fraction and by orifice area.
+- The 3D heart is the simulator's own SDF heart reshaped (chamber sizes from the solved volumes, vessel widths from flow), with the great vessels laid out in the patient frame and converted; meshes are built in a worker with a cache; the cutaway plane faces the camera. Every structure is coloured by the oxygen saturation of its blood.
+- Circulations that cannot work (no lung flow, no systemic flow, an empty chamber) say so instead of reporting numbers.
+
+## Known limits (also shown on the page)
+
+- No reflexes: pressure does not defend itself, so a PDA or VSD shows a large fall in systemic pressure.
+- No inertance: instantaneous peak gradients across normal valves are about twice clinical Doppler values (the mean gradient and the Gorlin area are what grading uses); a duct feeding the lower body also pushes blood into the arch, so upper-body saturation in newborn pulmonary hypertension reads about 91% (clinically nearer 98%).
+- The ductus and the BT shunt are orifices with no tube length; an arch with real retrograde flow (HLHS) needs an inertance or a one-way isthmus, which broke the aortic windkessel when tried and needs a different design.
+- Pediatric z-scores are not modelled; adult cut-offs are scaled by valve size.
+- The 3D heart is schematic and adult-proportioned for every patient. Walls have no thickness (the field is solid; the cut shows the inside of the shell with a septum, valve annuli and jets added), there is no cut cap, the atrial septum is the small lens where the two atria meet, the arch is raised above the pulmonary bifurcation on this page only, and lesions that need new geometry (TAPVR veins, a hypoplastic left heart, a Fontan) are Phase 3 work.
 
 ## What we are building
 
