@@ -3,7 +3,8 @@
 // Structural: analyze() builds the model, calibrates the volume offset and runs simulate() to a periodic state. Each case is
 // timed after one warm-up run; the median of RUNS is reported. Simulated seconds = beats × 60 / hr.
 import { analyze, buildModel, simulate, volumeOffsetFor, type StructuralSpec } from "../src/physics/structural";
-import { engineFromModel } from "../src/physics/core/fromModel";
+import { createEngine } from "../src/physics/core/engine";
+import { engineFromModel, fromModel } from "../src/physics/core/fromModel";
 import { LESION_BY_ID, defaults } from "../src/sim/structural";
 import { SOLVER } from "../src/config/structural";
 import { Simulation } from "../src/sim/simulation";
@@ -48,6 +49,7 @@ const rows: Row[] = [
   structural("tetralogy of Fallot", lesion("tof")),
   solveRow("simulate(): adult normal (solve only)", {}, (m) => simulate(m)),
   solveRow("core: adult normal (fromModel + periodic)", {}, (m) => engineFromModel(m).periodic(m.hr)),
+  solveRow("core: adult shock + Impella CP P8 (fromModel + periodic)", { lvEes: 0.35, lvStiffness: 1.6 }, (m) => { const g = fromModel(m, { impella: { model: "CP", level: 8 } }); return createEngine(g.nodes, g.elements, g.options).periodic(m.hr); }),
   headless("normal patient", {}),
   headless("proximal LAD occlusion", { lesions: [{ artery: "LAD", occluded: true, position: 0.15 }] }),
 ];

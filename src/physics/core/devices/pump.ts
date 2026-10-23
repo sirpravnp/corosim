@@ -89,7 +89,7 @@ export function fitHQ(points: readonly HQPoint[]): HQCoeffs {
 export class RotaryPump implements Element, Tunable<PumpParams> {
   readonly params: PumpParams;
   readonly states: readonly StateDecl[];
-  private idx = -1;
+  protected idx = -1;
   constructor(readonly name: string, readonly from: NodeId, readonly to: NodeId, params: Partial<PumpParams> = {}) {
     this.params = { ...GENERIC_PUMP, ...params };
     this.states = [{ name: `${name}.Q`, start: 0 }];

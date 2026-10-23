@@ -59,3 +59,13 @@ If a later task needs something this table cannot express, change `types.ts` in 
 - **Unstressed volume.** `Compliance` has `Vu`; stressed volume is max(V − Vu, 0). `fillingOf` gives total, stressed volume and mean systemic filling pressure (stressed / total compliance). Venoconstriction (C1) is `Tunable.set({ Vu })` on SVC, IVC or SPL. Veins built with Vu > 0 collapse smoothly toward −1 mmHg below Vu.
 - **Splanchnic reservoir** (node SPL): the lower-body bed drains DAO → BEDL → SPL → SPLV → IVC. The upper body has no split (small, little controllable volume).
 - Convergence: with unstressed volume `periodic()` judges convergence on the IVC and SPL pressures instead of the IVC volume.
+
+## Impella (D2)
+
+`devices/impella.ts`: `Impella` is a `RotaryPump` (D1) with per-model numbers from `IMPELLA` in `config/devices.ts` (all `[assumed]`, none manufacturer data).
+
+- **Wiring.** `fromModel(m, { impella: { model: "2.5" | "CP" | "5.5", level: 0-9, position: "correct" | "aortic" | "deep" } })` adds the element `impella` (LV to AO; AO to AO for `aortic`). In `LiveHeart` pass `extra: [(m) => Impella.forModel(m, cfg)]` (an entry of `extra` may be a function of the built `Model`, since the suction law needs the LV's own V0). `set({ level })` changes the P-level live; `position` is fixed at construction.
+- **Suction and floor are relative to V0** of the inflow chamber (R-D1): collapse volume Vc = V0 + 30 ml, hard floor V0 + 2 ml. The floor is a limiter on the pump state, not an extra damper: over `Q_lim = (V - floor)/floorTau` the flow equation is replaced by `dQ/dt = -(Q - Q_lim)/limitTau` (blended in over a small band so the rate stays continuous). The volume terms are LV laws and are off for `aortic`. The limiter stops the pump drawing the LV below the floor; the heart's own ejection can still take the chamber toward V0 with or without a device.
+- **Motor current** `I = i0 + i2·ω² + kI·max(H·Q, 0)/ω` (mA; H the rotor head at the present Q, mmHg; Q ml/s; ω krpm): speed-dependent loss plus hydraulic torque. Its waveform follows the LV-AO pressure difference (correlation with the placement signal 1.00 in tests).
+- **Placement signal** is `P_out - P_in` (aortic minus LV pressure) over the beat: about 0 in systole and the full aortic-LV difference in diastole when correctly placed; flat at 0 in the aorta.
+- **Console.** Element taps (instantaneous): `flow`, `current`, `placement`, `level`, `suction`/`suctionAlarm`, `suctionLevel`. `ImpellaConsole(engine)` turns them into per-beat numbers (`last`: flow and current statistics, `pulsatility` of the current, placement mean/min/max/amplitude, `suctionFraction`, `suctionLevel`, `suctionAlarm` = highest suction level of the beat at or above 0.2).

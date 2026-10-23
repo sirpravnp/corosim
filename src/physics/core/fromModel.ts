@@ -5,6 +5,7 @@ import { createEngine, type EngineOptions } from "./engine";
 import { ACTIVATION, INERTANCE, VESSELS } from "../../config/structural";
 import { Pericardium, type PericardiumParams } from "./pericardium";
 import { InertialValve, inertance, OneWayValve, Orifice, Resistor } from "./valves";
+import { Impella, type ImpellaConfig } from "./devices/impella";
 import type { Element, Engine, ExternalGroup, NodeDef } from "./types";
 
 /**
@@ -27,6 +28,8 @@ export interface FromModelOptions {
   pr?: (T: number) => number;
   /** Add the pericardial sac (core/pericardium.ts) with this starting effusion (ml) and parameters. Absent: no sac, no change. */
   pericardium?: Partial<PericardiumParams> & { effusionMl?: number };
+  /** Add an Impella (core/devices/impella.ts; element name "impella"): LV to AO (or AO to AO for position "aortic"). Absent: no device, no change. */
+  impella?: Omit<ImpellaConfig, "v0">;
 }
 
 /**
@@ -55,6 +58,7 @@ export function fromModel(m: Model, opts: FromModelOptions = {}): { nodes: NodeD
     const { effusionMl, ...params } = opts.pericardium;
     elements.push(new Pericardium(nodes.flatMap((n, i) => (n.group === "pericardial" ? [i] : [])), effusionMl ?? 0, params));
   }
+  if (opts.impella) elements.push(Impella.forModel(m, opts.impella));
   return { nodes, elements, options: { defaultPr: opts.pr ?? defaultPr, converge: m.vu.some((v) => v > 0) ? CONVERGE_VU : CONVERGE } };
 }
 
