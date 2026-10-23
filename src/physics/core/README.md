@@ -7,9 +7,10 @@ else here is added by the tasks in `docs/HEMODYNAMICS_TASKS.md`.
 
 - **Nodes** hold blood: chambers (time-varying elastance) and compliances (vessels, venous reservoirs). Each node has a
   pressure law (`NodeModel`) and an external-pressure group.
-- **Elements** take part in up to three phases of every derivative evaluation:
+- **Elements** take part in up to four phases of every derivative evaluation:
   1. `field`: read volumes; write external pressures or volume shifts;
   2. pressure: the engine calls each node's `pressure(V + Vshift, t)` and adds `Pext`;
+  2b. `series`: add a series pressure drop to a node (`out.addPressure`), so the node reads as the proximal pressure. All series elements read the phase 2 pressures and their additions are applied together;
   3. `flow`: move blood between nodes (or to and from `OUTSIDE`) and set the rates of the element's own states.
 - **Events** (`HeartEvent`) come from the rhythm model and start activation; chambers react in `onEvent`. A chamber knows no beat
   period: ventricular activation is a function of the time since its event, with the time scale set by the RR interval preceding
@@ -32,10 +33,10 @@ Units: mmHg, ml, ml/s, s.
 |---|---|---|---|
 | Chamber with activation and relaxation (A1, A4) | `NodeModel` | pressure; `onEvent` | none (activation is a function of time since the event, the preceding interval and `relaxScale`) |
 | Regional LV segments (E3) | `NodeModel` (the LV law sums segments) | pressure | none |
-| Compliance, venous reservoir with unstressed volume (A1, A5) | `NodeModel` | pressure | none |
+| Compliance, venous reservoir with unstressed volume (A1, A5) | `NodeModel` (`vessels.ts`: P = (V − Vu)/C, `Vu` tunable) | pressure | none |
 | Resistor, Gorlin orifice, valve (A1) | `Element` | flow | none |
 | Inertial edge, valve with inertance (A3) | `Element` | flow | flow Q |
-| 3-element Windkessel (A5) | characteristic impedance as an inertial/resistive edge into a compliance node | flow | none or Q |
+| 3-element Windkessel (A5) | characteristic impedance `Zc` is a parameter of the outflow valve (`OneWayValve`, `InertialValve`): the valve and Zc solve ΔP = K·Q·|Q| + Zc·Q in closed form (or, inertial, Zc·Q joins the state equation); phase 2b adds Zc·Q to the artery node, which then reads the proximal pressure Pc + Zc·Q, so no stiff root node is needed | series, flow | none or Q |
 | Pericardium (B1) | `Element` | field: `addExternal` on the "pericardial" group from total heart volume + effusion | effusion volume |
 | Septum (B2) | `Element` | field: `shiftVolume` LV ↔ RV from the septal balance | none (quasi-static solve) or septal volume |
 | Intrathoracic pressure (B3) | `Element` | field: `addExternal` on "thoracic" (and "pericardial") nodes | none |
@@ -49,3 +50,10 @@ Units: mmHg, ml, ml/s, s.
 
 If a later task needs something this table cannot express, change `types.ts` in that task's PR and update this table.
 - An element calls `flow()` at most once per evaluation; two paths means two elements (`Sample.q` and `flowVolumes()` are per element).
+
+## Vessels (A5)
+
+- **Zc.** The artery node's pressure is the proximal pressure Pp = Pc + Zc·Q (Pc from its volume). Outflow elements on the node (beds, isthmus, shunts) see Pp, a Voigt-type 3-element Windkessel (Zc in series with C, in parallel with the bed), which is close to the textbook form since Zc is about 5 % of the bed resistance. The valve gradient `P_from − Pp = K·Q²` is the valve's own. A second flow into the same node (the overriding aorta, `RVAO`) carries its own Zc.
+- **Unstressed volume.** `Compliance` has `Vu`; stressed volume is max(V − Vu, 0). `fillingOf` gives total, stressed volume and mean systemic filling pressure (stressed / total compliance). Venoconstriction (C1) is `Tunable.set({ Vu })` on SVC, IVC or SPL. Veins built with Vu > 0 collapse smoothly toward −1 mmHg below Vu.
+- **Splanchnic reservoir** (node SPL): the lower-body bed drains DAO → BEDL → SPL → SPLV → IVC. The upper body has no split (small, little controllable volume).
+- Convergence: with unstressed volume `periodic()` judges convergence on the IVC and SPL pressures instead of the IVC volume.

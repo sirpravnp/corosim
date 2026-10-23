@@ -2,7 +2,7 @@ import type { BeatSummary, Chamber, DeviceConsole, HemoNode, HemoNumbers, HemoSo
 import type { PatientSpec } from "./patient";
 import type { Simulation } from "./simulation";
 import type { BeatRecord } from "./metrics";
-import { NODES } from "../physics/structural";
+import { CATH_NODES as NODES } from "../physics/structural"; // the splanchnic reservoir is not a catheter site
 import type { StructuralReport, StructuralSpec, Waveform } from "../physics/structural";
 import { BASE_SVR } from "../physics/circulation";
 import { PATIENTS, O2_PER_G_HB } from "../config/structural";

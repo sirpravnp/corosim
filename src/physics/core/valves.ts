@@ -23,14 +23,44 @@ export class Orifice implements Element, Tunable<{ area: number }> {
   flow(ctx: Ctx, out: Rates) { out.flow(this.from, this.to, orificeFlow(this.params.area, ctx.P[this.from] - ctx.P[this.to])); }
 }
 
-/** One-way valve: Gorlin flow through `area` while P_from > P_to, through the regurgitant area `reg` (0 = competent) while it is reversed. */
-export class OneWayValve implements Element, Gated, Tunable<{ area: number; reg: number }> {
-  readonly params: { area: number; reg: number };
-  constructor(readonly name: string, readonly from: NodeId, readonly to: NodeId, area: number, reg = 0) { this.params = { area, reg }; }
-  set(patch: Partial<{ area: number; reg: number }>) { Object.assign(this.params, patch); }
-  flow(ctx: Ctx, out: Rates) {
+/**
+ * Flow (ml/s, signed like `d`) through an orifice of area `area` in series with a characteristic impedance `zc`, for the total
+ * pressure difference `d` (from the upstream node to the downstream compliance pressure). The drop is ΔP = K·Q² + Zc·Q with
+ * K = 1/(GORLIN·A)², which solves in closed form: Q = 2ΔP / (Zc + √(Zc² + 4K·ΔP)) (the stable form of (−Zc + √(Zc² + 4KΔP))/2K).
+ * Zc > 0 has the finite conductance 1/Zc at ΔP → 0, so no smoothing is needed. 0 when A is 0.
+ */
+export const orificeZcFlow = (area: number, zc: number, d: number): number => {
+  if (!area) return 0;
+  const k = 1 / (GORLIN * area) ** 2, a = Math.abs(d), q = (2 * a) / (zc + Math.sqrt(zc * zc + 4 * k * a));
+  return d < 0 ? -q : q;
+};
+
+/**
+ * One-way valve: Gorlin flow through `area` while P_from > P_to, through the regurgitant area `reg` (0 = competent) while it is reversed.
+ *
+ * `Zc` (mmHg·s/ml, default 0) is the characteristic impedance of the artery downstream, in series with the valve (3-element
+ * Windkessel). The valve and Zc are one element: with P_to read as the compliance pressure Pc, the flow solves
+ * P_from − Pc = K·Q·|Q| + Zc·Q (`orificeZcFlow`), and in phase 2b the element adds Zc·Q to the `to` node, so that node reads as
+ * the proximal pressure Pp = Pc + Zc·Q. Then P_from − Pp = K·Q·|Q| is the valve's own gradient (what `BeatRecorder` reports) and
+ * every other element on the node sees Pp. With Zc = 0 nothing is added and the flow is the smoothed Gorlin law.
+ */
+export class OneWayValve implements Element, Gated, Tunable<{ area: number; reg: number; Zc: number }> {
+  readonly params: { area: number; reg: number; Zc: number };
+  private q = 0;
+  constructor(readonly name: string, readonly from: NodeId, readonly to: NodeId, area: number, reg = 0, Zc = 0) { this.params = { area, reg, Zc }; }
+  set(patch: Partial<{ area: number; reg: number; Zc: number }>) { Object.assign(this.params, patch); }
+  series(ctx: Ctx, out: Rates) {
+    const { area, reg, Zc } = this.params;
+    if (!Zc) return;
     const d = ctx.P[this.from] - ctx.P[this.to];
-    out.flow(this.from, this.to, orificeFlow(d > 0 ? this.params.area : this.params.reg, d));
+    this.q = orificeZcFlow(d > 0 ? area : reg, Zc, d);
+    out.addPressure(this.to, Zc * this.q);
+  }
+  flow(ctx: Ctx, out: Rates) {
+    const { area, reg, Zc } = this.params;
+    if (Zc) { out.flow(this.from, this.to, this.q); return; }
+    const d = ctx.P[this.from] - ctx.P[this.to];
+    out.flow(this.from, this.to, orificeFlow(d > 0 ? area : reg, d));
   }
 }
 
@@ -78,17 +108,27 @@ export class InertialResistor implements Element, Tunable<{ R: number; L: number
  * of 0, which the engine applies after every step. The leaky or closed choice is made at construction (the bound is fixed then);
  * `set` may change `area`, `L` and, for a valve built with `reg` > 0, `reg`. A closed or atretic orifice (A = 0) carries no flow.
  * L = ρ·ℓ/A, see `inertance`.
+ *
+ * `Zc` (mmHg·s/ml, default 0): characteristic impedance in series, as in `OneWayValve`. The flow is a state, so phase 2b just adds
+ * Zc·Q to the `to` node (its proximal pressure Pp = Pc + Zc·Q); the equation above, written with Pc, is then
+ * L·dQ/dt = (P_from − Pc) − K·Q|Q| − Zc·Q.
  */
-export class InertialValve implements Element, Gated, Tunable<{ area: number; reg: number; L: number }> {
-  readonly params: { area: number; reg: number; L: number };
+export class InertialValve implements Element, Gated, Tunable<{ area: number; reg: number; L: number; Zc: number }> {
+  readonly params: { area: number; reg: number; L: number; Zc: number };
   readonly states: readonly StateDecl[];
   private idx = -1;
-  constructor(readonly name: string, readonly from: NodeId, readonly to: NodeId, area: number, reg: number, L: number) {
-    this.params = { area, reg, L };
+  constructor(readonly name: string, readonly from: NodeId, readonly to: NodeId, area: number, reg: number, L: number, Zc = 0) {
+    this.params = { area, reg, L, Zc };
     this.states = [{ name: `${name}.Q`, start: 0, min: reg > 0 ? -Infinity : 0 }];
   }
-  set(patch: Partial<{ area: number; reg: number; L: number }>) { Object.assign(this.params, patch); }
+  set(patch: Partial<{ area: number; reg: number; L: number; Zc: number }>) { Object.assign(this.params, patch); }
   bind(offset: number) { this.idx = offset; }
+  series(ctx: Ctx, out: Rates) {
+    const { Zc, reg } = this.params;
+    if (!Zc) return;
+    const q = ctx.y[this.idx];
+    out.addPressure(this.to, Zc * (q < 0 && reg === 0 ? 0 : q));
+  }
   flow(ctx: Ctx, out: Rates) {
     const { area, reg, L } = this.params, d = ctx.P[this.from] - ctx.P[this.to];
     let q = ctx.y[this.idx];

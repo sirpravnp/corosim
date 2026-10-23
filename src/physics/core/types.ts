@@ -8,6 +8,8 @@
  *   1. field     elements that read volumes and write an external pressure on nodes (pericardium, thorax), or shift a
  *                node's effective volume (an IABP balloon occupying the aorta, the septum bowing into one ventricle)
  *   2. pressure  every node's pressure from its effective volume and the time, plus its external pressure
+ *   2b. series   elements that sit in series with a node's compliance (a characteristic impedance Zc between a valve and an
+ *                artery) add the pressure drop they carry to the node's pressure, so the node reads as the proximal pressure
  *   3. flow      elements that move blood between nodes (or in and out of the circulation) and set their own state rates
  *   4. (engine)  node volume rates are the sum of what phase 3 added
  *
@@ -54,6 +56,8 @@ export interface Ctx {
 export interface Rates {
   /** Add an external pressure (mmHg) to a node. Phase 1 only. */
   addExternal(node: NodeId, p: number): void;
+  /** Add to a node's pressure, mmHg. Phase 2b (`series`) only; every flow and every output sees the sum. */
+  addPressure(node: NodeId, p: number): void;
   /** Add to the volume a node's pressure law sees, ml. Phase 1 only. */
   shiftVolume(node: NodeId, dv: number): void;
   /** Move `q` ml/s from one node to another; `from` or `to` may be OUTSIDE for flow in or out of the circulation. */
@@ -85,6 +89,12 @@ export interface Element {
   bind?(offset: number): void;
   /** Phase 1: write external pressures and volume shifts from the volumes. */
   field?(ctx: Ctx, out: Rates): void;
+  /**
+   * Phase 2b: after every node's pressure is known, add series pressure drops with `out.addPressure`. All series elements read the
+   * pressures as phase 2 left them (not each other's additions) and their additions are applied together afterwards, so the order
+   * of elements does not matter. An element that caches a flow here may use it in `flow()` of the same evaluation.
+   */
+  series?(ctx: Ctx, out: Rates): void;
   /** Phase 3: flows between nodes and rates of own states. */
   flow?(ctx: Ctx, out: Rates): void;
   /** A beat happened (or a scheduled one is due). */
