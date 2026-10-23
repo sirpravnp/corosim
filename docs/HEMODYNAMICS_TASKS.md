@@ -83,6 +83,7 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | R-A1 | passed: inertance on by default (task A5b); neonate E/A 0.7–0.8 accepted (normal in the first days of life); `periodic()` stops ~0.5 % short on slow venous refilling, for C1 to address |
 | A5b | in progress |
 | P2c | done (bridge trace time strictly increasing; reload clears the bridge; valve areas only with a real gradient; gross-flow Gorlin test) |
+| A6 | done (live = periodic within 0.1 %; PVC 71 → 12 → 85 ml; CHB cannon waves; AF SV–RR r 0.80; 112× real time) |
 | P7c | done (cath page: Right heart and Left heart tabs reuse the Simulator panels; identical rows for all 7 library cases) |
 | P6 | done (JVP: cannon a 2.6× in AV dissociation; giant v in severe TR; RV infarct raised JVP 9.9 cm on the live page; tamponade/constriction tests wait for B1) |
 | B1 | done (tamponade: 300 ml equalises RA/RVEDP/LA/LVEDP within 0.2 mmHg, CO 5.1 → 0.3; draining 200 ml restores 81 %; slow effusion better tolerated; stable to stiffness 10) |
@@ -135,6 +136,13 @@ default.
 |---|---|---|---|---|---|
 | A6 | I | **Live adapter.** `LiveHeart` class: takes `Beat`s from `ecg.ts`, steps the engine between them, emits a per-beat record compatible with `BeatHemo` (SV, systolic, diastolic) plus full traces. Autonomic effects map to HR (via beats), Ees, arterial R, unstressed volume, τ. | A4, A5 | `core/live.ts` | PVC → small beat then potentiated beat; 3rd-degree block → lower CO; AF → beat-to-beat SV varies with RR; baroreflex loop stays stable (no runaway) over 10 min with noise |
 | A7 | I | **ACS sim on core, behind a flag.** `simulation.ts` gets `engine: "legacy" \| "core"`. For now ischemic fraction scales global LV/RV Ees, and support maps to the closest engine parameters. | A6 | `sim/simulation.ts`, `tests/simulation.test.ts` | With `core`: anterior STEMI → SV down, LVEDP up; RV infarct → RAP up, PCWP not up, hypotension that responds to fluid; legacy tests unchanged |
+
+**Decisions from A6 review** (bind A7):
+- Align the first stream beat with the end of `warm()` (its RR must continue the warm-up rate) so the first live stroke is not oversized.
+- Venous tone from the autonomic loop uses a small gain (e.g. 1 + 0.2·(sympathetic − rest)); the splanchnic reservoir is very sensitive (tone 1.5 drives MAP to 127).
+- Beat strength above 1 (potentiation) scales Ees, not activation, so activation stays within 0..1 and the passive term never goes negative.
+- The 10-minute baroreflex-with-noise stability test runs in A7, where the loop lives.
+- `atrialKick` comes from whether an atrial event actually preceded the ventricular one within the PR window, not from the beat's labels.
 
 **Gate R-A2 (reviewer):** compare legacy and core side by side on every scenario. Decide the flag default and list the
 scenario recalibrations as tasks.
