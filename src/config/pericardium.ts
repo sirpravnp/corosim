@@ -14,6 +14,6 @@ export const PERICARDIUM = {
   v0: 280,
   /** Time constant (s) of the stretch of V0 toward the sac volume: infinite at engine level (no adaptation); the simulation scales it to clinical time (days). [assumed] */
   /** k: ml of unstressed volume lost per unit of (stiffness − 1), V0_eff = V0 − k·(s − 1): a constricting scar fits the heart tighter. [assumed, tuned] */
-  reservePerStiffness: 8,
+  reservePerStiffness: 12,
   adaptTauS: Infinity,
 };
