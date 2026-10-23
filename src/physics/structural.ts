@@ -2,6 +2,7 @@ import { O2_PER_G_HB, WU_TO_MMHG_S_ML, PATIENTS, PatientBaseline, PatientKind, S
 
 import { engineFromModel } from "./core/fromModel";
 import { BeatRecorder } from "./core/recorder";
+import { NODES, type NodeName } from "./structuralGraph";
 
 /**
  * Closed-loop compartment model of the circulation, defined as a graph so a lesion is an edit to the graph.
@@ -17,8 +18,8 @@ import { BeatRecorder } from "./core/recorder";
  * (heart rate, pulmonary resistance, systemic resistance) then changes only its own parameter, so the circulation answers it.
  * There are no reflexes: pressure does not defend itself against a shunt or a vasodilator. Constants are teaching values.
  */
-export const NODES = ["SVC", "IVC", "RA", "RV", "PA", "PV", "LA", "LV", "AO", "DAO"] as const;
-export type NodeName = (typeof NODES)[number];
+export { NODES };
+export type { NodeName };
 const [SVC, IVC, RA, RV, PA, PV, LA, LV, AO, DAO] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 const NN = NODES.length;
 
@@ -200,13 +201,17 @@ export interface Hemodynamics {
 export interface Waveform { t: number[]; p: Record<NodeName, number[]>; vLV: number[]; vRV: number[]; vLA: number[]; vRA: number[]; q: Record<string, number[]> }
 const WAVE_EDGES = ["TV", "PVL", "MV", "AV", "RVAO", "ASD", "VSD", "PDA", "BT"];
 
-/** Run the model to a periodic state on the core engine and report the last beat. */
-export function simulate(m: Model): Hemodynamics {
-  const eng = engineFromModel(m);
+/**
+ * Run the model to a periodic state on the core engine and report the last beat. With `waveform: false` the waveform capture is
+ * skipped (faster) and `wave` comes back with empty arrays in the same shape.
+ */
+export function simulate(m: Model, opts: { waveform?: boolean } = {}): Hemodynamics {
+  const eng = engineFromModel(m), withWave = opts.waveform !== false;
   const nSteps = Math.max(50, Math.round(m.T / SOLVER.dt));
-  const rec = new BeatRecorder(eng, m.T, m.edges.filter((e) => e.type === "valve" && (e.name !== "RVAO" || e.area)).map((e) => e.name), { dt: m.T / nSteps, every: 0.002, flows: WAVE_EDGES });
+  const rec = new BeatRecorder(eng, m.T, m.edges.filter((e) => e.type === "valve" && (e.name !== "RVAO" || e.area)).map((e) => e.name), withWave ? { dt: m.T / nSteps, every: 0.002, flows: WAVE_EDGES } : undefined);
   const { beats, converged } = eng.periodic(m.hr);
-  const last = rec.beat(), w = last.wave!, fv = eng.flowVolumes();
+  const last = rec.beat(), fv = eng.flowVolumes();
+  const w: NonNullable<typeof last.wave> = last.wave ?? { t: [], p: Object.fromEntries(NODES.map((n) => [n, [] as number[]])), v: { LV: [], RV: [], LA: [], RA: [] }, q: Object.fromEntries(WAVE_EDGES.map((n) => [n, [] as number[]])) };
   rec.dispose();
   const p = {} as Record<NodeName, NodeStat>;
   const wp = {} as Record<NodeName, number[]>;
@@ -291,7 +296,7 @@ export interface StructuralReport {
 }
 
 export function analyze(spec: StructuralSpec = {}, opts: { waveform?: boolean } = {}): StructuralReport {
-  const m = buildModel(spec, volumeOffsetFor(spec)), h = simulate(m), T = m.T;
+  const m = buildModel(spec, volumeOffsetFor(spec)), h = simulate(m, { waveform: opts.waveform !== false }), T = m.T;
   const ox = solveOxygen(m, h), net = (n: string) => (h.fwd[n] - h.bwd[n]) / T;
   const c = ox.content, sat = {} as Record<NodeName, number>;
   NODES.forEach((n, i) => (sat[n] = c[i] / ox.capacity));
@@ -347,7 +352,7 @@ export function volumeOffsetFor(spec: StructuralSpec): number {
   const kind = spec.patient ?? "adult", key = JSON.stringify(PATIENTS[kind]), hit = offsets.get(key);
   if (hit !== undefined) return hit;
   const target = PATIENTS[kind].map;
-  const err = (off: number) => simulate(buildModel({ patient: kind }, off)).p.AO.mean - target;
+  const err = (off: number) => simulate(buildModel({ patient: kind }, off), { waveform: false }).p.AO.mean - target;
   let x0 = 0, f0 = err(x0), x1 = 0.1 * target * PATIENTS[kind].weightKg, f1 = err(x1);
   for (let i = 0; i < 8 && Math.abs(f1) > 0.1; i++) {
     const x2 = x1 - (f1 * (x1 - x0)) / (f1 - f0 || 1e-9);
