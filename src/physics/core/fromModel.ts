@@ -3,6 +3,7 @@ import type { Model } from "../structural";
 import { Compliance, ElastanceChamber } from "./chamber";
 import { createEngine, type EngineOptions } from "./engine";
 import { ACTIVATION, INERTANCE } from "../../config/structural";
+import { Pericardium, type PericardiumParams } from "./pericardium";
 import { InertialValve, inertance, OneWayValve, Orifice, Resistor } from "./valves";
 import type { Element, Engine, ExternalGroup, NodeDef } from "./types";
 
@@ -18,6 +19,8 @@ export interface FromModelOptions {
   atrialEesScale?: number;
   /** PR (s from atrial event to ventricular event) at beat period T, for `periodic()` (default `defaultPr`). */
   pr?: (T: number) => number;
+  /** Add the pericardial sac (core/pericardium.ts) with this starting effusion (ml) and parameters. Absent: no sac, no change. */
+  pericardium?: Partial<PericardiumParams> & { effusionMl?: number };
 }
 
 /**
@@ -42,6 +45,10 @@ export function fromModel(m: Model, opts: FromModelOptions = {}): { nodes: NodeD
     e.type === "resistor" ? new Resistor(e.name, e.from, e.to, e.R!) : e.type === "orifice" ? new Orifice(e.name, e.from, e.to, e.area!)
       : opts.inertance && valveLength(e.name) ? new InertialValve(e.name, e.from, e.to, e.area!, e.reg!, inertance(valveLength(e.name)!, Math.max(e.area!, 0.05)))
       : new OneWayValve(e.name, e.from, e.to, e.area!, e.reg!));
+  if (opts.pericardium) {
+    const { effusionMl, ...params } = opts.pericardium;
+    elements.push(new Pericardium(nodes.flatMap((n, i) => (n.group === "pericardial" ? [i] : [])), effusionMl ?? 0, params));
+  }
   return { nodes, elements, options: { defaultPr: opts.pr ?? defaultPr, converge: CONVERGE } };
 }
 
