@@ -1,4 +1,7 @@
-import { GORLIN, ORIFICE_EPS, O2_PER_G_HB, WU_TO_MMHG_S_ML, PATIENTS, PatientBaseline, PatientKind, SOLVER } from "../config/structural";
+import { O2_PER_G_HB, WU_TO_MMHG_S_ML, PATIENTS, PatientBaseline, PatientKind, SOLVER } from "../config/structural";
+
+import { engineFromModel } from "./core/fromModel";
+import { BeatRecorder } from "./core/recorder";
 
 /**
  * Closed-loop compartment model of the circulation, defined as a graph so a lesion is an edit to the graph.
@@ -180,27 +183,6 @@ function ventShape(m: Model, t: number): number {
   const r = Math.pow(t / a1, 1.32);
   return (r / (1 + r)) / (1 + Math.pow(t / a2, 21.9));
 }
-function activation(m: Model, t: number): [number, number] {
-  const ev = ventShape(m, t) / m.ventPeak;
-  const pr = 0.06 + 0.08 * m.T, ta = Math.min(0.12 * Math.sqrt(m.T / 0.833), 0.35 * m.T), tt = t - (m.T - ta - pr);
-  return [ev, tt >= 0 && tt <= ta ? Math.sin((Math.PI * tt) / ta) : 0];
-}
-function pressures(m: Model, t: number, V: Float64Array, P: Float64Array) {
-  const [ev, ea] = activation(m, t);
-  for (let i = 0; i < NN; i++) {
-    const c = m.chambers[i];
-    if (!c) { P[i] = V[i] / m.comp[i]; continue; }
-    const x = V[i] - c.v0, e = c.atrial ? ea : ev;
-    P[i] = (1 - e) * c.a * (Math.exp(Math.min(c.b * x, 30)) - 1) + e * c.ees * Math.max(x, 0);
-  }
-}
-function edgeFlow(e: Edge, P: Float64Array): number {
-  const d = P[e.from] - P[e.to];
-  if (e.type === "resistor") return d / e.R!;
-  const a = e.type === "valve" ? (d > 0 ? e.area! : e.reg!) : e.area!;
-  return a ? (GORLIN * a * d) / Math.sqrt(Math.abs(d) + ORIFICE_EPS) : 0;
-}
-
 /** Pressure (mmHg) or volume over the last beat; `end` is the value at the end of the beat, the instant before the next activation (end-diastolic pressure for a ventricle). */
 export interface NodeStat { min: number; max: number; mean: number; end: number }
 export interface ValveStat { peakGradient: number; meanGradient: number; forwardMl: number; regurgMl: number; openMs: number; regurgPeakGradient: number }
@@ -218,76 +200,22 @@ export interface Hemodynamics {
 export interface Waveform { t: number[]; p: Record<NodeName, number[]>; vLV: number[]; vRV: number[]; vLA: number[]; vRA: number[]; q: Record<string, number[]> }
 const WAVE_EDGES = ["TV", "PVL", "MV", "AV", "RVAO", "ASD", "VSD", "PDA", "BT"];
 
+/** Run the model to a periodic state on the core engine and report the last beat. */
 export function simulate(m: Model): Hemodynamics {
-  const { edges } = m, ne = edges.length;
-  const V = Float64Array.from(m.start), P = new Float64Array(NN), tmp = new Float64Array(NN);
-  const k = [0, 1, 2, 3].map(() => new Float64Array(NN));
-  const nSteps = Math.max(50, Math.round(m.T / SOLVER.dt)), dt = m.T / nSteps;
-  const W = [1 / 6, 1 / 3, 1 / 3, 1 / 6];
-  const fp = new Float64Array(ne), fn = new Float64Array(ne);
-  const pMin = new Float64Array(NN), pMax = new Float64Array(NN), pSum = new Float64Array(NN);
-  const vMin = new Float64Array(NN), vMax = new Float64Array(NN), vSum = new Float64Array(NN);
-  const dMax = new Float64Array(ne), dSum = new Float64Array(ne), dN = new Float64Array(ne), rMax = new Float64Array(ne);
-  const stride = Math.max(1, Math.round(0.002 / dt));
-  const r2 = (x: number) => Math.round(x * 100) / 100;
-  const newWave = (): Waveform => ({ t: [], p: Object.fromEntries(NODES.map((n) => [n, [] as number[]])) as Record<NodeName, number[]>, vLV: [], vRV: [], vLA: [], vRA: [], q: Object.fromEntries(WAVE_EDGES.map((n) => [n, [] as number[]])) });
-  const sample = (t: number) => {
-    wave.t.push(Math.round(t * 1e4) / 1e4); NODES.forEach((n, i) => wave.p[n].push(r2(P[i]))); wave.vLV.push(r2(V[LV])); wave.vRV.push(r2(V[RV])); wave.vLA.push(r2(V[LA])); wave.vRA.push(r2(V[RA]));
-    for (const n of WAVE_EDGES) wave.q[n].push(r2(edgeFlow(edges.find((e) => e.name === n)!, P)));
-  };
-  let wave = newWave();
-
-  const deriv = (t: number, X: Float64Array, out: Float64Array, w: number) => {
-    pressures(m, t, X, P); out.fill(0);
-    for (let i = 0; i < ne; i++) {
-      const e = edges[i], q = edgeFlow(e, P);
-      out[e.to] += q; out[e.from] -= q;
-      if (q > 0) fp[i] += w * dt * q; else fn[i] -= w * dt * q;
-    }
-  };
-
-  let converged = false, beats = 0, prev: number[] | null = null, stable = 0;
-  for (; beats < SOLVER.maxBeats; beats++) {
-    fp.fill(0); fn.fill(0); pMin.fill(Infinity); pMax.fill(-Infinity); pSum.fill(0); vMin.fill(Infinity); vMax.fill(-Infinity); vSum.fill(0);
-    dMax.fill(0); dSum.fill(0); dN.fill(0); rMax.fill(0); wave = newWave();
-    for (let s = 0; s < nSteps; s++) {
-      const t = s * dt;
-      deriv(t, V, k[0], W[0]);
-      for (let i = 0; i < NN; i++) tmp[i] = V[i] + 0.5 * dt * k[0][i];
-      deriv(t + dt / 2, tmp, k[1], W[1]);
-      for (let i = 0; i < NN; i++) tmp[i] = V[i] + 0.5 * dt * k[1][i];
-      deriv(t + dt / 2, tmp, k[2], W[2]);
-      for (let i = 0; i < NN; i++) tmp[i] = V[i] + dt * k[2][i];
-      deriv(t + dt, tmp, k[3], W[3]);
-      for (let i = 0; i < NN; i++) V[i] += (dt / 6) * (k[0][i] + 2 * k[1][i] + 2 * k[2][i] + k[3][i]);
-      pressures(m, t + dt, V, P);
-      for (let i = 0; i < NN; i++) {
-        if (P[i] < pMin[i]) pMin[i] = P[i]; if (P[i] > pMax[i]) pMax[i] = P[i]; pSum[i] += P[i];
-        if (V[i] < vMin[i]) vMin[i] = V[i]; if (V[i] > vMax[i]) vMax[i] = V[i]; vSum[i] += V[i];
-      }
-      if (s % stride === 0 || s === nSteps - 1) sample(t + dt);
-      for (let i = 0; i < ne; i++) {
-        const e = edges[i];
-        if (e.type !== "valve") continue;
-        const d = P[e.from] - P[e.to];
-        if (d > 0 && e.area) { if (d > dMax[i]) dMax[i] = d; dSum[i] += d; dN[i]++; }
-        else if (d < 0 && e.reg && -d > rMax[i]) rMax[i] = -d;
-      }
-    }
-    const sig = [pSum[AO] / nSteps, pSum[PA] / nSteps, pSum[RA] / nSteps, pSum[LA] / nSteps, vSum[IVC] / nSteps];
-    if (prev && sig.every((x, i) => Math.abs(x - prev![i]) <= SOLVER.tol * Math.max(1, Math.abs(x)))) stable++; else stable = 0;
-    prev = sig;
-    if (beats + 1 >= SOLVER.minBeats && stable >= 3) { converged = true; beats++; break; }
-  }
-  const stat = (i: number, lo: Float64Array, hi: Float64Array, sum: Float64Array, last: Float64Array): NodeStat => ({ min: lo[i], max: hi[i], mean: sum[i] / nSteps, end: last[i] });
+  const eng = engineFromModel(m);
+  const nSteps = Math.max(50, Math.round(m.T / SOLVER.dt));
+  const rec = new BeatRecorder(eng, m.T, m.edges.filter((e) => e.type === "valve" && (e.name !== "RVAO" || e.area)).map((e) => e.name), { dt: m.T / nSteps, every: 0.002, flows: WAVE_EDGES });
+  const { beats, converged } = eng.periodic(m.hr);
+  const last = rec.beat(), w = last.wave!, fv = eng.flowVolumes();
+  rec.dispose();
   const p = {} as Record<NodeName, NodeStat>;
-  NODES.forEach((n, i) => (p[n] = stat(i, pMin, pMax, pSum, P)));
-  const fwd: Record<string, number> = {}, bwd: Record<string, number> = {}, valves: Record<string, ValveStat> = {};
-  edges.forEach((e, i) => {
-    fwd[e.name] = fp[i]; bwd[e.name] = fn[i];
-    if (e.type === "valve" && (e.name !== "RVAO" || e.area)) valves[e.name] = { regurgPeakGradient: rMax[i], peakGradient: dMax[i], meanGradient: dN[i] ? dSum[i] / dN[i] : 0, forwardMl: fp[i], regurgMl: fn[i], openMs: dN[i] * dt * 1000 };
-  });
-  return { beats, converged, p, vol: { RA: stat(RA, vMin, vMax, vSum, V), RV: stat(RV, vMin, vMax, vSum, V), LA: stat(LA, vMin, vMax, vSum, V), LV: stat(LV, vMin, vMax, vSum, V) }, fwd, bwd, valves, volume: V.reduce((a, b) => a + b, 0), wave };
+  const wp = {} as Record<NodeName, number[]>;
+  for (const n of NODES) { p[n] = last.p[n]; wp[n] = w.p[n]; }
+  const vol = { RA: last.v.RA, RV: last.v.RV, LA: last.v.LA, LV: last.v.LV };
+  const wave: Waveform = { t: w.t, p: wp, vLV: w.v.LV, vRV: w.v.RV, vLA: w.v.LA, vRA: w.v.RA, q: w.q };
+  let volume = 0;
+  for (const x of eng.sample().V) volume += x;
+  return { beats, converged, p, vol, fwd: fv.fwd, bwd: fv.bwd, valves: last.valves, volume, wave };
 }
 
 // ---- oxygen -----------------------------------------------------------------------------------

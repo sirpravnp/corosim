@@ -1,45 +1,55 @@
-// The core engine against the structural engine it ports (A1): same numbers from the same model.
+// The core engine against the structural solver it replaced (A1, A2). The reference is tests/fixtures/core-reference.json, the
+// output of the old hand-written RK4 loop, frozen by tests/fixtures/core-reference.ts. simulate() itself now runs on the core.
 import { describe, it, expect } from "vitest";
 import { buildModel, simulate, volumeOffsetFor, NODES, type StructuralSpec } from "../src/physics/structural";
-import { LESIONS, defaults } from "../src/sim/structural";
 import { createEngine } from "../src/physics/core/engine";
-import { engineFromModel } from "../src/physics/core/fromModel";
-import { BeatRecorder } from "../src/physics/core/recorder";
 import { Compliance } from "../src/physics/core/chamber";
 import { Resistor } from "../src/physics/core/valves";
 import type { Element, Engine, HeartEvent } from "../src/physics/core/types";
+import { REFERENCE_CASES } from "./fixtures/core-reference";
+import reference from "./fixtures/core-reference.json";
 
 const REL = 0.005, FLOOR = 0.05; // 0.5 % relative, 0.05 mmHg / ml absolute
+type Stat = Record<"min" | "max" | "mean" | "end", number>;
+type Ref = { beats: number; converged: boolean; p: Record<string, Stat>; vol: Record<string, Stat>; fwd: Record<string, number>; bwd: Record<string, number>; valves: Record<string, Record<string, number>>; volume: number; wave?: { t: number[]; p: Record<string, number[]>; vLV: number[]; vRV: number[]; vLA: number[]; vRA: number[]; q: Record<string, number[]> } };
+const REF = reference as unknown as Record<string, Ref>;
 
-/** Both engines on one model, built the way analyze() builds it. Returns the largest relative difference seen and where. */
-function compare(spec: StructuralSpec) {
-  const m = buildModel(spec, volumeOffsetFor(spec)), want = simulate(m);
-  const eng = engineFromModel(m), rec = new BeatRecorder(eng, m.T, m.edges.filter((e) => e.type === "valve" && (e.name !== "RVAO" || e.area)).map((e) => e.name));
-  const run = eng.periodic(m.hr), got = rec.beat(), fv = eng.flowVolumes();
+/** simulate() on one case against the frozen reference. Returns the mismatches and the largest relative difference seen. */
+function compare(id: string, spec: StructuralSpec) {
+  const m = buildModel(spec, volumeOffsetFor(spec)), got = simulate(m), want = REF[id];
   const bad: string[] = []; let worst = { rel: 0, where: "" };
   const cmp = (label: string, w: number, g: number) => {
     const rel = Math.abs(g - w) / Math.max(Math.abs(w), 1e-12);
-    if (!(Math.abs(g - w) <= Math.max(REL * Math.abs(w), FLOOR))) bad.push(`${label}: simulate ${w}, core ${g}`);
+    if (!(Math.abs(g - w) <= Math.max(REL * Math.abs(w), FLOOR))) bad.push(`${label}: reference ${w}, core ${g}`);
     if (Math.abs(g - w) > 1e-9 && rel > worst.rel) worst = { rel, where: label };
   };
-  expect(run.beats, "beats").toBe(want.beats);
-  expect(run.converged, "converged").toBe(want.converged);
+  expect(got.beats, "beats").toBe(want.beats);
+  expect(got.converged, "converged").toBe(want.converged);
   for (const n of NODES) for (const f of ["min", "max", "mean", "end"] as const) cmp(`p.${n}.${f}`, want.p[n][f], got.p[n][f]);
-  for (const n of ["RA", "RV", "LA", "LV"] as const) for (const f of ["min", "max", "mean", "end"] as const) cmp(`vol.${n}.${f}`, want.vol[n][f], got.v[n][f]);
-  for (const e of m.edges) { cmp(`fwd.${e.name}`, want.fwd[e.name], fv.fwd[e.name]); cmp(`bwd.${e.name}`, want.bwd[e.name], fv.bwd[e.name]); }
-  for (const [name, w] of Object.entries(want.valves)) for (const f of Object.keys(w) as (keyof typeof w)[]) cmp(`valve.${name}.${f}`, w[f], got.valves[name][f]);
+  for (const n of ["RA", "RV", "LA", "LV"] as const) for (const f of ["min", "max", "mean", "end"] as const) cmp(`vol.${n}.${f}`, want.vol[n][f], got.vol[n][f]);
+  for (const e of m.edges) { cmp(`fwd.${e.name}`, want.fwd[e.name], got.fwd[e.name]); cmp(`bwd.${e.name}`, want.bwd[e.name], got.bwd[e.name]); }
+  for (const [name, w] of Object.entries(want.valves)) for (const f of Object.keys(w)) cmp(`valve.${name}.${f}`, w[f], (got.valves[name] as unknown as Record<string, number>)[f]);
   expect(Object.keys(got.valves).sort()).toEqual(Object.keys(want.valves).sort());
+  cmp("volume", want.volume, got.volume);
+  if (want.wave) {
+    const w = want.wave, g = got.wave;
+    expect(g.t.length, "wave samples").toBe(w.t.length);
+    expect(Math.max(...g.t.map((t, i) => Math.abs(t - w.t[i]))), "wave time grid").toBeLessThan(1e-3);
+    // compare waveforms by their largest excursion from the reference, against the signal's range
+    const series: [string, number[], number[]][] = [...NODES.map((n) => [`p.${n}`, w.p[n], g.p[n]] as [string, number[], number[]]),
+      ["vLV", w.vLV, g.vLV], ["vRV", w.vRV, g.vRV], ["vLA", w.vLA, g.vLA], ["vRA", w.vRA, g.vRA], ...Object.keys(w.q).map((k) => [`q.${k}`, w.q[k], g.q[k]] as [string, number[], number[]])];
+    for (const [label, a, b] of series) {
+      const range = Math.max(...a) - Math.min(...a), err = Math.max(...a.map((x, i) => Math.abs(x - b[i])));
+      if (!(err <= Math.max(0.01 * range, FLOOR))) bad.push(`wave ${label}: max difference ${err} on a range of ${range}`);
+    }
+  }
   return { bad, worst };
 }
 
-describe("core engine reproduces simulate()", () => {
-  const cases: [string, StructuralSpec][] = [
-    ["adult normal", {}], ["neonate normal", { patient: "neonate" }],
-    ...LESIONS.map((l) => [l.id, l.build(defaults(l))] as [string, StructuralSpec]),
-  ];
-  for (const [id, spec] of cases) {
-    it(`${id}: pressures, volumes, edge volumes and valve stats within 0.5 %`, () => {
-      const { bad, worst } = compare(spec);
+describe("simulate() on the core reproduces the old structural solver", () => {
+  for (const [id, spec] of REFERENCE_CASES) {
+    it(`${id}: pressures, volumes, edge volumes, valve stats and waveform within 0.5 %`, () => {
+      const { bad, worst } = compare(id, spec);
       if (process.env.CORE_VERBOSE) console.log(`${id}: worst ${worst.rel.toExponential(2)} at ${worst.where}`);
       expect(bad, bad.join("\n")).toEqual([]);
     });
