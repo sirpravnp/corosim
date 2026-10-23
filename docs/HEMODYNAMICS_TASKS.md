@@ -65,7 +65,7 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | T0.3 | done |
 | P0 | done |
 | R0 | passed |
-| P1 | in progress |
+| P1 | done (follow-up: `corosim_adjust`, `corosim_compare` and the share-link tool still take the plain Scenario schema) |
 | P3 | in progress (reduced: workspace + numbers panel on a stub source; moving monitor and ECG into panels is P3b) |
 | A1 | in progress |
 
