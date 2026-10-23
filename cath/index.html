@@ -48,6 +48,14 @@
       <button data-proc="pci">PCI</button><button data-proc="lysis">Fibrinolytic</button><button data-proc="cabg">CABG</button><button id="reset">Reset patient</button>
       <p class="result" id="treatResult" role="status"></p></div>
   </section>
+  <section class="heart" aria-label="Heart catheterisation">
+    <div class="tabs" role="tablist" aria-label="Heart catheterisation reports">
+      <button type="button" role="tab" id="tab-rhc" aria-controls="tabpanel-rhc" aria-selected="true" tabindex="0">Right heart</button>
+      <button type="button" role="tab" id="tab-lhc" aria-controls="tabpanel-lhc" aria-selected="false" tabindex="-1">Left heart</button>
+    </div>
+    <div class="tabpanel" role="tabpanel" id="tabpanel-rhc" aria-labelledby="tab-rhc"></div>
+    <div class="tabpanel" role="tabpanel" id="tabpanel-lhc" aria-labelledby="tab-lhc" hidden></div>
+  </section>
 </main>
 <p class="fine" id="credit">Flows, pressures and FFR come from the same coronary model as the simulator (<a href="../sim/">Simulator</a>); contrast moves at each vessel's solved blood velocity, so a tight lesion fills late and an occlusion stops the dye.</p>
 <footer id="shell-foot"></footer>

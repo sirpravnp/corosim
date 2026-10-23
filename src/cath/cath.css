@@ -113,3 +113,18 @@ main > * { min-width: 0; }
 .note { margin: 0; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--sh-line)); background: var(--panel); font-size: 13.5px; color: var(--muted); }
 .fine { margin: 6px 0 0; font-size: 12px; color: var(--muted); max-width: 110ch; }
 .fine a { color: var(--muted); }
+
+/* Right- and left-heart cath tabs: the Simulator's panels, on a bridge over this page's patient */
+.heart { grid-column: 2 / -1; display: grid; gap: 12px; align-content: start; }
+.tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--sh-line); }
+.tabs [role=tab] { border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom-color: transparent; color: var(--muted); }
+.tabs [role=tab][aria-selected=true] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.tabpanel { max-width: 640px; min-width: 0; padding: 12px 14px; background: var(--panel); border: 1px solid var(--sh-line); }
+.tabpanel .note { padding: 6px 0; border: 0; }
+.tabpanel canvas { max-width: 100%; }
+table.readout { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.readout td { padding: 5px 0; border-bottom: 1px solid var(--rule-light); vertical-align: baseline; }
+table.readout td:first-child { padding-right: 10px; color: var(--muted); }
+table.readout td:last-child { text-align: right; white-space: nowrap; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+table.readout tr:last-child td { border-bottom: 0; }
+@media (max-width: 820px) { .heart { grid-column: 1 / -1; } }
