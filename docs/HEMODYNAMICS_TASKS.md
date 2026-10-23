@@ -70,7 +70,8 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | P2 | done (bridge; LAD LVEDP 17.6 / PCWP 16.8 / EF 0.30; RV infarct CVP 10.7, CVP/PCWP 1.3; paced RV infarct CVP 7.6 is a known limit until C1/A7) |
 | P2b | done (worker solves; on the Simulator page; LAD occlusion on the live panel: PCWP 7 → 18, LVEDP 6 → 19, LVEF 62 → 31 %) |
 | R-P1 | passed (limits panels must respect: bridge EDV/ESV/SV and valve stats do not vary beat to beat with RR; numbers are NaN until the first worker solve lands) |
-| P4, P5, P7, P8 | in progress |
+| P7 | done (RV infarct: PAPi 0.21, RA/PCWP 1.35; ASD atrial and VSD ventricular step-ups; PVR/SVR equal the engine) |
+| P4, P5, P8 | in progress |
 | A1 | done (max difference from `simulate()` 2e-4, from exact atrial event timing; core 164× real time vs 129×) |
 | A2 | done (structural tab on the core; old RK4 loop removed; reference frozen in `tests/fixtures/core-reference.json`) |
 | A3 | done (+6 mmHg pericardial pressure halves SV; mitral flow lags its gradient by 44 ms; E/A separates at 60 bpm, not yet at 72; A2 follow-ups done) |
