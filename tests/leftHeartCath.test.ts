@@ -101,6 +101,20 @@ describe("areas at tiny gradients are not shown", () => {
   });
 });
 
+describe("Gorlin uses gross forward flow", () => {
+  it("regurgitation on top of a real aortic gradient does not shrink the area; net flow would have", () => {
+    const { n, beat } = snapshot(analyze(lesion("as")));
+    const av = beat.valves.AV, regurg = 0.5 * av.forwardMl; // mixed AS + AR: a third of the gross flow comes back
+    const mixed = { ...beat, valves: { ...beat.valves, AV: { ...av, regurgMl: regurg } } } as BeatSummary;
+    const base = leftHeartCath(n, beat)!, c = leftHeartCath(n, mixed)!;
+    expect(c.gradient.mean).toBeGreaterThan(LHC.minAorticGradientMmHg);
+    expect(c.avForwardMl).toBe(av.forwardMl);
+    expect(c.area.aorticGorlin).toBeCloseTo(base.area.aorticGorlin, 9); // regurgitant volume is ignored
+    const net = ((av.forwardMl - regurg) / c.sep) / (44.3 * Math.sqrt(c.gradient.mean));
+    expect(net).toBeLessThan(0.6 * c.area.aorticGorlin); // the net-flow area would read much more stenotic
+  });
+});
+
 describe("waiting state", () => {
   it("returns null without a beat", () => { expect(leftHeartCath({} as HemoNumbers, undefined)).toBeNull(); });
 });
