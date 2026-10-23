@@ -1,0 +1,26 @@
+/* Panel workspace: matches the Simulator page's cards (panel surface, hairline border, 8px radius, mono numbers). */
+.ws-sec { margin-top: 24px; min-width: 0; }
+.ws-sec > h2 { margin: 0 0 12px; font: 600 13px/1 var(--font-ui); color: var(--ink); }
+.ws-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; min-width: 0; }
+.ws-tabs { display: none; gap: 6px; overflow-x: auto; min-width: 0; flex: 1; }
+.ws-phone .ws-tabs { display: flex; }
+.ws-tab { white-space: nowrap; }
+.ws-pick { position: relative; margin-left: auto; flex: none; }
+.ws-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 200px; padding: 6px; background: var(--panel); border: 1px solid var(--sh-line); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); }
+.ws-menu[hidden] { display: none; }
+.ws-menu label { display: flex; justify-content: flex-start; margin: 0; color: var(--ink); text-transform: none; align-items: center; gap: 8px; padding: 7px 8px; font-size: 13px; cursor: pointer; border-radius: 6px; }
+.ws-menu label:hover { background: var(--sh-hover); }
+.ws-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; align-items: start; min-width: 0; }
+.ws-phone .ws-grid { grid-template-columns: minmax(0, 1fr); }
+.ws-card { min-width: 0; background: var(--panel); border: 1px solid var(--sh-line); border-radius: 8px; overflow: hidden; }
+.ws-card[hidden] { display: none; }
+.ws-card > header { display: flex; align-items: center; justify-content: space-between; padding: 8px 8px 8px 14px; border-bottom: 1px solid var(--rule-light); }
+.ws-card > header h2 { margin: 0; font: 600 13px/1 var(--font-ui); color: var(--ink); }
+.ws-phone .ws-card > header { display: none; }
+button.ws-x { padding: 2px 8px; font-size: 16px; line-height: 1.2; background: transparent; border-color: transparent; color: var(--muted); }
+button.ws-x:hover { color: var(--ink); }
+.ws-body { padding: 10px 14px 12px; min-width: 0; position: relative; }
+.ws-empty .ws-grid::after { content: "No panels open. Use Panels to add one."; color: var(--muted); font-size: 13px; }
+.hp-badge { display: inline-block; margin-bottom: 8px; padding: 2px 7px; font: 600 11px/1.4 var(--font-data); text-transform: uppercase; color: var(--muted); border: 1px solid var(--rule); border-radius: 999px; }
+.ws-body table.readout td:first-child { color: var(--muted); }
+.ws-menu input { margin: 0; width: auto; accent-color: var(--accent); }

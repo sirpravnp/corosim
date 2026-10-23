@@ -14,6 +14,7 @@ else here is added by the tasks in `docs/HEMODYNAMICS_TASKS.md`.
 - **Events** (`HeartEvent`) come from the rhythm model and start activation; chambers react in `onEvent`.
 - **Parameters** live in each element's `params` and change only between steps (`Tunable.set`).
 - **Outputs** come from `sample()` and `onSample()`: pressures, volumes, flows per element, and each element's `taps`.
+  `flowVolumes()` gives the forward and backward volume through every flow element since `resetFlowVolumes()` (per-beat shunt and regurgitation volumes).
 
 Units: mmHg, ml, ml/s, s.
 
@@ -39,3 +40,4 @@ Units: mmHg, ml, ml/s, s.
 | 1D arterial segment (F3) | an element whose ends are nodes; its interior is its own states | flow | A and Q per grid point |
 
 If a later task needs something this table cannot express, change `types.ts` in that task's PR and update this table.
+- An element calls `flow()` at most once per evaluation; two paths means two elements (`Sample.q` and `flowVolumes()` are per element).

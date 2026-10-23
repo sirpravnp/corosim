@@ -124,6 +124,14 @@ export interface Engine {
    * number of beats and whether it settled.
    */
   periodic(hr: number, opts?: { maxBeats?: number; minBeats?: number; tol?: number }): { beats: number; converged: boolean };
+  /**
+   * Volume (ml) that has flowed forward (positive) and backward through each flow element since the last reset, integrated
+   * with the RK4 weights (the exact integral of the scheme, not a sum of samples). A single-edge element reports its edge;
+   * one that moves blood along several paths reports the sum of its flows. `periodic()` resets it at every beat, so
+   * afterwards it holds the last beat.
+   */
+  flowVolumes(): { fwd: Record<string, number>; bwd: Record<string, number> };
+  resetFlowVolumes(): void;
   /** Snapshot of the instant: pressures, volumes, every edge's flow and every element's taps. */
   sample(): Sample;
   /** Called after every step with the new instant (recorders, beat accumulators, trace buffers). */

@@ -66,8 +66,10 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | P0 | done |
 | R0 | passed |
 | P1 | done (follow-up: `corosim_adjust`, `corosim_compare` and the share-link tool still take the plain Scenario schema) |
-| P3 | in progress (reduced: workspace + numbers panel on a stub source; moving monitor and ECG into panels is P3b) |
-| A1 | in progress |
+| P3 | done (workspace + numbers panel on a stub source; monitor and ECG move in P3b) |
+| P2 | in progress |
+| A1 | done (max difference from `simulate()` 2e-4, from exact atrial event timing; core 164× real time vs 129×) |
+| A2 | in progress |
 
 **Branches.** Each task is built on a local branch `task/<ID>` in its own worktree, reviewed, then merged into the
 working branch, which is the only one pushed.
@@ -95,6 +97,15 @@ working branch, which is the only one pushed.
 | A3 | I | **External pressure and inertance.** Nodes take an external pressure (used later by the pericardium and thorax); inertial edge type; valve with inertance, off by default. | A1 | `core/` | With inertance off, fixtures unchanged; with it on, a test shows valve flow lagging pressure and an E/A-shaped mitral flow |
 | A4 | I | **Event-driven activation and relaxation.** Activation starts from a beat event (ventricular, atrial) instead of a fixed period; separate relaxation time τ after peak; `periodic()` still works by feeding regular events. | A1 | `core/chamber.ts` | Fixed-rate events reproduce fixtures; longer τ raises early-diastolic pressure and lowers early filling; a premature event gives a smaller stroke |
 | A5 | I | **Vessels.** 3-element Windkessel (Zc, R, C) for the systemic and pulmonary arteries; split systemic veins into splanchnic and peripheral with unstressed volume. Recalibrate the baseline volume offset. | A1 | `core/vessels.ts`, `config/structural.ts` | Normal adult: MAP 90 ± 2, pulse pressure 40–50, CVP 3–6, PCWP 6–10, CO 4.8–5.4; fixtures updated **only** for the expected pulse-shape change, listed in the PR |
+
+**Decisions from A1 review** (binding on later tasks):
+- `createEngine`'s `options.atrialLead` and `options.converge` stay for now. A4 moves atrial timing into the events: the rhythm
+  model, or `periodic()` for steady reports, schedules the atrial event, and `periodic(hr, { pr })` replaces `atrialLead`.
+  That contract change is allowed in A4.
+- The ventricular chamber's beat-period parameter `T` goes away in A4: activation depends only on time since the event,
+  with duration from a rate-dependent rule (QT-like shortening with the preceding RR).
+- `BeatRecorder` finds beat boundaries from `T`; A6 switches it to ventricular events.
+- An element calls `flow()` once per evaluation. A device with two paths (e.g. a pump and its cannula leak) is two elements.
 
 **Gate R-A1 (reviewer):** numerics (dt halving, stiffness), interfaces, calibration. Decide whether inertance is on by
 default.
