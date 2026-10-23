@@ -11,7 +11,15 @@ else here is added by the tasks in `docs/HEMODYNAMICS_TASKS.md`.
   1. `field`: read volumes; write external pressures or volume shifts;
   2. pressure: the engine calls each node's `pressure(V + Vshift, t)` and adds `Pext`;
   3. `flow`: move blood between nodes (or to and from `OUTSIDE`) and set the rates of the element's own states.
-- **Events** (`HeartEvent`) come from the rhythm model and start activation; chambers react in `onEvent`.
+- **Events** (`HeartEvent`) come from the rhythm model and start activation; chambers react in `onEvent`. A chamber knows no beat
+  period: ventricular activation is a function of the time since its event, with the time scale set by the RR interval preceding
+  that event (QT-like rate rule; the first event uses the chamber's default interval), and the falling limb stretched by the
+  `relaxScale` parameter. Atrial activation lasts `atrialDuration(preceding atrial interval)`. A ventricular event with no atrial
+  event before it has no atrial contraction (junctional rhythm, AF). For steady-rate reports `periodic(hr, { pr })` schedules a
+  ventricular event every beat and an atrial event `pr` seconds (atrial event to ventricular event) before each; `pr` defaults to the
+  engine option `defaultPr(T)` (`fromModel` supplies it; `pr: Infinity` means no atrial events).
+- **Relaxation time constant.** `BeatRecorder.beat().tauMs` gives LV and RV τ in ms: a Weiss fit P = P0·e^(−t/τ) of the pressure
+  from dP/dt min to inlet-valve opening (zero asymptote). The adult at 72 bpm gives about 36 ms (normal 30-50).
 - **Parameters** live in each element's `params` and change only between steps (`Tunable.set`).
 - **Outputs** come from `sample()` and `onSample()`: pressures, volumes, flows per element, and each element's `taps`.
   `flowVolumes()` gives the forward and backward volume through every flow element since `resetFlowVolumes()` (per-beat shunt and regurgitation volumes).
@@ -22,7 +30,7 @@ Units: mmHg, ml, ml/s, s.
 
 | Piece (task) | Kind | Phase | Own states |
 |---|---|---|---|
-| Chamber with activation and relaxation (A1, A4) | `NodeModel` | pressure; `onEvent` | none (activation is a function of time since the event) |
+| Chamber with activation and relaxation (A1, A4) | `NodeModel` | pressure; `onEvent` | none (activation is a function of time since the event, the preceding interval and `relaxScale`) |
 | Regional LV segments (E3) | `NodeModel` (the LV law sums segments) | pressure | none |
 | Compliance, venous reservoir with unstressed volume (A1, A5) | `NodeModel` | pressure | none |
 | Resistor, Gorlin orifice, valve (A1) | `Element` | flow | none |

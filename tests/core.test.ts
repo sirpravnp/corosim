@@ -3,10 +3,10 @@
 import { describe, it, expect } from "vitest";
 import { buildModel, simulate, volumeOffsetFor, NODES, type StructuralSpec } from "../src/physics/structural";
 import { createEngine } from "../src/physics/core/engine";
-import { Compliance } from "../src/physics/core/chamber";
+import { atrialDuration, Compliance, ElastanceChamber } from "../src/physics/core/chamber";
 import { InertialResistor, InertialValve, inertance, OneWayValve, Resistor } from "../src/physics/core/valves";
-import { engineFromModel, fromModel } from "../src/physics/core/fromModel";
-import { BeatRecorder } from "../src/physics/core/recorder";
+import { defaultPr as defaultPrFor, engineFromModel, fromModel, type FromModelOptions } from "../src/physics/core/fromModel";
+import { BeatRecorder, relaxationTau } from "../src/physics/core/recorder";
 import { GORLIN, SOLVER } from "../src/config/structural";
 import type { Element, Engine, ExternalGroup, HeartEvent, Rates, Ctx } from "../src/physics/core/types";
 import { REFERENCE_CASES } from "./fixtures/core-reference";
@@ -17,9 +17,16 @@ type Stat = Record<"min" | "max" | "mean" | "end", number>;
 type Ref = { beats: number; converged: boolean; p: Record<string, Stat>; vol: Record<string, Stat>; fwd: Record<string, number>; bwd: Record<string, number>; valves: Record<string, Record<string, number>>; volume: number; wave?: { t: number[]; p: Record<string, number[]>; vLV: number[]; vRV: number[]; vLA: number[]; vRA: number[]; q: Record<string, number[]> } };
 const REF = reference as unknown as Record<string, Ref>;
 
+/**
+ * The activation of the old loop that produced the frozen reference: plain ventricular curve (relaxScale 1), the atrium as
+ * `buildModel` designs it, and the atrial event leading the ventricular one by ta + 0.06 + 0.08·T. A4 changed the defaults
+ * (relaxation, atrial drive, PR); the reference cannot be regenerated, so it is compared on this pinned configuration.
+ */
+const LEGACY: FromModelOptions = { relaxScale: 1, atrialEesScale: 1, pr: (T) => atrialDuration(T) + 0.06 + 0.08 * T };
+
 /** simulate() on one case against the frozen reference. Returns the mismatches and the largest relative difference seen. */
 function compare(id: string, spec: StructuralSpec) {
-  const m = buildModel(spec, volumeOffsetFor(spec)), got = simulate(m), want = REF[id];
+  const m = buildModel(spec, volumeOffsetFor(spec, LEGACY)), got = simulate(m, { core: LEGACY }), want = REF[id];
   const bad: string[] = []; let worst = { rel: 0, where: "" };
   const cmp = (label: string, w: number, g: number) => {
     const rel = Math.abs(g - w) / Math.max(Math.abs(w), 1e-12);
@@ -49,7 +56,7 @@ function compare(id: string, spec: StructuralSpec) {
   return { bad, worst };
 }
 
-describe("simulate() on the core reproduces the old structural solver", () => {
+describe("simulate() on the core reproduces the old structural solver (pinned legacy activation)", () => {
   for (const [id, spec] of REFERENCE_CASES) {
     it(`${id}: pressures, volumes, edge volumes, valve stats and waveform within 0.5 %`, () => {
       const { bad, worst } = compare(id, spec);
@@ -111,16 +118,27 @@ const adult = () => buildModel({}, volumeOffsetFor({}));
 const GROUP_OF = { SVC: "thoracic", IVC: "abdominal", RA: "pericardial", RV: "pericardial", PA: "thoracic", PV: "thoracic", LA: "pericardial", LV: "pericardial", AO: "thoracic", DAO: "abdominal" } as const;
 
 /** Last beat of a periodic run on the adult model (optionally at another rate, step, or with inertance), with extra elements added to the graph. */
-function lastBeat(extra: (nodes: { group: ExternalGroup }[]) => Element[], opts: { inertance?: boolean; dt?: number; hr?: number } = {}) {
-  const m = opts.hr ? buildModel({ hr: opts.hr }, volumeOffsetFor({})) : adult(), g = fromModel(m, { inertance: opts.inertance });
+function lastBeat(extra: (nodes: { group: ExternalGroup }[]) => Element[], opts: { inertance?: boolean; dt?: number; hr?: number; relaxScale?: number; pr?: number } = {}) {
+  const m = opts.hr ? buildModel({ hr: opts.hr }, volumeOffsetFor({})) : adult(), g = fromModel(m, { inertance: opts.inertance, relaxScale: opts.relaxScale });
   const eng = createEngine(g.nodes, [...g.elements, ...extra(g.nodes)], g.options);
   const dt = opts.dt ?? SOLVER.dt, nSteps = Math.max(50, Math.round(m.T / dt));
   const rec = new BeatRecorder(eng, m.T, ["MV", "AV"], { dt: m.T / nSteps, every: 0.002, flows: ["MV", "AV"] });
   const old = SOLVER.dt; SOLVER.dt = dt;
-  let run; try { run = eng.periodic(m.hr); } finally { SOLVER.dt = old; }
+  let run; try { run = eng.periodic(m.hr, { pr: opts.pr }); } finally { SOLVER.dt = old; }
   const b = rec.beat(); rec.dispose();
   return { m, eng, b, run, fv: eng.flowVolumes() };
 }
+
+/** Local maxima of a flow trace that stand out from the trough between them by at least `prom` ml/s. */
+const peaks = (a: number[], prom: number) => {
+  const out: number[] = []; let lo = a[0], hi = a[0], hiAt = 0, rising = true;
+  for (let i = 1; i < a.length; i++) {
+    if (rising) { if (a[i] > hi) { hi = a[i]; hiAt = i; } else if (hi - a[i] > prom) { out.push(hiAt); rising = false; lo = a[i]; } }
+    else if (a[i] < lo) lo = a[i]; else if (a[i] - lo > prom) { rising = true; hi = a[i]; hiAt = i; }
+  }
+  if (rising && hi - lo > prom) out.push(hiAt);
+  return out;
+};
 
 describe("external pressure and volume shift", () => {
   it("fromModel puts the four chambers in the pericardial group and the vessels in thoracic or abdominal groups", () => {
@@ -241,22 +259,15 @@ describe("valve inertance in the adult model", () => {
     for (let i = 0; i < pq.length; i++) if (pd[i] < -0.05) expect(pq[i], `plain valve at ${plain.t[i]}`).toBe(0);
   });
 
-  /** Local maxima of a flow trace that stand out from the trough between them by at least `prom` ml/s. */
-  const peaks = (a: number[], prom: number) => {
-    const out: number[] = []; let lo = a[0], hi = a[0], hiAt = 0, rising = true;
-    for (let i = 1; i < a.length; i++) {
-      if (rising) { if (a[i] > hi) { hi = a[i]; hiAt = i; } else if (hi - a[i] > prom) { out.push(hiAt); rising = false; lo = a[i]; } }
-      else if (a[i] < lo) lo = a[i]; else if (a[i] - lo > prom) { rising = true; hi = a[i]; hiAt = i; }
-    }
-    if (rising && hi - lo > prom) out.push(hiAt);
-    return out;
-  };
-
-  it("at 72 bpm the atrial kick has no wave of its own: early filling is still decaying (single hump)", () => {
-    // Documents what the model does today; the relaxation time of A4 should separate the waves. If this starts to fail, E/A has appeared at 72 bpm.
-    const big = peaks(q, 15);
-    if (process.env.CORE_VERBOSE) console.log(`72 bpm: MV peaks at ${big.map((i) => `${(t[i] * 1000).toFixed(0)} ms ${q[i].toFixed(0)} ml/s`).join(", ")}`);
-    expect(big).toHaveLength(1);
+  it("at 72 bpm mitral inflow has a distinct E and A wave, E > A, E/A between 1 and 2, and a normal tau", () => {
+    const ps = peaks(q, 15).filter((i) => t[i] > 0.05); // a peak in the first ms is the tail of the previous beat's A wave
+    if (process.env.CORE_VERBOSE) console.log(`72 bpm: MV peaks at ${ps.map((i) => `${(t[i] * 1000).toFixed(0)} ms ${q[i].toFixed(0)} ml/s`).join(", ")}; tau LV ${withI.b.tauMs.LV.toFixed(1)} ms, RV ${withI.b.tauMs.RV.toFixed(1)} ms`);
+    expect(ps).toHaveLength(2);
+    const [E, A] = ps.map((i) => q[i]), trough = Math.min(...q.slice(ps[0], ps[1] + 1));
+    expect(E).toBeGreaterThan(A);
+    expect(E / A).toBeGreaterThan(1); expect(E / A).toBeLessThan(2);
+    expect(trough, "flow dips between the waves").toBeLessThan(0.85 * A);
+    expect(withI.b.tauMs.LV).toBeGreaterThan(30); expect(withI.b.tauMs.LV).toBeLessThan(50);
   });
 
   it("at 60 bpm mitral inflow has an early (E) and an atrial (A) wave, E > A", () => {
@@ -269,7 +280,7 @@ describe("valve inertance in the adult model", () => {
     expect(A).toBeGreaterThan(20);
   });
 
-  it("halving dt changes mean AO pressure, cardiac output and LVEDP by less than 0.5 %", () => {
+  it("halving dt changes mean AO pressure, cardiac output, LVEDP and tau by less than 0.5 %", () => {
     const a = lastBeat(() => [], { inertance: true, dt: SOLVER.dt }), b = lastBeat(() => [], { inertance: true, dt: SOLVER.dt / 2 });
     const co = (r: typeof a) => (r.fv.fwd.AV - r.fv.bwd.AV) * r.m.hr;
     const rel = (x: number, y: number) => Math.abs(x - y) / Math.abs(y);
@@ -277,6 +288,8 @@ describe("valve inertance in the adult model", () => {
     expect(rel(a.b.p.AO.mean, b.b.p.AO.mean)).toBeLessThan(0.005);
     expect(rel(co(a), co(b))).toBeLessThan(0.005);
     expect(rel(a.b.p.LV.end, b.b.p.LV.end)).toBeLessThan(0.005);
+    if (process.env.CORE_VERBOSE) console.log(`dt halving: tau ${rel(a.b.tauMs.LV, b.b.tauMs.LV).toExponential(2)}`);
+    expect(rel(a.b.tauMs.LV, b.b.tauMs.LV)).toBeLessThan(0.005);
   });
 });
 
@@ -288,5 +301,143 @@ describe("simulate() waveform option", () => {
     expect(lean.wave.q.MV).toEqual([]);
     expect(lean.p.AO).toEqual(full.p.AO);
     expect(lean.volume).toBe(full.volume);
+  });
+});
+
+// ---- A4: activation driven by beats, relaxation -----------------------------------------------------------------------
+
+const VENT = { v0: 10, ees: 2, a: 0.5, b: 0.04 };
+const ventricle = (relaxScale = 1, T = 0.833) => new ElastanceChamber("v", { ...VENT, relaxScale }, "ventricular", T);
+
+describe("chamber activation from events", () => {
+  it("depends on the time since the event only: the same events at any absolute time give the same curve", () => {
+    const a = ventricle(), b = ventricle();
+    a.onEvent({ kind: "ventricular", t: 0 }); b.onEvent({ kind: "ventricular", t: 17.3 });
+    for (const dt of [0.05, 0.2, 0.4, 0.6, 0.8]) expect(b.activation(17.3 + dt)).toBeCloseTo(a.activation(dt), 12);
+  });
+
+  it("at a steady rate a later beat equals the first (the default interval is the steady RR), with peak 1", () => {
+    const c = ventricle(); c.onEvent({ kind: "ventricular", t: 0 });
+    const first = [0.1, 0.3, 0.5].map((x) => c.activation(x)); c.onEvent({ kind: "ventricular", t: 0.833 });
+    [0.1, 0.3, 0.5].forEach((x, i) => expect(c.activation(0.833 + x)).toBeCloseTo(first[i], 9));
+    let top = 0; for (let x = 0; x < 0.833; x += 0.001) top = Math.max(top, c.activation(0.833 + x));
+    expect(top).toBeCloseTo(1, 3);
+  });
+
+  it("a shorter preceding RR gives a shorter contraction (QT-like rate rule)", () => {
+    const slow = ventricle(), fast = ventricle();
+    slow.onEvent({ kind: "ventricular", t: 0 }); slow.onEvent({ kind: "ventricular", t: 1.0 });
+    fast.onEvent({ kind: "ventricular", t: 0 }); fast.onEvent({ kind: "ventricular", t: 0.5 });
+    // 0.45 s after the event the short-RR beat has relaxed, the long-RR one is still contracting
+    expect(fast.activation(0.5 + 0.45)).toBeLessThan(0.1);
+    expect(slow.activation(1.0 + 0.45)).toBeGreaterThan(0.5);
+  });
+
+  it("atrial duration follows the preceding atrial interval", () => {
+    const c = new ElastanceChamber("a", VENT, "atrial", 0.833);
+    c.onEvent({ kind: "atrial", t: 0 }); c.onEvent({ kind: "atrial", t: 0.5 });
+    const ta = atrialDuration(0.5);
+    expect(ta).toBeLessThan(atrialDuration(0.833));
+    expect(c.activation(0.5 + ta / 2)).toBeCloseTo(1, 9);
+    expect(c.activation(0.5 + ta + 1e-3)).toBe(0);
+  });
+
+  it("relaxScale stretches only the falling limb: same rise and peak, the fall is the plain one stretched in time; 1 is the plain curve", () => {
+    const plain = ventricle(1), slow = ventricle(1.5);
+    plain.onEvent({ kind: "ventricular", t: 0 }); slow.onEvent({ kind: "ventricular", t: 0 });
+    const tPeak = plain.peakTime;
+    expect(tPeak).toBeGreaterThan(0.2); expect(tPeak).toBeLessThan(0.4);
+    for (let x = 0; x <= tPeak; x += 0.01) expect(slow.activation(x)).toBeCloseTo(plain.activation(x), 12);
+    for (const x of [0.05, 0.1, 0.15]) {
+      expect(slow.activation(tPeak + 1.5 * x)).toBeCloseTo(plain.activation(tPeak + x), 9);
+      expect(slow.activation(tPeak + x)).toBeGreaterThan(plain.activation(tPeak + x));
+    }
+  });
+});
+
+describe("relaxation time constant", () => {
+  it("recovers tau from an exponential pressure fall between dP/dt min and valve opening", () => {
+    const tau = 0.04, n = 600, t = Array.from({ length: n }, (_, i) => i * 0.0005);
+    const pv = t.map((x) => (x < 0.05 ? 120 - 800 * x * x : 118 * Math.exp(-(x - 0.05) / tau)));
+    const pa = t.map(() => 6);
+    const got = relaxationTau(t, pv, pa) * 1000;
+    expect(got).toBeGreaterThan(0.9 * tau * 1000);
+    expect(got).toBeLessThan(1.1 * tau * 1000);
+  });
+});
+
+describe("events drive the engine", () => {
+  const T = 60 / 72;
+  const fresh = () => {
+    const g = fromModel(adult(), { inertance: true }), eng = createEngine(g.nodes, g.elements, g.options);
+    return { eng, rec: new BeatRecorder(eng, T, ["MV", "AV"]) };
+  };
+  /** Advance to absolute time `to` in solver steps. */
+  const advanceTo = (eng: Engine, to: number) => { while (to - eng.t > 1e-9) eng.step(Math.min(SOLVER.dt, to - eng.t)); };
+  /** Stroke volume (AV forward minus backward) after each ventricular event, running the given events from the start. */
+  function strokeVolumes(ventTimes: number[], atrialTimes: number[], end: number) {
+    const { eng } = fresh();
+    for (const t of ventTimes) eng.schedule({ kind: "ventricular", t });
+    for (const t of atrialTimes) eng.schedule({ kind: "atrial", t });
+    const sv: number[] = [];
+    for (let i = 0; i < ventTimes.length; i++) {
+      advanceTo(eng, ventTimes[i]); eng.resetFlowVolumes();
+      advanceTo(eng, i + 1 < ventTimes.length ? ventTimes[i + 1] : end);
+      const fv = eng.flowVolumes(); sv.push(fv.fwd.AV - fv.bwd.AV);
+    }
+    return sv;
+  }
+  const pr = defaultPrFor(T);
+
+  it("regular events driven by hand reproduce periodic(): same beat means and tau as the converged steady state", () => {
+    const n = 40, vt = Array.from({ length: n }, (_, i) => i * T);
+    const { eng, rec } = fresh();
+    for (const t of vt) eng.schedule({ kind: "ventricular", t });
+    for (const t of vt.slice(1)) eng.schedule({ kind: "atrial", t: t - pr });
+    advanceTo(eng, (n - 1) * T + T - 1e-6);
+    const manual = rec.beat(); rec.dispose();
+    const ref = lastBeat(() => [], { inertance: true });
+    for (const node of ["AO", "LA", "PA"]) expect(Math.abs(manual.p[node].mean - ref.b.p[node].mean) / ref.b.p[node].mean, node).toBeLessThan(0.005);
+    expect(Math.abs(manual.tauMs.LV - ref.b.tauMs.LV) / ref.b.tauMs.LV).toBeLessThan(0.01);
+  });
+
+  it("a premature ventricular event gives a smaller stroke volume, and the beat after the compensatory pause a larger one", () => {
+    const n = 24, base = Array.from({ length: n }, (_, i) => i * T);
+    // regular run, a PVC at 60 % of the RR after the last regular beat, then the next sinus beats on schedule (full compensatory pause)
+    const tPvc = (n - 1) * T + 0.6 * T, post = [(n + 1) * T, (n + 2) * T];
+    const sinus = [...base.slice(1), n * T, ...post].map((t) => t - pr);
+    const sv = strokeVolumes([...base, tPvc, ...post], sinus, post[1] + T);
+    const normal = sv[n - 2], pvc = sv[n], after = sv[n + 1];
+    if (process.env.CORE_VERBOSE) console.log(`PVC: SV normal ${normal.toFixed(1)}, premature ${pvc.toFixed(1)}, post-pause ${after.toFixed(1)} ml`);
+    expect(pvc).toBeLessThan(0.8 * normal);
+    expect(after).toBeGreaterThan(normal + 2);
+  });
+
+  it("a ventricular event with no atrial event before it has no A wave and fills less", () => {
+    const sinus = lastBeat(() => [], { inertance: true }), junctional = lastBeat(() => [], { inertance: true, pr: Infinity });
+    const wj = junctional.b.wave!, ps = peaks(wj.q.MV, 15).filter((i) => wj.t[i] > 0.05);
+    if (process.env.CORE_VERBOSE) console.log(`no atrial event: MV peaks ${ps.map((i) => `${(wj.t[i] * 1000).toFixed(0)} ms ${wj.q.MV[i].toFixed(0)}`).join(", ")}; LVEDV ${sinus.b.v.LV.max.toFixed(1)} -> ${junctional.b.v.LV.max.toFixed(1)}`);
+    expect(junctional.run.converged).toBe(true);
+    expect(ps).toHaveLength(1); // the E wave alone
+    expect(junctional.b.v.LV.max).toBeLessThan(sinus.b.v.LV.max - 2);
+  });
+
+  it("relaxScale 1.5 raises early-diastolic LV pressure, lowers E and raises A (E/A falls), and lengthens tau", () => {
+    const base = lastBeat(() => [], { inertance: true, relaxScale: 1 }), slow = lastBeat(() => [], { inertance: true, relaxScale: 1.5 });
+    const waves = (r: typeof base) => { const w = r.b.wave!, ps = peaks(w.q.MV, 15).filter((i) => w.t[i] > 0.05); return { E: w.q.MV[ps[0]], A: w.q.MV[ps[1]], n: ps.length }; };
+    const b = waves(base), s = waves(slow);
+    const lvAt = (r: typeof base, time: number) => { const w = r.b.wave!; return w.p.LV[w.t.findIndex((x) => x >= time)]; };
+    if (process.env.CORE_VERBOSE) console.log(`relaxScale 1 -> 1.5: tau ${base.b.tauMs.LV.toFixed(1)} -> ${slow.b.tauMs.LV.toFixed(1)} ms; E ${b.E.toFixed(0)} -> ${s.E.toFixed(0)}, A ${b.A.toFixed(0)} -> ${s.A.toFixed(0)}, E/A ${(b.E / b.A).toFixed(2)} -> ${(s.E / s.A).toFixed(2)}; LV at 450 ms ${lvAt(base, 0.45).toFixed(1)} -> ${lvAt(slow, 0.45).toFixed(1)}`);
+    expect(b.n).toBe(2); expect(s.n).toBe(2);
+    expect(lvAt(slow, 0.45)).toBeGreaterThan(lvAt(base, 0.45) + 1);
+    expect(s.E).toBeLessThan(b.E);
+    expect(s.A).toBeGreaterThan(b.A);
+    expect(s.E / s.A).toBeLessThan(b.E / b.A);
+    expect(slow.b.tauMs.LV).toBeGreaterThan(base.b.tauMs.LV * 1.15);
+    expect(slow.run.converged).toBe(true);
+  });
+
+  it("periodic converges at 72 bpm with and without inertance, and at 140 bpm", () => {
+    for (const o of [{ inertance: true }, {}, { inertance: true, hr: 140 }]) expect(lastBeat(() => [], o).run.converged, JSON.stringify(o)).toBe(true);
   });
 });

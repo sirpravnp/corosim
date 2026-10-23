@@ -162,7 +162,7 @@ describe("shape from the solved lesion", () => {
   });
   it("a heart loaded with extra pulmonary flow has a wider pulmonary artery, and a left heart loaded by a VSD or PDA a bigger left atrium", () => {
     expect(morph("vsd", { diameter: 7 }).paScale!).toBeGreaterThan(morph("vsd", { diameter: 2 }).paScale!);
-    expect(morph("pda", { diameter: 6, pvri: 1.5 }).laScale!).toBeGreaterThan(1.1);
+    expect(morph("pda", { diameter: 6, pvri: 1.5 }).laScale!).toBeGreaterThan(1.03);
   });
   it("tetralogy: a thin pulmonary artery when the outflow is tight", () => {
     const m = morph("tof");

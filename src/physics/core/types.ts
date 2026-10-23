@@ -120,10 +120,12 @@ export interface Engine {
   /** Advance the clock by dt seconds (live play). */
   step(dt: number): void;
   /**
-   * Run with regular beats at `hr` until the beat-to-beat change is below tolerance (steady-state reports). Returns the
-   * number of beats and whether it settled.
+   * Run with regular beats at `hr` until the beat-to-beat change is below tolerance (steady-state reports). Every beat
+   * schedules a ventricular event and, if a PR is known, an atrial event `pr` seconds (atrial event to ventricular event)
+   * before the next one. `pr` defaults to the engine's `defaultPr(T)` option; with neither, no atrial events are scheduled.
+   * Returns the number of beats and whether it settled.
    */
-  periodic(hr: number, opts?: { maxBeats?: number; minBeats?: number; tol?: number }): { beats: number; converged: boolean };
+  periodic(hr: number, opts?: { maxBeats?: number; minBeats?: number; tol?: number; pr?: number }): { beats: number; converged: boolean };
   /**
    * Volume (ml) that has flowed forward (positive) and backward through each flow element since the last reset, integrated
    * with the RK4 weights (the exact integral of the scheme, not a sum of samples). A single-edge element reports its edge;

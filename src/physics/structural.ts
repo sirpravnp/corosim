@@ -1,6 +1,6 @@
 import { O2_PER_G_HB, WU_TO_MMHG_S_ML, PATIENTS, PatientBaseline, PatientKind, SOLVER } from "../config/structural";
 
-import { engineFromModel } from "./core/fromModel";
+import { engineFromModel, type FromModelOptions } from "./core/fromModel";
 import { BeatRecorder } from "./core/recorder";
 import { NODES, type NodeName } from "./structuralGraph";
 
@@ -32,7 +32,6 @@ export interface Model {
   chambers: (Chamber | null)[]; comp: number[]; edges: Edge[]; start: number[]; // start: volumes the run begins from, ml
   vo2U: number; vo2L: number; // ml O₂ / s
   qDesign: number; // ml/s, the baseline systemic flow
-  ventPeak: number; // normalising constant of the ventricular activation curve
 }
 
 /** One valve's lesion: `open` is its opening as a fraction of normal (0 = atretic); `reg` is a regurgitant orifice area, cm². */
@@ -176,20 +175,11 @@ export function buildModel(input: StructuralSpec = {}, volumeOffset = 0): Model 
   if (spec.rvStiffness) chambers[RV]!.a *= spec.rvStiffness;
 
   const vo2 = (p.vo2PerKg * W) / 60;
-  const m: Model = { patient: { ...p, satLung: spec.satLung ?? p.satLung }, hr: 60 / T, T, chambers, comp, edges, start, vo2U: vo2 * p.upperVo2, vo2L: vo2 * (1 - p.upperVo2), qDesign: q, ventPeak: 1 };
-  let top = 0;
-  for (let i = 0; i <= 400; i++) top = Math.max(top, ventShape(m, (i / 400) * T));
-  m.ventPeak = top;
+  const m: Model = { patient: { ...p, satLung: spec.satLung ?? p.satLung }, hr: 60 / T, T, chambers, comp, edges, start, vo2U: vo2 * p.upperVo2, vo2L: vo2 * (1 - p.upperVo2), qDesign: q };
   return m;
 }
 
 // ---- hemodynamics -----------------------------------------------------------------------------
-/** Double-Hill ventricular activation (Stergiopulos): rises over about Tmax, falls by about 1.2 Tmax. */
-function ventShape(m: Model, t: number): number {
-  const tMax = 0.376 * Math.pow(m.T, 0.8), a1 = 0.708 * tMax, a2 = 1.677 * a1;
-  const r = Math.pow(t / a1, 1.32);
-  return (r / (1 + r)) / (1 + Math.pow(t / a2, 21.9));
-}
 /** Pressure (mmHg) or volume over the last beat; `end` is the value at the end of the beat, the instant before the next activation (end-diastolic pressure for a ventricle). */
 export interface NodeStat { min: number; max: number; mean: number; end: number }
 export interface ValveStat { peakGradient: number; meanGradient: number; forwardMl: number; regurgMl: number; openMs: number; regurgPeakGradient: number }
@@ -209,10 +199,11 @@ const WAVE_EDGES = ["TV", "PVL", "MV", "AV", "RVAO", "ASD", "VSD", "PDA", "BT"];
 
 /**
  * Run the model to a periodic state on the core engine and report the last beat. With `waveform: false` the waveform capture is
- * skipped (faster) and `wave` comes back with empty arrays in the same shape.
+ * skipped (faster) and `wave` comes back with empty arrays in the same shape. `core` overrides how the model becomes a core
+ * graph (relaxation, atrial drive, PR; see `FromModelOptions`); the defaults are the current baseline.
  */
-export function simulate(m: Model, opts: { waveform?: boolean } = {}): Hemodynamics {
-  const eng = engineFromModel(m), withWave = opts.waveform !== false;
+export function simulate(m: Model, opts: { waveform?: boolean; core?: FromModelOptions } = {}): Hemodynamics {
+  const eng = engineFromModel(m, opts.core), withWave = opts.waveform !== false;
   const nSteps = Math.max(50, Math.round(m.T / SOLVER.dt));
   const rec = new BeatRecorder(eng, m.T, m.edges.filter((e) => e.type === "valve" && (e.name !== "RVAO" || e.area)).map((e) => e.name), withWave ? { dt: m.T / nSteps, every: 0.002, flows: WAVE_EDGES } : undefined);
   const { beats, converged } = eng.periodic(m.hr);
@@ -354,11 +345,11 @@ export function analyze(spec: StructuralSpec = {}, opts: { waveform?: boolean } 
  * every case starts from it. Cached by the baseline's contents, so a different weight or age finds its own.
  */
 const offsets = new Map<string, number>();
-export function volumeOffsetFor(spec: StructuralSpec): number {
-  const kind = spec.patient ?? "adult", key = JSON.stringify(PATIENTS[kind]), hit = offsets.get(key);
+export function volumeOffsetFor(spec: StructuralSpec, core?: FromModelOptions): number {
+  const kind = spec.patient ?? "adult", key = JSON.stringify([PATIENTS[kind], core?.relaxScale, core?.atrialEesScale, core?.pr?.(0.8), core?.inertance]), hit = offsets.get(key);
   if (hit !== undefined) return hit;
   const target = PATIENTS[kind].map;
-  const err = (off: number) => simulate(buildModel({ patient: kind }, off), { waveform: false }).p.AO.mean - target;
+  const err = (off: number) => simulate(buildModel({ patient: kind }, off), { waveform: false, core }).p.AO.mean - target;
   let x0 = 0, f0 = err(x0), x1 = 0.1 * target * PATIENTS[kind].weightKg, f1 = err(x1);
   for (let i = 0; i < 8 && Math.abs(f1) > 0.1; i++) {
     const x2 = x1 - (f1 * (x1 - x0)) / (f1 - f0 || 1e-9);
