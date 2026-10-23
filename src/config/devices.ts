@@ -21,3 +21,60 @@ export const GENERIC_PUMP = {
   wV: 2, // ml, width of that transition [assumed]
   suctionAt: 0.5, // fraction of Rmax at which the `suction` tap goes true [assumed]
 };
+
+// ---- Impella (task D2) ------------------------------------------------------------------------------------------------------
+// Every number below is [assumed] unless it carries [lit]. None is manufacturer data: the maximum speeds and maximum flows follow
+// the order of magnitude of what the manufacturer's public material states (about 2.5, 3.5-4 and 5.5 L/min; rotor speeds of a few
+// tens of thousands rpm), which is NOT verified here. The HQ coefficients are designed, not measured (see `hqDesign` below).
+
+/** L = ρ·ℓ/A of a cannula of length `lengthCm` and inner diameter `diameterMm`, in mmHg·s²/ml (ρ = 1.06 g/ml [lit]; 1 mmHg = 1333 dyn/cm²). ℓ 13 cm, d 4 mm gives 0.082. */
+export const cannulaInertance = (lengthCm: number, diameterMm: number): number => (1.06 * lengthCm) / (Math.PI * (diameterMm / 20) ** 2) / 1333;
+
+export type ImpellaModelName = "2.5" | "CP" | "5.5";
+export type ImpellaPosition = "correct" | "aortic" | "deep";
+
+export interface ImpellaDef {
+  /** Rotor speed (krpm) at P-level 0..9 (P0 = off). Linear from `speedP1` to `speedP9` for P1..P9. [assumed] */
+  speeds: readonly number[];
+  /** Pressure-head coefficients, H = a·ω² − b·ω·Q − c·Q·|Q| (ω krpm, Q ml/s, H mmHg). Designed so the maximum flow (P9, ΔP 60 mmHg) is in the published class. [assumed] */
+  a: number; b: number; c: number;
+  /** Cannula length (cm) and inner diameter (mm), which set the inertance L = ρℓ/A. [assumed] */
+  lengthCm: number; diameterMm: number;
+  /** Inflow cannula resistance with a full inflow, mmHg·s/ml. [assumed] */
+  R0: number;
+  /** Class flow at P9 against ΔP = 60 mmHg, L/min: documentation of the design target, asserted by tests within 15 %. [assumed] */
+  maxFlowLpm: number;
+}
+
+const ramp = (lo: number, hi: number): number[] => [0, ...Array.from({ length: 9 }, (_, i) => +(lo + ((hi - lo) * i) / 8).toFixed(2))];
+
+/**
+ * Hq design of each model: shut-off head H0 at the top speed (Q = 0), free flow Qf (H = 0 at the top speed), and a split f = 0.4 of
+ * H0 between the slip term b·ω·Q and the loss term c·Q² at Qf; a = H0/ω², b = f·H0/(ω·Qf), c = (1 − f)·H0/Qf². H0 and Qf were then
+ * solved so that Q(ΔP = 60 mmHg, P9) hits the class flow. 2.5: ω 51 krpm, H0 140 mmHg, Qf 62 ml/s; CP: 46, 150, 90; 5.5: 33, 120, 161. [assumed]
+ */
+export const IMPELLA: Record<ImpellaModelName, ImpellaDef> = {
+  "2.5": { speeds: ramp(25, 51), a: 0.0538, b: 0.01775, c: 0.02195, lengthCm: 12, diameterMm: 3.5, R0: 0.15, maxFlowLpm: 2.5 },
+  CP: { speeds: ramp(22, 46), a: 0.0709, b: 0.01455, c: 0.01119, lengthCm: 13, diameterMm: 4.5, R0: 0.1, maxFlowLpm: 3.7 },
+  "5.5": { speeds: ramp(16, 33), a: 0.1102, b: 0.009054, c: 0.00279, lengthCm: 10, diameterMm: 6, R0: 0.05, maxFlowLpm: 5.5 },
+};
+
+/**
+ * Suction and floor law shared by the Impella models, set relative to the LV's own unloaded volume V0 (the R-D1 decision). All [assumed].
+ *  - `vcMarginMl`  collapse volume Vc = V0 + margin: suction is half developed there (wV wide); the pressure term uses `Pth`, `wP`.
+ *  - `floorMl`     hard floor: the flow is softly limited so the LV volume stays above V0 + floor.
+ *  - `floorTau`    time constant (s) of the volume approach to the floor: Q_limit = (V − floor)/floorTau; `limitTau` how fast Q follows it, `limitBand` (ml/s) the width over which the limiter is blended in.
+ */
+export const IMPELLA_SUCTION = { vcMarginMl: 30, wV: 3, Pth: 0, wP: 1, Rmax: 40, suctionAt: 0.5, floorMl: 2, floorTau: 0.04, limitTau: 0.005, limitBand: 2 };
+
+/** Position effects. `aortic`: inflow and outflow both in the aorta (no LV connection). `deep`: the inflow sits against the wall / papillary apparatus: suction develops at a higher volume and pressure. [assumed] */
+export const IMPELLA_POSITION = { deep: { vcExtraMl: 15, pthExtra: 8 } };
+
+/**
+ * Console formulas. Motor current (mA) = loss + hydraulic torque term:
+ *     I = i0 + i2·ω² + kI·H(ω,Q)·Q/ω      (ω krpm, Q ml/s, H mmHg; the last term clipped at 0)
+ * i0 + i2·ω² is the speed-dependent loss (bearing, windage, purge flow); kI follows from shaft power = hydraulic power/η and
+ * torque = shaft power/ω, I = torque/Kt:  kI = 1000 mA/A · 1.333e-4 W per mmHg·ml/s ÷ (η · 2π/60 · 1000 rad/s per krpm · Kt) = 1.82 mA per (mmHg·ml/s/krpm)
+ * with η = 0.2 and Kt = 0.0035 N·m/A. All [assumed].
+ */
+export const IMPELLA_CONSOLE = { i0: 150, i2: 0.12, eta: 0.2, kt: 0.0035, alarmLevel: 0.2, strideS: 0.004 };
