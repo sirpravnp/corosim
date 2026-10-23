@@ -7,15 +7,20 @@ import type { Ctx, Element, NodeId, Rates, StateDecl, Tunable } from "./types";
  *  - open: true = pericardium opened (after cardiac surgery), no constraint.
  *  - v0: unstressed sac volume, ml (blood in the four chambers + effusion at which P_peri = 0).
  *  - a: pressure scale, mmHg;  b: exponent, 1/ml.
+ *  - reservePerStiffness: ml of reserve volume lost per unit of (stiffness − 1): V0_eff = V0 − k·(s − 1). A scarred sac is not only stiffer, it also fits the heart tighter.
  *  - adaptTauS: time constant (s) with which the stretch of V0 follows the sac volume (chronic effusion); Infinity = never.
  *  - effusionRateMlS: fluid accumulating in the sac, ml/s (bleeding or exudate; 0 = stable).
  */
-export interface PericardiumParams { stiffness: number; open: boolean; v0: number; a: number; b: number; adaptTauS: number; effusionRateMlS: number }
+export interface PericardiumParams { stiffness: number; open: boolean; v0: number; a: number; b: number; adaptTauS: number; effusionRateMlS: number; reservePerStiffness: number }
+
+const E6 = Math.exp(6);
 
 /**
  * The pericardial sac, a field element. Sac volume V_sac = sum of the volumes of every node in the "pericardial" group + effusion.
  *
- *   P_peri = max(0, s · A · (exp(min(s · B·(V_sac − V0 − stretch), 30)) − 1))     mmHg, zero when `open`
+ *   x = V_sac − V0 − stretch + k·(s − 1)                                     ml (k = reservePerStiffness)
+ *   P_peri = max(0, s · A · (E(B·x) − 1))                                     mmHg, zero when `open`
+ *   E(u) = exp(u) for u ≤ 6, e^6·(1 + u − 6) beyond (linear continuation: the slope of the pressure stays bounded, so the integration stays stable at any stiffness)
  *
  * applied with `addExternal` to every pericardial node (each chamber then sees transmural pressure + P_peri). A sac slack by a
  * few ml does not pull on the heart, so the pressure is floored at 0.
@@ -37,7 +42,7 @@ export class Pericardium implements Element, Tunable<PericardiumParams> {
   /** Effusion at the last field evaluation (the end of the last step when read between steps), ml. */
   private lastEff = 0;
   constructor(private readonly nodeIds: readonly NodeId[], effusionMl = 0, params: Partial<PericardiumParams> = {}) {
-    this.params = { stiffness: 1, open: false, v0: PERICARDIUM.v0, a: PERICARDIUM.a, b: PERICARDIUM.b, adaptTauS: PERICARDIUM.adaptTauS, effusionRateMlS: 0, ...params };
+    this.params = { stiffness: 1, open: false, v0: PERICARDIUM.v0, a: PERICARDIUM.a, b: PERICARDIUM.b, adaptTauS: PERICARDIUM.adaptTauS, effusionRateMlS: 0, reservePerStiffness: PERICARDIUM.reservePerStiffness, ...params };
     this.states = [{ name: "effusion", start: effusionMl }, { name: "stretch", start: 0 }];
     this.lastEff = effusionMl;
   }
@@ -53,7 +58,8 @@ export class Pericardium implements Element, Tunable<PericardiumParams> {
   private pressure(ctx: Ctx, eff: number) {
     const p = this.params;
     if (p.open) return 0;
-    return Math.max(0, p.stiffness * p.a * (Math.exp(Math.min(p.stiffness * p.b * (this.sac(ctx, eff) - p.v0 - ctx.y[this.off + 1]), 30)) - 1));
+    const u = p.b * (this.sac(ctx, eff) - p.v0 - ctx.y[this.off + 1] + p.reservePerStiffness * (p.stiffness - 1));
+    return Math.max(0, p.stiffness * p.a * ((u <= 6 ? Math.exp(u) : E6 * (1 + u - 6)) - 1));
   }
   field(ctx: Ctx, out: Rates) {
     const eff = (this.lastEff = this.effusion(ctx));

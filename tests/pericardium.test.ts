@@ -111,12 +111,35 @@ describe("pericardium: constriction", () => {
     expect(c.RVEDP / c.LVEDP).toBeGreaterThan(base.RVEDP / base.LVEDP);
     expect(c.CO).toBeGreaterThan(0.9 * base.CO);
   });
+  it("stiffness 4 narrows the RV-LV end-diastolic gap, and 10 nearly closes it", () => {
+    const gap = (x: Run) => x.LVEDP - x.RVEDP, c10 = run({ stiffness: 10 });
+    log(`EDP gap (LVEDP-RVEDP): normal ${f(gap(base))}, x4 ${f(gap(c))}, x10 ${f(gap(c10))}`);
+    expect(gap(c)).toBeLessThan(gap(base)); expect(gap(c)).toBeLessThan(5);
+    expect(gap(c10)).toBeLessThan(2.5);
+  });
   it("RV pressure waveform (reported): early-diastolic dip then rise to a plateau", () => {
     const w = c.b.wave!, pv = w.p.RV, t = w.t;
     const sys = pv.indexOf(Math.max(...pv)), early = pv.slice(sys, sys + Math.floor(pv.length * 0.4));
     const dip = Math.min(...early), end = pv[pv.length - 1];
     log(`RV: peak ${f(pv[sys])}, early-diastolic min ${f(dip)}, end-diastolic ${f(end)} (beat ${t.length} points)`);
     expect(Number.isFinite(dip)).toBe(true);
+  });
+});
+
+describe("pericardium: stiffness sweep", () => {
+  it("is stable from 1 to 10: finite, bounded, converged, CO falls smoothly", () => {
+    const sweep = [1, 2, 4, 6, 8, 10].map((s) => ({ s, x: run({ stiffness: s }) }));
+    log("stiffness  RA RVEDP LA LVEDP SV CO MAP");
+    for (const { s, x } of sweep) log(`${s}  ${row(x)}  P_peri ${x.ppMax.toFixed(1)}`);
+    for (const { x } of sweep) { for (const v of [x.MAP, x.CO, x.RA, x.RVEDP, x.LA, x.LVEDP, x.ppMax]) expect(Number.isFinite(v)).toBe(true); expect(x.r.converged).toBe(true); expect(x.ppMax).toBeLessThan(60); }
+    for (let i = 1; i < sweep.length; i++) expect(sweep[i].x.CO).toBeLessThanOrEqual(sweep[i - 1].x.CO + 0.01);
+    expect(sweep[0].x.CO).toBeCloseTo(base.CO, 1);
+  });
+  it("halving dt at stiffness 10 (and 6) changes MAP, CO and the end-diastolic pressures by less than 0.5 %", () => {
+    for (const s of [6, 10]) {
+      const a = run({ stiffness: s }), b = run({ stiffness: s }, { dt: SOLVER.dt / 2 });
+      for (const k of ["MAP", "CO", "RA", "LA", "LVEDP", "RVEDP"] as const) expect(rel(a[k], b[k]), `${k} at ${s}`).toBeLessThan(0.005);
+    }
   });
 });
 
