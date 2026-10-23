@@ -1,7 +1,7 @@
 /**
- * A HemoSource with fixed plausible normal-adult values. TEMPORARY: it exists only until the real bridge over today's
- * engines (task P2) lands; then the Simulator page switches to that and this file is deleted. Not physics: it gives
- * panels something to draw. Traces are a synthetic pulse wave per node; beats() is one synthetic beat.
+ * A HemoSource with fixed plausible normal-adult values, for tests of panels and the workspace. The Simulator page no
+ * longer uses it: it runs the bridge (src/sim/bridgeSource.ts) over its Simulation. Not physics: it gives panels
+ * something to draw. Traces are a synthetic pulse wave per node; beats() is one synthetic beat.
  */
 import type { BeatSummary, Chamber, DeviceConsole, HemoNode, HemoNumbers, HemoSource, Saturations, Series } from "./hemoSource";
 

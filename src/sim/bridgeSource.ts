@@ -2,17 +2,29 @@ import type { BeatSummary, Chamber, DeviceConsole, HemoNode, HemoNumbers, HemoSo
 import type { PatientSpec } from "./patient";
 import type { Simulation } from "./simulation";
 import type { BeatRecord } from "./metrics";
-import { analyze, NODES } from "../physics/structural";
+import { NODES } from "../physics/structural";
 import type { StructuralReport, StructuralSpec, Waveform } from "../physics/structural";
 import { BASE_SVR } from "../physics/circulation";
 import { PATIENTS, O2_PER_G_HB } from "../config/structural";
 import { SUPPORT } from "../config/management";
 import { BRIDGE } from "../config/bridge";
+import { syncSolver } from "./bridgeSolver";
+import type { BridgeSolver, SolveRequest, SolveResult } from "./bridgeSolver";
 
 const CHAMBERS: readonly Chamber[] = ["RA", "RV", "LA", "LV"];
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const empty = (): Series => ({ t: new Float32Array(0), v: new Float32Array(0) });
 const VOL_KEY = { RA: "vRA", RV: "vRV", LA: "vLA", LV: "vLV" } as const;
+
+const NaNs = <T extends string>(keys: readonly T[]) => Object.fromEntries(keys.map((k) => [k, NaN])) as Record<T, number>;
+/** Before the first (asynchronous) solve lands: every value unknown, which panels draw as a dash. */
+const NO_NUMBERS: HemoNumbers = {
+  hr: NaN, map: NaN, systolic: NaN, diastolic: NaN, cvp: NaN, pa: { systolic: NaN, diastolic: NaN, mean: NaN }, pcwp: NaN, lvedp: NaN, rvedp: NaN,
+  co: NaN, ci: NaN, svr: NaN, pvr: NaN, lvEf: NaN, rvEf: NaN, qpQs: NaN,
+};
+const noSaturations = (): Saturations => ({
+  node: NaNs(NODES), spo2: NaN, preductal: NaN, postductal: NaN, svo2: NaN, do2: NaN, vo2: NaN, lactate: NaN, bed: {}, bedSource: "ischemia-derived",
+});
 
 /** What a solve was made from; a re-solve is due when the live inputs move away from it. */
 interface Inputs { hr: number; lv: number; rv: number; map: number; svr: number }
@@ -54,7 +66,13 @@ interface Inputs { hr: number; lv: number; rv: number; map: number; svr: number 
  * Re-solving: never every frame. A solve (several analyze calls, ~100 ms each) runs when an input moved from its value at
  * the last solve by more than a threshold (HR 3 bpm, ischemia 0.03 of either ventricle, monitor MAP 3 mmHg) and at least
  * 3 s of simulated time have passed; also on `refresh()`. The check runs at each beat and when numbers() or
- * saturations() is read. All solve work is in `solve()`, so it can move to a worker later.
+ * saturations() is read. The engine work (spec in, calibrated report out) is a `BridgeSolver` (src/sim/bridgeSolver.ts):
+ * the synchronous one by default (Node, tests), or an asynchronous one such as the Web Worker of
+ * src/sim/bridgeWorkerSolver.ts (task P2b). With an asynchronous solver the bridge keeps replaying the previous waveform
+ * while a solve is in flight and never starts a second one: a refresh() meanwhile is remembered and, when the first
+ * lands, solved from the then-live inputs. A result is applied like a synchronous one, with the one-beat blend. Before the
+ * first result numbers() and saturations() are all NaN and there are no beats; `solves` counts applied results,
+ * `analyzeCalls` the calls made inside them, `calibrationError` is that of the last applied result.
  *
  * Replay: each ventricular beat of the simulation (`Simulation.onBeat`, chained, restored by `dispose()`) emits one
  * `BeatSummary` covering the interval that just ended (start = beat time - RR). The cached waveform is time-warped to the
@@ -92,6 +110,9 @@ export class BridgeSource implements HemoSource {
   private wave: Waveform | null = null;
   private lastInputs: Inputs | null = null;
   private lastSolveT = -Infinity;
+  private inFlight = false;
+  private queued = false;
+  private solver: BridgeSolver;
   /** ml added (+) or removed (-) by the MAP calibration at the last solve. */
   volume = 0;
   private blendFrom: Waveform | null = null;
@@ -102,7 +123,9 @@ export class BridgeSource implements HemoSource {
   private active = true;
   private pPhase = 0; // s, next P wave in third-degree block, on the simulation clock
 
-  constructor(private sim: Simulation, private opts: { patient?: PatientSpec } = {}) {
+  /** `opts.patient` is read at each solve, so a page may set it later. `solver` defaults to the synchronous one. */
+  constructor(private sim: Simulation, private opts: { patient?: PatientSpec; solver?: BridgeSolver } = {}) {
+    this.solver = opts.solver ?? syncSolver;
     this.prevHandler = sim.onBeat;
     this.hook = (rec) => {
       this.prevHandler?.(rec);
@@ -135,7 +158,8 @@ export class BridgeSource implements HemoSource {
   }
 
   private maybeSolve() {
-    if (!this.report || !this.lastInputs) { this.solve(); return; }
+    if (this.inFlight) return; // the beat after it lands checks the thresholds against the new solve
+    if (!this.report || !this.lastInputs) { if (this.sim.t - this.lastSolveT >= BRIDGE.minSolveIntervalS) this.solve(); return; }
     if (this.sim.t - this.lastSolveT < BRIDGE.minSolveIntervalS) return;
     const a = this.inputs(), b = this.lastInputs, T = BRIDGE.threshold;
     if (Math.abs(a.hr - b.hr) > T.hrBpm || Math.abs(a.lv - b.lv) > T.ischemia || Math.abs(a.rv - b.rv) > T.ischemia || Math.abs(a.map - b.map) > T.mapMmHg || Math.abs(a.svr / b.svr - 1) > T.svrFrac) this.solve();
@@ -152,29 +176,45 @@ export class BridgeSource implements HemoSource {
     };
   }
 
-  /** The one place engine work happens: build the spec, calibrate the volume to the monitor's MAP, cache the report. */
+  /** Start a solve of the live inputs. With an asynchronous solver, one at a time; a call during a solve is queued. */
   private solve() {
-    const inputs = this.inputs(), target = inputs.map, [lo, hi] = BRIDGE.volumeRangeMl;
-    const run = (v: number) => { this.analyzeCalls++; return analyze(this.spec(v), { waveform: true }); };
-    let v = clamp(this.volume, lo, hi), r = run(v), f = r.pressure.AO.mean - target;
-    let best = { r, f, v };
-    let vPrev = NaN, fPrev = NaN;
-    for (let i = 0; i < BRIDGE.maxCalibrationIterations && Math.abs(best.f) > BRIDGE.mapToleranceMmHg; i++) {
-      const slope = Number.isFinite(vPrev) && Math.abs(f - fPrev) > 1e-9 && (f - fPrev) / (v - vPrev) > 0 ? (f - fPrev) / (v - vPrev) : BRIDGE.mapPerMl;
-      const next = clamp(v - f / slope, lo, hi);
-      if (Math.abs(next - v) < 0.5) break; // converged, or the clamp binds
-      vPrev = v; fPrev = f; v = next; r = run(v); f = r.pressure.AO.mean - target;
-      if (Math.abs(f) < Math.abs(best.f)) best = { r, f, v };
-    }
-    this.volume = best.v; this.calibrationError = best.f;
+    if (this.inFlight) { this.queued = true; return; }
+    const inputs = this.inputs(), req: SolveRequest = { base: this.spec(0), volume: this.volume, targetMap: inputs.map };
+    let out: SolveResult | Promise<SolveResult>;
+    try { out = this.solver.solve(req); } catch (e) { this.failed(e); return; }
+    if (!(out instanceof Promise)) { this.apply(out, inputs); return; }
+    this.inFlight = true;
+    out.then(
+      (r) => { this.inFlight = false; if (this.active) this.apply(r, inputs); this.drain(); },
+      (e) => { this.inFlight = false; this.failed(e); this.drain(); },
+    );
+  }
+
+  /** After an asynchronous solve: run the one asked for meanwhile, from the live inputs of now (the latest wanted wins). */
+  private drain() {
+    if (!this.active || !this.queued) return;
+    this.queued = false;
+    this.solve();
+  }
+
+  private failed(e: unknown) {
+    console.warn("CoroSim: the bridge solve failed", e);
+    this.lastSolveT = this.sim.t; // do not retry on every beat
+  }
+
+  /** Cache a solved report; the next beat blends from the previous waveform to this one. */
+  private apply(r: SolveResult, inputs: Inputs) {
+    this.analyzeCalls += r.analyzeCalls;
+    this.volume = r.volume; this.calibrationError = r.calibrationError;
     if (this.wave) this.blendFrom = this.wave;
-    this.report = best.r; this.wave = best.r.waveform ?? null;
+    this.report = r.report; this.wave = r.report.waveform ?? null;
     this.lastInputs = inputs; this.lastSolveT = this.sim.t; this.solves++;
   }
 
-  private ensure(): StructuralReport {
+  /** The cached report, or null before the first asynchronous solve has finished. */
+  private ensure(): StructuralReport | null {
     this.maybeSolve();
-    return this.report!;
+    return this.report;
   }
 
   // ---- replay -----------------------------------------------------------------------------------------------------
@@ -279,7 +319,9 @@ export class BridgeSource implements HemoSource {
   }
 
   numbers(): HemoNumbers {
-    const r = this.ensure(), p = r.pressure, bsa = PATIENTS[this.opts.patient?.kind ?? "adult"].bsa;
+    const r = this.ensure();
+    if (!r) return NO_NUMBERS;
+    const p = r.pressure, bsa = PATIENTS[this.opts.patient?.kind ?? "adult"].bsa;
     return {
       hr: r.hr, map: p.AO.mean, systolic: p.AO.max, diastolic: p.AO.min,
       cvp: p.RA.mean, pa: { systolic: p.PA.max, diastolic: p.PA.min, mean: p.PA.mean }, pcwp: p.LA.mean,
@@ -289,6 +331,7 @@ export class BridgeSource implements HemoSource {
 
   saturations(): Saturations {
     const r = this.ensure(), kind = this.opts.patient?.kind ?? "adult", base = PATIENTS[kind];
+    if (!r) return noSaturations();
     const node = {} as Record<HemoNode, number>;
     for (const n of NODES) node[n] = r.saturation[n];
     const bed: Record<string, number> = {}, B = BRIDGE.bedOxygen;
