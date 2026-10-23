@@ -3,6 +3,7 @@ import { Scenario, normalizeScenario } from "../sim/scenario";
 import { BeatRecord, computeMetrics } from "../sim/metrics";
 import { explain } from "../sim/explain";
 import { SCENARIO_REFERENCE, encodeScenario } from "../sim/llm";
+import type { PatientSpec } from "../sim/patient";
 import { buildTree } from "../anatomy/tree";
 import { CATEGORIES, PRESETS, EkgPreset, findPreset, resolveSpec } from "../ekg/presets";
 import { EkgSpec, measure } from "../ekg/engine";
@@ -88,6 +89,30 @@ const scenarioSchema = {
   },
 } as const;
 
+const numP = (min: number, max: number, description?: string) => ({ type: "number", minimum: min, maximum: max, ...(description ? { description } : {}) });
+/** The Scenario schema plus the PatientSpec fields (src/sim/patient.ts). Passed through unchanged: the engines do not read the additions yet. */
+const patientSchema = {
+  ...scenarioSchema,
+  description: "Patient and intervention description (a Scenario plus kind, heart, pericardium, fluids, ventilation and devices). Every field optional; omitted fields keep the typical resting adult. The additional fields are accepted and validated but not yet used by the simulator.",
+  properties: {
+    ...scenarioSchema.properties,
+    kind: { enum: ["adult", "neonate"], description: "Baseline physiology. Neonates have no coronary view." },
+    heart: { type: "object", description: "Structural lesions as in the structural page: valves {av|mv|tv|pv: {open 0..1, reg 0..10}}, pda|asd|vsd|bt {diameterMm 0..40}, tof, pvri, svrScale, satLung, volumeMl, lvSize|laSize|rvSize|raSize, rvContractility. See the reference for ranges." },
+    pericardium: { type: "object", properties: { effusionMl: numP(0, 2000), effusionRateMlMin: numP(0, 100), stiffness: numP(0.2, 10, "1 normal, > 1 constrictive"), open: { type: "boolean", description: "Pericardium opened (post cardiac surgery)." } } },
+    fluids: { type: "object", properties: { given: { type: "array", maxItems: 20, items: { type: "object", required: ["kind", "ml"], properties: { kind: { enum: ["crystalloid", "colloid", "albumin", "blood"] }, ml: numP(0, 5000), atMin: numP(0, 1440), overMin: numP(0, 1440) } } }, hemorrhageMlMin: numP(0, 500), capillaryLeak: numP(0, 1), legRaise: { type: "boolean" } } },
+    ventilation: { type: "object", properties: { mode: { enum: ["spontaneous", "positive"] }, peep: numP(0, 25, "cmH2O"), tidalMlKg: numP(2, 15) } },
+    devices: {
+      type: "object", description: "Mechanical support with settings. support.iabp / support.impella (true) mean the defaults: IABP 1:1 at correct timing, 40 ml; Impella CP at P6, correct position.",
+      properties: {
+        impella: { type: "object", properties: { model: { enum: ["2.5", "CP", "5.5"] }, level: numP(0, 9, "P-level"), position: { enum: ["correct", "aortic", "deep"] } } },
+        impellaRp: { type: "object", properties: { level: numP(0, 9) } },
+        iabp: { type: "object", properties: { ratio: { enum: [1, 2, 3] }, inflateMs: numP(-100, 100), deflateMs: numP(-100, 100), volumeMl: numP(0, 50) } },
+        ecmo: { type: "object", properties: { flowLpm: numP(0, 7), sweepLpm: numP(0, 10), fio2: numP(0.21, 1) } },
+      },
+    },
+  },
+} as const;
+
 const round = (x: number, d = 1) => +x.toFixed(d);
 const num = (v: unknown, def: number, lo: number, hi: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : def);
 
@@ -149,7 +174,7 @@ export const TOOLS: ToolDef[] = [
     inputSchema: { type: "object", properties: {} },
     run({ sim }) {
       return {
-        reference: SCENARIO_REFERENCE, schema: scenarioSchema,
+        reference: SCENARIO_REFERENCE, schema: patientSchema,
         ekg: "The patient makes only the rhythms its coronary physiology causes (ischemic ST change, PVCs, AV block, AF if given). To show or teach any other rhythm or 12-lead pattern (flutter, SVT, WPW, VT, polymorphic VT, torsades, VF, long QT, hyperkalemia, Brugada, pericarditis, de Winter, Wellens...), call corosim_ekg_show (a preset, or custom for anything else): it does not touch this patient.",
         arteriesInCurrentAnatomy: buildTree(sim.n.anatomy).segments.map((s) => ({ id: s.id, name: s.name, supplies: `${(s.subMass * 100).toFixed(0)}% of myocardium` })),
         referenceAdult: { hr: 72, strokeVolumeMl: 70, mapMmHg: 90, bp: "120/72" },
@@ -160,9 +185,9 @@ export const TOOLS: ToolDef[] = [
   {
     name: "corosim_set_scenario", title: "Build a patient", readOnly: false,
     description: `Replace the current patient with this scenario, then run a warm-up so the reflexes have settled. Returns the monitor, the 12-lead ECG, the guideline assessment and a grounded explanation, plus warnings listing anything that was clamped or dropped (read them: they tell you what actually ran). Use settled=false to watch an occlusion develop from a healthy start. The warm-up does not advance the infarct clock; corosim_run and corosim_adjust do (2 clinical minutes per simulated second), so a closed artery loses muscle as you run it. Not for showing a rhythm or EKG pattern (AF, flutter, SVT, blocks, VT, torsades, VF, STEMI mimics, electrolytes): use corosim_ekg_show, which draws any of them. ${NOT_CLINICAL}`,
-    inputSchema: { type: "object", properties: { scenario: scenarioSchema, settled: { type: "boolean", description: "Start with ischemia already at its steady value (default true). False = ischemia develops over ~20 s." }, warmupSeconds: { type: "number", minimum: 0, maximum: 300, description: "Simulated seconds to run before returning (default 45)." } } },
+    inputSchema: { type: "object", properties: { scenario: patientSchema, settled: { type: "boolean", description: "Start with ischemia already at its steady value (default true). False = ischemia develops over ~20 s." }, warmupSeconds: { type: "number", minimum: 0, maximum: 300, description: "Simulated seconds to run before returning (default 45)." } } },
     run({ sim }, a) {
-      sim.reset((a.scenario ?? {}) as Scenario, { settled: a.settled !== false });
+      sim.reset((a.scenario ?? {}) as PatientSpec, { settled: a.settled !== false });
       sim.warmup(num(a.warmupSeconds, 45, 0, 300));
       return { warnings: sim.warnings, ...bedside(sim), explanation: explain(sim) };
     },
