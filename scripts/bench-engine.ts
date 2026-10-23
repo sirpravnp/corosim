@@ -48,6 +48,7 @@ const rows: Row[] = [
   structural("tetralogy of Fallot", lesion("tof")),
   solveRow("simulate(): adult normal (solve only)", {}, (m) => simulate(m)),
   solveRow("core: adult normal (fromModel + periodic)", {}, (m) => engineFromModel(m).periodic(m.hr)),
+  solveRow("core + septum: adult normal (B2)", {}, (m) => engineFromModel(m, { septum: true }).periodic(m.hr)),
   headless("normal patient", {}),
   headless("proximal LAD occlusion", { lesions: [{ artery: "LAD", occluded: true, position: 0.15 }] }),
 ];

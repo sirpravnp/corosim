@@ -76,9 +76,16 @@ export class ElastanceChamber implements NodeModel, Tunable<ElastanceParams> {
     if (rs !== 1 && tau > c.tPeak) tau = c.tPeak + (tau - c.tPeak) / rs;
     return (this.strength * c.raw(tau)) / c.peak;
   }
-  pressure(volume: number, t: number): number {
-    const { v0, ees, a, b } = this.params, e = this.activation(t), x = volume - v0;
+  pressure(volume: number, t: number): number { return this.pressureAt(volume, this.activation(t)); }
+  /** Pressure (mmHg) at volume (ml) for a given activation e (the part of `pressure` that does not depend on time). */
+  pressureAt(volume: number, e: number): number {
+    const { v0, ees, a, b } = this.params, x = volume - v0;
     return (1 - e) * a * (Math.exp(Math.min(b * x, 30)) - 1) + e * ees * Math.max(x, 0);
+  }
+  /** dP/dV (mmHg/ml) at volume (ml) for activation e; zero slope of the passive part beyond the exponent clamp, as in `pressureAt`. */
+  slopeAt(volume: number, e: number): number {
+    const { v0, ees, a, b } = this.params, x = volume - v0;
+    return (1 - e) * (b * x < 30 ? a * b * Math.exp(b * x) : 0) + (x > 0 ? e * ees : 0);
   }
 }
 

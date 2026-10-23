@@ -40,7 +40,7 @@ Units: mmHg, ml, ml/s, s.
 | Inertial edge, valve with inertance (A3) | `Element` | flow | flow Q |
 | 3-element Windkessel (A5) | characteristic impedance `Zc` is a parameter of the outflow valve (`OneWayValve`, `InertialValve`): the valve and Zc solve ΔP = K·Q·|Q| + Zc·Q in closed form (or, inertial, Zc·Q joins the state equation); phase 2b adds Zc·Q to the artery node, which then reads the proximal pressure Pc + Zc·Q, so no stiff root node is needed | series, flow | none or Q |
 | Pericardium (B1) | `Element` | field: `addExternal` on the "pericardial" group from total heart volume + effusion | effusion volume |
-| Septum (B2) | `Element` | field: `shiftVolume` LV ↔ RV from the septal balance | none (quasi-static solve) or septal volume |
+| Septum (B2) | `Element` (`septum.ts`, `fromModel(m, { septum: true })`) | field: `shiftVolume` LV −V_spt, RV +V_spt; V_spt solved each evaluation from P_LV(V_LV−V_spt) − P_RV(V_RV+V_spt) = E_s(t)·V_spt (safeguarded Newton, bisection fallback, no allocation; never NaN). The ventricles keep a free-wall fraction of the lumped laws (`config/septum.ts`) | none (quasi-static solve); `stats` count solves and iterations |
 | Intrathoracic pressure (B3) | `Element` | field: `addExternal` on "thoracic" (and "pericardial") nodes | none |
 | Rotary pump: Impella, ECMO, Impella RP (D1, D2, D6, D7) | `Element` | flow; taps for the console | pump flow Q |
 | IABP (D5) | `Element` | field: `shiftVolume` on the descending aorta; `onEvent` for triggering | balloon volume |
