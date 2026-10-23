@@ -40,3 +40,4 @@ Units: mmHg, ml, ml/s, s.
 | 1D arterial segment (F3) | an element whose ends are nodes; its interior is its own states | flow | A and Q per grid point |
 
 If a later task needs something this table cannot express, change `types.ts` in that task's PR and update this table.
+- An element calls `flow()` at most once per evaluation; two paths means two elements (`Sample.q` and `flowVolumes()` are per element).
