@@ -70,7 +70,6 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | P2 | in progress |
 | A1 | done (max difference from `simulate()` 2e-4, from exact atrial event timing; core 164× real time vs 129×) |
 | A2 | in progress |
-| P2 | in progress |
 
 **Branches.** Each task is built on a local branch `task/<ID>` in its own worktree, reviewed, then merged into the
 working branch, which is the only one pushed.
