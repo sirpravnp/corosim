@@ -10,9 +10,12 @@
  *    pressure at the first sample at or below that slope is LVEDP. (Atrial-kick slopes are well under 15 % of max dP/dt.)
  *  - Peak-to-peak gradient = max LV - max AO (the two peaks need not coincide).
  *  - Peak instantaneous gradient = max over the beat of (LV - AO).
- *  - Mean aortic gradient = mean of (LV - AO) over the ejection period: the contiguous run of samples with LV > AO that
- *    contains the peak instantaneous gradient.
- *  - Mean mitral (diastolic) gradient = mean of (LA - LV) over the samples with LA > LV (the filling period; LA is the wedge).
+ *  - Mean aortic gradient = mean of (LV - AO) over the ejection period: from the start of the contiguous run of samples with
+ *    LV > AO that contains the peak instantaneous gradient, for the valve's open time (the run itself if that is longer). With
+ *    valve inertance LV - AO also holds the acceleration of the blood column: it turns negative while the flow is still
+ *    decelerating, and that part is counted, so the mean is the convective (Doppler) gradient.
+ *  - Mean mitral (diastolic) gradient = mean of (LA - LV) from the first LA > LV sample after the ejection, for the mitral open
+ *    time (LA is the wedge).
  *  - Gorlin, aortic: AVA = (F / SEP) / (44.3 · sqrt(mean gradient)); F = forward volume through the valve per beat
  *    (BeatSummary.valves.AV.forwardMl), SEP = the valve's open time (openMs / 1000), the systolic ejection period.
  *  - Gorlin, mitral: MVA = (F / DFP) / (37.7 · sqrt(mean gradient)); DFP = diastolic filling period = MV openMs / 1000.
@@ -78,6 +81,12 @@ export function systolicOnset(lv: ArrayLike<number>, t: ArrayLike<number>): numb
   return i;
 }
 
+/** First index at or after `from` that is `secs` later than t[from] (N if none). */
+function until(t: ArrayLike<number>, from: number, secs: number): number {
+  let i = from; while (i < t.length && t[i] < t[from] + secs - 1e-9) i++;
+  return i;
+}
+
 /** The contiguous run [from, to) of indices where d > 0 that contains `at`. */
 function run(d: Float64Array, at: number): [number, number] {
   let a = at, b = at + 1;
@@ -100,16 +109,26 @@ export function leftHeartCath(n: HemoNumbers, beat: BeatSummary | undefined | nu
   let ip = 0;
   for (let i = 0; i < N; i++) { dAo[i] = lv[i] - ao[i]; dMit[i] = la[i] - lv[i]; if (dAo[i] > dAo[ip]) ip = i; }
   const peakInstant = dAo[ip];
-  const ejection: [number, number] = peakInstant > 0 ? run(dAo, ip) : [ip, ip];
+  const sep = beat.valves.AV.openMs / 1000, dfp = beat.valves.MV.openMs / 1000;
+  const run0: [number, number] = peakInstant > 0 ? run(dAo, ip) : [ip, ip];
+  // ejection: from the start of the positive run to the end of the valve's open time (never before the run's own end). With valve
+  // inertance the gradient turns negative while the flow still decelerates, and that part belongs to the mean.
+  const ejection: [number, number] = peakInstant > 0 ? [run0[0], Math.max(run0[1], until(t, run0[0], sep))] : run0;
   const meanAo = ejection[1] > ejection[0] ? meanOf(dAo.subarray(ejection[0], ejection[1])) : 0;
-  // filling: samples where LA > LV outside the ejection run
-  let mSum = 0, mCount = 0, mFrom = N, mTo = 0;
-  for (let i = 0; i < N; i++) if (dMit[i] > 0 && !(i >= ejection[0] && i < ejection[1])) { mSum += dMit[i]; mCount++; mFrom = Math.min(mFrom, i); mTo = Math.max(mTo, i + 1); }
-  const meanMit = mCount ? mSum / mCount : 0;
+  // filling: from the first sample after the ejection where LA > LV, for the mitral open time (or the samples with LA > LV, if longer)
+  // (the open time can run on past the end of the beat's trace into its start, so the window wraps)
+  let mFrom = N;
+  for (let i = ejection[1]; i < N; i++) if (dMit[i] > 0) { mFrom = i; break; }
+  let mCount = 0, mSum = 0;
+  if (mFrom < N) {
+    let r = 0; while (mFrom + r < N && dMit[mFrom + r] > 0) r++;
+    mCount = Math.min(N, Math.max(r, Math.round(dfp / ((t[N - 1] - t[0]) / (N - 1)))));
+    for (let k = 0; k < mCount; k++) mSum += dMit[(mFrom + k) % N];
+  }
+  const mTo = Math.min(N, mFrom + mCount), meanMit = mCount ? mSum / mCount : 0;
 
   const lvSys = maxOf(lv), aoSys = maxOf(ao), p2p = lvSys - aoSys;
   const av = beat.valves.AV, mv = beat.valves.MV;
-  const sep = av.openMs / 1000, dfp = mv.openMs / 1000;
   const area = (f: number, secs: number, g: number, k: number) => (secs > 0 && g > 0 && f > 0 ? f / secs / (k * Math.sqrt(g)) : nan);
   const aoG = meanAo >= LHC.minAorticGradientMmHg ? meanAo : nan, mitG = meanMit >= LHC.minMitralGradientMmHg ? meanMit : nan;
   const aorticGorlin = area(av.forwardMl, sep, aoG, GORLIN);

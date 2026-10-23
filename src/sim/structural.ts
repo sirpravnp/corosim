@@ -131,7 +131,7 @@ export const gradeValves = (spec: StructuralSpec, report: StructuralReport): Val
 
 const NOTES = [
   "The arch has no inertance here: a duct feeding the lower body also pushes some blood into the arch, so the upper-body saturation in pulmonary hypertension of the newborn reads about 91% (clinically nearer 98%).",
-  "Instantaneous peak gradients across normal valves are about twice the clinical Doppler values (no inertance); grades use the mean gradient and the Gorlin area.",
+  "The four heart valves have inertance: mitral peak and mean gradients sit near clinical Doppler values, but the aortic peak instantaneous gradient of a normal valve still reads high (about 15 mmHg against 4 to 8) because ejection flow peaks sharply. Grades use the mean gradient and the Gorlin area.",
   "No reflexes: pressure does not defend itself, so shunts and regurgitation show their raw effect on systemic pressure.",
   "Grades use adult cut-offs scaled to each patient's own valve size; pediatric z-scores are not modelled.",
 ];

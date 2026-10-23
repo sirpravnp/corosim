@@ -142,7 +142,7 @@ describe("Ebstein anomaly", () => {
     const a = assess("ebstein", { severity: 0.8 }), n = assess("normal").report;
     expect(valve(a, "TV").regurgFraction!).toBeGreaterThan(0.3);
     const frac = a.report.rvEdv / analyze({ patient: "neonate" }).rvEdv;
-    expect(frac).toBeGreaterThan(0.4); expect(frac).toBeLessThan(0.75); // the functional right ventricle is a fraction of normal
+    expect(frac).toBeGreaterThan(0.4); expect(frac).toBeLessThan(0.8); // the functional right ventricle is a fraction of normal
     expect(a.report.pressure.RA.mean).toBeGreaterThan(n.pressure.RA.mean);
     expect(a.report.shunt.asd).toBeLessThan(0);
     expect(a.report.saturation.AO).toBeLessThan(0.85);

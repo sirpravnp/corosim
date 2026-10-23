@@ -33,7 +33,7 @@ export const JVP = {
   /** The v search window extends to this multiple of the systole estimate, or to the first diastolic atrial event. [assumed] */
   vWindow: 1.25,
   /** Giant v: v peak at least `giantVRatio` times the a peak and `giantVExcess` mmHg above it (textbook normal v is a little below a). [assumed] */
-  giantVRatio: 1.5, giantVExcess: 3,
+  giantVRatio: 1.4, giantVExcess: 2.5,
   /** Giant v with no a wave to compare to: v at least this far above the lowest pressure of the beat, mmHg. [assumed] */
   giantVRange: 6,
   /** Steep y: the pressure falls at least this far (mmHg) from v to the y trough, at least this fast (mmHg/s). [assumed] */

@@ -1,9 +1,10 @@
+import { GORLIN } from "../../config/structural";
 import type { Gated } from "./valves";
 import type { Element, Engine, NodeId, Sample } from "./types";
 
 /** Pressure (mmHg) or volume (ml) over a beat; `end` is the value at the end of the beat, the instant before the next activation. */
 export interface NodeStat { min: number; max: number; mean: number; end: number }
-/** Gradients mmHg, volumes ml, `openMs` ms: peak and mean gradient while forward flow is possible, volumes through the valve in the beat, time open, peak gradient while reversed through a regurgitant area. */
+/** Gradients mmHg, volumes ml, `openMs` ms: peak and mean gradient while forward flow is possible (for an `InertialValve`, the convective gradient K·Q² of its flow as Doppler reads it, not the node pressure difference, which also carries the blood column's acceleration), volumes through the valve in the beat, time open, peak gradient while reversed through a regurgitant area. */
 export interface ValveStat { peakGradient: number; meanGradient: number; forwardMl: number; regurgMl: number; openMs: number; regurgPeakGradient: number }
 /** The beat sampled on a coarse grid: time (s, from the engine clock), pressure and volume of every node by name, and the net flow through the named elements. Values are rounded to 0.01. */
 export interface BeatWave { t: number[]; p: Record<string, number[]>; v: Record<string, number[]>; q: Record<string, number[]> }
@@ -69,8 +70,12 @@ export class BeatRecorder {
       x.t[x.n] = s.t; x.pv[x.n] = P[x.v]; x.pa[x.n] = P[x.a]; x.n++;
     }
     if (this.wave && (s.t >= this.wave.next - 1e-9 || s.t >= this.boundary - 1e-9)) this.capture(s);
+    let q: Readonly<Record<string, number>> | undefined; // reading s.q re-evaluates the flows: once per sample, and only for inertial valves
     for (const g of this.valves) {
-      const d = P[g.el.from] - P[g.el.to];
+      let d = P[g.el.from] - P[g.el.to];
+      // An inertial valve's node-to-node difference also carries the acceleration of the blood column (it leads the flow and turns
+      // negative while the flow decelerates). A Doppler study reads the convective gradient K·Q|Q| of the flow (Bernoulli), so use that.
+      if ("L" in g.el.params) { const f = (q ??= s.q)[g.name], a = f > 0 ? g.el.params.area : g.el.params.reg; d = a ? (f * Math.abs(f)) / (GORLIN * a) ** 2 : 0; }
       if (d > 0 && g.el.params.area) { if (d > g.dMax) g.dMax = d; g.dSum += d * h; g.dT += h; }
       else if (d < 0 && g.el.params.reg && -d > g.rMax) g.rMax = -d;
     }
