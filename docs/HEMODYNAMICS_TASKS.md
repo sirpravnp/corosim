@@ -69,7 +69,8 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | P3 | done (workspace + numbers panel on a stub source; monitor and ECG move in P3b) |
 | P2 | in progress |
 | A1 | done (max difference from `simulate()` 2e-4, from exact atrial event timing; core 164× real time vs 129×) |
-| A2 | in progress |
+| A2 | done (structural tab on the core; old RK4 loop removed; reference frozen in `tests/fixtures/core-reference.json`) |
+| A3 | in progress (with A2 follow-ups: break the structural ↔ core import cycle by moving `NODES`; `simulate(m, { waveform })` so `analyze(…, { waveform: false })` skips the recorder) |
 
 **Branches.** Each task is built on a local branch `task/<ID>` in its own worktree, reviewed, then merged into the
 working branch, which is the only one pushed.
@@ -105,6 +106,7 @@ working branch, which is the only one pushed.
 - The ventricular chamber's beat-period parameter `T` goes away in A4: activation depends only on time since the event,
   with duration from a rate-dependent rule (QT-like shortening with the preceding RR).
 - `BeatRecorder` finds beat boundaries from `T`; A6 switches it to ventricular events.
+- A4 also removes `ventShape()` and `Model.ventPeak` from `structural.ts` (dead since A2).
 - An element calls `flow()` once per evaluation. A device with two paths (e.g. a pump and its cannula leak) is two elements.
 
 **Gate R-A1 (reviewer):** numerics (dt halving, stiffness), interfaces, calibration. Decide whether inertance is on by
