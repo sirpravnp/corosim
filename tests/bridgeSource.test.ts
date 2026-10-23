@@ -23,11 +23,15 @@ describe("lvEes / rvEes in the structural engine", () => {
     const a = analyze({}), one = analyze({ lvEes: 1, rvEes: 1 });
     expect(one.pressure.AO.mean).toBeCloseTo(a.pressure.AO.mean, 6);
     expect(one.pressure.RA.mean).toBeCloseTo(a.pressure.RA.mean, 6);
+    const st = analyze({ lvStiffness: 1, rvStiffness: 1 });
+    expect(st.pressure.LV.end).toBeCloseTo(a.pressure.LV.end, 6); expect(st.pressure.RA.mean).toBeCloseTo(a.pressure.RA.mean, 6);
+    expect(analyze({ lvStiffness: 2 }).pressure.LV.end).toBeGreaterThan(a.pressure.LV.end + 1);
+    expect(analyze({ rvStiffness: 2 }).pressure.RV.end).toBeGreaterThan(a.pressure.RV.end + 1);
     const lv = analyze({ lvEes: 0.4 }), rv = analyze({ rvEes: 0.3 });
     expect(lv.lvStrokeMl).toBeLessThan(a.lvStrokeMl);
     expect(lv.pressure.LV.end).toBeGreaterThan(a.pressure.LV.end);
     expect(rv.pressure.RA.mean).toBeGreaterThan(a.pressure.RA.mean);
-    for (const k of ["lvEes", "rvEes"] as const) {
+    for (const k of ["lvEes", "rvEes", "lvStiffness", "rvStiffness"] as const) {
       expect(clampStructuralSpec({ [k]: 99 })[k]).toBe(5); expect(clampStructuralSpec({ [k]: 0 })[k]).toBe(0.2); expect(clampStructuralSpec({})[k]).toBeUndefined();
     }
   });
@@ -58,28 +62,32 @@ describe("normal patient", () => {
 
 describe("ACS direction", () => {
   const normal = run(), n0 = normal.bridge.numbers(), sv0 = normal.bridge.beats(1)[0].strokeVolume;
-  const lad = run(LAD, 40), nl = lad.bridge.numbers(), rca = run(RCA, 40), nr = rca.bridge.numbers();
-  it("proximal LAD occlusion: stroke volume and EF fall, MAP stays on the monitor", () => {
+  const lad = run(LAD, 40), nl = lad.bridge.numbers();
+  const rca = run(RCA, 40), nr = rca.bridge.numbers(); // complete heart block, escape 42 bpm: the realistic presentation
+  const rcaPaced = run({ ...RCA, support: { pacing: true, paceRate: 70 } }, 40), np = rcaPaced.bridge.numbers();
+  it("large anterior STEMI: LVEDP and PCWP >= 15, EF <= 0.40, stroke volume below normal, MAP on the monitor", () => {
     expect(lad.sim.circ.lvIschemia).toBeGreaterThan(0.4);
+    expect(nl.lvedp).toBeGreaterThanOrEqual(15); expect(nl.pcwp).toBeGreaterThanOrEqual(15);
+    expect(nl.lvEf).toBeLessThanOrEqual(0.4);
     expect(lad.bridge.beats(1)[0].strokeVolume).toBeLessThan(sv0 - 15);
-    expect(nl.lvEf).toBeLessThan(n0.lvEf - 0.1);
     expect(Math.abs(lad.bridge.calibrationError)).toBeLessThan(1.5);
     expect(Math.abs(nl.map - lad.sim.map)).toBeLessThan(5);
-    expect(lad.bridge.volume).toBeGreaterThanOrEqual(-800);
+    expect(lad.bridge.volume).toBeGreaterThanOrEqual(-800); expect(lad.bridge.volume).toBeLessThanOrEqual(1500);
   });
-  it("RV infarct (RCA occlusion): CVP rises well above normal and CVP/PCWP is high", () => {
+  it("RV infarct with heart block: CVP >= 10 and CVP/PCWP >= 0.8", () => {
     expect(rca.sim.circ.rvIschemia).toBeGreaterThan(0.5);
-    expect(nr.cvp).toBeGreaterThan(n0.cvp + 3);
+    expect(nr.cvp).toBeGreaterThanOrEqual(10);
     expect(nr.cvp / nr.pcwp).toBeGreaterThanOrEqual(0.8);
-    expect(nr.rvEf).toBeLessThan(n0.rvEf - 0.15);
+    expect(nr.rvEf).toBeLessThan(n0.rvEf - 0.25);
   });
-  // The reviewer's bars. With the ACS model's own MAP and SVR pinning CO (CO = MAP / SVR), the engine needs less
-  // filling, not more, to deliver the anterior-STEMI output, so LVEDP stays at 4 to 8 mmHg (see the P2 report).
-  // it.fails: the test passes while the bar is missed and will flag itself when a mapping change meets it.
-  it.fails("large anterior STEMI: LVEDP >= 15 and PCWP >= 15", () => {
-    expect(nl.lvedp).toBeGreaterThanOrEqual(15); expect(nl.pcwp).toBeGreaterThanOrEqual(15);
+  it("RV infarct paced at 70 bpm: CVP rises well above normal and CVP/PCWP >= 0.8", () => {
+    expect(rcaPaced.sim.circ.hr).toBeGreaterThan(65);
+    expect(np.cvp).toBeGreaterThan(n0.cvp + 3);
+    expect(np.cvp / np.pcwp).toBeGreaterThanOrEqual(0.8);
   });
-  it.fails("RV infarct: CVP >= 10 mmHg", () => { expect(nr.cvp).toBeGreaterThanOrEqual(10); });
+  // The reviewer's bar of CVP >= 10 is missed here (about 8 mmHg with RV stiffness 3x and Ees at its floor): the paced
+  // ventricle fills for less time at a lower volume. it.fails flags itself when a mapping change meets the bar.
+  it.fails("RV infarct paced at 70 bpm: CVP >= 10", () => { expect(np.cvp).toBeGreaterThanOrEqual(10); });
 });
 
 describe("beat replay", () => {

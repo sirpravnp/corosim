@@ -52,6 +52,7 @@ export interface StructuralSpec {
   bt?: { diameterMm: number }; // modified Blalock–Taussig shunt, aorta to pulmonary artery
   lvSize?: number; laSize?: number; // the same, for the left side
   lvEes?: number; rvEes?: number; // multiply a ventricle's end-systolic elastance only (passive filling unchanged): ischemic or stunned muscle
+  lvStiffness?: number; rvStiffness?: number; // multiply a ventricle's passive stiffness (the diastolic pressure-volume curve) only: ischemic muscle relaxes and fills poorly
   rvContractility?: number; // multiplies right ventricular contractility and stiffness (a pressure-loaded, thick right ventricle)
   rvSize?: number; // right ventricle's volume as a fraction of normal (hypoplastic RV, Ebstein's functional RV); same pressures, smaller cavity
   raSize?: number; // right atrium's volume as a multiple of normal (Ebstein's atrialized RV, tricuspid atresia)
@@ -76,7 +77,7 @@ export function clampStructuralSpec(input: StructuralSpec = {}): StructuralSpec 
   return {
     ...input, hr: clamp(input.hr, 20, 300), pvri: clamp(input.pvri, 0.2, 60), svrScale: clamp(input.svrScale, 0.1, 5),
     rvSize: clamp(input.rvSize, 0.05, 4), raSize: clamp(input.raSize, 0.05, 4), lvSize: clamp(input.lvSize, 0.05, 4), laSize: clamp(input.laSize, 0.05, 4),
-    rvContractility: clamp(input.rvContractility, 0.2, 5), lvEes: clamp(input.lvEes, 0.2, 5), rvEes: clamp(input.rvEes, 0.2, 5), satLung: clamp(input.satLung, 0.3, 1), volumeMl: clamp(input.volumeMl, -1000, 5000),
+    rvContractility: clamp(input.rvContractility, 0.2, 5), lvEes: clamp(input.lvEes, 0.2, 5), rvEes: clamp(input.rvEes, 0.2, 5), lvStiffness: clamp(input.lvStiffness, 0.2, 5), rvStiffness: clamp(input.rvStiffness, 0.2, 5), satLung: clamp(input.satLung, 0.3, 1), volumeMl: clamp(input.volumeMl, -1000, 5000),
     valves: input.valves && { tv: valveLesion(input.valves.tv), pv: valveLesion(input.valves.pv), mv: valveLesion(input.valves.mv), av: valveLesion(input.valves.av) },
     pda: diam(input.pda), asd: diam(input.asd), vsd: diam(input.vsd), bt: diam(input.bt),
     tof: input.tof && { vsdMm: clamp(input.tof.vsdMm, 0, 40) ?? 0, rvotFrac: frac(input.tof.rvotFrac) ?? 1, spasm: frac(input.tof.spasm), override: frac(input.tof.override), rvHypertrophy: clamp(input.tof.rvHypertrophy, 0.2, 5) },
@@ -170,6 +171,8 @@ export function buildModel(input: StructuralSpec = {}, volumeOffset = 0): Model 
   if (spec.rvContractility) { chambers[RV]!.ees *= spec.rvContractility; chambers[RV]!.a *= spec.rvContractility; }
   if (spec.lvEes) chambers[LV]!.ees *= spec.lvEes;
   if (spec.rvEes) chambers[RV]!.ees *= spec.rvEes;
+  if (spec.lvStiffness) chambers[LV]!.a *= spec.lvStiffness;
+  if (spec.rvStiffness) chambers[RV]!.a *= spec.rvStiffness;
 
   const vo2 = (p.vo2PerKg * W) / 60;
   const m: Model = { patient: { ...p, satLung: spec.satLung ?? p.satLung }, hr: 60 / T, T, chambers, comp, edges, start, vo2U: vo2 * p.upperVo2, vo2L: vo2 * (1 - p.upperVo2), qDesign: q, ventPeak: 1 };
