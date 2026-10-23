@@ -67,8 +67,9 @@ const frac = (x: number | undefined) => clamp(x, 0, 1);
 const diam = (d: { diameterMm: number } | undefined) => (d && Number.isFinite(d.diameterMm) ? { diameterMm: clamp(d.diameterMm, 0, 40)! } : undefined);
 const valveLesion = (l: ValveLesion | undefined): ValveLesion | undefined => (l ? { open: frac(l.open), reg: clamp(l.reg, 0, 10) } : undefined);
 
-export function buildModel(input: StructuralSpec = {}, volumeOffset = 0): Model {
-  const spec: StructuralSpec = {
+/** The spec as the engine will use it: every number clamped to the engine's own range, non-finite numbers unset. Pure; `buildModel` applies it first. */
+export function clampStructuralSpec(input: StructuralSpec = {}): StructuralSpec {
+  return {
     ...input, hr: clamp(input.hr, 20, 300), pvri: clamp(input.pvri, 0.2, 60), svrScale: clamp(input.svrScale, 0.1, 5),
     rvSize: clamp(input.rvSize, 0.05, 4), raSize: clamp(input.raSize, 0.05, 4), lvSize: clamp(input.lvSize, 0.05, 4), laSize: clamp(input.laSize, 0.05, 4),
     rvContractility: clamp(input.rvContractility, 0.2, 5), satLung: clamp(input.satLung, 0.3, 1), volumeMl: clamp(input.volumeMl, -1000, 5000),
@@ -76,6 +77,10 @@ export function buildModel(input: StructuralSpec = {}, volumeOffset = 0): Model 
     pda: diam(input.pda), asd: diam(input.asd), vsd: diam(input.vsd), bt: diam(input.bt),
     tof: input.tof && { vsdMm: clamp(input.tof.vsdMm, 0, 40) ?? 0, rvotFrac: frac(input.tof.rvotFrac) ?? 1, spasm: frac(input.tof.spasm), override: frac(input.tof.override), rvHypertrophy: clamp(input.tof.rvHypertrophy, 0.2, 5) },
   };
+}
+
+export function buildModel(input: StructuralSpec = {}, volumeOffset = 0): Model {
+  const spec = clampStructuralSpec(input);
   const p = PATIENTS[spec.patient ?? "adult"];
   const W = p.weightKg, T = 60 / (spec.hr ?? p.hr);
   const sv = p.svPerKg * W, q = (p.hr * sv) / 60; // ml, ml/s: the design point, at the baseline rate

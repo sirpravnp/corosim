@@ -1,4 +1,5 @@
 import { analyze, StructuralReport, StructuralSpec } from "../physics/structural";
+import type { PatientSpec } from "./patient";
 import { GORLIN, GRADE, ORIFICE_EPS, PATIENTS, PatientKind } from "../config/structural";
 
 /**
@@ -160,6 +161,15 @@ export function parseLesionHash(hash: string): { id: LesionId; values: Record<st
     if (Number.isFinite(x)) values[p.key] = Math.min(p.max, Math.max(p.min, Math.round((x - p.min) / p.step) * p.step + p.min));
   }
   return { id: d.id, values };
+}
+/**
+ * A structural-page `#lesion=...` hash as a PatientSpec: `kind` from the lesion's patient, `heart` from `def.build(values)` (slider
+ * values at their defaults unless the hash sets them) without the `patient` and `hr` fields, which the spec carries elsewhere.
+ */
+export function patientFromLesionHash(hash: string): PatientSpec {
+  const { id, values } = parseLesionHash(hash), d = LESION_BY_ID[id]!;
+  const { patient: _p, hr: _h, ...heart } = d.build({ ...defaults(d), ...values });
+  return { kind: d.patient, heart };
 }
 /** The hash that opens `id` with `values`, leaving out sliders at their defaults. */
 export function lesionHash(id: LesionId, values: Record<string, number>): string {

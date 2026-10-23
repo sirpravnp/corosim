@@ -1,4 +1,5 @@
 import { Scenario } from "./scenario";
+import type { PatientSpec } from "./patient";
 
 /** Compact reference an LLM needs to build or edit a scenario without any tools. */
 export const SCENARIO_REFERENCE = `Scenario JSON (all fields optional; omitted = typical resting adult):
@@ -11,17 +12,28 @@ export const SCENARIO_REFERENCE = `Scenario JSON (all fields optional; omitted =
   "patient": { "rhythm": "sinus|af", "bbb": "none|rbbb|lbbb" },
   "support": { "fluids": 0..3 (litres), "norepinephrine": 0..1, "dobutamine": 0..1, "nitroglycerin": 0..1, "pacing": false, "paceRate": 40..120, "iabp": false, "impella": false },
   "autonomic": { "baroreflexGain": 0 (denervated) .. 1 (normal) .. 4, "respRate": 4..40, "respDepth": 0..2, "setPointShift": -30..60 mmHg, "noise": 0..3 },
-  "seed": integer
+  "seed": integer,
+  (PatientSpec additions, all optional:)
+  "kind": "adult|neonate",
+  "heart": { "valves": { "av|mv|tv|pv": { "open": 0..1 (1 = normal orifice), "reg": 0..10 (regurgitant orifice, cm2) } }, "pda|asd|vsd|bt": { "diameterMm": 0..40 }, "tof": { "vsdMm", "rvotFrac": 0..1, "spasm": 0..1 }, "pvri": 0.2..60 (WU.m2), "svrScale": 0.1..5, "satLung": 0.3..1, "volumeMl": -1000..5000, "lvSize|laSize|rvSize|raSize": 0.05..4, "rvContractility": 0.2..5 },
+  "pericardium": { "effusionMl": 0..2000, "effusionRateMlMin": 0..100, "stiffness": 0.2..10 (1 normal), "open": false },
+  "fluids": { "given": [ { "kind": "crystalloid|colloid|albumin|blood", "ml": 0..5000, "atMin": 0..1440, "overMin": 0..1440 } ], "hemorrhageMlMin": 0..500, "capillaryLeak": 0..1, "legRaise": false },
+  "ventilation": { "mode": "spontaneous|positive", "peep": 0..25 (cmH2O), "tidalMlKg": 2..15 },
+  "devices": { "impella": { "model": "2.5|CP|5.5", "level": 0..9 (P-level), "position": "correct|aortic|deep" }, "impellaRp": { "level": 0..9 }, "iabp": { "ratio": 1|2|3, "inflateMs": -100..100, "deflateMs": -100..100, "volumeMl": 0..50 }, "ecmo": { "flowLpm": 0..7, "sweepLpm": 0..10, "fio2": 0.21..1 } }
+  (support.iabp / support.impella = true mean devices.iabp 1:1, correct timing, 40 ml / devices.impella CP, P6, correct position.)
 }`;
 
-/** URL-safe base64 of a scenario, for share links and the app's #s= hash. */
-export function encodeScenario(s: Scenario): string {
+/** URL-safe base64 of a patient, for share links and the app's #s= hash. A Scenario is a valid PatientSpec, so old links are unchanged. */
+export function encodePatient(s: PatientSpec): string {
   const json = JSON.stringify(s);
   const b64 = typeof Buffer !== "undefined" ? Buffer.from(json, "utf8").toString("base64") : btoa(unescape(encodeURIComponent(json)));
   return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
-export function decodeScenario(s: string): Scenario {
+export function decodePatient(s: string): PatientSpec {
   const b64 = s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4);
   const json = typeof Buffer !== "undefined" ? Buffer.from(b64, "base64").toString("utf8") : decodeURIComponent(escape(atob(b64)));
-  return JSON.parse(json) as Scenario;
+  return JSON.parse(json) as PatientSpec;
 }
+/** The same encoding, typed for a Scenario. */
+export function encodeScenario(s: Scenario): string { return encodePatient(s); }
+export function decodeScenario(s: string): Scenario { return decodePatient(s); }
