@@ -66,7 +66,8 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | P0 | done |
 | R0 | passed |
 | P1 | done (follow-up: `corosim_adjust`, `corosim_compare` and the share-link tool still take the plain Scenario schema) |
-| P3 | in progress (reduced: workspace + numbers panel on a stub source; moving monitor and ECG into panels is P3b) |
+| P3 | done (workspace + numbers panel on a stub source; monitor and ECG move in P3b) |
+| P2 | in progress |
 | A1 | in progress |
 
 **Branches.** Each task is built on a local branch `task/<ID>` in its own worktree, reviewed, then merged into the
