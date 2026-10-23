@@ -68,13 +68,22 @@ export const GRADE = {
 
 /**
  * Chamber activation. Ventricle: double-Hill (Stergiopulos) of the time since the ventricular event, normalised by its peak:
- * e(t) = [r/(1+r)]·[1/(1+(t/a2)^n2)], r = (t/a1)^n1, Tmax = tMaxCoef·T^tMaxExp, a1 = a1Frac·Tmax, a2 = a2Frac·a1. [lit]
- * Atrium: half sine of duration ta over the time since the atrial event; the P wave leads ventricular activation by ta + pr
- * (ta = min(taBase·√(T/taRefT), taMaxFrac·T), pr = prBase + prPerT·T). [assumed]
+ * e(t) = [r/(1+r)]·[1/(1+(t/a2)^n2)], r = (t/a1)^n1, Tmax = tMaxCoef·RR^tMaxExp, a1 = a1Frac·Tmax, a2 = a2Frac·a1, with RR the
+ * interval between this ventricular event and the previous one (a QT-like rate rule). [lit]
+ * Atrium: half sine of duration ta over the time since the atrial event, ta = min(taBase·√(AA/taRefT), taMaxFrac·AA) with AA the
+ * preceding atrial interval. [assumed]
+ * Steady-rate PR (s from atrial event to ventricular event, beat period T): pr = prBase + prPerT·T, 0.16 s at 72 bpm and 0.12 s at
+ * 140 bpm, inside the physiological 0.12-0.20 s. [assumed]
+ * `relaxScale`: stretch of the falling limb of ventricular activation (1 = the curve above); 1.4 gives an isovolumic relaxation
+ * time constant of about 36 ms in the adult at 72 bpm (normal 30-50 ms). Impaired relaxation raises it. [assumed]
+ * `atrialEesScale`: the structural model designs each atrium for 6 mmHg of active pressure at its mean volume, less than the
+ * passive pressure at that volume, so atrial contraction hardly moved blood (no A wave). The core drives the atrial elastance
+ * 3 times stronger, an active pressure of about 18 mmHg at mean volume (atrial a waves reach 10-15 mmHg). [assumed]
  */
 export const ACTIVATION = {
   tMaxCoef: 0.376, tMaxExp: 0.8, a1Frac: 0.708, a2Frac: 1.677, n1: 1.32, n2: 21.9, peakSamples: 400,
-  taBase: 0.12, taRefT: 0.833, taMaxFrac: 0.35, prBase: 0.06, prPerT: 0.08,
+  taBase: 0.12, taRefT: 0.833, taMaxFrac: 0.35, prBase: 0.08, prPerT: 0.096,
+  relaxScale: 1.4, atrialEesScale: 3,
 };
 
 /**

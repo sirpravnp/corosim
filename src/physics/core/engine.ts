@@ -7,8 +7,8 @@ const T_EPS = 1e-9;
 const RK_W = [1 / 6, 1 / 3, 1 / 3, 1 / 6];
 
 export interface EngineOptions {
-  /** Seconds the atrial event leads the ventricular one, for beat period T; `periodic()` schedules atrial events only if given. */
-  atrialLead?: (T: number) => number;
+  /** Default PR for `periodic()`: seconds from the atrial event to the ventricular event, for beat period T. Without it (and without `pr` in the call) `periodic()` schedules no atrial events. */
+  defaultPr?: (T: number) => number;
   /** Nodes (by name) whose beat-mean pressure and beat-mean volume decide `periodic()` convergence. Default: every node's pressure. */
   converge?: { pressure: readonly string[]; volume: readonly string[] };
 }
@@ -190,11 +190,11 @@ class CoreEngine implements Engine {
     return { t: this.t, P: P.slice(), V: V.slice(), Pext: Pext.slice(), q: this.flowsByName({}), taps: this.tapsByName() };
   }
 
-  periodic(hr: number, opts: { maxBeats?: number; minBeats?: number; tol?: number } = {}) {
+  periodic(hr: number, opts: { maxBeats?: number; minBeats?: number; tol?: number; pr?: number } = {}) {
     const T = 60 / hr, nSteps = Math.max(50, Math.round(T / SOLVER.dt)), dt = T / nSteps;
     const maxBeats = opts.maxBeats ?? SOLVER.maxBeats, minBeats = opts.minBeats ?? SOLVER.minBeats, tol = opts.tol ?? SOLVER.tol;
     const conv = this.opts.converge, pIdx = (conv ? conv.pressure : this.nodes.map((n) => n.name)).map((n) => this.node(n)), vIdx = (conv?.volume ?? []).map((n) => this.node(n));
-    const lead = this.opts.atrialLead?.(T);
+    const pr = opts.pr ?? this.opts.defaultPr?.(T);
     this.accP = new Float64Array(this.NN); this.accV = new Float64Array(this.NN);
     let converged = false, beats = 0, prev: number[] | null = null, stable = 0;
     try {
@@ -202,7 +202,7 @@ class CoreEngine implements Engine {
         this.resetFlowVolumes(); this.accP.fill(0); this.accV.fill(0); this.accT = 0;
         const tb = this.t;
         this.schedule({ kind: "ventricular", t: tb });
-        if (lead !== undefined && T - lead >= 0) this.schedule({ kind: "atrial", t: tb + T - lead });
+        if (pr !== undefined && T - pr >= 0) this.schedule({ kind: "atrial", t: tb + T - pr });
         for (let s = 0; s < nSteps; s++) this.advance(dt);
         const sig = [...pIdx.map((i) => this.accP![i] / this.accT), ...vIdx.map((i) => this.accV![i] / this.accT)];
         if (prev && sig.every((x, i) => Math.abs(x - prev![i]) <= tol * Math.max(1, Math.abs(x)))) stable++; else stable = 0;
