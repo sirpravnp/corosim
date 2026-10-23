@@ -298,3 +298,51 @@ describe("asynchronous solver", () => {
     expect(structuredClone(res).report.pressure.AO.mean).toBe(res.report.pressure.AO.mean);
   });
 });
+
+describe("trace() time is strictly increasing", () => {
+  const strict = (t: Float32Array) => { for (let i = 1; i < t.length; i++) if (!(t[i] > t[i - 1])) return false; return true; };
+  const all = (b: BridgeSource, sec = 30) => ["AO", "LV", "RV", "PA"].every((n) => strict(b.trace(n, sec, { maxPoints: 5000 }).t)) && strict(b.trace("LV", sec, { quantity: "volume", maxPoints: 5000 }).t);
+
+  it("after the simulation is reloaded (clock back to 0) the buffer starts again as a new patient", () => {
+    const sim = settled({}, 40), bridge = new BridgeSource(sim);
+    sim.run(20);
+    expect(bridge.beats().length).toBeGreaterThan(0);
+    sim.reset({ seed: 5 }, { settled: true });
+    expect(sim.t).toBe(0);
+    expect(bridge.trace("AO", 30).t.length).toBe(0); // nothing of the old patient, even before a new beat
+    expect(bridge.beats().length).toBe(0);
+    sim.run(10);
+    const s = bridge.trace("AO", 30, { maxPoints: 5000 });
+    expect(s.t.length).toBeGreaterThan(100);
+    expect(Math.max(...s.t)).toBeLessThanOrEqual(sim.t + 0.01);
+    expect(all(bridge)).toBe(true);
+  });
+  it("a reload that has run past the old clock before anything read the bridge still drops the old patient", () => {
+    const sim = settled({}, 20), bridge = new BridgeSource(sim);
+    sim.run(5);
+    sim.reset({ seed: 6 }, { settled: true });
+    sim.run(40);
+    expect(all(bridge)).toBe(true);
+    const first = bridge.beats(1000)[0];
+    expect(first.t).toBeLessThan(10); // the first beats of the new patient, none of the old one's
+  });
+  it("after abrupt heart-rate changes (pacing up, down, up, down, off)", () => {
+    const sim = settled(), bridge = new BridgeSource(sim);
+    sim.run(8);
+    for (const rate of [120, 40, 120, 40]) { sim.apply({ support: { pacing: true, paceRate: rate } }); sim.run(3); expect(all(bridge)).toBe(true); }
+    sim.apply({ support: { pacing: false } }); sim.run(5);
+    expect(all(bridge)).toBe(true);
+  });
+  it("when a beat is shorter than the 0.25 s replay minimum (it would overlap the next beat)", () => {
+    const sim = settled(), bridge = new BridgeSource(sim);
+    sim.run(5);
+    const base = sim.history[sim.history.length - 1], t0 = sim.t;
+    for (let i = 1; i <= 40; i++) sim.onBeat?.({ ...base, n: base.n + i, t: t0 + 0.2 * i, interval: 0.2 });
+    expect(all(bridge, 60)).toBe(true);
+  });
+  it("across a blended re-solve (the beat after a changed waveform)", () => {
+    const sim = settled(), bridge = new BridgeSource(sim);
+    sim.run(10);
+    for (let i = 0; i < 4; i++) { sim.apply({ lesions: i % 2 ? [] : LAD.lesions }); bridge.refresh(); sim.run(4); expect(all(bridge)).toBe(true); }
+  });
+});

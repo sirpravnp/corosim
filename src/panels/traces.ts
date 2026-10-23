@@ -53,7 +53,7 @@ function drawBand(b: Band, source: HemoSource, now: number, seconds: number): vo
     g.strokeStyle = tr.color; g.lineWidth = tr.node === "LV" || tr.node === "RV" ? 1.6 : 2.2; g.beginPath();
     let pen = false;
     for (let i = 0; i < s.t.length; i++) {
-      if (!Number.isFinite(s.v[i]) || (i > 0 && s.t[i] < s.t[i - 1])) pen = false; // gap, or the clock stepped back
+      if (!Number.isFinite(s.v[i]) || (i > 0 && s.t[i] < s.t[i - 1])) pen = false; // gap, or the clock stepped back: harmless defence, the bridge source now guarantees strictly increasing times
       if (!Number.isFinite(s.v[i])) continue;
       if (pen) g.lineTo(x(s.t[i]), y(s.v[i])); else { g.moveTo(x(s.t[i]), y(s.v[i])); pen = true; }
     }

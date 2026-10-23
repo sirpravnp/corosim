@@ -58,3 +58,13 @@ export const WIRE = {
   ffrCutoff: 0.8, // FFR at or below which a lesion is treated as flow-limiting [lit, ACC/AHA revascularization guidelines]
   grayZone: [0.75, 0.8] as const, // where the call is a judgment [lit]
 };
+
+/**
+ * Left-heart cath (src/sim/leftHeartCath.ts). The Gorlin and Hakki formulas divide by sqrt(gradient), so a gradient of
+ * a few mmHg gives a huge, meaningless area (Hakki 6.6 cm² at 1 mmHg) and nobody uses them clinically without a real
+ * gradient; below these gradients the areas are NaN (shown as a dash) and the valve is labelled "no stenosis". [assumed]
+ */
+export const LHC = {
+  minAorticGradientMmHg: 10, // aortic: peak-to-peak for Hakki, mean for Gorlin [assumed]
+  minMitralGradientMmHg: 2, // mitral: mean diastolic gradient, Gorlin and Hakki [assumed]
+};
