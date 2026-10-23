@@ -80,6 +80,8 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | A3 | done (+6 mmHg pericardial pressure halves SV; mitral flow lags its gradient by 44 ms; E/A separates at 60 bpm, not yet at 72; A2 follow-ups done) |
 | A4 | done (E/A 1.5 and LV τ 36 ms at 72 bpm; PVC SV 12 ml then 89 ml after the pause; new defaults reviewed; benchmark change within machine-load noise when interleaved with the pre-A4 commit) |
 | A5 | in progress |
+| D1 | done (rotary pump: HQ fit, smooth bounded suction, backflow when stopped) |
+| R-D1 | passed (decisions below) |
 
 **Branches.** Each task is built on a local branch `task/<ID>` in its own worktree, reviewed, then merged into the
 working branch, which is the only one pushed.
@@ -150,6 +152,15 @@ scenario recalibrations as tasks.
 | D1 | I | **Generic rotary pump element.** `L·dQ/dt = H(ω,Q) − (P_out − P_in) − R_in(P_in, V_in)·Q`, `H = aω² − bωQ − cQ\|Q\|`; inflow resistance rising steeply as inflow pressure or volume collapses (suction). Tested alone between fixed pressures, then between two compliances. | A3 | `core/devices/pump.ts` | Reproduces a supplied HQ table within 5%; flow falls as ΔP rises; suction trips as inflow volume nears V0; no chatter at dt halving |
 
 **Gate R-D1 (reviewer):** pump formulation, suction law, how HQ coefficients are sourced and tagged.
+
+**Decisions from R-D1 review** (bind D2 and later devices):
+- The inflow must not pull a chamber below a collapse floor. Chamber passive laws do not stop volume falling, so each device's
+  suction law is set relative to the inflow chamber's own unloaded volume (V0), and flow is softly limited so the inflow volume
+  stays above that floor. D1's generic drain test dipped to about −1 to −2 ml on a bare compliance; that is not acceptable on a chamber.
+- Motor current is defined in D2: proportional to hydraulic torque (head·Q/ω) plus a speed-dependent loss term, so its waveform
+  carries the LV–aortic pressure difference (the placement signal). Constants [assumed] unless sourced.
+- Reverse flow sees only R0: acceptable.
+- Inertance: L = ρℓ/A of the cannula (Impella-like: ℓ ≈ 13 cm, d ≈ 4 mm gives about 0.08 mmHg·s²/ml), per device.
 
 | ID | Who | Task | Depends | Files | Acceptance |
 |---|---|---|---|---|---|
