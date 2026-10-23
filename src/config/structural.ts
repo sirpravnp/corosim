@@ -76,3 +76,14 @@ export const ACTIVATION = {
   tMaxCoef: 0.376, tMaxExp: 0.8, a1Frac: 0.708, a2Frac: 1.677, n1: 1.32, n2: 21.9, peakSamples: 400,
   taBase: 0.12, taRefT: 0.833, taMaxFrac: 0.35, prBase: 0.06, prPerT: 0.08,
 };
+
+/**
+ * Valve inertance (optional, core `InertialValve`). L = ρ·ℓ/A for a blood column of effective length ℓ through the valve's
+ * area A: ρ = 1.06 g/cm³ [lit]; dyn·s²/cm⁵ → mmHg·s²/ml divides by 1333.2 [lit] (1 mmHg = 1333.2 dyn/cm²).
+ * Effective lengths ℓ (cm) are the blood column accelerated with the valve flow: annulus plus the funnel-shaped region either
+ * side of the orifice. [assumed], within the 1-4 cm range used by lumped-parameter heart models.
+ */
+export const INERTANCE = {
+  rho: 1.06, dynPerMmHg: 1333.2,
+  lengthCm: { tv: 2.5, pv: 2, mv: 3, av: 2.5 },
+};
