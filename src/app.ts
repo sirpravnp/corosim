@@ -21,6 +21,9 @@ import { Scenario, LesionSpec } from "./sim/scenario";
 import { encodeScenario, decodeScenario } from "./sim/llm";
 import { TOOLS } from "./mcp/tools";
 import { mountShell } from "./shell/shell";
+import { mountWorkspace } from "./panels/workspace";
+import { numbersPanel } from "./panels/numbers";
+import { createStubSource } from "./sim/stubSource";
 import { Case, MAX_SCORE, POINTS, Point, TREAT, TreatRecord, TreatScore, dailyCase, dayKey, dayNumber, explain, explainTreatment, fullFindings, judge, keyOfDay, muscleSaved, parseDay, rvInvolvement, score, streaks, treatScore } from "./game";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -1051,6 +1054,8 @@ function openShared() {
 openShared();
 addEventListener("hashchange", openShared);
 cathLinkUi();
+// The panel workspace, below the main view; not in the game (inGame is set by cathLinkUi). Stub source until the P2 bridge lands.
+if (!inGame) { const ws = $("workspace"); (ws.parentElement as HTMLElement).hidden = false; mountWorkspace(ws, [numbersPanel], createStubSource()); }
 void shell.ai.start();
 /** Handle for scripts and browser-driving assistants: corosim.sim, corosim.load(scenario), corosim.live. */
 (window as unknown as { corosim: object }).corosim = { sim, load: loadScenario, live: shell.ai.live, account: shell.ai.account, refresh: () => { controlsUi(); liveUi(); } };
