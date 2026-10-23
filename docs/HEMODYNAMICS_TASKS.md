@@ -85,7 +85,7 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | B2 | done (septum: constriction gap 2.65 mmHg at stiffness 6; normal and neonate within 3 % on vs off; cache key includes septum; off by default until R-B) |
 | B3 | in progress |
 | A7 | in progress |
-| D2 | in progress |
+| D2 | done (shock + CP P8: MAP 63 → 75, LVEDP 18.5 → 11.9, PP 8; PVA down; current tracks placement signal r 1.00; suction with LV floor; aortic malposition flat placement, no unloading). Note: merge commit faf21d9 was recorded with conflict markers in `fromModel.ts` and `scripts/bench-engine.ts`; 80c9897 removed them (both sides kept). Pushed history left as is. |
 | Physics follow-ups (from A5b review) | (1) aortic peak instantaneous gradient 15.7 mmHg vs clinical 4–8 (peak aortic flow ~667 ml/s is high; Gorlin vs 4v²) — with E5; (2) RA waveform amplitudes: severe TR v wave ~9 mmHg vs clinical 15–20, and cannon a only ~1.4× the ordinary a wave (self-flagging test in `tests/liveHeart.test.ts`) |
 | P2c | done (bridge trace time strictly increasing; reload clears the bridge; valve areas only with a real gradient; gross-flow Gorlin test) |
 | A6 | done (live = periodic within 0.1 %; PVC 71 → 12 → 85 ml; CHB cannon waves; AF SV–RR r 0.80; 112× real time) |
@@ -180,6 +180,12 @@ scenario recalibrations as tasks.
   carries the LV–aortic pressure difference (the placement signal). Constants [assumed] unless sourced.
 - Reverse flow sees only R0: acceptable.
 - Inertance: L = ρℓ/A of the cannula (Impella-like: ℓ ≈ 13 cm, d ≈ 4 mm gives about 0.08 mmHg·s²/ml), per device.
+
+**Decisions from D2 review:** flow above the class figure in shock is correct (lower pressure difference across the cannula).
+D3 tunes the suction-alarm margin per model so that a normal heart at P6 does not alarm (today Vc = V0 + 30 ml can alarm a normal
+heart at high level). D4 switches position live with two flow elements (LV→AO and AO→AO), speed given only to the active one,
+which keeps the one-flow-per-element rule.
+
 
 | ID | Who | Task | Depends | Files | Acceptance |
 |---|---|---|---|---|---|
