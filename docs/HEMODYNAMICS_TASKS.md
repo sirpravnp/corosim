@@ -40,6 +40,34 @@ a wrong call is expensive.
 
 ---
 
+## Global order
+
+All phases in one sequence. Tasks in the same wave can run in parallel. Within a wave, tasks that share files (marked ⚠)
+merge one at a time. A wave starts once its gate has passed. Status is kept here.
+
+| Wave | Tasks | Gate after | Why here |
+|---|---|---|---|
+| 1 | T0.1, T0.2 (I) · T0.3, P0 (R★) | R0 | Fixtures, benchmark and contracts protect everything after |
+| 2 | A1 · P1 · P3 | none | A1 is the critical path; P1 and P3 do not touch the physics |
+| 3 | A2 → A3 → A4 ⚠ (all in `core/`, in order) · A5 · P2 | R-A1, R-P1 | Engine complete for steady use; bridge lets panels start |
+| 4 | A6 · P4, P5, P7, P8 · D1 · C1 · B1 | R-D1 | Live heart; panels that need only the bridge; first element of each physics phase |
+| 5 | A7 · P6, P9, P10, P11 · D2 · C2 · B2 | R-A2, R-B (numerics of B2) | ACS on core; Impella; fluids in time; septum |
+| 6 | P16 · D3 · D5 · C3, C4 · B3 · E1 · P12, P13, P14 | R-P2 | Playground goes live on the core engine; IABP; thorax |
+| 7 | E2 → E3 · D4 · D6 · B4 · C5 · P15 | R-E1, R-C, R-B | Coronary supply/demand loop; ECMO; pericardial scenarios |
+| 8 | E4 · E5 · E6 · D7 · D8 · F1 | R-D2, R-F1 | Receptor drugs, dynamic valves, O₂ in time; 1D prototype |
+| 9 | E7 · E8 · F2 | R-E2, R-P3 | Clinician outputs and explanations; arterial network |
+| 10 | F3 · F4 · F6 · F5 (human) | none | Navier–Stokes coupling and visuals |
+
+| Task | Status |
+|---|---|
+| T0.1 | in progress |
+| T0.2 | in progress |
+| T0.3 | in progress |
+| P0 | in progress |
+
+**Branches.** Each task is built on a local branch `task/<ID>` in its own worktree, reviewed, then merged into the
+working branch, which is the only one pushed.
+
 ## Phase 0: groundwork
 
 | ID | Who | Task | Depends | Files | Acceptance |
