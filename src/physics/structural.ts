@@ -410,7 +410,7 @@ export function analyze(spec: StructuralSpec = {}, opts: { waveform?: boolean } 
  * every case starts from it. Cached by the baseline's contents, so a different weight or age finds its own.
  */
 const offsets = new Map<string, number>();
-function volumeOffsetFor(spec: StructuralSpec): number {
+export function volumeOffsetFor(spec: StructuralSpec): number {
   const kind = spec.patient ?? "adult", key = JSON.stringify(PATIENTS[kind]), hit = offsets.get(key);
   if (hit !== undefined) return hit;
   const target = PATIENTS[kind].map;

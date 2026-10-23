@@ -2,7 +2,8 @@
 //   npx tsx scripts/bench-engine.ts [--json]
 // Structural: analyze() builds the model, calibrates the volume offset and runs simulate() to a periodic state. Each case is
 // timed after one warm-up run; the median of RUNS is reported. Simulated seconds = beats × 60 / hr.
-import { analyze, type StructuralSpec } from "../src/physics/structural";
+import { analyze, buildModel, simulate, volumeOffsetFor, type StructuralSpec } from "../src/physics/structural";
+import { engineFromModel } from "../src/physics/core/fromModel";
 import { LESION_BY_ID, defaults } from "../src/sim/structural";
 import { SOLVER } from "../src/config/structural";
 import { Simulation } from "../src/sim/simulation";
@@ -27,6 +28,14 @@ const structural = (name: string, spec: StructuralSpec): Row => {
   return { name: `structural: ${name}`, wallMs: ms, beats: out.beats, simSeconds, xRealTime: simSeconds / (ms / 1000), stepsPerSec: (out.beats * stepsPerBeat) / (ms / 1000) };
 };
 
+// Model built once (with its calibrated offset); only the solve is timed, so simulate() and the core are compared like for like.
+const solveRow = (name: string, spec: StructuralSpec, solve: (m: ReturnType<typeof buildModel>) => { beats: number }): Row => {
+  const m = buildModel(spec, volumeOffsetFor(spec));
+  const { ms, out } = time(() => solve(m));
+  const simSeconds = (out.beats * 60) / m.hr, stepsPerBeat = Math.round(60 / m.hr / SOLVER.dt);
+  return { name, wallMs: ms, beats: out.beats, simSeconds, xRealTime: simSeconds / (ms / 1000), stepsPerSec: (out.beats * stepsPerBeat) / (ms / 1000) };
+};
+
 const headless = (name: string, sc: Scenario): Row => {
   const { ms } = time(() => { const s = new Simulation(); s.reset({ seed: 3, ...sc }, { settled: true }); s.step(SIM_SECONDS); });
   return { name: `Simulation: ${name} (${SIM_SECONDS} s)`, wallMs: ms, simSeconds: SIM_SECONDS, xRealTime: SIM_SECONDS / (ms / 1000) };
@@ -37,6 +46,8 @@ const rows: Row[] = [
   structural("adult normal heart", {}),
   structural("neonate normal heart", { patient: "neonate" }),
   structural("tetralogy of Fallot", lesion("tof")),
+  solveRow("simulate(): adult normal (solve only)", {}, (m) => simulate(m)),
+  solveRow("core: adult normal (fromModel + periodic)", {}, (m) => engineFromModel(m).periodic(m.hr)),
   headless("normal patient", {}),
   headless("proximal LAD occlusion", { lesions: [{ artery: "LAD", occluded: true, position: 0.15 }] }),
 ];
