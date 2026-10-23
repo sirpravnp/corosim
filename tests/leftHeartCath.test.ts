@@ -4,6 +4,7 @@ import { BridgeSource } from "../src/sim/bridgeSource";
 import { analyze, buildModel } from "../src/physics/structural";
 import type { StructuralReport, StructuralSpec } from "../src/physics/structural";
 import { LESIONS } from "../src/sim/structural";
+import { LHC } from "../src/config/cath";
 import { leftHeartCath } from "../src/sim/leftHeartCath";
 import type { BeatSummary, HemoNode, HemoNumbers } from "../src/sim/hemoSource";
 
@@ -68,10 +69,35 @@ describe("severe mitral stenosis", () => {
 });
 
 describe("regurgitation", () => {
-  it("Gorlin uses total forward flow: aortic regurgitation does not read as stenosis", () => {
+  it("aortic regurgitation does not read as stenosis (its gradient is too small for an area, so none is shown)", () => {
     const { c } = cathOf(lesion("ar"));
-    expect(c.area.aorticGorlin).toBeGreaterThan(2);
+    expect(c.gradient.mean).toBeLessThan(LHC.minAorticGradientMmHg);
+    expect(Number.isNaN(c.area.aorticGorlin)).toBe(true);
     expect(c.severity.aortic).toBe("none");
+  });
+});
+
+describe("areas at tiny gradients are not shown", () => {
+  const { c: normal } = cathOf({}), as = cathOf(lesion("as")).c, ms = cathOf(lesion("ms")).c;
+  it("normal heart: gradients under the thresholds give NaN areas and no stenosis, for both valves", () => {
+    expect(normal.gradient.peakToPeak).toBeLessThan(LHC.minAorticGradientMmHg);
+    expect(Number.isNaN(normal.area.aorticHakki)).toBe(true); expect(Number.isNaN(normal.area.aorticGorlin)).toBe(true);
+    expect(normal.mitral.meanGradient).toBeLessThan(LHC.minMitralGradientMmHg);
+    for (const k of ["mitralGorlin", "mitralEngine", "mitralHakki"] as const) expect(Number.isNaN(normal.area[k]), k).toBe(true);
+    expect(normal.severity).toEqual({ aortic: "none", mitral: "none" });
+  });
+  it("a 1 mmHg peak-to-peak gradient gives no Hakki area, 10 mmHg or more does; mitral 1 vs 3 mmHg", () => {
+    const { n, beat } = snapshot(analyze({}));
+    const shift = (dp: number) => { const b = { ...beat, pressure: { ...beat.pressure, LV: beat.pressure.LV.map((x) => x + dp) } } as BeatSummary; return leftHeartCath(n, b)!; };
+    const base = shift(0), p2p = base.gradient.peakToPeak;
+    expect(Number.isNaN(shift(1 - p2p).area.aorticHakki)).toBe(true);
+    expect(shift(LHC.minAorticGradientMmHg + 1 - p2p).area.aorticHakki).toBeGreaterThan(0);
+    expect(Number.isNaN(base.area.mitralHakki)).toBe(true);
+  });
+  it("severe AS and MS keep their areas and labels", () => {
+    expect(as.area.aorticHakki).toBeGreaterThan(0); expect(as.area.aorticGorlin).toBeGreaterThan(0); expect(as.severity.aortic).toBe("severe");
+    for (const k of ["mitralGorlin", "mitralEngine", "mitralHakki"] as const) expect(ms.area[k], k).toBeGreaterThan(0);
+    expect(ms.severity.mitral).toBe("severe");
   });
 });
 

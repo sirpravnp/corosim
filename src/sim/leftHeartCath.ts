@@ -18,6 +18,9 @@
  *  - Gorlin, mitral: MVA = (F / DFP) / (37.7 · sqrt(mean gradient)); DFP = diastolic filling period = MV openMs / 1000.
  *  - Hakki: area = CO / sqrt(gradient), CO in L/min. Aortic uses the peak-to-peak gradient, mitral the mean diastolic gradient.
  *
+ * Areas are NaN (a dash in the panel) when the gradient they divide by is too small to mean anything (config LHC: aortic
+ * peak-to-peak or mean under 10 mmHg, mitral mean under 2 mmHg); the severity label is then "none".
+ *
  * F is the TOTAL (gross) forward flow, not forward minus regurgitant. A regurgitant valve passes more than the net stroke
  * volume, and using net flow would make a leaky valve look more stenotic than it is. (Hakki uses CO, which is net: it
  * therefore underestimates area in significant regurgitation, as it does at the bedside.)
@@ -29,6 +32,7 @@
  * agree with the structural page, whose cut-offs (GRADE) are fractions of the engine's normal valve area.
  */
 import type { BeatSummary, HemoNumbers } from "./hemoSource";
+import { LHC } from "../config/cath";
 import { GORLIN, GRADE, PATIENTS, type PatientKind } from "../config/structural";
 
 export const MITRAL_GORLIN = 37.7;
@@ -107,10 +111,11 @@ export function leftHeartCath(n: HemoNumbers, beat: BeatSummary | undefined | nu
   const av = beat.valves.AV, mv = beat.valves.MV;
   const sep = av.openMs / 1000, dfp = mv.openMs / 1000;
   const area = (f: number, secs: number, g: number, k: number) => (secs > 0 && g > 0 && f > 0 ? f / secs / (k * Math.sqrt(g)) : nan);
-  const aorticGorlin = area(av.forwardMl, sep, meanAo, GORLIN);
-  const mitralGorlin = area(mv.forwardMl, dfp, meanMit, MITRAL_GORLIN);
-  const mitralEngine = area(mv.forwardMl, dfp, meanMit, GORLIN);
-  const hakki = (g: number) => (n.co > 0 && g > 0 ? n.co / Math.sqrt(g) : nan);
+  const aoG = meanAo >= LHC.minAorticGradientMmHg ? meanAo : nan, mitG = meanMit >= LHC.minMitralGradientMmHg ? meanMit : nan;
+  const aorticGorlin = area(av.forwardMl, sep, aoG, GORLIN);
+  const mitralGorlin = area(mv.forwardMl, dfp, mitG, MITRAL_GORLIN);
+  const mitralEngine = area(mv.forwardMl, dfp, mitG, GORLIN);
+  const hakki = (g: number, min: number) => (n.co > 0 && g >= min ? n.co / Math.sqrt(g) : nan);
 
   const normal = PATIENTS[patient].valveAreas;
   let aortic = grade(aorticGorlin / normal.av, GRADE.areaFraction.av);
@@ -126,7 +131,7 @@ export function leftHeartCath(n: HemoNumbers, beat: BeatSummary | undefined | nu
     ao: { systolic: aoSys, diastolic: minOf(ao), mean: meanOf(ao) },
     gradient: { peakToPeak: p2p, mean: meanAo, peakInstant },
     mitral: { meanGradient: meanMit, wedgeMean: meanOf(la) },
-    area: { aorticGorlin, aorticHakki: hakki(p2p), mitralGorlin, mitralEngine, mitralHakki: hakki(meanMit) },
+    area: { aorticGorlin, aorticHakki: hakki(p2p, LHC.minAorticGradientMmHg), mitralGorlin, mitralEngine, mitralHakki: hakki(meanMit, LHC.minMitralGradientMmHg) },
     sep, dfp, avForwardMl: av.forwardMl, mvForwardMl: mv.forwardMl,
     severity: { aortic, mitral },
     ejection, filling: mCount ? [mFrom, mTo] : [0, 0],
