@@ -222,6 +222,51 @@ A tiered plan:
    vortex in echo views, or the Impella jet, with boundary flows from the 0D/1D engine. For teaching visuals, not
    quantitative output.
 
+### G. The simulator as a full playground
+
+Goal: the Simulator page (`sim/`, `src/app.ts`) can show and control everything the site models, on one patient, at the
+same time. Today the structural graphs live only on the structural tab, the cath data only on the cath tab, and the
+simulator has a monitor, ECG and the coronary 3D view.
+
+**One patient, one spec.** Merge the ACS `Scenario` (`src/sim/scenario.ts`), `StructuralSpec` and the new support,
+fluid and pericardium settings into one `PatientSpec`. It is URL-encodable (extending `src/sim/llm.ts`, still decoding
+old links) and read the same way by every page and by the MCP tools. Any page can open the current patient
+("open in cath lab / echo / structural").
+
+**One source for every panel.** Panels read from a `HemoSource` interface, not from an engine: traces per node, loops,
+saturations, cath readings, device consoles, beat events. The first implementation is an adapter over today's engines,
+so UI work can start in parallel with Phase A:
+
+- the structural engine is solved to a steady state with the ACS state applied: ischemic fraction scales Ees, heart rate
+  comes from the rhythm;
+- its waveform is replayed beat by beat, re-solved every few seconds or when something changes.
+
+Once `LiveHeart` (A6) lands, the source switches to it and the adapter is deleted.
+
+**Panels** (each one can be switched on or off, in a grid workspace on desktop and as tabs on phones):
+
+| Panel | Shows | Notes |
+|---|---|---|
+| Monitor (existing) | HR, BP, SpO₂, rhythm | Add arterial line, SpO₂ pleth, CVP and PA waveforms |
+| Hemodynamic traces | Left- and right-heart pressure traces as on the structural tab, scrolling live | Reuse `src/structural/traces.ts` |
+| PV loops | LV, RV, LA, RA loops; end-systolic and end-diastolic lines; ghost of a saved loop for comparison | |
+| JVP | RA/jugular waveform with a, c, x, v and y labelled; height in cm above the sternal angle; a neck illustration that pulses | Cannon a waves in complete heart block need event-driven atria (A4). Giant v in TR; no a wave in AF; steep y and Kussmaul in constriction; raised and flat in tamponade |
+| Right-heart cath | RA → RV → PA → wedge pullback with waveforms; oximetry run (SVC, IVC, RA, RV, PA) with step-up detection; Fick and thermodilution CO; PVR, SVR, Qp:Qs, PAPi, cardiac power output | Pure functions in `src/sim/cath.ts` beside angio and wire |
+| Left-heart cath | LV → aorta pullback; LVEDP; peak-to-peak, mean and peak instantaneous gradients; Gorlin and Hakki areas; simultaneous LV–wedge for mitral stenosis | Same module |
+| O₂ | SpO₂, SaO₂ (pre- and post-ductal), SvO₂, DO₂, VO₂, Qp:Qs; lactate once E6 lands; ECMO return saturation | |
+| 3D view: **O₂ sat mode** | New mode beside Anatomic / Territory / Pressure / Velocity / Wall shear. Vessels coloured by arterial saturation; myocardium by tissue oxygenation (coronary venous saturation per bed); chambers by blood saturation using the structural colour scale | v1 tissue value is derived from ischemia severity and labelled as such; v2 comes from the supply/demand loop (E2/E3) |
+| Structural props in the 3D heart | Valves opening, septal defects, jets (`src/structural/props.ts`) | Toggle |
+| Devices, fluids, pericardium | Device consoles (D8), Guyton plot and fluid controls (C5), effusion and pericardiocentesis (B4) | Arrive with their phases |
+
+**Playground mode.** A sandbox that unlocks every control on one patient: coronary lesions, structural lesions, rhythm,
+drugs, fluids, devices, pericardium, patient kind. It has presets that combine them (e.g. "anterior STEMI + ischemic
+MR + Impella CP"), time controls (pause, slow motion, step one beat), saved snapshots to overlay and compare, CSV export
+of traces, and a share link. The coronary tree is adult anatomy, so neonatal patients get the structural and
+hemodynamic panels without the coronary view.
+
+**Performance.** The engine runs in a worker. Panels subscribe to the taps they draw, and traces are decimated to the
+pixels shown; hold 60 fps with all panels open on a mid-range laptop.
+
 ## 5. Order and milestones
 
 | # | Milestone | Depends on | Notes |
@@ -236,6 +281,7 @@ A tiered plan:
 | 8 | Receptor-level drugs, dynamic valves, lung/O₂ in time (E) | 2, 3 | Retires the `SUPPORT` multipliers |
 | 9 | 1D aorta (F.1), then 1D coronaries | 1 | Benchmark first |
 | 10 | Offline CFD calibration; WebGPU LBM visuals (F.2–3) | 9 | Optional |
+| P | Playground (G): unified spec and `HemoSource` adapter first, then panels; switch to `LiveHeart` after 2 | none to start | Runs in parallel with 1–2 |
 
 ## 6. Validation
 

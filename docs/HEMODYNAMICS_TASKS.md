@@ -152,6 +152,44 @@ criteria.
 | F5 | human | **Offline CFD calibration** (SimVascular svSolver / svOneDSolver): validate F2 against svOneDSolver on the same network; fit stenosis and device loss coefficients from 3D runs. Needs desktop or HPC tooling, not an agent session. | F2 | `docs/`, `config/` | Tables committed with provenance |
 | F6 | I | **WebGPU lattice-Boltzmann visual spike** (optional): 2D stenosis jet with inflow from the engine. | A6 | `spikes/` | Runs at interactive rate; clearly marked as a visual |
 
+## Phase P: the simulator as a full playground
+
+See CORE §4G. Panels read only from `HemoSource`, so they survive the engine swap.
+
+| ID | Who | Task | Depends | Files | Acceptance |
+|---|---|---|---|---|---|
+| P0 | R★ | **`PatientSpec` and `HemoSource` contracts.** One spec merging `Scenario`, `StructuralSpec`, support, fluids and pericardium. A source interface with taps: node traces, chamber volumes, loops, saturations, beat events, cath readings, device consoles. A panel contract: mount, subscribe to taps, resize, dispose. | none | `src/sim/patient.ts`, `src/sim/hemoSource.ts` | Typechecks; covers every panel below and the core engine's outputs |
+| P1 | I | **Unified encoding.** `PatientSpec` ↔ URL hash and MCP; old `#s=` simulator links and `#lesion=` structural links still decode. | P0 | `sim/llm.ts`, `sim/scenario.ts`, `mcp/tools.ts` | Round-trip tests; every old link fixture decodes to the same patient |
+| P2 | I | **Bridge `HemoSource` over today's engines.** Structural engine solved with the ACS state applied (ischemic fraction scales LV/RV Ees, HR from the rhythm), re-solved every few seconds or on change; waveform replayed per beat, aligned to ECG beats. | P0, T0.1 | `sim/bridgeSource.ts` | Anterior STEMI raises LVEDP and lowers SV on the traces; MAP within 5 mmHg of the monitor's; no visible jump at a re-solve |
+| P3 | I | **Panel workspace on the Simulator page.** Grid on desktop, tabs on phones, a panel picker, layout remembered per browser (in try/catch). Existing monitor and ECG become panels. | P0 | `src/app.ts`, `sim/index.html`, new `src/panels/` | Visual check at desktop and 375 px width; no physics in panels |
+
+**Gate R-P1 (reviewer):** contracts, bridge fidelity and the panel framework before panel work fans out.
+
+| ID | Who | Task | Depends | Files | Acceptance |
+|---|---|---|---|---|---|
+| P4 | I | **Hemodynamic traces panel.** Left and right sides, scrolling live; reuse `structural/traces.ts` drawing. | R-P1 | `src/panels/traces.ts` | Shows the same values as the structural tab for the same lesion (bridge) |
+| P5 | I | **PV loops panel.** LV, RV, LA, RA; end-systolic and end-diastolic lines; save a loop as a ghost for comparison. | R-P1 | `src/panels/loops.ts` | Loop area and EDV/ESV match the source's numbers |
+| P6 | I | **JVP panel.** Pure module: from the RA trace and beat events, find a, c, x, v, y; height in cm H₂O above the sternal angle (RAP × 1.36 − 5); neck illustration pulsing with the waveform. | R-P1 | `src/physics/jvp.ts`, `src/panels/jvp.ts` | Tests on synthetic and engine traces: no a wave in AF; giant v in severe TR; raised flat trace in tamponade (after B1); cannon a in complete heart block (after A4; marked pending until then) |
+| P7 | I | **Right-heart cath.** Pure functions: pullback waveforms, oximetry run with step-up (≥ 7% atrial, ≥ 5% ventricular/PA), Fick and thermodilution CO, PVR, SVR, Qp:Qs, PAPi, CPO. Panel in the simulator; same report on the cath page as a new tab. | R-P1 | `sim/cath.ts`, `src/panels/rhc.ts`, `cath/` | ASD shows an atrial step-up and Qp:Qs ≈ the engine's; RV infarct gives low PAPi; numbers equal the structural report's |
+| P8 | I | **Left-heart cath.** LV → aorta pullback, LVEDP, peak-to-peak, mean and peak instantaneous gradients, Gorlin and Hakki areas, simultaneous LV–wedge for MS. Panel and cath-page tab. | R-P1 | `sim/cath.ts`, `src/panels/lhc.ts`, `cath/` | Severe AS: Gorlin area within 10% of the model's valve area; mean gradient matches `ValveStat` |
+| P9 | I | **O₂ sat mode in the 3D view.** New mode beside Anatomic / Territory / Pressure / Velocity / Wall shear: vessels by arterial sat, myocardium by per-bed tissue oxygenation (v1: derived from ischemia severity and labelled as such), chambers with the structural colour scale; legend. | R-P1 | `src/app.ts` (mode switch around `shapeVessels`), `structural/heartView.ts` (`satColor`) | Occluded LAD territory turns blue; a right-to-left shunt lowers vessel colour everywhere; legend matches the mesh |
+| P10 | I | **O₂ panel.** SpO₂ pleth, SaO₂ pre/post-ductal, SvO₂, DO₂, VO₂, Qp:Qs; lactate after E6; ECMO return sat after D6. | R-P1 | `src/panels/oxygen.ts` | Values equal the source's |
+| P11 | I | **Structural props in the simulator's heart.** Valves, septal defects and jets from `structural/props.ts`, toggled. | R-P1 | `src/app.ts`, `structural/props.ts` | A VSD in playground mode shows the defect and jet |
+
+**Gate R-P2 (reviewer):** clinical review of JVP, right- and left-heart cath numbers and the O₂ view against textbook
+criteria.
+
+| ID | Who | Task | Depends | Files | Acceptance |
+|---|---|---|---|---|---|
+| P12 | I | **Playground mode.** Unlocks every control on one patient: coronary and structural lesions, rhythm, drugs, fluids, devices, pericardium, patient kind (neonates without the coronary view). Preset library mixing them. | P1, R-P2 | `src/app.ts`, `sim/presets.ts` | Every preset loads, converges and round-trips through a share link |
+| P13 | I | **Time controls, snapshots, export.** Pause, slow motion, step one beat; save a snapshot and overlay it on traces and loops; CSV export of traces. | P4, P5 | `src/panels/` | Stepping one beat advances exactly one ventricular beat; the CSV matches the drawn data |
+| P14 | I | **Cross-page links.** "Open in cath lab / echo / structural / EKG" carries the `PatientSpec`. | P1 | `shell/`, page files | Each page opens the same patient |
+| P15 | I | **MCP tools.** Expose JVP, right- and left-heart cath and O₂ readings. | P6–P10 | `mcp/tools.ts` | Tool tests on two scenarios |
+| P16 | I | **Switch to the core engine.** `HemoSource` from `LiveHeart` (A6/A7); delete the bridge; cannon a waves and other beat-level signs go live. | A7, P2 | `sim/` | All P tests pass on core; pending JVP tests enabled |
+
+**Gate R-P3 (reviewer):** UX and performance: 60 fps with every panel open; phone layout; nothing a page shows is
+computed in the page.
+
 ## Order at a glance
 
 ```
@@ -162,7 +200,10 @@ T0.1 T0.2 T0.3 → R0 → A1 → A2, A3, A4, A5 → R-A1 → A6 → A7 → R-A2
                                    A3 → B1 → B2 ; B1+A6 → B3 ; → B4 → R-B
                                    A6 → E1 → E2 → E3 → R-E1 → E4, E5, E6 → E7 → E8 → R-E2
                       R0 → F1 → R-F1 → F2 → F3, F4 ; F2 → F5
+P0 → P1, P2, P3 → R-P1 → P4 … P11 → R-P2 → P12, P13, P14, P15 ; A7 + P2 → P16 → R-P3
 ```
+
+Phase P needs only T0.1 from the engine work (for P2), so it can run alongside Phase A from the start.
 
 After R-A1, phases B, C and D can run in parallel on separate branches. They touch different files, apart from
 `core/outputs.ts`, which should be merged in small pieces.
