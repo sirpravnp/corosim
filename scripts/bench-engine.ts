@@ -49,11 +49,8 @@ const rows: Row[] = [
   structural("tetralogy of Fallot", lesion("tof")),
   solveRow("simulate(): adult normal (solve only)", {}, (m) => simulate(m)),
   solveRow("core: adult normal (fromModel + periodic)", {}, (m) => engineFromModel(m).periodic(m.hr)),
-<<<<<<< HEAD
   solveRow("core + septum: adult normal (B2)", {}, (m) => engineFromModel(m, { septum: true }).periodic(m.hr)),
-=======
   solveRow("core: adult shock + Impella CP P8 (fromModel + periodic)", { lvEes: 0.35, lvStiffness: 1.6 }, (m) => { const g = fromModel(m, { impella: { model: "CP", level: 8 } }); return createEngine(g.nodes, g.elements, g.options).periodic(m.hr); }),
->>>>>>> task/D2
   headless("normal patient", {}),
   headless("proximal LAD occlusion", { lesions: [{ artery: "LAD", occluded: true, position: 0.15 }] }),
 ];

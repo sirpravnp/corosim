@@ -30,13 +30,10 @@ export interface FromModelOptions {
   pr?: (T: number) => number;
   /** Add the pericardial sac (core/pericardium.ts) with this starting effusion (ml) and parameters. Absent: no sac, no change. */
   pericardium?: Partial<PericardiumParams> & { effusionMl?: number };
-<<<<<<< HEAD
   /** Add the septum (core/septum.ts): `true` for the default parameters or a partial parameter set. Absent/false: no septum, no change. */
   septum?: boolean | Partial<SeptumParams>;
-=======
   /** Add an Impella (core/devices/impella.ts; element name "impella"): LV to AO (or AO to AO for position "aortic"). Absent: no device, no change. */
   impella?: Omit<ImpellaConfig, "v0">;
->>>>>>> task/D2
 }
 
 /**
@@ -67,14 +64,11 @@ export function fromModel(m: Model, opts: FromModelOptions = {}): { nodes: NodeD
     const { effusionMl, ...params } = opts.pericardium;
     elements.push(new Pericardium(nodes.flatMap((n, i) => (n.group === "pericardial" ? [i] : [])), effusionMl ?? 0, params));
   }
-<<<<<<< HEAD
   if (opts.septum) {
     const lv = NODES.indexOf("LV"), rv = NODES.indexOf("RV");
     elements.push(new Septum(nodes[lv].model as ElastanceChamber, nodes[rv].model as ElastanceChamber, lv, rv, opts.septum === true ? {} : opts.septum));
   }
-=======
   if (opts.impella) elements.push(Impella.forModel(m, opts.impella));
->>>>>>> task/D2
   return { nodes, elements, options: { defaultPr: opts.pr ?? defaultPr, converge: m.vu.some((v) => v > 0) ? CONVERGE_VU : CONVERGE } };
 }
 
