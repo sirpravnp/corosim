@@ -71,7 +71,8 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | P2b | in progress |
 | A1 | done (max difference from `simulate()` 2e-4, from exact atrial event timing; core 164× real time vs 129×) |
 | A2 | done (structural tab on the core; old RK4 loop removed; reference frozen in `tests/fixtures/core-reference.json`) |
-| A3 | in progress (with A2 follow-ups: break the structural ↔ core import cycle by moving `NODES`; `simulate(m, { waveform })` so `analyze(…, { waveform: false })` skips the recorder) |
+| A3 | done (+6 mmHg pericardial pressure halves SV; mitral flow lags its gradient by 44 ms; E/A separates at 60 bpm, not yet at 72; A2 follow-ups done) |
+| A4 | in progress |
 
 **Branches.** Each task is built on a local branch `task/<ID>` in its own worktree, reviewed, then merged into the
 working branch, which is the only one pushed.
@@ -107,6 +108,7 @@ working branch, which is the only one pushed.
 - The ventricular chamber's beat-period parameter `T` goes away in A4: activation depends only on time since the event,
   with duration from a rate-dependent rule (QT-like shortening with the preceding RR).
 - `BeatRecorder` finds beat boundaries from `T`; A6 switches it to ventricular events.
+- A4 must give E > A at 72 bpm with inertance on (A3 found one merged filling wave at 72: early filling is still running when the atrium contracts). Inertance stays off by default until A5 recalibrates the baseline with it on; R-A1 decides.
 - A4 also removes `ventShape()` and `Model.ventPeak` from `structural.ts` (dead since A2).
 - An element calls `flow()` once per evaluation. A device with two paths (e.g. a pump and its cannula leak) is two elements.
 
