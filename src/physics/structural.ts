@@ -1,8 +1,9 @@
-import { O2_PER_G_HB, WU_TO_MMHG_S_ML, PATIENTS, PatientBaseline, PatientKind, SOLVER } from "../config/structural";
+import { ACTIVATION, O2_PER_G_HB, WU_TO_MMHG_S_ML, PATIENTS, PatientBaseline, PatientKind, SOLVER, VESSELS } from "../config/structural";
 
-import { engineFromModel, type FromModelOptions } from "./core/fromModel";
+import { engineFromModel, resolveCore, type FromModelOptions } from "./core/fromModel";
+import { fillingOf, type Filling } from "./core/vessels";
 import { BeatRecorder } from "./core/recorder";
-import { NODES, type NodeName } from "./structuralGraph";
+import { NODES, CATH_NODES, type NodeName, type CathNode } from "./structuralGraph";
 
 /**
  * Closed-loop compartment model of the circulation, defined as a graph so a lesion is an edit to the graph.
@@ -18,18 +19,21 @@ import { NODES, type NodeName } from "./structuralGraph";
  * (heart rate, pulmonary resistance, systemic resistance) then changes only its own parameter, so the circulation answers it.
  * There are no reflexes: pressure does not defend itself against a shunt or a vasodilator. Constants are teaching values.
  */
-export { NODES };
-export type { NodeName };
-const [SVC, IVC, RA, RV, PA, PV, LA, LV, AO, DAO] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+export { NODES, CATH_NODES };
+export type { NodeName, CathNode };
+const [SVC, IVC, RA, RV, PA, PV, LA, LV, AO, DAO, SPL] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const NN = NODES.length;
 
 type EdgeType = "valve" | "orifice" | "resistor";
 type Role = "bedU" | "bedL" | "lung";
-interface Edge { name: string; from: number; to: number; type: EdgeType; area?: number; reg?: number; R?: number; role?: Role }
+/** `zc`: characteristic impedance (mmHg·s/ml) of the artery a valve ejects into, in series with the valve (core `OneWayValve.params.Zc`). */
+interface Edge { name: string; from: number; to: number; type: EdgeType; area?: number; reg?: number; R?: number; zc?: number; role?: Role }
 interface Chamber { v0: number; ees: number; a: number; b: number; atrial: boolean }
 export interface Model {
   patient: PatientBaseline; hr: number; T: number;
   chambers: (Chamber | null)[]; comp: number[]; edges: Edge[]; start: number[]; // start: volumes the run begins from, ml
+  /** Unstressed volume of each vessel node, ml (0 where a vessel has none): P = (V − Vu)/C. Chambers: 0. */
+  vu: number[];
   vo2U: number; vo2L: number; // ml O₂ / s
   qDesign: number; // ml/s, the baseline systemic flow
 }
@@ -84,9 +88,28 @@ export function clampStructuralSpec(input: StructuralSpec = {}): StructuralSpec 
   };
 }
 
-export function buildModel(input: StructuralSpec = {}, volumeOffset = 0): Model {
-  const spec = clampStructuralSpec(input);
-  const p = PATIENTS[spec.patient ?? "adult"];
+/**
+ * What the model design includes beyond the plain compartments; every flag defaults to the current baseline. `LEGACY_BUILD` turns
+ * them all off (the circulation of the frozen reference fixture: no impedance, no unstressed volume, one lower-body venous
+ * compartment, the atrium as first designed).
+ */
+export interface BuildOptions {
+  /** Characteristic impedance Zc in front of the aorta and pulmonary artery (default true). */
+  zc?: boolean;
+  /** Unstressed volume in the venous compartments, so total blood volume exceeds the stressed volume (default true). */
+  unstressed?: boolean;
+  /** Splanchnic reservoir between the lower-body bed and the IVC (default true; false leaves the SPL node empty and unconnected). */
+  splanchnic?: boolean;
+  /** Factor on the atrial active elastance (default `ACTIVATION.atrialEesScale`; 1 = the designed 6 mmHg of active pressure). */
+  atrialEesScale?: number;
+  /** Overrides of a patient baseline in `config/structural.ts` (the pin keeps the adult atrial pressures the reference was made with). */
+  baseline?: Partial<Record<PatientKind, Partial<PatientBaseline>>>;
+}
+export const LEGACY_BUILD: Readonly<BuildOptions> = { zc: false, unstressed: false, splanchnic: false, atrialEesScale: 1, baseline: { adult: { rap: 4, lap: 8 } } };
+
+export function buildModel(input: StructuralSpec = {}, volumeOffset = 0, build: BuildOptions = {}): Model {
+  const spec = clampStructuralSpec(input), useZc = build.zc !== false, useVu = build.unstressed !== false, useSpl = build.splanchnic !== false;
+  const p = { ...PATIENTS[spec.patient ?? "adult"], ...build.baseline?.[spec.patient ?? "adult"] };
   const W = p.weightKg, T = 60 / (spec.hr ?? p.hr);
   const sv = p.svPerKg * W, q = (p.hr * sv) / 60; // ml, ml/s: the design point, at the baseline rate
   const K = 2.8; // exponent of the passive pressure-volume curve at end-diastole
@@ -104,14 +127,18 @@ export function buildModel(input: StructuralSpec = {}, volumeOffset = 0): Model 
   };
   const atrium = (vm: number, pm: number): Chamber => {
     const v0 = 0.35 * vm, b = K / (vm - v0), a = pm / (Math.exp(K) - 1);
-    return { v0, ees: 6 / (vm - v0), a, b, atrial: true };
+    return { v0, ees: (6 * (build.atrialEesScale ?? ACTIVATION.atrialEesScale)) / (vm - v0), a, b, atrial: true };
   };
   const lv = ventricle(sv / p.lvEf, sysLv, p.lap), rv = ventricle(sv / p.rvEf, sysRv, p.rap);
   const la = atrium(0.55 * W, p.lap), ra = atrium(0.65 * W, p.rap);
-  const chambers: (Chamber | null)[] = [null, null, ra, rv, null, null, la, lv, null, null];
+  const chambers: (Chamber | null)[] = [null, null, ra, rv, null, null, la, lv, null, null, null];
 
-  const ca = sv / p.ppSys, cpa = sv / p.ppPa;
-  const comp = [0.25 * W, 0.75 * W, 0, 0, cpa, 0.15 * W, 0, 0, 0.35 * ca, 0.65 * ca];
+  const ca = (sv / p.ppSys) * (useZc ? VESSELS.arterialC.sys : 1), cpa = (sv / p.ppPa) * (useZc ? VESSELS.arterialC.pul : 1);
+  const V = VESSELS.compliance;
+  const comp = [(useSpl ? V.svc : 0.25) * W, (useSpl ? V.ivc : 0.75) * W, 0, 0, cpa, 0.15 * W, 0, 0, 0.35 * ca, 0.65 * ca, useSpl ? V.spl * W : 1];
+  const pspl = psv + VESSELS.splanchnicRise; // mean pressure of the splanchnic reservoir
+  // characteristic impedance in front of each artery: a fixed share of the resistance behind it
+  const zcAo = useZc ? VESSELS.zcFrac.sys * ((p.map - p.rap) / q) : 0, zcPa = useZc ? VESSELS.zcFrac.pul * rp : 0;
 
   // starting state, from the baseline only: every chamber at its mean pressure, every vessel at its design pressure
   const start = new Array(NN).fill(0);
@@ -119,19 +146,29 @@ export function buildModel(input: StructuralSpec = {}, volumeOffset = 0): Model 
   start[RV] = passive(p.rap + 2, rv.v0, rv.b, rv.a); start[LV] = passive(p.lap + 2, lv.v0, lv.b, lv.a);
   start[SVC] = comp[SVC] * psv; start[IVC] = comp[IVC] * psv + volumeOffset + (spec.volumeMl ?? 0);
   start[PA] = comp[PA] * mpap; start[PV] = comp[PV] * ppv; start[AO] = comp[AO] * p.map; start[DAO] = comp[DAO] * (p.map - 1);
+  start[SPL] = useSpl ? comp[SPL] * pspl : 0;
+  // unstressed volume: what the patient's total blood volume holds beyond the stressed volumes designed above, shared among the veins
+  const vu = new Array(NN).fill(0);
+  if (useVu) {
+    const added = volumeOffset + (spec.volumeMl ?? 0), rest = p.bloodMlPerKg * W - (start.reduce((a, b) => a + b, 0) - added), share = VESSELS.vuShare, tot = share.svc + share.ivc + (useSpl ? share.spl : 0);
+    vu[SVC] = (rest * share.svc) / tot; vu[IVC] = (rest * share.ivc) / tot; if (useSpl) vu[SPL] = (rest * share.spl) / tot;
+    for (const i of [SVC, IVC, SPL]) start[i] += vu[i];
+  }
 
   const qU = p.upperFlow * q, qL = (1 - p.upperFlow) * q, svr = spec.svrScale ?? 1;
   const pdao = p.map - 1;
   const A = p.valveAreas;
   const edges: Edge[] = [
     { name: "TV", from: RA, to: RV, type: "valve", area: A.tv, reg: 0 },
-    { name: "PVL", from: RV, to: PA, type: "valve", area: A.pv, reg: 0 },
+    { name: "PVL", from: RV, to: PA, type: "valve", area: A.pv, reg: 0, zc: zcPa },
     { name: "MV", from: LA, to: LV, type: "valve", area: A.mv, reg: 0 },
-    { name: "AV", from: LV, to: AO, type: "valve", area: A.av, reg: 0 },
-    { name: "RVAO", from: RV, to: AO, type: "valve", area: 0, reg: 0 }, // the overriding aorta's share of the right ventricle
+    { name: "AV", from: LV, to: AO, type: "valve", area: A.av, reg: 0, zc: zcAo },
+    { name: "RVAO", from: RV, to: AO, type: "valve", area: 0, reg: 0, zc: zcAo }, // the overriding aorta's share of the right ventricle
     { name: "ISTH", from: AO, to: DAO, type: "resistor", R: ISTH_R / qL },
     { name: "BEDU", from: AO, to: SVC, type: "resistor", R: ((p.map - psv) / qU) * svr, role: "bedU" },
-    { name: "BEDL", from: DAO, to: IVC, type: "resistor", R: ((pdao - psv) / qL) * svr, role: "bedL" },
+    // the lower-body bed drains through the splanchnic reservoir (pressure pspl) to the IVC; without it, straight to the IVC
+    { name: "BEDL", from: DAO, to: useSpl ? SPL : IVC, type: "resistor", R: ((pdao - (useSpl ? pspl : psv)) / qL) * svr, role: "bedL" },
+    ...(useSpl ? [{ name: "SPLV", from: SPL, to: IVC, type: "resistor" as const, R: (pspl - psv) / qL }] : []),
     { name: "VRU", from: SVC, to: RA, type: "resistor", R: (psv - p.rap) / qU },
     { name: "VRL", from: IVC, to: RA, type: "resistor", R: (psv - p.rap) / qL },
     { name: "LUNG", from: PA, to: PV, type: "resistor", R: ((spec.pvri ?? p.pvri) / p.bsa) * WU_TO_MMHG_S_ML, role: "lung" },
@@ -175,7 +212,7 @@ export function buildModel(input: StructuralSpec = {}, volumeOffset = 0): Model 
   if (spec.rvStiffness) chambers[RV]!.a *= spec.rvStiffness;
 
   const vo2 = (p.vo2PerKg * W) / 60;
-  const m: Model = { patient: { ...p, satLung: spec.satLung ?? p.satLung }, hr: 60 / T, T, chambers, comp, edges, start, vo2U: vo2 * p.upperVo2, vo2L: vo2 * (1 - p.upperVo2), qDesign: q };
+  const m: Model = { patient: { ...p, satLung: spec.satLung ?? p.satLung }, hr: 60 / T, T, chambers, comp, edges, start, vu, vo2U: vo2 * p.upperVo2, vo2L: vo2 * (1 - p.upperVo2), qDesign: q };
   return m;
 }
 
@@ -191,10 +228,14 @@ export interface Hemodynamics {
   fwd: Record<string, number>; bwd: Record<string, number>;
   valves: Record<string, ValveStat>;
   volume: number; // ml, total in the circulation at the end of the last beat
+  /** Systemic vessels (SVC, IVC, SPL, AO, DAO) at the end of the last beat: blood, stressed volume, compliance and mean systemic filling pressure. */
+  filling: Filling;
   wave: Waveform;
 }
 /** The last beat, sampled every couple of milliseconds: time (s), pressure at every node (mmHg), ventricular volumes (ml). */
 export interface Waveform { t: number[]; p: Record<NodeName, number[]>; vLV: number[]; vRV: number[]; vLA: number[]; vRA: number[]; q: Record<string, number[]> }
+/** Vessels that make up the systemic circulation for the filling pressure: the veins, including the splanchnic reservoir, and the two aortic segments. */
+const SYSTEMIC = ["SVC", "IVC", "SPL", "AO", "DAO"] as const;
 const WAVE_EDGES = ["TV", "PVL", "MV", "AV", "RVAO", "ASD", "VSD", "PDA", "BT"];
 
 /**
@@ -216,8 +257,9 @@ export function simulate(m: Model, opts: { waveform?: boolean; core?: FromModelO
   const vol = { RA: last.v.RA, RV: last.v.RV, LA: last.v.LA, LV: last.v.LV };
   const wave: Waveform = { t: w.t, p: wp, vLV: w.v.LV, vRV: w.v.RV, vLA: w.v.LA, vRA: w.v.RA, q: w.q };
   let volume = 0;
-  for (const x of eng.sample().V) volume += x;
-  return { beats, converged, p, vol, fwd: fv.fwd, bwd: fv.bwd, valves: last.valves, volume, wave };
+  const V = eng.sample().V;
+  for (const x of V) volume += x;
+  return { beats, converged, p, vol, fwd: fv.fwd, bwd: fv.bwd, valves: last.valves, volume, filling: fillingOf(eng.nodes, V, SYSTEMIC), wave };
 }
 
 // ---- oxygen -----------------------------------------------------------------------------------
@@ -288,6 +330,8 @@ export interface StructuralReport {
   preductalSat: number; postductalSat: number;
   /** total blood in the circulation, ml, for conservation checks */
   bloodVolume: number;
+  /** Systemic vessels: stressed volume (ml) and mean systemic filling pressure (mmHg, stressed volume / total systemic compliance, the stop-flow estimate). */
+  filling: Filling;
   waveform?: Waveform;
   warnings: string[];
 }
@@ -334,7 +378,7 @@ export function analyze(spec: StructuralSpec = {}, opts: { waveform?: boolean } 
     maxVolume: { RA: h.vol.RA.max, LA: h.vol.LA.max, RV: rv.max, LV: lv.max },
     svr, pvr, svri: svr * bsa, pvri: pvr * bsa,
     shunt: { pda: net("PDA"), asd: net("ASD"), vsd: net("VSD"), bt: net("BT"), rvao: net("RVAO") },
-    valves: h.valves, preductalSat: sat.AO, postductalSat: sat.DAO, bloodVolume: h.volume, waveform: opts.waveform === false ? undefined : h.wave, warnings,
+    valves: h.valves, preductalSat: sat.AO, postductalSat: sat.DAO, bloodVolume: h.volume, filling: h.filling, waveform: opts.waveform === false ? undefined : h.wave, warnings,
   };
 }
 
@@ -345,11 +389,12 @@ export function analyze(spec: StructuralSpec = {}, opts: { waveform?: boolean } 
  * every case starts from it. Cached by the baseline's contents, so a different weight or age finds its own.
  */
 const offsets = new Map<string, number>();
-export function volumeOffsetFor(spec: StructuralSpec, core?: FromModelOptions): number {
-  const kind = spec.patient ?? "adult", key = JSON.stringify([PATIENTS[kind], core?.relaxScale, core?.atrialEesScale, core?.pr?.(0.8), core?.inertance]), hit = offsets.get(key);
+export function volumeOffsetFor(spec: StructuralSpec, core?: FromModelOptions, build?: BuildOptions): number {
+  // everything the calibration depends on, with defaults filled in, so a changed default recalibrates by itself
+  const kind = spec.patient ?? "adult", key = JSON.stringify([PATIENTS[kind], resolveCore(core), { zc: true, unstressed: true, splanchnic: true, atrialEesScale: ACTIVATION.atrialEesScale, ...build }, VESSELS, ACTIVATION, SOLVER, ISTH_R]), hit = offsets.get(key);
   if (hit !== undefined) return hit;
   const target = PATIENTS[kind].map;
-  const err = (off: number) => simulate(buildModel({ patient: kind }, off), { waveform: false, core }).p.AO.mean - target;
+  const err = (off: number) => simulate(buildModel({ patient: kind }, off, build), { waveform: false, core }).p.AO.mean - target;
   let x0 = 0, f0 = err(x0), x1 = 0.1 * target * PATIENTS[kind].weightKg, f1 = err(x1);
   for (let i = 0; i < 8 && Math.abs(f1) > 0.1; i++) {
     const x2 = x1 - (f1 * (x1 - x0)) / (f1 - f0 || 1e-9);

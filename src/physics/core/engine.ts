@@ -30,6 +30,7 @@ class CoreEngine implements Engine {
   private readonly models: NodeModel[];
   private readonly all: Element[];
   private readonly fieldEls: Element[];
+  private readonly seriesEls: Element[];
   private readonly flowEls: Element[];
   private readonly eventEls: Element[];
   private readonly minima: [number, number][] = [];
@@ -40,6 +41,7 @@ class CoreEngine implements Engine {
   private readonly ctx: { t: number; V: Float64Array; P: Float64Array; Pext: Float64Array; Vshift: Float64Array; y: Float64Array };
   private readonly elQ: Float64Array; private readonly fwd: Float64Array; private readonly bwd: Float64Array;
   private readonly sink: Sink;
+  private readonly dP: Float64Array;
   private readonly pending: HeartEvent[] = [];
   private readonly callbacks: ((s: Sample) => void)[] = [];
   private readonly view: SampleView;
@@ -65,11 +67,12 @@ class CoreEngine implements Engine {
     this.y = Float64Array.from(start); this.X = new Float64Array(N); this.k = [0, 1, 2, 3].map(() => new Float64Array(N));
     this.P = new Float64Array(NN); this.Pext = new Float64Array(NN); this.Vshift = new Float64Array(NN);
     this.ctx = { t: 0, V: this.X.subarray(0, NN), P: this.P, Pext: this.Pext, Vshift: this.Vshift, y: this.X };
-    this.fieldEls = this.all.filter((e) => e.field); this.flowEls = this.all.filter((e) => e.flow); this.eventEls = this.all.filter((e) => e.onEvent);
+    this.fieldEls = this.all.filter((e) => e.field); this.seriesEls = this.all.filter((e) => e.series); this.flowEls = this.all.filter((e) => e.flow); this.eventEls = this.all.filter((e) => e.onEvent);
     for (const el of this.all) if (!this.byName.has(el.name)) this.byName.set(el.name, el);
     for (const el of elements) this.byName.set(el.name, el);
     this.elQ = new Float64Array(this.flowEls.length); this.fwd = new Float64Array(this.flowEls.length); this.bwd = new Float64Array(this.flowEls.length);
-    this.sink = new Sink(this.Pext, this.Vshift, this.elQ);
+    this.dP = new Float64Array(NN);
+    this.sink = new Sink(this.Pext, this.Vshift, this.elQ, this.dP);
     this.Vview = this.y.subarray(0, NN);
     this.view = new SampleView(this);
     this.refresh();
@@ -125,6 +128,7 @@ class CoreEngine implements Engine {
     ctx.t = t; Pext.fill(0); Vshift.fill(0); out.fill(0); sink.out = out;
     for (let i = 0; i < this.fieldEls.length; i++) this.fieldEls[i].field!(ctx as Ctx, sink);
     for (let i = 0; i < NN; i++) P[i] = this.models[i].pressure(X[i] + Vshift[i], t) + Pext[i];
+    this.applySeries();
     this.elQ.fill(0);
     for (let i = 0; i < this.flowEls.length; i++) { sink.cur = i; this.flowEls[i].flow!(ctx as Ctx, sink); }
     if (w) {
@@ -155,6 +159,16 @@ class CoreEngine implements Engine {
     X.set(this.y); ctx.t = this.t; Pext.fill(0); Vshift.fill(0); sink.out = this.k[0];
     for (let i = 0; i < this.fieldEls.length; i++) this.fieldEls[i].field!(ctx as Ctx, sink);
     for (let i = 0; i < NN; i++) P[i] = this.models[i].pressure(X[i] + Vshift[i], this.t) + Pext[i];
+    this.applySeries();
+  }
+  /** Phase 2b: series elements read the pressures of phase 2, then their additions are applied together. */
+  private applySeries() {
+    const els = this.seriesEls;
+    if (!els.length) return;
+    const { ctx, sink, dP, P } = this;
+    dP.fill(0);
+    for (let i = 0; i < els.length; i++) els[i].series!(ctx as Ctx, sink);
+    for (let i = 0; i < P.length; i++) P[i] += dP[i];
   }
   /** Flows at the current instant into elQ (a full evaluation that accumulates nothing). */
   private evalFlows() { this.X.set(this.y); this.deriv(this.t, this.k[0], 0); }
@@ -217,7 +231,8 @@ class CoreEngine implements Engine {
 /** Where elements write during a derivative evaluation. */
 class Sink implements Rates {
   out!: Float64Array; cur = 0;
-  constructor(private readonly Pext: Float64Array, private readonly Vshift: Float64Array, private readonly elQ: Float64Array) {}
+  constructor(private readonly Pext: Float64Array, private readonly Vshift: Float64Array, private readonly elQ: Float64Array, private readonly dP: Float64Array) {}
+  addPressure(node: NodeId, p: number) { this.dP[node] += p; }
   addExternal(node: NodeId, p: number) { this.Pext[node] += p; }
   shiftVolume(node: NodeId, dv: number) { this.Vshift[node] += dv; }
   flow(from: NodeId, to: NodeId, q: number) {

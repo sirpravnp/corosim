@@ -82,10 +82,4 @@ export class ElastanceChamber implements NodeModel, Tunable<ElastanceParams> {
   }
 }
 
-/** Linear compliance (vessel): P = V / C, C in ml/mmHg. */
-export class Compliance implements NodeModel, Tunable<{ C: number }> {
-  readonly params: { C: number };
-  constructor(readonly name: string, C: number) { this.params = { C }; }
-  set(patch: Partial<{ C: number }>) { Object.assign(this.params, patch); }
-  pressure(volume: number): number { return volume / this.params.C; }
-}
+export { Compliance } from "./vessels";

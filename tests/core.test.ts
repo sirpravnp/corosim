@@ -1,7 +1,7 @@
 // The core engine against the structural solver it replaced (A1, A2). The reference is tests/fixtures/core-reference.json, the
 // output of the old hand-written RK4 loop, frozen by tests/fixtures/core-reference.ts. simulate() itself now runs on the core.
 import { describe, it, expect } from "vitest";
-import { buildModel, simulate, volumeOffsetFor, NODES, type StructuralSpec } from "../src/physics/structural";
+import { buildModel, simulate, volumeOffsetFor, LEGACY_BUILD, NODES, type StructuralSpec } from "../src/physics/structural";
 import { createEngine } from "../src/physics/core/engine";
 import { atrialDuration, Compliance, ElastanceChamber } from "../src/physics/core/chamber";
 import { InertialResistor, InertialValve, inertance, OneWayValve, Resistor } from "../src/physics/core/valves";
@@ -19,14 +19,16 @@ const REF = reference as unknown as Record<string, Ref>;
 
 /**
  * The activation of the old loop that produced the frozen reference: plain ventricular curve (relaxScale 1), the atrium as
- * `buildModel` designs it, and the atrial event leading the ventricular one by ta + 0.06 + 0.08·T. A4 changed the defaults
- * (relaxation, atrial drive, PR); the reference cannot be regenerated, so it is compared on this pinned configuration.
+ * `buildModel` designed it (atrial drive factor 1), and the atrial event leading the ventricular one by ta + 0.06 + 0.08·T. A4 and A5
+ * changed the defaults (relaxation, atrial drive, PR, impedance Zc, unstressed volume, the splanchnic node, atrial pressures); the
+ * reference cannot be regenerated, so it is compared on this pinned configuration: `LEGACY` for the engine, `LEGACY_BUILD` for the model.
  */
-const LEGACY: FromModelOptions = { relaxScale: 1, atrialEesScale: 1, pr: (T) => atrialDuration(T) + 0.06 + 0.08 * T };
+const LEGACY: FromModelOptions = { relaxScale: 1, pr: (T) => atrialDuration(T) + 0.06 + 0.08 * T };
 
 /** simulate() on one case against the frozen reference. Returns the mismatches and the largest relative difference seen. */
 function compare(id: string, spec: StructuralSpec) {
-  const m = buildModel(spec, volumeOffsetFor(spec, LEGACY)), got = simulate(m, { core: LEGACY }), want = REF[id];
+  const m = buildModel(spec, volumeOffsetFor(spec, LEGACY, LEGACY_BUILD), LEGACY_BUILD), got = simulate(m, { core: LEGACY }), want = REF[id];
+  const NODES_REF = NODES.filter((n) => n in want.p); // the reference predates the splanchnic node (SPL); in the pinned model it is empty and unconnected
   const bad: string[] = []; let worst = { rel: 0, where: "" };
   const cmp = (label: string, w: number, g: number) => {
     const rel = Math.abs(g - w) / Math.max(Math.abs(w), 1e-12);
@@ -35,7 +37,7 @@ function compare(id: string, spec: StructuralSpec) {
   };
   expect(got.beats, "beats").toBe(want.beats);
   expect(got.converged, "converged").toBe(want.converged);
-  for (const n of NODES) for (const f of ["min", "max", "mean", "end"] as const) cmp(`p.${n}.${f}`, want.p[n][f], got.p[n][f]);
+  for (const n of NODES_REF) for (const f of ["min", "max", "mean", "end"] as const) cmp(`p.${n}.${f}`, want.p[n][f], got.p[n][f]);
   for (const n of ["RA", "RV", "LA", "LV"] as const) for (const f of ["min", "max", "mean", "end"] as const) cmp(`vol.${n}.${f}`, want.vol[n][f], got.vol[n][f]);
   for (const e of m.edges) { cmp(`fwd.${e.name}`, want.fwd[e.name], got.fwd[e.name]); cmp(`bwd.${e.name}`, want.bwd[e.name], got.bwd[e.name]); }
   for (const [name, w] of Object.entries(want.valves)) for (const f of Object.keys(w)) cmp(`valve.${name}.${f}`, w[f], (got.valves[name] as unknown as Record<string, number>)[f]);
@@ -46,7 +48,7 @@ function compare(id: string, spec: StructuralSpec) {
     expect(g.t.length, "wave samples").toBe(w.t.length);
     expect(Math.max(...g.t.map((t, i) => Math.abs(t - w.t[i]))), "wave time grid").toBeLessThan(1e-3);
     // compare waveforms by their largest excursion from the reference, against the signal's range
-    const series: [string, number[], number[]][] = [...NODES.map((n) => [`p.${n}`, w.p[n], g.p[n]] as [string, number[], number[]]),
+    const series: [string, number[], number[]][] = [...NODES_REF.map((n) => [`p.${n}`, w.p[n], g.p[n]] as [string, number[], number[]]),
       ["vLV", w.vLV, g.vLV], ["vRV", w.vRV, g.vRV], ["vLA", w.vLA, g.vLA], ["vRA", w.vRA, g.vRA], ...Object.keys(w.q).map((k) => [`q.${k}`, w.q[k], g.q[k]] as [string, number[], number[]])];
     for (const [label, a, b] of series) {
       const range = Math.max(...a) - Math.min(...a), err = Math.max(...a.map((x, i) => Math.abs(x - b[i])));
@@ -115,16 +117,16 @@ describe("core engine mechanics", () => {
 const constantPressure = (name: string, p: number, ids: number[]): Element => ({ name, field: (_c: Ctx, out: Rates) => { for (const i of ids) out.addExternal(i, p); } });
 const idsOf = (nodes: readonly { group: ExternalGroup }[], group: ExternalGroup) => nodes.map((n, i) => (n.group === group ? i : -1)).filter((i) => i >= 0);
 const adult = () => buildModel({}, volumeOffsetFor({}));
-const GROUP_OF = { SVC: "thoracic", IVC: "abdominal", RA: "pericardial", RV: "pericardial", PA: "thoracic", PV: "thoracic", LA: "pericardial", LV: "pericardial", AO: "thoracic", DAO: "abdominal" } as const;
+const GROUP_OF = { SVC: "thoracic", IVC: "abdominal", RA: "pericardial", RV: "pericardial", PA: "thoracic", PV: "thoracic", LA: "pericardial", LV: "pericardial", AO: "thoracic", DAO: "abdominal", SPL: "abdominal" } as const;
 
 /** Last beat of a periodic run on the adult model (optionally at another rate, step, or with inertance), with extra elements added to the graph. */
-function lastBeat(extra: (nodes: { group: ExternalGroup }[]) => Element[], opts: { inertance?: boolean; dt?: number; hr?: number; relaxScale?: number; pr?: number } = {}) {
+function lastBeat(extra: (nodes: { group: ExternalGroup }[]) => Element[], opts: { inertance?: boolean; dt?: number; hr?: number; relaxScale?: number; pr?: number; tol?: number } = {}) {
   const m = opts.hr ? buildModel({ hr: opts.hr }, volumeOffsetFor({})) : adult(), g = fromModel(m, { inertance: opts.inertance, relaxScale: opts.relaxScale });
   const eng = createEngine(g.nodes, [...g.elements, ...extra(g.nodes)], g.options);
   const dt = opts.dt ?? SOLVER.dt, nSteps = Math.max(50, Math.round(m.T / dt));
   const rec = new BeatRecorder(eng, m.T, ["MV", "AV"], { dt: m.T / nSteps, every: 0.002, flows: ["MV", "AV"] });
   const old = SOLVER.dt; SOLVER.dt = dt;
-  let run; try { run = eng.periodic(m.hr, { pr: opts.pr }); } finally { SOLVER.dt = old; }
+  let run; try { run = eng.periodic(m.hr, { pr: opts.pr, tol: opts.tol }); } finally { SOLVER.dt = old; }
   const b = rec.beat(); rec.dispose();
   return { m, eng, b, run, fv: eng.flowVolumes() };
 }
@@ -393,7 +395,7 @@ describe("events drive the engine", () => {
     const n = 40, vt = Array.from({ length: n }, (_, i) => i * T);
     const { eng, rec } = fresh();
     for (const t of vt) eng.schedule({ kind: "ventricular", t });
-    for (const t of vt.slice(1)) eng.schedule({ kind: "atrial", t: t - pr });
+    for (const t of [...vt.slice(1), n * T]) eng.schedule({ kind: "atrial", t: t - pr }); // the last beat has its atrial event too, as in periodic()
     advanceTo(eng, (n - 1) * T + T - 1e-6);
     const manual = rec.beat(); rec.dispose();
     const ref = lastBeat(() => [], { inertance: true });
