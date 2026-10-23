@@ -84,7 +84,7 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | A5b | in progress |
 | P2c | done (bridge trace time strictly increasing; reload clears the bridge; valve areas only with a real gradient; gross-flow Gorlin test) |
 | P6 | done (JVP: cannon a 2.6× in AV dissociation; giant v in severe TR; RV infarct raised JVP 9.9 cm on the live page; tamponade/constriction tests wait for B1) |
-| B1 | in review (stability above stiffness 4) |
+| B1 | done (tamponade: 300 ml equalises RA/RVEDP/LA/LVEDP within 0.2 mmHg, CO 5.1 → 0.3; draining 200 ml restores 81 %; slow effusion better tolerated; stable to stiffness 10) |
 | D1 | done (rotary pump: HQ fit, smooth bounded suction, backflow when stopped) |
 | R-D1 | passed (decisions below) |
 
@@ -185,7 +185,7 @@ waveforms; MCP schema versioning.
 | ID | Who | Task | Depends | Files | Acceptance |
 |---|---|---|---|---|---|
 | B1 | I | **Pericardial sac.** P_peri = f(V_heart + V_effusion), exponential; applied as external pressure on the four chambers; effusion volume and inflow rate; pericardiocentesis removes ml. | A3 | `core/pericardium.ts` | Normal: P_peri ≈ 0; tamponade: RAP ≈ RVEDP ≈ PCWP within 5 mmHg, CO down; removing 100–200 ml restores most of CO; a slow effusion tolerates more volume than a fast one |
-| B2 | I | **Septal interaction.** Septal volume solved each step so septal transmural pressure balances P_LV − P_RV (Santamore–Burkhoff / Smith–Chase style). The implementer writes it; **the reviewer checks numerics before merge.** | B1 | `core/pericardium.ts`, `core/chamber.ts` | RV pressure load → LV EDV falls at the same LV filling pressure; turning the septum off reproduces B1 results |
+| B2 | I | **Septal interaction** (also owns constriction equalisation: RVEDP ≈ LVEDP within 3 mmHg at constrictive stiffness, which the sac alone reaches only at stiffness 10)**.** Septal volume solved each step so septal transmural pressure balances P_LV − P_RV (Santamore–Burkhoff / Smith–Chase style). The implementer writes it; **the reviewer checks numerics before merge.** | B1 | `core/pericardium.ts`, `core/chamber.ts` | RV pressure load → LV EDV falls at the same LV filling pressure; turning the septum off reproduces B1 results |
 | B3 | I | **Intrathoracic pressure.** P_th from the breathing phase in `autonomic.ts`, applied to the pericardium, pulmonary vessels, thoracic aorta and SVC; spontaneous vs positive-pressure ventilation; PEEP. Outputs: PPV, SVV. | B1, A6 | `core/thorax.ts`, `physics/autonomic.ts` | Normal: pulsus < 10 mmHg; tamponade: pulsus > 10; PPV large in hypovolemia under positive pressure, small when euvolemic |
 | B4 | I | **Scenarios.** Tamponade (with the existing ECG alternans preset tied to effusion size), constriction (stiff sac, no effusion: steep y descent, Kussmaul), RV infarct with septal shift; pericardiocentesis as an action. | B2, B3 | `sim/scenario.ts`, `ekg/presets.ts` link | Each listed sign asserted on traces |
 
