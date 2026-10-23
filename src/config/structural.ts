@@ -65,3 +65,14 @@ export const GRADE = {
     tv: { moderate: 0.029, severe: 0.057 }, pv: { moderate: 0.04, severe: 0.08 },
   },
 };
+
+/**
+ * Chamber activation. Ventricle: double-Hill (Stergiopulos) of the time since the ventricular event, normalised by its peak:
+ * e(t) = [r/(1+r)]·[1/(1+(t/a2)^n2)], r = (t/a1)^n1, Tmax = tMaxCoef·T^tMaxExp, a1 = a1Frac·Tmax, a2 = a2Frac·a1. [lit]
+ * Atrium: half sine of duration ta over the time since the atrial event; the P wave leads ventricular activation by ta + pr
+ * (ta = min(taBase·√(T/taRefT), taMaxFrac·T), pr = prBase + prPerT·T). [assumed]
+ */
+export const ACTIVATION = {
+  tMaxCoef: 0.376, tMaxExp: 0.8, a1Frac: 0.708, a2Frac: 1.677, n1: 1.32, n2: 21.9, peakSamples: 400,
+  taBase: 0.12, taRefT: 0.833, taMaxFrac: 0.35, prBase: 0.06, prPerT: 0.08,
+};
