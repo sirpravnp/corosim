@@ -25,6 +25,8 @@ else here is added by the tasks in `docs/HEMODYNAMICS_TASKS.md`.
 - **Outputs** come from `sample()` and `onSample()`: pressures, volumes, flows per element, and each element's `taps`.
   `flowVolumes()` gives the forward and backward volume through every flow element since `resetFlowVolumes()` (per-beat shunt and regurgitation volumes).
 
+- **Live play (A6).** `live.ts` `LiveHeart` schedules events from the rhythm model's beats and steps the engine; `BeatRecorder` built with `T = null` closes a beat at each ventricular event (`closeBeat()`, called from an element's `onEvent`) instead of every `T` seconds. Slow inputs are `Tunable.set` patches from design-point factors (`setModifiers`).
+
 Units: mmHg, ml, ml/s, s.
 
 ## How each planned piece fits
