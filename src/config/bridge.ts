@@ -7,17 +7,6 @@ export const BRIDGE = {
   minSolveIntervalS: 3,
   /** Volume (ml, added to the circulation) the MAP calibration may use: stands in for venoconstriction and fluids. [assumed] */
   volumeRangeMl: [-800, 1500] as const,
-  /**
-   * Ees lost per unit ischemic fraction of a ventricle: ees = max(0.2, 1 - loss x ischemia). Above the ACS model's 0.8
-   * because an ischemic segment does not just stop, it bulges (dyskinesis) and wastes the work of the rest, so global
-   * systolic elastance falls by more than the ischemic mass fraction (large anterior MI: EF about 0.30). [assumed]
-   */
-  lvEesLoss: 1.25, rvEesLoss: 0.8,
-  /**
-   * Passive stiffness gained per unit ischemic fraction: stiffness = 1 + gain x ischemia (3x at full ischemia at most).
-   * Acute ischemia raises diastolic stiffness (impaired relaxation, then contracture); LVEDP rises at a given volume. [assumed]
-   */
-  lvStiffGain: 1.5, rvStiffGain: 2,
   /** Window over which the simulation's beat MAPs are averaged into the monitor MAP the bridge tracks and calibrates to, s. [assumed] */
   mapWindowS: 15,
   /** MAP calibration: stop when the structural mean aortic pressure is this close to the monitor's, mmHg; at most this many extra analyze calls. [assumed] */

@@ -1,4 +1,5 @@
 import { LIVE, MODIFIER_RANGE, VENOUS_TONE } from "../../config/live";
+import type { VentricleFactors } from "../../config/ischemia";
 import { buildModel, volumeOffsetFor, type Model, type StructuralSpec } from "../structural";
 import type { Beat } from "../ecg";
 import type { BeatHemo } from "../beatHemo";
@@ -93,6 +94,8 @@ export class LiveHeart {
   private attached = false;
   private seen = new WeakSet<Beat>();
   private lastVentT = -Infinity;
+  /** Engine time of the latest atrial event delivered (-Infinity: none). */
+  private lastAtrialT = -Infinity;
   private afterPvc = false;
   private queue: BeatMeta[] = [];
   private cur: Cur | null = null;
@@ -102,7 +105,8 @@ export class LiveHeart {
   readonly records: LiveBeat[] = [];
   private mods: Required<Omit<LiveModifiers, "preload">> = { contractility: 1, resistance: 1, venousTone: 1, relax: 1, thoracic: 0 };
   // design point
-  private readonly ventricles: { el: ElastanceChamber; ees: number; relax: number }[];
+  private readonly ventricles: { el: ElastanceChamber; ees: number; a: number; relax: number }[];
+  private vf: Required<VentricleFactors> = { lvEes: 1, rvEes: 1, lvStiffness: 1, rvStiffness: 1 };
   private readonly beds: { el: Resistor; R: number }[];
   private readonly veins: { el: Compliance; vu: number; gain: number }[];
   // trace ring buffer
@@ -115,10 +119,10 @@ export class LiveHeart {
   constructor(spec: StructuralSpec = {}, opts: LiveOptions = {}) {
     this.model = buildModel(spec, volumeOffsetFor(spec, opts.core));
     const g = fromModel(this.model, opts.core);
-    const marker: Element = { name: "beatMarker", onEvent: (ev: HeartEvent) => { if (ev.kind === "ventricular") this.onVentricular(ev); } };
+    const marker: Element = { name: "beatMarker", onEvent: (ev: HeartEvent) => { if (ev.kind === "atrial") this.lastAtrialT = ev.t; else this.onVentricular(ev); } };
     this.engine = createEngine(g.nodes, [...g.elements, marker, ...(opts.extra ?? [])], g.options);
     const eng = this.engine;
-    this.ventricles = (["LV", "RV"] as const).map((n) => { const el = eng.element<ElastanceChamber>(n); return { el, ees: el.params.ees, relax: el.params.relaxScale ?? 1 }; });
+    this.ventricles = (["LV", "RV"] as const).map((n) => { const el = eng.element<ElastanceChamber>(n); return { el, ees: el.params.ees, a: el.params.a, relax: el.params.relaxScale ?? 1 }; });
     this.beds = (["BEDU", "BEDL"] as const).map((n) => { const el = eng.element<Resistor>(n); return { el, R: el.params.R }; });
     this.veins = Object.entries(VENOUS_TONE.gain).map(([n, gain]) => { const el = eng.element<Compliance>(n); return { el, vu: el.params.Vu, gain }; });
     this.nodeNames = eng.nodes.map((n) => n.name);
@@ -184,10 +188,27 @@ export class LiveHeart {
     const tone = m.venousTone ?? m.preload;
     const mods = { contractility: f(m.contractility, MODIFIER_RANGE.contractility), resistance: f(m.resistance, MODIFIER_RANGE.resistance), venousTone: f(tone, VENOUS_TONE.toneRange), relax: f(m.relax, MODIFIER_RANGE.relax), thoracic: m.thoracic !== undefined && Number.isFinite(m.thoracic) ? m.thoracic : 0 };
     this.mods = mods;
-    for (const v of this.ventricles) v.el.set({ ees: v.ees * mods.contractility, relaxScale: v.relax * mods.relax });
+    this.applyVentricles();
     for (const b of this.beds) b.el.set({ R: b.R * mods.resistance });
     for (const v of this.veins) v.el.set({ Vu: v.vu * range(1 - v.gain * (mods.venousTone - 1), VENOUS_TONE.factorRange) });
     // mods.thoracic: hook for B3 (intrathoracic pressure on the "thoracic" and "pericardial" groups); no effect yet
+  }
+
+  /**
+   * Per-ventricle factors on the design point, separate from the autonomic `contractility` so the two multiply (A7): the ventricle's
+   * Ees runs at design · `lvEes` (`rvEes`) · contractility, and its passive stiffness (the `a` of the end-diastolic curve) at
+   * design · `lvStiffness` (`rvStiffness`). Ischemia and scar act here (config/ischemia.ts). Replaces the previous set; a field
+   * left out is 1. Factors are clamped to 0.1-10.
+   */
+  setVentricleFactors(f: VentricleFactors) {
+    const g = (x: number | undefined) => (x !== undefined && Number.isFinite(x) ? range(x, [0.1, 10]) : 1);
+    this.vf = { lvEes: g(f.lvEes), rvEes: g(f.rvEes), lvStiffness: g(f.lvStiffness), rvStiffness: g(f.rvStiffness) };
+    this.applyVentricles();
+  }
+  get ventricleFactors(): Readonly<Required<VentricleFactors>> { return this.vf; }
+  private applyVentricles() {
+    const { vf, mods } = this;
+    this.ventricles.forEach((v, i) => v.el.set({ ees: v.ees * mods.contractility * (i === 0 ? vf.lvEes : vf.rvEes), a: v.a * (i === 0 ? vf.lvStiffness : vf.rvStiffness), relaxScale: v.relax * mods.relax }));
   }
 
   /** The traces of the last `LIVE.traceSeconds` (or since stream time `from`), oldest first. Copies. */
@@ -227,6 +248,10 @@ export class LiveHeart {
     const rec = this.recorder;
     const qi = this.queue.findIndex((m) => Math.abs(m.t - ev.t) < 1e-6);
     const meta: BeatMeta = qi >= 0 ? this.queue[qi] : { t: ev.t, rr: NaN, pvc: !!ev.pvc, atrialKick: false, strength: ev.strength ?? 1 };
+    // The atrial kick is whether an atrial event actually preceded this ventricular one within the PR window (A6 review), not the
+    // beat's labels: a junctional beat in complete heart block can catch a dissociated P wave, and a conducted beat whose P was dropped has none.
+    const lead = ev.t - this.lastAtrialT;
+    meta.atrialKick = lead >= LIVE.kickMinLead && lead <= LIVE.kickMaxLead;
     if (qi >= 0) this.queue.splice(0, qi + 1);
     const started = rec.duration > 0;
     const done = started ? rec.closeBeat() : null;

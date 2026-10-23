@@ -13,6 +13,8 @@ export const LIVE = {
   traceEvery: 0.002,
   /** Length of the trace ring buffer, s. [assumed] */
   traceSeconds: 30,
+  /** An atrial event counts as the atrial kick of a ventricular event when it came this long before it, s: at least `kickMinLead` (an atrium contracting later has nothing left to add) and at most `kickMaxLead` (about the longest PR). [assumed] */
+  kickMinLead: 0.04, kickMaxLead: 0.35,
   /** Beats of history the record list keeps. [assumed] */
   maxRecords: 600,
 };

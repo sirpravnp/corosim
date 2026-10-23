@@ -36,8 +36,8 @@ export interface ElastanceParams { v0: number; ees: number; a: number; b: number
 export type ChamberKind = "ventricular" | "atrial";
 
 /**
- * Time-varying elastance chamber: P = (1−e)·a·(exp(min(b·x,30))−1) + e·Ees·max(x,0), x = V − V0, with the activation
- * e ∈ [0,1] a function of the time since this chamber's last event (scaled by the event's strength); the chamber knows no beat period:
+ * Time-varying elastance chamber: P = (1−e)·a·(exp(min(b·x,30))−1) + e·Ees·g·max(x,0), x = V − V0, with the activation
+ * e ∈ [0,1] a function of the time since this chamber's last event (scaled by the event's strength when it is below 1) and g = max(1, strength); the chamber knows no beat period:
  *  - ventricular: double-Hill curve of the time τ since the event, normalised by its peak, with its time scale set by the RR
  *    interval preceding the event (this event minus the previous ventricular one; `defaultInterval` for the first). Shorter RR
  *    gives shorter contraction (a QT-like rate rule); at a steady rate it equals the old fixed-T curve. For τ after the peak
@@ -67,18 +67,25 @@ export class ElastanceChamber implements NodeModel, Tunable<ElastanceParams> {
     if (this.kind === "atrial") this.ta = atrialDuration(interval); else this.curve.setRR(interval);
     this.tEvent = ev.t; this.strength = ev.strength ?? 1;
   }
-  /** Activation in [0, strength] at time t. */
+  /**
+   * Activation at time t, in [0, min(strength, 1)]. A beat strength below 1 (a weak PVC) scales the activation; above 1
+   * (post-extrasystolic potentiation) it scales Ees instead (`eesGain`), so activation stays within 0..1 and the passive
+   * term (1 − e) never goes negative.
+   */
   activation(t: number): number {
     let tau = Math.max(0, t - this.tEvent);
-    if (this.kind === "atrial") return tau <= this.ta ? this.strength * Math.sin((Math.PI * tau) / this.ta) : 0;
+    const w = Math.min(1, this.strength);
+    if (this.kind === "atrial") return tau <= this.ta ? w * Math.sin((Math.PI * tau) / this.ta) : 0;
     if (tau === Infinity) return 0;
     const c = this.curve, rs = this.params.relaxScale!;
     if (rs !== 1 && tau > c.tPeak) tau = c.tPeak + (tau - c.tPeak) / rs;
-    return (this.strength * c.raw(tau)) / c.peak;
+    return (w * c.raw(tau)) / c.peak;
   }
+  /** Factor on Ees from the strength of the current beat: max(1, strength). */
+  get eesGain(): number { return Math.max(1, this.strength); }
   pressure(volume: number, t: number): number {
     const { v0, ees, a, b } = this.params, e = this.activation(t), x = volume - v0;
-    return (1 - e) * a * (Math.exp(Math.min(b * x, 30)) - 1) + e * ees * Math.max(x, 0);
+    return (1 - e) * a * (Math.exp(Math.min(b * x, 30)) - 1) + e * ees * this.eesGain * Math.max(x, 0);
   }
 }
 
