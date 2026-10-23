@@ -81,7 +81,11 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | A4 | done (E/A 1.5 and LV τ 36 ms at 72 bpm; PVC SV 12 ml then 89 ml after the pause; new defaults reviewed; benchmark change within machine-load noise when interleaved with the pre-A4 commit) |
 | A5 | done (adult MAP 90.1, PP 43.9, CVP 4.2, PCWP 8.7, CO 5.12, EF 0.62, E/A 1.37, τ 37 ms; MSFP 7.9; neonate near its baseline) |
 | R-A1 | passed: inertance on by default (task A5b); neonate E/A 0.7–0.8 accepted (normal in the first days of life); `periodic()` stops ~0.5 % short on slow venous refilling, for C1 to address |
-| A5b | in progress |
+| A5b | done (inertance on by default; MV gradients near clinical, E/A 1.70; flow-based convective gradient for inertial valves, as Doppler reads) |
+| B2 | in rework (septal solver approved: mean 0.62 iterations, max 3, no failures in 3.7 M solves; constriction gap at stiffness 6 rose to 3.12 mmHg after inertance became default — retuning; also B2b: calibration cache key and neonate check) |
+| A7 | in progress |
+| D2 | in progress |
+| Physics follow-ups (from A5b review) | (1) aortic peak instantaneous gradient 15.7 mmHg vs clinical 4–8 (peak aortic flow ~667 ml/s is high; Gorlin vs 4v²) — with E5; (2) RA waveform amplitudes: severe TR v wave ~9 mmHg vs clinical 15–20, and cannon a only ~1.4× the ordinary a wave (self-flagging test in `tests/liveHeart.test.ts`) |
 | P2c | done (bridge trace time strictly increasing; reload clears the bridge; valve areas only with a real gradient; gross-flow Gorlin test) |
 | A6 | done (live = periodic within 0.1 %; PVC 71 → 12 → 85 ml; CHB cannon waves; AF SV–RR r 0.80; 112× real time) |
 | P7c | done (cath page: Right heart and Left heart tabs reuse the Simulator panels; identical rows for all 7 library cases) |
