@@ -1,9 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { Simulation } from "../src/sim/simulation";
 import { BridgeSource } from "../src/sim/bridgeSource";
 import type { BeatSummary } from "../src/sim/hemoSource";
 import type { BeatRecord } from "../src/sim/metrics";
 import { analyze, clampStructuralSpec } from "../src/physics/structural";
+import { solveBridge } from "../src/sim/bridgeSolver";
+import type { BridgeSolver, SolveRequest, SolveResult } from "../src/sim/bridgeSolver";
 
 const settled = (sc = {}, warm = 40) => { const s = new Simulation(); s.reset({ seed: 3, ...sc }, { settled: true }); s.warmup(warm); s.history = []; return s; };
 const LAD = { lesions: [{ artery: "LAD", occluded: true, position: 0.2 }] };
@@ -208,5 +210,91 @@ describe("onBeat chaining", () => {
     const sim = settled(), bridge = new BridgeSource(sim);
     bridge.dispose();
     expect(sim.onBeat).toBeUndefined();
+  });
+});
+
+describe("asynchronous solver", () => {
+  /** A solver whose answers are promises resolved by hand; it computes them with the real synchronous solver. */
+  function fake() {
+    const calls: { req: SolveRequest; done: () => void }[] = [];
+    let open = 0, maxOpen = 0;
+    const solver: BridgeSolver = {
+      solve: (req) => new Promise<SolveResult>((resolve) => {
+        open++; maxOpen = Math.max(maxOpen, open);
+        calls.push({ req, done: () => { open--; resolve(solveBridge(req)); } });
+      }),
+    };
+    return { solver, calls, maxOpen: () => maxOpen };
+  }
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const occlude = (sim: Simulation) => { sim.apply({ lesions: LAD.lesions.map((l) => ({ ...l })) } as never); sim.warmup(30); };
+
+  it("replays the previous waveform while a solve is in flight, and shows nothing before the first result", async () => {
+    const sim = settled(LAD, 20), f = fake(), bridge = new BridgeSource(sim, { solver: f.solver }), got: BeatSummary[] = [];
+    bridge.onBeat((b) => got.push(b));
+    sim.run(5);
+    expect(f.calls.length).toBe(1); expect(got.length).toBe(0); expect(bridge.solves).toBe(0);
+    expect(Number.isNaN(bridge.numbers().lvedp)).toBe(true); expect(Number.isNaN(bridge.saturations().spo2)).toBe(true);
+    f.calls[0].done(); await tick();
+    expect(bridge.solves).toBe(1); expect(bridge.analyzeCalls).toBeGreaterThanOrEqual(1);
+    sim.run(5);
+    expect(got.length).toBeGreaterThan(3);
+    bridge.refresh(); // second solve in flight: beats keep coming from the first result
+    const n = got.length; sim.run(5);
+    expect(got.length).toBeGreaterThan(n + 3);
+    expect(Number.isFinite(bridge.numbers().lvedp)).toBe(true);
+    expect(f.calls.length).toBe(2);
+  });
+
+  it("never overlaps solves; refreshes during a solve collapse into one, made from the latest inputs", async () => {
+    const sim = settled(), f = fake(), bridge = new BridgeSource(sim, { solver: f.solver });
+    sim.run(2);
+    expect(f.calls.length).toBe(1);
+    bridge.refresh(); bridge.refresh(); sim.run(3); bridge.refresh();
+    expect(f.calls.length).toBe(1);
+    occlude(sim); // the patient has changed since the first request was made
+    f.calls[0].done(); await tick();
+    expect(f.calls.length).toBe(2);
+    expect(f.calls[1].req.base.lvEes!).toBeLessThan(f.calls[0].req.base.lvEes! - 0.1);
+    f.calls[1].done(); await tick();
+    expect(f.calls.length).toBe(2); expect(f.maxOpen()).toBe(1); expect(bridge.solves).toBe(2);
+  });
+
+  it("applies a result with the one-beat blend", async () => {
+    const sim = settled(), f = fake(), bridge = new BridgeSource(sim, { solver: f.solver }), got: BeatSummary[] = [];
+    bridge.onBeat((b) => got.push(b));
+    sim.run(1); f.calls[0].done(); await tick();
+    sim.run(4);
+    occlude(sim);
+    bridge.refresh(); f.calls[1].done(); await tick();
+    expect(bridge.solves).toBe(2);
+    const before = got.length, last = got[before - 1]; // beats during the warm-up came from the first result
+    sim.run(3);
+    const first = got[before], next = got[before + 1]; // the first beat after the result goes from the old waveform to the new one
+    expect(Math.abs(first.pressure.LV[0] - last.pressure.LV[last.pressure.LV.length - 1])).toBeLessThan(10);
+    const fv = first.loops.LV.v, nv = next.loops.LV.v;
+    expect(Math.abs(fv[0] - nv[0])).toBeGreaterThan(0.5); // starts on the old waveform, not the new one
+    expect(Math.abs(fv[fv.length - 1] - nv[nv.length - 1])).toBeLessThan(Math.abs(fv[0] - nv[0])); // and ends nearer the new
+  });
+
+  it("a failed solve is logged, keeps the old waveform and does not storm", async () => {
+    const sim = settled();
+    let fail = false, n = 0;
+    const solver: BridgeSolver = { solve: (req) => { n++; return fail ? Promise.reject(new Error("boom")) : Promise.resolve(solveBridge(req)); } };
+    const bridge = new BridgeSource(sim, { solver }), warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    sim.run(1); await tick();
+    expect(bridge.solves).toBe(1);
+    fail = true; bridge.refresh(); await tick();
+    expect(warn).toHaveBeenCalled(); warn.mockRestore();
+    expect(n).toBe(2); expect(bridge.solves).toBe(1); expect(Number.isFinite(bridge.numbers().map)).toBe(true);
+  });
+
+  it("requests and results are structured-clone safe", () => {
+    const sim = settled(LAD, 20), f = fake();
+    new BridgeSource(sim, { solver: f.solver }); sim.run(1);
+    const req = f.calls[0].req;
+    expect(structuredClone(req)).toEqual(req);
+    const res = solveBridge(req);
+    expect(structuredClone(res).report.pressure.AO.mean).toBe(res.report.pressure.AO.mean);
   });
 });

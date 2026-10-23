@@ -23,7 +23,11 @@ import { TOOLS } from "./mcp/tools";
 import { mountShell } from "./shell/shell";
 import { mountWorkspace } from "./panels/workspace";
 import { numbersPanel } from "./panels/numbers";
-import { createStubSource } from "./sim/stubSource";
+import { BridgeSource } from "./sim/bridgeSource";
+import { createWorkerSolver } from "./sim/bridgeWorkerSolver";
+import { decodePatient } from "./sim/llm";
+import type { PatientSpec } from "./sim/patient";
+import type { BridgeSolver } from "./sim/bridgeSolver";
 import { Case, MAX_SCORE, POINTS, Point, TREAT, TreatRecord, TreatScore, dailyCase, dayKey, dayNumber, explain, explainTreatment, fullFindings, judge, keyOfDay, muscleSaved, parseDay, rvInvolvement, score, streaks, treatScore } from "./game";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -1045,17 +1049,29 @@ $<HTMLInputElement>("ex").value = String(S.exag);
 physUi(); sim.warmup(20); ecg.reset(sim.t); // start with the reflexes already settled
 resize(); setView("vAnt"); syncSelects(); rebuildAnatomy(); applyHeartView(); controlsUi(); liveUi(); applyMode();
 /** A #s= link opens that patient, on load and when a link is pasted into an open tab. */
+/** Read by the bridge at each solve: a shared link's structural fields (heart lesions), which the Simulation does not keep. */
+const bridgeOpts: { patient?: PatientSpec; solver?: BridgeSolver } = {};
+let bridge: BridgeSource | null = null;
 function openShared() {
   const shared = !inGame && location.hash.match(/^#s=([\w-]+)/);
   if (!shared) return;
-  try { const w = loadScenario(decodeScenario(shared[1])); if (w.length) console.warn("CoroSim: the shared patient was adjusted:", w.join("; ")); }
+  try {
+    const spec = decodePatient(shared[1]);
+    bridgeOpts.patient = spec; bridge?.refresh();
+    const w = loadScenario(spec); if (w.length) console.warn("CoroSim: the shared patient was adjusted:", w.join("; ")); }
   catch (e) { console.warn("CoroSim: could not open the shared patient", e); }
 }
 openShared();
 addEventListener("hashchange", openShared);
 cathLinkUi();
-// The panel workspace, below the main view; not in the game (inGame is set by cathLinkUi). Stub source until the P2 bridge lands.
-if (!inGame) { const ws = $("workspace"); (ws.parentElement as HTMLElement).hidden = false; mountWorkspace(ws, [numbersPanel], createStubSource()); }
+// The panel workspace, below the main view; not in the game (inGame is set by cathLinkUi). Its source is the bridge over
+// this page's Simulation, solving in a worker so the 3D view and ECG keep running (task P2b).
+if (!inGame) {
+  const ws = $("workspace"); (ws.parentElement as HTMLElement).hidden = false;
+  bridgeOpts.solver = createWorkerSolver();
+  bridge = new BridgeSource(sim, bridgeOpts);
+  mountWorkspace(ws, [numbersPanel], bridge);
+}
 void shell.ai.start();
 /** Handle for scripts and browser-driving assistants: corosim.sim, corosim.load(scenario), corosim.live. */
 (window as unknown as { corosim: object }).corosim = { sim, load: loadScenario, live: shell.ai.live, account: shell.ai.account, refresh: () => { controlsUi(); liveUi(); } };
