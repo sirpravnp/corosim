@@ -24,3 +24,6 @@ button.ws-x:hover { color: var(--ink); }
 .hp-badge { display: inline-block; margin-bottom: 8px; padding: 2px 7px; font: 600 11px/1.4 var(--font-data); text-transform: uppercase; color: var(--muted); border: 1px solid var(--rule); border-radius: 999px; }
 .ws-body table.readout td:first-child { color: var(--muted); }
 .ws-menu input { margin: 0; width: auto; accent-color: var(--accent); }
+.hp-seg { display: inline-flex; gap: 4px; }
+.hp-seg button { font: 600 11px/1.4 var(--font-data); padding: 2px 8px; color: var(--muted); background: transparent; border: 1px solid var(--rule); border-radius: 999px; cursor: pointer; }
+.hp-seg button[aria-pressed="true"] { color: var(--ink); background: var(--stage-2); }

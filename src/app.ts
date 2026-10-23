@@ -23,6 +23,7 @@ import { TOOLS } from "./mcp/tools";
 import { mountShell } from "./shell/shell";
 import { mountWorkspace } from "./panels/workspace";
 import { numbersPanel } from "./panels/numbers";
+import { tracesPanel } from "./panels/traces";
 import { rhcPanel } from "./panels/rightHeartCath";
 import { BridgeSource } from "./sim/bridgeSource";
 import { createWorkerSolver } from "./sim/bridgeWorkerSolver";
@@ -1071,7 +1072,7 @@ if (!inGame) {
   const ws = $("workspace"); (ws.parentElement as HTMLElement).hidden = false;
   bridgeOpts.solver = createWorkerSolver();
   bridge = new BridgeSource(sim, bridgeOpts);
-  mountWorkspace(ws, [numbersPanel, rhcPanel], bridge);
+  mountWorkspace(ws, [numbersPanel, tracesPanel, rhcPanel], bridge);
 }
 void shell.ai.start();
 /** Handle for scripts and browser-driving assistants: corosim.sim, corosim.load(scenario), corosim.live. */
