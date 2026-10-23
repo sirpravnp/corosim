@@ -79,7 +79,12 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | A2 | done (structural tab on the core; old RK4 loop removed; reference frozen in `tests/fixtures/core-reference.json`) |
 | A3 | done (+6 mmHg pericardial pressure halves SV; mitral flow lags its gradient by 44 ms; E/A separates at 60 bpm, not yet at 72; A2 follow-ups done) |
 | A4 | done (E/A 1.5 and LV τ 36 ms at 72 bpm; PVC SV 12 ml then 89 ml after the pause; new defaults reviewed; benchmark change within machine-load noise when interleaved with the pre-A4 commit) |
-| A5 | in progress |
+| A5 | done (adult MAP 90.1, PP 43.9, CVP 4.2, PCWP 8.7, CO 5.12, EF 0.62, E/A 1.37, τ 37 ms; MSFP 7.9; neonate near its baseline) |
+| R-A1 | passed: inertance on by default (task A5b); neonate E/A 0.7–0.8 accepted (normal in the first days of life); `periodic()` stops ~0.5 % short on slow venous refilling, for C1 to address |
+| A5b | in progress |
+| P2c | done (bridge trace time strictly increasing; reload clears the bridge; valve areas only with a real gradient; gross-flow Gorlin test) |
+| P6 | done (JVP: cannon a 2.6× in AV dissociation; giant v in severe TR; RV infarct raised JVP 9.9 cm on the live page; tamponade/constriction tests wait for B1) |
+| B1 | in review (stability above stiffness 4) |
 | D1 | done (rotary pump: HQ fit, smooth bounded suction, backflow when stopped) |
 | R-D1 | passed (decisions below) |
 
