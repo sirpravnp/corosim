@@ -1048,10 +1048,10 @@ $<HTMLInputElement>("ds").value = String(S.ds * 100);
 $<HTMLInputElement>("ex").value = String(S.exag);
 physUi(); sim.warmup(20); ecg.reset(sim.t); // start with the reflexes already settled
 resize(); setView("vAnt"); syncSelects(); rebuildAnatomy(); applyHeartView(); controlsUi(); liveUi(); applyMode();
-/** A #s= link opens that patient, on load and when a link is pasted into an open tab. */
 /** Read by the bridge at each solve: a shared link's structural fields (heart lesions), which the Simulation does not keep. */
 const bridgeOpts: { patient?: PatientSpec; solver?: BridgeSolver } = {};
 let bridge: BridgeSource | null = null;
+/** A #s= link opens that patient, on load and when a link is pasted into an open tab. */
 function openShared() {
   const shared = !inGame && location.hash.match(/^#s=([\w-]+)/);
   if (!shared) return;

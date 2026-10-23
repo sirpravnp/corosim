@@ -68,7 +68,9 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | P1 | done (follow-up: `corosim_adjust`, `corosim_compare` and the share-link tool still take the plain Scenario schema) |
 | P3 | done (workspace + numbers panel on a stub source; monitor and ECG move in P3b) |
 | P2 | done (bridge; LAD LVEDP 17.6 / PCWP 16.8 / EF 0.30; RV infarct CVP 10.7, CVP/PCWP 1.3; paced RV infarct CVP 7.6 is a known limit until C1/A7) |
-| P2b | in progress |
+| P2b | done (worker solves; on the Simulator page; LAD occlusion on the live panel: PCWP 7 → 18, LVEDP 6 → 19, LVEF 62 → 31 %) |
+| R-P1 | passed (limits panels must respect: bridge EDV/ESV/SV and valve stats do not vary beat to beat with RR; numbers are NaN until the first worker solve lands) |
+| P4, P5, P7, P8 | in progress |
 | A1 | done (max difference from `simulate()` 2e-4, from exact atrial event timing; core 164× real time vs 129×) |
 | A2 | done (structural tab on the core; old RK4 loop removed; reference frozen in `tests/fixtures/core-reference.json`) |
 | A3 | done (+6 mmHg pericardial pressure halves SV; mitral flow lags its gradient by 44 ms; E/A separates at 60 bpm, not yet at 72; A2 follow-ups done) |
@@ -217,6 +219,10 @@ See CORE §4G. Panels read only from `HemoSource`, so they survive the engine sw
 | P3 | I | **Panel workspace on the Simulator page.** Grid on desktop, tabs on phones, a panel picker, layout remembered per browser (in try/catch). Existing monitor and ECG become panels. | P0 | `src/app.ts`, `sim/index.html`, new `src/panels/` | Visual check at desktop and 375 px width; no physics in panels |
 | P3b | I | **Monitor and ECG as panels.** Move the Simulator page's existing monitor and ECG strip into the workspace without changing what they show. Split out of P3 to keep `src/app.ts` changes small. | P3 | `src/app.ts`, `src/panels/` | Same readings and ECG as before; game page unchanged |
 
+**Split for parallel work (R-P1):** P7 and P8 put their pure functions in new files (`src/sim/rightHeartCath.ts`,
+`src/sim/leftHeartCath.ts`) rather than `src/sim/cath.ts`, and add only the Simulator-page panels. The cath-page tabs for
+both become **P7c**, done after both merge.
+
 **Gate R-P1 (reviewer):** contracts, bridge fidelity and the panel framework before panel work fans out.
 
 | ID | Who | Task | Depends | Files | Acceptance |
@@ -226,6 +232,7 @@ See CORE §4G. Panels read only from `HemoSource`, so they survive the engine sw
 | P6 | I | **JVP panel.** Pure module: from the RA trace and beat events, find a, c, x, v, y; height in cm H₂O above the sternal angle (RAP × 1.36 − 5); neck illustration pulsing with the waveform. | R-P1 | `src/physics/jvp.ts`, `src/panels/jvp.ts` | Tests on synthetic and engine traces: no a wave in AF; giant v in severe TR; raised flat trace in tamponade (after B1); cannon a in complete heart block (after A4; marked pending until then) |
 | P7 | I | **Right-heart cath.** Pure functions: pullback waveforms, oximetry run with step-up (≥ 7% atrial, ≥ 5% ventricular/PA), Fick and thermodilution CO, PVR, SVR, Qp:Qs, PAPi, CPO. Panel in the simulator; same report on the cath page as a new tab. | R-P1 | `sim/cath.ts`, `src/panels/rhc.ts`, `cath/` | ASD shows an atrial step-up and Qp:Qs ≈ the engine's; RV infarct gives low PAPi; numbers equal the structural report's |
 | P8 | I | **Left-heart cath.** LV → aorta pullback, LVEDP, peak-to-peak, mean and peak instantaneous gradients, Gorlin and Hakki areas, simultaneous LV–wedge for MS. Panel and cath-page tab. | R-P1 | `sim/cath.ts`, `src/panels/lhc.ts`, `cath/` | Severe AS: Gorlin area within 10% of the model's valve area; mean gradient matches `ValveStat` |
+| P7c | I | **Heart-cath tabs on the cath page.** Right- and left-heart cath reports (P7, P8) as tabs on `cath/` beside angio and wire, for the cath page's patient. | P7, P8 | `src/cath/`, `cath/index.html` | Same numbers as the simulator panels for the same patient |
 | P9 | I | **O₂ sat mode in the 3D view.** New mode beside Anatomic / Territory / Pressure / Velocity / Wall shear: vessels by arterial sat, myocardium by per-bed tissue oxygenation (v1: derived from ischemia severity and labelled as such), chambers with the structural colour scale; legend. | R-P1 | `src/app.ts` (mode switch around `shapeVessels`), `structural/heartView.ts` (`satColor`) | Occluded LAD territory turns blue; a right-to-left shunt lowers vessel colour everywhere; legend matches the mesh |
 | P10 | I | **O₂ panel.** SpO₂ pleth, SaO₂ pre/post-ductal, SvO₂, DO₂, VO₂, Qp:Qs; lactate after E6; ECMO return sat after D6. | R-P1 | `src/panels/oxygen.ts` | Values equal the source's |
 | P11 | I | **Structural props in the simulator's heart.** Valves, septal defects and jets from `structural/props.ts`, toggled. | R-P1 | `src/app.ts`, `structural/props.ts` | A VSD in playground mode shows the defect and jet |
