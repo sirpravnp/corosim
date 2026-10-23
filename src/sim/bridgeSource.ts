@@ -2,7 +2,7 @@ import type { BeatSummary, Chamber, DeviceConsole, HemoNode, HemoNumbers, HemoSo
 import type { PatientSpec } from "./patient";
 import type { Simulation } from "./simulation";
 import type { BeatRecord } from "./metrics";
-import { NODES } from "../physics/structural";
+import { CATH_NODES as NODES } from "../physics/structural"; // the splanchnic reservoir is not a catheter site
 import type { StructuralReport, StructuralSpec, Waveform } from "../physics/structural";
 import { BASE_SVR } from "../physics/circulation";
 import { PATIENTS, O2_PER_G_HB } from "../config/structural";
@@ -82,7 +82,9 @@ interface Inputs { hr: number; lv: number; rv: number; map: number; svr: number 
  * change with the RR. When a re-solve changes the waveform, the next beat is blended from the old waveform to the new
  * one over its length so traces do not jump. `atrial`: the P wave one PR before the beat's closing R wave; none in AF
  * or for a PVC; in third-degree block, P waves at the sinus rate, dissociated from the beats. (The waveform's own atrial
- * contraction is not removed in AF: a limit of the bridge.) A 30 s ring buffer of beats serves `trace()`.
+ * contraction is not removed in AF: a limit of the bridge.) A 30 s ring buffer of beats serves `trace()`, whose sample times are strictly increasing
+ * (a beat shorter than the 0.25 s replay minimum is cut where the next one starts). A reload of the simulation (its clock
+ * going back) clears the buffer, the cached solve and the beats, as a new patient.
  *
  * numbers(): from the cached report: MAP, systolic, diastolic = aortic mean, max, min; CVP = mean RA; PCWP = mean LA;
  * LVEDP / RVEDP = `end` of the LV / RV pressure; CO = systemic flow, CI = CO / BSA; SVR, PVR in Wood units; EF, Qp:Qs.
@@ -122,6 +124,10 @@ export class BridgeSource implements HemoSource {
   private hook: (b: BeatRecord) => void;
   private active = true;
   private pPhase = 0; // s, next P wave in third-degree block, on the simulation clock
+  /** Largest simulation clock seen (reads and beats): a smaller one means the simulation was reloaded. */
+  private clockSeen = 0;
+  /** Counts reloads; a solve that was started before one is discarded when it lands. */
+  private epoch = 0;
 
   /** `opts.patient` is read at each solve, so a page may set it later. `solver` defaults to the synchronous one. */
   constructor(private sim: Simulation, private opts: { patient?: PatientSpec; solver?: BridgeSolver } = {}) {
@@ -141,13 +147,28 @@ export class BridgeSource implements HemoSource {
     this.subs.clear();
   }
 
-  now() { return this.sim.t; }
+  now() { this.sync(this.sim.t); return this.sim.t; }
   nodes(): readonly string[] { return NODES; }
   onBeat(cb: (b: BeatSummary) => void) { this.subs.add(cb); return () => { this.subs.delete(cb); }; }
-  beats(count = 8): readonly BeatSummary[] { return this.ring.slice(-count); }
+  beats(count = 8): readonly BeatSummary[] { this.sync(this.sim.t); return this.ring.slice(-count); }
 
   /** Re-solve now, whatever the thresholds say. */
   refresh() { this.solve(); }
+
+  /**
+   * Notice a reload. `Simulation.reset` (a loaded scenario) sets the clock back to 0, but the ring holds beats stamped on
+   * the old clock, so trace() would join old and new samples with time running backwards. A clock that moved back is a
+   * new patient: the ring, the cached solve and the third-degree P-wave phase are dropped and the first beat solves
+   * afresh. `t` is the clock of what is being read (a beat's end, or `sim.t`).
+   */
+  private sync(t: number) {
+    if (t < this.clockSeen - 1e-6) {
+      this.epoch++;
+      this.ring = []; this.report = null; this.wave = null; this.blendFrom = null; this.lastInputs = null;
+      this.lastSolveT = -Infinity; this.queued = false; this.pPhase = 0; this.volume = 0; this.calibrationError = NaN;
+    }
+    if (t > this.clockSeen || t < this.clockSeen) this.clockSeen = t;
+  }
 
   // ---- solving ----------------------------------------------------------------------------------------------------
 
@@ -184,8 +205,9 @@ export class BridgeSource implements HemoSource {
     try { out = this.solver.solve(req); } catch (e) { this.failed(e); return; }
     if (!(out instanceof Promise)) { this.apply(out, inputs); return; }
     this.inFlight = true;
+    const epoch = this.epoch;
     out.then(
-      (r) => { this.inFlight = false; if (this.active) this.apply(r, inputs); this.drain(); },
+      (r) => { this.inFlight = false; if (this.active && epoch === this.epoch) this.apply(r, inputs); this.drain(); },
       (e) => { this.inFlight = false; this.failed(e); this.drain(); },
     );
   }
@@ -220,6 +242,7 @@ export class BridgeSource implements HemoSource {
   // ---- replay -----------------------------------------------------------------------------------------------------
 
   private handleBeat(rec: BeatRecord) {
+    this.sync(Math.min(this.sim.t, rec.t));
     this.maybeSolve();
     if (!this.wave || !this.report) return;
     const b = this.makeBeat(rec);
@@ -306,11 +329,19 @@ export class BridgeSource implements HemoSource {
   trace(node: string, seconds: number, opts: { quantity?: "pressure" | "volume"; maxPoints?: number } = {}): Series {
     const max = Math.max(2, opts.maxPoints ?? 600), vol = opts.quantity === "volume";
     if (vol ? !CHAMBERS.includes(node as Chamber) : !(NODES as readonly string[]).includes(node)) return empty();
+    this.sync(this.sim.t);
     const from = this.sim.t - seconds, ts: number[] = [], vs: number[] = [];
+    let last = -Infinity;
     for (const b of this.ring) {
       if (b.t + b.rr < from) continue;
       const v = vol ? b.loops[node as Chamber].v : b.pressure[node as HemoNode];
-      for (let k = 0; k < v.length; k++) { const t = b.t + b.time[k]; if (t >= from) { ts.push(t); vs.push(v[k]); } }
+      // Time must only increase (the contract of Series): a beat shorter than the replay minimum (rr is held at 0.25 s) runs
+      // into the next one, and the later beat wins where they overlap.
+      while (ts.length && last >= Math.fround(b.t)) { ts.pop(); vs.pop(); last = ts.length ? Math.fround(ts[ts.length - 1]) : -Infinity; }
+      for (let k = 0; k < v.length; k++) {
+        const t = b.t + b.time[k], tf = Math.fround(t); // the Series holds float32: compare as stored
+        if (t >= from && tf > last) { ts.push(t); vs.push(v[k]); last = tf; }
+      }
     }
     const n = ts.length, m = Math.min(n, max);
     const t = new Float32Array(m), v = new Float32Array(m);
@@ -319,6 +350,7 @@ export class BridgeSource implements HemoSource {
   }
 
   numbers(): HemoNumbers {
+    this.sync(this.sim.t);
     const r = this.ensure();
     if (!r) return NO_NUMBERS;
     const p = r.pressure, bsa = PATIENTS[this.opts.patient?.kind ?? "adult"].bsa;
@@ -330,6 +362,7 @@ export class BridgeSource implements HemoSource {
   }
 
   saturations(): Saturations {
+    this.sync(this.sim.t);
     const r = this.ensure(), kind = this.opts.patient?.kind ?? "adult", base = PATIENTS[kind];
     if (!r) return noSaturations();
     const node = {} as Record<HemoNode, number>;
