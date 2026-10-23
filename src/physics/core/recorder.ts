@@ -1,9 +1,10 @@
+import { GORLIN } from "../../config/structural";
 import type { Gated } from "./valves";
-import type { Element, Engine, NodeId, Sample } from "./types";
+import type { Element, Engine, HeartEvent, NodeId, Sample } from "./types";
 
 /** Pressure (mmHg) or volume (ml) over a beat; `end` is the value at the end of the beat, the instant before the next activation. */
 export interface NodeStat { min: number; max: number; mean: number; end: number }
-/** Gradients mmHg, volumes ml, `openMs` ms: peak and mean gradient while forward flow is possible, volumes through the valve in the beat, time open, peak gradient while reversed through a regurgitant area. */
+/** Gradients mmHg, volumes ml, `openMs` ms: peak and mean gradient while forward flow is possible (for an `InertialValve`, the convective gradient K·Q² of its flow as Doppler reads it, not the node pressure difference, which also carries the blood column's acceleration), volumes through the valve in the beat, time open, peak gradient while reversed through a regurgitant area. */
 export interface ValveStat { peakGradient: number; meanGradient: number; forwardMl: number; regurgMl: number; openMs: number; regurgPeakGradient: number }
 /** The beat sampled on a coarse grid: time (s, from the engine clock), pressure and volume of every node by name, and the net flow through the named elements. Values are rounded to 0.01. */
 export interface BeatWave { t: number[]; p: Record<string, number[]>; v: Record<string, number[]>; q: Record<string, number[]> }
@@ -18,7 +19,9 @@ export interface WaveOptions { dt: number; every: number; flows: readonly string
 
 /**
  * Per-beat statistics built on `onSample`: min, max, time-weighted mean and end value of every node's pressure and volume, and
- * the stats of the named valves. A beat is `T` seconds from the clock at construction; `beat()` reports the one in progress,
+ * the stats of the named valves. A beat is `T` seconds from the clock at construction (periodic reports), or, with `T = null`
+ * (live play, A6), it runs from one ventricular event to the next: the caller calls `closeBeat()` when the event is delivered
+ * (see `VentricularMarker`), which returns the finished beat and starts the next. `beat()` reports the one in progress,
  * so right after `periodic()` it is the last beat (forward and backward volumes come from `flowVolumes()`, which `periodic()` resets every beat). Means weight each sample by the step it closes, so a step cut at an event
  * counts for its length. All sample arrays are preallocated; a callback allocates nothing.
  */
@@ -32,15 +35,15 @@ export class BeatRecorder {
   /** Pressure traces of the ventricles and their atria over the beat, for the relaxation time constant. */
   private readonly relax: { name: string; v: number; a: number; n: number; t: Float64Array; pv: Float64Array; pa: Float64Array }[] = [];
   private readonly wave: { dt: number; stride: number; flows: readonly string[]; t: number[]; p: number[][]; v: number[][]; q: number[][]; next: number; start: number } | null = null;
-  constructor(private readonly eng: Engine, private readonly T: number, valves: readonly string[] = [], wave?: WaveOptions) {
+  constructor(private readonly eng: Engine, private readonly T: number | null, valves: readonly string[] = [], wave?: WaveOptions) {
     const NN = (this.NN = eng.nodes.length);
     const arr = () => new Float64Array(NN);
     this.pMin = arr(); this.pMax = arr(); this.pSum = arr(); this.pEnd = arr(); this.vMin = arr(); this.vMax = arr(); this.vSum = arr(); this.vEnd = arr();
     this.valves = valves.map((name) => ({ name, el: eng.element<Element & Gated>(name), dMax: 0, dSum: 0, dT: 0, rMax: 0 }));
-    this.tPrev = eng.t; this.boundary = eng.t + T;
+    this.tPrev = eng.t; this.boundary = T === null ? Infinity : eng.t + T;
     const ids = new Map(eng.nodes.map((n, i) => [n.name, i]));
     for (const [vn, an] of [["LV", "LA"], ["RV", "RA"]]) if (ids.has(vn) && ids.has(an)) this.relax.push({ name: vn, v: ids.get(vn)!, a: ids.get(an)!, n: 0, t: new Float64Array(4096), pv: new Float64Array(4096), pa: new Float64Array(4096) });
-    if (wave) {
+    if (wave && T !== null) {
       const rows = (n: number) => Array.from({ length: n }, () => [] as number[]);
       this.wave = { dt: wave.dt, stride: Math.max(1, Math.round(wave.every / wave.dt)), flows: wave.flows, t: [], p: rows(NN), v: rows(NN), q: rows(wave.flows.length), next: 0, start: eng.t };
     }
@@ -50,12 +53,12 @@ export class BeatRecorder {
   private reset() {
     this.pMin.fill(Infinity); this.pMax.fill(-Infinity); this.pSum.fill(0); this.vMin.fill(Infinity); this.vMax.fill(-Infinity); this.vSum.fill(0); this.sumT = 0;
     const w = this.wave;
-    if (w) { w.t.length = 0; for (const a of w.p) a.length = 0; for (const a of w.v) a.length = 0; for (const a of w.q) a.length = 0; w.start = this.boundary - this.T; w.next = w.start + w.dt; }
+    if (w) { w.t.length = 0; for (const a of w.p) a.length = 0; for (const a of w.v) a.length = 0; for (const a of w.q) a.length = 0; w.start = this.boundary - this.T!; w.next = w.start + w.dt; }
     for (const x of this.relax) x.n = 0;
     for (const v of this.valves) { v.dMax = 0; v.dSum = 0; v.dT = 0; v.rMax = 0; }
   }
   private sample(s: Sample) {
-    while (s.t > this.boundary + 1e-9) { this.boundary += this.T; this.reset(); }
+    while (s.t > this.boundary + 1e-9) { this.boundary += this.T!; this.reset(); }
     const h = s.t - this.tPrev; this.tPrev = s.t;
     const P = s.P, V = s.V;
     for (let i = 0; i < this.NN; i++) {
@@ -69,8 +72,12 @@ export class BeatRecorder {
       x.t[x.n] = s.t; x.pv[x.n] = P[x.v]; x.pa[x.n] = P[x.a]; x.n++;
     }
     if (this.wave && (s.t >= this.wave.next - 1e-9 || s.t >= this.boundary - 1e-9)) this.capture(s);
+    let q: Readonly<Record<string, number>> | undefined; // reading s.q re-evaluates the flows: once per sample, and only for inertial valves
     for (const g of this.valves) {
-      const d = P[g.el.from] - P[g.el.to];
+      let d = P[g.el.from] - P[g.el.to];
+      // An inertial valve's node-to-node difference also carries the acceleration of the blood column (it leads the flow and turns
+      // negative while the flow decelerates). A Doppler study reads the convective gradient K·Q|Q| of the flow (Bernoulli), so use that.
+      if ("L" in g.el.params) { const f = (q ??= s.q)[g.name], a = f > 0 ? g.el.params.area : g.el.params.reg; d = a ? (f * Math.abs(f)) / (GORLIN * a) ** 2 : 0; }
       if (d > 0 && g.el.params.area) { if (d > g.dMax) g.dMax = d; g.dSum += d * h; g.dT += h; }
       else if (d < 0 && g.el.params.reg && -d > g.rMax) g.rMax = -d;
     }
@@ -97,6 +104,10 @@ export class BeatRecorder {
     const q: Record<string, number[]> = {}; w.flows.forEach((n, k) => (q[n] = w.q[k].slice()));
     return { p, v, valves, tauMs, wave: { t: w.t.slice(), p: byNode(w.p), v: byNode(w.v), q } };
   }
+  /** Event mode: the beat that has just ended (at the instant of the ventricular event), then the next one starts. */
+  closeBeat(): BeatRecord { const r = this.beat(); this.reset(); return r; }
+  /** Seconds covered by the beat in progress. */
+  get duration(): number { return this.sumT; }
   dispose() { this.off(); }
 }
 

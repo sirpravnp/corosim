@@ -19,7 +19,7 @@ const CONVERGE = { pressure: ["AO", "PA", "RA", "LA"], volume: ["IVC"] };
 const CONVERGE_VU = { pressure: ["AO", "PA", "RA", "LA", "IVC", "SPL"], volume: [] as string[] };
 
 export interface FromModelOptions {
-  /** Build the four cardiac valves (TV, PVL, MV, AV) as `InertialValve`s with their own flow state. Default false (Gorlin valves, no inertance). */
+  /** Build the four cardiac valves (TV, PVL, MV, AV) as `InertialValve`s with their own flow state. Default true (Gate R-A1); false builds plain Gorlin valves. */
   inertance?: boolean;
   /** Falling-limb stretch of both ventricles (dimensionless; default `ACTIVATION.relaxScale`; 1 = the unmodified curve). */
   relaxScale?: number;
@@ -55,7 +55,7 @@ export function fromModel(m: Model, opts: FromModelOptions = {}): { nodes: NodeD
   });
   const elements: Element[] = m.edges.map((e) =>
     e.type === "resistor" ? new Resistor(e.name, e.from, e.to, e.R!) : e.type === "orifice" ? new Orifice(e.name, e.from, e.to, e.area!)
-      : opts.inertance && valveLength(e.name) ? new InertialValve(e.name, e.from, e.to, e.area!, e.reg!, inertance(valveLength(e.name)!, Math.max(e.area!, 0.05)), e.zc ?? 0)
+      : opts.inertance !== false && valveLength(e.name) ? new InertialValve(e.name, e.from, e.to, e.area!, e.reg!, inertance(valveLength(e.name)!, Math.max(e.area!, 0.05)), e.zc ?? 0)
       : new OneWayValve(e.name, e.from, e.to, e.area!, e.reg!, e.zc ?? 0));
   if (opts.pericardium) {
     const { effusionMl, ...params } = opts.pericardium;
@@ -71,7 +71,7 @@ export function fromModel(m: Model, opts: FromModelOptions = {}): { nodes: NodeD
 /** The options as the engine will use them, every default filled in: what a calibration cache must be keyed on. */
 export function resolveCore(opts: FromModelOptions = {}) {
   const pr = opts.pr ?? defaultPr;
-  return { inertance: !!opts.inertance, relaxScale: opts.relaxScale ?? ACTIVATION.relaxScale, atrialEesScale: opts.atrialEesScale ?? 1, pr: [0.4, 0.83, 1.5].map((T) => pr(T)) };
+  return { inertance: opts.inertance !== false, relaxScale: opts.relaxScale ?? ACTIVATION.relaxScale, atrialEesScale: opts.atrialEesScale ?? 1, pr: [0.4, 0.83, 1.5].map((T) => pr(T)) };
 }
 
 /** `fromModel` and `createEngine` in one step. */
