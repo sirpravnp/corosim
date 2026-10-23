@@ -67,7 +67,8 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | R0 | passed |
 | P1 | done (follow-up: `corosim_adjust`, `corosim_compare` and the share-link tool still take the plain Scenario schema) |
 | P3 | done (workspace + numbers panel on a stub source; monitor and ECG move in P3b) |
-| P2 | in progress |
+| P2 | done (bridge; LAD LVEDP 17.6 / PCWP 16.8 / EF 0.30; RV infarct CVP 10.7, CVP/PCWP 1.3; paced RV infarct CVP 7.6 is a known limit until C1/A7) |
+| P2b | in progress |
 | A1 | done (max difference from `simulate()` 2e-4, from exact atrial event timing; core 164× real time vs 129×) |
 | A2 | done (structural tab on the core; old RK4 loop removed; reference frozen in `tests/fixtures/core-reference.json`) |
 | A3 | in progress (with A2 follow-ups: break the structural ↔ core import cycle by moving `NODES`; `simulate(m, { waveform })` so `analyze(…, { waveform: false })` skips the recorder) |
@@ -210,6 +211,7 @@ See CORE §4G. Panels read only from `HemoSource`, so they survive the engine sw
 | P0 | R★ | **`PatientSpec` and `HemoSource` contracts.** One spec merging `Scenario`, `StructuralSpec`, support, fluids and pericardium. A source interface with taps: node traces, chamber volumes, loops, saturations, beat events, cath readings, device consoles. A panel contract: mount, subscribe to taps, resize, dispose. | none | `src/sim/patient.ts`, `src/sim/hemoSource.ts` | Typechecks; covers every panel below and the core engine's outputs |
 | P1 | I | **Unified encoding.** `PatientSpec` ↔ URL hash and MCP; old `#s=` simulator links and `#lesion=` structural links still decode. | P0 | `sim/llm.ts`, `sim/scenario.ts`, `mcp/tools.ts` | Round-trip tests; every old link fixture decodes to the same patient |
 | P2 | I | **Bridge `HemoSource` over today's engines.** Structural engine solved with the ACS state applied (ischemic fraction scales LV/RV Ees, HR from the rhythm), re-solved every few seconds or on change; waveform replayed per beat, aligned to ECG beats. | P0, T0.1 | `sim/bridgeSource.ts` | Anterior STEMI raises LVEDP and lowers SV on the traces; MAP within 5 mmHg of the monitor's; no visible jump at a re-solve |
+| P2b | I | **Bridge in a worker, on the page.** Move the bridge's solves (`analyze` + calibration) into a Web Worker so the main thread never blocks; the page swaps the stub source for the bridge. | P2, P3 | `src/sim/bridgeSource.ts`, new worker module, `src/app.ts` | No main-thread task over 50 ms from the bridge (measured in Chromium); numbers panel shows the simulator's patient and follows an occlusion; game page unchanged; existing bridge tests pass headless |
 | P3 | I | **Panel workspace on the Simulator page.** Grid on desktop, tabs on phones, a panel picker, layout remembered per browser (in try/catch). Existing monitor and ECG become panels. | P0 | `src/app.ts`, `sim/index.html`, new `src/panels/` | Visual check at desktop and 375 px width; no physics in panels |
 | P3b | I | **Monitor and ECG as panels.** Move the Simulator page's existing monitor and ECG strip into the workspace without changing what they show. Split out of P3 to keep `src/app.ts` changes small. | P3 | `src/app.ts`, `src/panels/` | Same readings and ECG as before; game page unchanged |
 
