@@ -86,7 +86,7 @@ export const leftHeartCathPanel: PanelDef = {
         c1 = document.createElement("canvas"); c2 = document.createElement("canvas");
         for (const c of [c1, c2]) { c.style.width = "100%"; c.style.display = "block"; c.style.marginTop = "8px"; }
         const note = document.createElement("p"); note.className = "note";
-        note.textContent = "Shaded: LV above aorta in ejection; wedge above LV in filling. Gorlin uses total forward flow; the clinical mitral constant 37.7 reads 18% above the engine's 44.3 area. Peak gradients run about twice clinical (no inertance).";
+        note.textContent = "Shaded: LV above aorta in ejection; wedge above LV in filling. Gorlin uses total forward flow; the clinical mitral constant 37.7 reads 18% above the engine's 44.3 area. Valve inertance is on: mean gradients and mitral peaks sit near clinical values, but a normal aortic peak instantaneous gradient still reads high (about 18 mmHg, clinically 4 to 8) because ejection flow peaks sharply.";
         body.append(table, c1, c2, note);
         el.append(wait, body);
       },

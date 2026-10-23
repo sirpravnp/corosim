@@ -123,10 +123,11 @@ describe("unstressed volume and the splanchnic reservoir", () => {
   });
 
   it("the calibration cache is keyed on everything it depends on (inertance changes the offset)", () => {
-    const off = volumeOffsetFor({}), on = volumeOffsetFor({}, { inertance: true });
-    expect(on).toBeLessThan(off - 30);
-    expect(volumeOffsetFor({}, { inertance: true })).toBe(on);
-    expect(volumeOffsetFor({}, undefined, { zc: false })).not.toBe(off);
+    const on = volumeOffsetFor({}), off = volumeOffsetFor({}, { inertance: false });
+    expect(off).toBeGreaterThan(on + 30); // inertia holds more blood in the ventricle: the plain valves need more volume for the same MAP
+    expect(volumeOffsetFor({}, { inertance: true })).toBe(on); // the default is the same key as an explicit true
+    expect(volumeOffsetFor({}, { inertance: false })).toBe(off);
+    expect(volumeOffsetFor({}, undefined, { zc: false })).not.toBe(on);
   });
 });
 
