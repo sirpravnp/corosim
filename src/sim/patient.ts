@@ -127,7 +127,7 @@ export function normalizePatient(input: PatientSpec = {}): NormalizedPatient {
   // heart: the structural engine's own clamping decides the ranges; anything it changes or unsets is reported
   const heart = section(input.heart, "heart");
   if (heart) {
-    const known = new Set(["pvri", "svrScale", "satLung", "volumeMl", "valves", "pda", "asd", "vsd", "bt", "lvSize", "laSize", "lvContractility", "rvContractility", "rvSize", "raSize", "tof"]);
+    const known = new Set(["pvri", "svrScale", "satLung", "volumeMl", "valves", "pda", "asd", "vsd", "bt", "lvSize", "laSize", "lvEes", "rvEes", "rvContractility", "rvSize", "raSize", "tof"]);
     const kept: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(heart)) { if (known.has(k)) kept[k] = v; else warnings.push(`heart.${k} is not a structural field; dropped`); }
     let out: Record<string, unknown> = {};

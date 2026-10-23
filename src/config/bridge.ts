@@ -2,13 +2,19 @@
 
 export const BRIDGE = {
   /** Re-solve when an input moves by more than this since the last solve. [assumed] */
-  threshold: { hrBpm: 3, ischemia: 0.03, mapMmHg: 3 },
+  threshold: { hrBpm: 3, ischemia: 0.03, mapMmHg: 3, svrFrac: 0.05 },
   /** Never re-solve more often than this, simulated seconds (a solve costs ~100 ms per analyze call). [assumed] */
   minSolveIntervalS: 3,
+  /** Volume (ml, added to the circulation) the MAP calibration may use: stands in for venoconstriction and fluids. [assumed] */
+  volumeRangeMl: [-800, 1500] as const,
+  /** Right-ventricular Ees lost per unit RV ischemia (the ACS model has only a preload loss); rvEes = 1 - k x rvIschemia. [assumed] */
+  rvEesLoss: 0.8,
   /** Window over which the simulation's beat MAPs are averaged into the monitor MAP the bridge tracks and calibrates to, s. [assumed] */
   mapWindowS: 15,
   /** MAP calibration: stop when the structural mean aortic pressure is this close to the monitor's, mmHg; at most this many extra analyze calls. [assumed] */
-  mapToleranceMmHg: 1, maxCalibrationIterations: 4,
+  mapToleranceMmHg: 1, maxCalibrationIterations: 5,
+  /** First-step guess of d(MAP)/d(volume), mmHg per ml, before a secant slope is known. [assumed] */
+  mapPerMl: 0.04,
   /** Seconds of per-node pressure and chamber volume kept for trace(), and the most beats kept for beats(). [assumed] */
   ringSeconds: 30, maxBeats: 200,
   /** Replay sample spacing, s. [assumed] */

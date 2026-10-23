@@ -4,7 +4,7 @@ import type { Simulation } from "./simulation";
 import type { BeatRecord } from "./metrics";
 import { analyze, NODES } from "../physics/structural";
 import type { StructuralReport, StructuralSpec, Waveform } from "../physics/structural";
-import { CIRC } from "../physics/circulation";
+import { CIRC, BASE_SVR } from "../physics/circulation";
 import { PATIENTS, O2_PER_G_HB } from "../config/structural";
 import { SUPPORT } from "../config/management";
 import { BRIDGE } from "../config/bridge";
@@ -15,7 +15,7 @@ const empty = (): Series => ({ t: new Float32Array(0), v: new Float32Array(0) })
 const VOL_KEY = { RA: "vRA", RV: "vRV", LA: "vLA", LV: "vLV" } as const;
 
 /** What a solve was made from; a re-solve is due when the live inputs move away from it. */
-interface Inputs { hr: number; lv: number; rv: number; map: number }
+interface Inputs { hr: number; lv: number; rv: number; map: number; svr: number }
 
 /**
  * `HemoSource` over today's engines (task P2): the ACS `Simulation` supplies the state of the patient, the structural
@@ -29,24 +29,24 @@ interface Inputs { hr: number; lv: number; rv: number; map: number }
  *  - `heart` lesions: the optional PatientSpec passed to the constructor (Simulation keeps only the normalised Scenario,
  *    not the structural fields). Its fields are copied as given.
  *  - `hr`: `sim.circ.hr`, the ventricular rate the rhythm implies (not the noisy measured one).
- *  - `lvContractility` = (heart.lvContractility ?? 1) x (1 - CIRC.lvContractileLoss x sim.circ.lvIschemia): the same loss
- *    constant the ACS model uses on stroke volume, here applied to left-ventricular end-systolic elastance. Floor 0.2
- *    (structural clamp). In the ACS model the loss works on stroke volume; here it works on Ees, so the stroke volume the
- *    structural engine returns is its own answer (afterload and preload respond), not the ACS number.
- *  - `rvContractility` = (heart.rvContractility ?? 1) x (1 - CIRC.rvPreloadLoss x sim.circ.rvIschemia): the ACS model
- *    has only an RV "preload loss" (less blood delivered to the left heart); that constant is reused as the RV
- *    contractility loss so the direction matches (RV infarct: less RV output, higher right-sided filling pressure).
- *    Note the structural engine scales the RV's passive stiffness with rvContractility too.
- *  - `svrScale`: calibrated, see below. A `heart.svrScale` in the PatientSpec is only the starting guess.
- *  - Not mapped: reflexes (the ACS model's autonomic loop acts through the calibrated svrScale and the rate), drugs and
- *    volume (their effect on MAP is absorbed by the calibration, on filling pressures it is not), Impella/IABP (the
- *    structural engine has no devices; see devices()), the pericardium, fluids and ventilation of a PatientSpec.
+ *  - `lvEes` = (heart.lvEes ?? 1) x (1 - CIRC.lvContractileLoss x sim.circ.lvIschemia): the ACS model's loss constant,
+ *    applied to left-ventricular end-systolic elastance only (passive filling unchanged). The stroke volume the structural
+ *    engine returns is its own answer (afterload and preload respond), not the ACS number.
+ *  - `rvEes` = (heart.rvEes ?? 1) x (1 - BRIDGE.rvEesLoss x sim.circ.rvIschemia): weaker RV contraction only. (Not
+ *    `rvContractility`, which also stiffens the RV and would hold CVP down.)
+ *  - `svrScale` = sim.circ.svr / BASE_SVR x (heart.svrScale ?? 1): systemic resistance comes from the ACS model, which
+ *    already holds the sympathetic, vagal and drug effects, so it is not fitted to MAP.
+ *  - `volumeMl` = (heart.volumeMl ?? 0) + a calibrated volume, see below.
+ *  - Not mapped: drugs and fluids as such (their effect on MAP reaches the engine through svr and the calibrated volume),
+ *    Impella/IABP (the structural engine has no devices; see devices()), the pericardium, fluids and ventilation of a PatientSpec.
  *
- * MAP calibration: `svrScale` is adjusted (proportional first step, then secant, at most `maxCalibrationIterations`
- * extra analyze calls, stop within `mapToleranceMmHg`) until the structural mean aortic pressure matches the monitor's
+ * MAP calibration: the volume (ml added to or removed from the circulation, standing in for venoconstriction and fluids;
+ * clamped to BRIDGE.volumeRangeMl) is adjusted (first step from an assumed slope, then secant, at most
+ * `maxCalibrationIterations` extra analyze calls, stop within `mapToleranceMmHg`) until the structural mean aortic
+ * pressure matches the monitor's
  * MAP: the mean of the simulation's beat MAPs over the last 15 s (`sim.rolling`, as a bedside monitor averages; falls back
  * to `sim.map` before there are beats). The beat-to-beat MAP of the ACS model swings by about +-5 mmHg from respiration
- * and the baroreflex, which would force a re-solve every 3 s; the averaged value is the trigger and the target. `calibrationError` is the remaining difference (structural minus monitor, mmHg). If
+ * and the baroreflex, which would force a re-solve every 3 s; the averaged value is the trigger and the target. `calibrationError` is the remaining difference (structural minus monitor, mmHg), nonzero when the volume clamp binds. The volume is public as `volume`. If
  * the PatientSpec has a lesion the ACS model knows nothing about, the calibration still forces MAP to the monitor's.
  *
  * Re-solving: never every frame. A solve (several analyze calls, ~100 ms each) runs when an input moved from its value at
@@ -90,7 +90,8 @@ export class BridgeSource implements HemoSource {
   private wave: Waveform | null = null;
   private lastInputs: Inputs | null = null;
   private lastSolveT = -Infinity;
-  private svr = 1;
+  /** ml added (+) or removed (-) by the MAP calibration at the last solve. */
+  volume = 0;
   private blendFrom: Waveform | null = null;
   private ring: BeatSummary[] = [];
   private subs = new Set<(b: BeatSummary) => void>();
@@ -106,7 +107,6 @@ export class BridgeSource implements HemoSource {
       if (this.active) this.handleBeat(rec);
     };
     sim.onBeat = this.hook;
-    this.svr = opts.patient?.heart?.svrScale ?? 1;
   }
 
   /** Stop listening and give the simulation its original beat handler back (if nothing was chained after ours). */
@@ -129,40 +129,41 @@ export class BridgeSource implements HemoSource {
   private inputs(): Inputs {
     const c = this.sim.circ;
     const m = this.sim.rolling(BRIDGE.mapWindowS).map;
-    return { hr: c.hr, lv: c.lvIschemia, rv: c.rvIschemia, map: Number.isFinite(m) ? m : this.sim.map };
+    return { hr: c.hr, lv: c.lvIschemia, rv: c.rvIschemia, map: Number.isFinite(m) ? m : this.sim.map, svr: c.svr };
   }
 
   private maybeSolve() {
     if (!this.report || !this.lastInputs) { this.solve(); return; }
     if (this.sim.t - this.lastSolveT < BRIDGE.minSolveIntervalS) return;
     const a = this.inputs(), b = this.lastInputs, T = BRIDGE.threshold;
-    if (Math.abs(a.hr - b.hr) > T.hrBpm || Math.abs(a.lv - b.lv) > T.ischemia || Math.abs(a.rv - b.rv) > T.ischemia || Math.abs(a.map - b.map) > T.mapMmHg) this.solve();
+    if (Math.abs(a.hr - b.hr) > T.hrBpm || Math.abs(a.lv - b.lv) > T.ischemia || Math.abs(a.rv - b.rv) > T.ischemia || Math.abs(a.map - b.map) > T.mapMmHg || Math.abs(a.svr / b.svr - 1) > T.svrFrac) this.solve();
   }
 
-  private spec(svrScale: number): StructuralSpec {
+  private spec(volumeMl: number): StructuralSpec {
     const h = this.opts.patient?.heart ?? {}, c = this.sim.circ;
     return {
-      ...h, patient: this.opts.patient?.kind ?? "adult", hr: c.hr, svrScale,
-      lvContractility: (h.lvContractility ?? 1) * (1 - CIRC.lvContractileLoss * c.lvIschemia),
-      rvContractility: (h.rvContractility ?? 1) * (1 - CIRC.rvPreloadLoss * c.rvIschemia),
+      ...h, patient: this.opts.patient?.kind ?? "adult", hr: c.hr,
+      svrScale: (c.svr / BASE_SVR) * (h.svrScale ?? 1), volumeMl: (h.volumeMl ?? 0) + volumeMl,
+      lvEes: (h.lvEes ?? 1) * (1 - CIRC.lvContractileLoss * c.lvIschemia),
+      rvEes: (h.rvEes ?? 1) * (1 - BRIDGE.rvEesLoss * c.rvIschemia),
     };
   }
 
-  /** The one place engine work happens: build the spec, calibrate svrScale to the monitor's MAP, cache the report. */
+  /** The one place engine work happens: build the spec, calibrate the volume to the monitor's MAP, cache the report. */
   private solve() {
-    const inputs = this.inputs(), target = inputs.map;
-    const run = (s: number) => { this.analyzeCalls++; return analyze(this.spec(s), { waveform: true }); };
-    let s = clamp(this.svr, 0.1, 5), r = run(s), f = r.pressure.AO.mean - target;
-    let best = { r, f, s };
-    let sPrev = NaN, fPrev = NaN;
+    const inputs = this.inputs(), target = inputs.map, [lo, hi] = BRIDGE.volumeRangeMl;
+    const run = (v: number) => { this.analyzeCalls++; return analyze(this.spec(v), { waveform: true }); };
+    let v = clamp(this.volume, lo, hi), r = run(v), f = r.pressure.AO.mean - target;
+    let best = { r, f, v };
+    let vPrev = NaN, fPrev = NaN;
     for (let i = 0; i < BRIDGE.maxCalibrationIterations && Math.abs(best.f) > BRIDGE.mapToleranceMmHg; i++) {
-      let next = Number.isFinite(sPrev) && Math.abs(f - fPrev) > 1e-9 ? s - (f * (s - sPrev)) / (f - fPrev) : s * (target / Math.max(1, r.pressure.AO.mean));
-      next = clamp(next, 0.1, 5);
-      if (Math.abs(next - s) < 1e-6) break;
-      sPrev = s; fPrev = f; s = next; r = run(s); f = r.pressure.AO.mean - target;
-      if (Math.abs(f) < Math.abs(best.f)) best = { r, f, s };
+      const slope = Number.isFinite(vPrev) && Math.abs(f - fPrev) > 1e-9 && (f - fPrev) / (v - vPrev) > 0 ? (f - fPrev) / (v - vPrev) : BRIDGE.mapPerMl;
+      const next = clamp(v - f / slope, lo, hi);
+      if (Math.abs(next - v) < 0.5) break; // converged, or the clamp binds
+      vPrev = v; fPrev = f; v = next; r = run(v); f = r.pressure.AO.mean - target;
+      if (Math.abs(f) < Math.abs(best.f)) best = { r, f, v };
     }
-    this.svr = best.s; this.calibrationError = best.f;
+    this.volume = best.v; this.calibrationError = best.f;
     if (this.wave) this.blendFrom = this.wave;
     this.report = best.r; this.wave = best.r.waveform ?? null;
     this.lastInputs = inputs; this.lastSolveT = this.sim.t; this.solves++;
