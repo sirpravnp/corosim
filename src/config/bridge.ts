@@ -1,0 +1,37 @@
+// Constants for the bridge HemoSource (src/sim/bridgeSource.ts). [assumed] = a teaching/engineering choice.
+
+export const BRIDGE = {
+  /** Re-solve when an input moves by more than this since the last solve. [assumed] */
+  threshold: { hrBpm: 3, ischemia: 0.03, mapMmHg: 3, svrFrac: 0.05 },
+  /** Never re-solve more often than this, simulated seconds (a solve costs ~100 ms per analyze call). [assumed] */
+  minSolveIntervalS: 3,
+  /** Volume (ml, added to the circulation) the MAP calibration may use: stands in for venoconstriction and fluids. [assumed] */
+  volumeRangeMl: [-800, 1500] as const,
+  /**
+   * Ees lost per unit ischemic fraction of a ventricle: ees = max(0.2, 1 - loss x ischemia). Above the ACS model's 0.8
+   * because an ischemic segment does not just stop, it bulges (dyskinesis) and wastes the work of the rest, so global
+   * systolic elastance falls by more than the ischemic mass fraction (large anterior MI: EF about 0.30). [assumed]
+   */
+  lvEesLoss: 1.25, rvEesLoss: 0.8,
+  /**
+   * Passive stiffness gained per unit ischemic fraction: stiffness = 1 + gain x ischemia (3x at full ischemia at most).
+   * Acute ischemia raises diastolic stiffness (impaired relaxation, then contracture); LVEDP rises at a given volume. [assumed]
+   */
+  lvStiffGain: 1.5, rvStiffGain: 2,
+  /** Window over which the simulation's beat MAPs are averaged into the monitor MAP the bridge tracks and calibrates to, s. [assumed] */
+  mapWindowS: 15,
+  /** MAP calibration: stop when the structural mean aortic pressure is this close to the monitor's, mmHg; at most this many extra analyze calls. [assumed] */
+  mapToleranceMmHg: 1, maxCalibrationIterations: 5,
+  /** First-step guess of d(MAP)/d(volume), mmHg per ml, before a secant slope is known. [assumed] */
+  mapPerMl: 0.04,
+  /** Seconds of per-node pressure and chamber volume kept for trace(), and the most beats kept for beats(). [assumed] */
+  ringSeconds: 30, maxBeats: 200,
+  /** Replay sample spacing, s. [assumed] */
+  sampleDt: 0.002,
+  /** Length of the end-diastolic segment (atrial contraction) that keeps its real duration when diastole is stretched, s, and its cap as a fraction of the solved beat. [assumed] */
+  atrialTailS: 0.2, atrialTailMaxFrac: 0.3,
+  /** Shortest diastole (filling + tail) for which the three-piece time warp is used; shorter beats are scaled uniformly, s. [assumed] */
+  minWarpDiastoleS: 0.05,
+  /** Bed oxygenation placeholder: tissue O2 = base − slope × ischemia severity (until tasks E2/E3). [assumed] */
+  bedOxygen: { base: 0.75, slope: 0.45 },
+};
