@@ -83,6 +83,7 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | R-A1 | passed: inertance on by default (task A5b); neonate E/A 0.7–0.8 accepted (normal in the first days of life); `periodic()` stops ~0.5 % short on slow venous refilling, for C1 to address |
 | A5b | in progress |
 | P2c | done (bridge trace time strictly increasing; reload clears the bridge; valve areas only with a real gradient; gross-flow Gorlin test) |
+| P7c | done (cath page: Right heart and Left heart tabs reuse the Simulator panels; identical rows for all 7 library cases) |
 | P6 | done (JVP: cannon a 2.6× in AV dissociation; giant v in severe TR; RV infarct raised JVP 9.9 cm on the live page; tamponade/constriction tests wait for B1) |
 | B1 | done (tamponade: 300 ml equalises RA/RVEDP/LA/LVEDP within 0.2 mmHg, CO 5.1 → 0.3; draining 200 ml restores 81 %; slow effusion better tolerated; stable to stiffness 10) |
 | D1 | done (rotary pump: HQ fit, smooth bounded suction, backflow when stopped) |
