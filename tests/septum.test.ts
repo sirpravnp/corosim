@@ -16,8 +16,9 @@ const log = (...a: unknown[]) => { if (process.env.CORE_VERBOSE) console.log(...
 interface RunOpt { septum?: boolean; peri?: PeriOpt; dt?: number; wave?: boolean }
 /** Steady state of the adult model with or without the septum (and the sac), summarised over the last beat. */
 function run(spec: StructuralSpec, o: RunOpt = {}) {
-  const m = buildModel(spec, volumeOffsetFor({}));
-  const g = fromModel(m, { ...(o.septum ? { septum: true } : {}), ...(o.peri ? { pericardium: o.peri } : {}) });
+  const core: FromModelOptions = { ...(o.septum ? { septum: true } : {}), ...(o.peri ? { pericardium: o.peri } : {}) };
+  const m = buildModel(spec, volumeOffsetFor(spec, core));
+  const g = fromModel(m, core);
   const eng = createEngine(g.nodes, g.elements, g.options);
   const dt = o.dt ?? SOLVER.dt, nSteps = Math.max(50, Math.round(m.T / dt));
   const rec = new BeatRecorder(eng, m.T, ["MV", "AV"], o.wave ? { dt: m.T / nSteps, every: 0.01, flows: [] } : undefined);
@@ -29,6 +30,7 @@ function run(spec: StructuralSpec, o: RunOpt = {}) {
     if (k !== idx) { mean = n ? sum / n : 0; end = last; sum = 0; n = 0; idx = k; }
     if (sep) { last = sep.volumeMl; sum += last; n++; }
   });
+  const blood0 = Array.from(eng.sample().V).reduce((a, v) => a + v, 0);
   const old = SOLVER.dt; SOLVER.dt = dt;
   let r; try { r = eng.periodic(HR); } finally { SOLVER.dt = old; }
   off();
@@ -36,7 +38,7 @@ function run(spec: StructuralSpec, o: RunOpt = {}) {
   const b = rec.beat(), fv = eng.flowVolumes(); rec.dispose();
   const SV = fv.fwd.AV - fv.bwd.AV;
   return {
-    eng, sep, b, r, SV, CO: (SV * HR) / 1000, MAP: b.p.AO.mean, CVP: b.p.RA.mean, PCWP: b.p.LA.mean, LVEDP: b.p.LV.end, RVEDP: b.p.RV.end,
+    eng, sep, b, r, SV, blood0, CO: (SV * HR) / 1000, MAP: b.p.AO.mean, CVP: b.p.RA.mean, PCWP: b.p.LA.mean, LVEDP: b.p.LV.end, RVEDP: b.p.RV.end,
     LVEDV: b.v.LV.max, RVEDV: b.v.RV.max, LVsys: b.p.LV.max, RVsys: b.p.RV.max, vSptMean: mean, vSptEnd: end,
   };
 }
@@ -48,8 +50,9 @@ const row = (x: Run) => `MAP ${f(x.MAP)} CO ${f(x.CO, 2)} CVP ${f(x.CVP)} PCWP $
 /** Solver statistics accumulated over every run of this file (solves counted while the engine ran, before `resetStats`). */
 const iter = { solves: 0, iterations: 0, max: 0, failed: 0 };
 function runCounted(spec: StructuralSpec, o: RunOpt = {}) {
-  const m = buildModel(spec, volumeOffsetFor({}));
-  const g = fromModel(m, { septum: true, ...(o.peri ? { pericardium: o.peri } : {}) });
+  const core: FromModelOptions = { septum: true, ...(o.peri ? { pericardium: o.peri } : {}) };
+  const m = buildModel(spec, volumeOffsetFor(spec, core));
+  const g = fromModel(m, core);
   const eng = createEngine(g.nodes, g.elements, g.options);
   const r = eng.periodic(HR);
   const sep = eng.element<Septum>("septum"), s = sep.stats;
@@ -174,6 +177,22 @@ describe("septum: constriction and tamponade", () => {
   });
 });
 
+describe("septum: neonate", () => {
+  it("the neonate with the septum on stays close to the septum-free numbers (MAP, CVP, PCWP, CO within 3 %)", () => {
+    const one = (septum: boolean) => {
+      const spec: StructuralSpec = { patient: "neonate" }, core: FromModelOptions = septum ? { septum: true } : {};
+      const m = buildModel(spec, volumeOffsetFor(spec, core)), g = fromModel(m, core), eng = createEngine(g.nodes, g.elements, g.options);
+      const rec = new BeatRecorder(eng, m.T, ["MV", "AV"]), r = eng.periodic(m.hr), b = rec.beat(), fv = eng.flowVolumes(); rec.dispose();
+      const sample = eng.sample();
+      return { r, MAP: b.p.AO.mean, CVP: b.p.RA.mean, PCWP: b.p.LA.mean, CO: ((fv.fwd.AV - fv.bwd.AV) * m.hr) / 60, finite: Array.from(sample.P).every(Number.isFinite) };
+    };
+    const off = one(false), on = one(true);
+    log(`neonate off: MAP ${f(off.MAP)} CVP ${f(off.CVP)} PCWP ${f(off.PCWP)} CO ${f(off.CO, 1)} ml/s\nneonate on : MAP ${f(on.MAP)} CVP ${f(on.CVP)} PCWP ${f(on.PCWP)} CO ${f(on.CO, 1)} ml/s`);
+    expect(on.finite).toBe(true); expect(on.r.converged).toBe(true);
+    for (const k of ["MAP", "CVP", "PCWP", "CO"] as const) expect(rel(on[k], off[k]), k).toBeLessThan(0.03);
+  });
+});
+
 describe("septum: stability and the implicit solve", () => {
   const grid: { pvri: number; stiffness: number; eff: number }[] = [
     ...[1, 2, 5, 10, 20, 30].map((pvri) => ({ pvri, stiffness: 1, eff: 0 })),
@@ -214,6 +233,6 @@ describe("septum: stability and the implicit solve", () => {
   });
   it("blood is conserved: the septum moves no blood", () => {
     const sum = (x: Run) => Array.from(x.eng.sample().V).reduce((a, v) => a + v, 0);
-    expect(rel(sum(baseOn), sum(base))).toBeLessThan(1e-6);
+    expect(rel(sum(baseOn), baseOn.blood0)).toBeLessThan(1e-6);
   });
 });

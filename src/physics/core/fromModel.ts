@@ -71,7 +71,9 @@ export function fromModel(m: Model, opts: FromModelOptions = {}): { nodes: NodeD
 /** The options as the engine will use them, every default filled in: what a calibration cache must be keyed on. */
 export function resolveCore(opts: FromModelOptions = {}) {
   const pr = opts.pr ?? defaultPr;
-  return { inertance: opts.inertance !== false, relaxScale: opts.relaxScale ?? ACTIVATION.relaxScale, atrialEesScale: opts.atrialEesScale ?? 1, pr: [0.4, 0.83, 1.5].map((T) => pr(T)) };
+  return { inertance: opts.inertance !== false, relaxScale: opts.relaxScale ?? ACTIVATION.relaxScale, atrialEesScale: opts.atrialEesScale ?? 1, pr: [0.4, 0.83, 1.5].map((T) => pr(T)),
+    /** The septum changes the loop's pressures, so the volume calibration depends on it and on its constants. */
+    septum: opts.septum ? { ...SEPTUM, ...(opts.septum === true ? {} : opts.septum) } : false };
 }
 
 /** `fromModel` and `createEngine` in one step. */

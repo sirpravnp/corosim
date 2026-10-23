@@ -18,7 +18,7 @@ export const SEPTUM = {
   /** Diastolic (passive) septal stiffness E_d, mmHg/ml: a soft wall that bows easily at low pressure. [assumed, tuned] */
   diaStiffness: 0.4,
   /** Free-wall fraction of the lumped chamber law (active Ees and passive a): LV, RV. The LV factor exceeds 1 because the LV free wall sees a cavity the septum has already bowed into. [assumed, tuned] */
-  freeWall: { lvEes: 1.157, lvA: 1.259, rvEes: 0.893, rvA: 0.824 },
+  freeWall: { lvEes: 1.2, lvA: 1.339, rvEes: 0.893, rvA: 0.786 },
   /** Largest septal displacement either way, ml. The solve is bracketed in ±uMax. [assumed] */
   uMax: 60,
   /** Newton convergence: stop when |step| < tolMl (ml) or |residual| < tolMmHg (mmHg). */
