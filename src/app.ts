@@ -28,6 +28,7 @@ import { loopsPanel } from "./panels/loops";
 import { rhcPanel } from "./panels/rightHeartCath";
 import { leftHeartCathPanel } from "./panels/leftHeartCath";
 import { jvpPanel } from "./panels/jvp";
+import { oxygenPanel } from "./panels/oxygen";
 import { BridgeSource } from "./sim/bridgeSource";
 import { createWorkerSolver } from "./sim/bridgeWorkerSolver";
 import { decodePatient } from "./sim/llm";
@@ -1107,7 +1108,7 @@ if (!inGame) {
   const ws = $("workspace"); (ws.parentElement as HTMLElement).hidden = false;
   bridgeOpts.solver = createWorkerSolver();
   bridge = new BridgeSource(sim, bridgeOpts);
-  mountWorkspace(ws, [numbersPanel, tracesPanel, loopsPanel, rhcPanel, leftHeartCathPanel, jvpPanel], bridge);
+  mountWorkspace(ws, [numbersPanel, tracesPanel, loopsPanel, rhcPanel, leftHeartCathPanel, jvpPanel, oxygenPanel], bridge);
 }
 void shell.ai.start();
 /** Handle for scripts and browser-driving assistants: corosim.sim, corosim.load(scenario), corosim.live. */
