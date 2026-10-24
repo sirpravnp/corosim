@@ -23,7 +23,7 @@ const REF = reference as unknown as Record<string, Ref>;
  * changed the defaults (relaxation, atrial drive, PR, impedance Zc, unstressed volume, the splanchnic node, atrial pressures); the
  * reference cannot be regenerated, so it is compared on this pinned configuration: `LEGACY` for the engine, `LEGACY_BUILD` for the model.
  */
-const LEGACY: FromModelOptions = { relaxScale: 1, pr: (T) => atrialDuration(T) + 0.06 + 0.08 * T };
+const LEGACY: FromModelOptions = { inertance: false, relaxScale: 1, pr: (T) => atrialDuration(T) + 0.06 + 0.08 * T };
 
 /** simulate() on one case against the frozen reference. Returns the mismatches and the largest relative difference seen. */
 function compare(id: string, spec: StructuralSpec) {
@@ -121,7 +121,7 @@ const GROUP_OF = { SVC: "thoracic", IVC: "abdominal", RA: "pericardial", RV: "pe
 
 /** Last beat of a periodic run on the adult model (optionally at another rate, step, or with inertance), with extra elements added to the graph. */
 function lastBeat(extra: (nodes: { group: ExternalGroup }[]) => Element[], opts: { inertance?: boolean; dt?: number; hr?: number; relaxScale?: number; pr?: number; tol?: number } = {}) {
-  const m = opts.hr ? buildModel({ hr: opts.hr }, volumeOffsetFor({})) : adult(), g = fromModel(m, { inertance: opts.inertance, relaxScale: opts.relaxScale });
+  const core = { inertance: opts.inertance }, m = buildModel(opts.hr ? { hr: opts.hr } : {}, volumeOffsetFor({}, core)), g = fromModel(m, { ...core, relaxScale: opts.relaxScale });
   const eng = createEngine(g.nodes, [...g.elements, ...extra(g.nodes)], g.options);
   const dt = opts.dt ?? SOLVER.dt, nSteps = Math.max(50, Math.round(m.T / dt));
   const rec = new BeatRecorder(eng, m.T, ["MV", "AV"], { dt: m.T / nSteps, every: 0.002, flows: ["MV", "AV"] });
@@ -227,13 +227,13 @@ describe("inertial edge", () => {
 });
 
 describe("valve inertance in the adult model", () => {
-  it("is off by default: the four cardiac valves are plain Gorlin valves with no extra states", () => {
+  it("is on by default (Gate R-A1): the four cardiac valves are inertial, and inertance: false gives plain Gorlin valves with no extra states", () => {
     const g = fromModel(adult());
-    for (const e of g.elements) expect(e.states, e.name).toBeUndefined();
-    for (const n of ["TV", "PVL", "MV", "AV"]) expect(g.elements.find((e) => e.name === n)).toBeInstanceOf(OneWayValve);
-    const on = fromModel(adult(), { inertance: true });
-    for (const n of ["TV", "PVL", "MV", "AV"]) expect(on.elements.find((e) => e.name === n)).toBeInstanceOf(InertialValve);
-    expect(on.elements.find((e) => e.name === "RVAO")).toBeInstanceOf(OneWayValve);
+    for (const n of ["TV", "PVL", "MV", "AV"]) expect(g.elements.find((e) => e.name === n)).toBeInstanceOf(InertialValve);
+    expect(g.elements.find((e) => e.name === "RVAO")).toBeInstanceOf(OneWayValve);
+    const off = fromModel(adult(), { inertance: false });
+    for (const e of off.elements) expect(e.states, e.name).toBeUndefined();
+    for (const n of ["TV", "PVL", "MV", "AV"]) expect(off.elements.find((e) => e.name === n)).toBeInstanceOf(OneWayValve);
     expect(engineFromModel(adult()).sample().V.length).toBe(NODES.length);
   });
 
@@ -257,7 +257,7 @@ describe("valve inertance in the adult model", () => {
     expect(q[iR]).toBeGreaterThan(20); // still flowing against a reversed gradient
     expect(q[iC]).toBeGreaterThan(20); // and for at least 40 ms
     // without inertance flow follows the gradient at once: no flow once the gradient is clearly reversed
-    const plain = lastBeat(() => []).b.wave!, pq = plain.q.MV, pd = plain.p.LA.map((x, i) => x - plain.p.LV[i]);
+    const plain = lastBeat(() => [], { inertance: false }).b.wave!, pq = plain.q.MV, pd = plain.p.LA.map((x, i) => x - plain.p.LV[i]);
     for (let i = 0; i < pq.length; i++) if (pd[i] < -0.05) expect(pq[i], `plain valve at ${plain.t[i]}`).toBe(0);
   });
 

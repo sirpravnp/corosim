@@ -81,7 +81,12 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | A4 | done (E/A 1.5 and LV τ 36 ms at 72 bpm; PVC SV 12 ml then 89 ml after the pause; new defaults reviewed; benchmark change within machine-load noise when interleaved with the pre-A4 commit) |
 | A5 | done (adult MAP 90.1, PP 43.9, CVP 4.2, PCWP 8.7, CO 5.12, EF 0.62, E/A 1.37, τ 37 ms; MSFP 7.9; neonate near its baseline) |
 | R-A1 | passed: inertance on by default (task A5b); neonate E/A 0.7–0.8 accepted (normal in the first days of life); `periodic()` stops ~0.5 % short on slow venous refilling, for C1 to address |
-| A5b | in progress |
+| A5b | done (inertance on by default; MV gradients near clinical, E/A 1.70; flow-based convective gradient for inertial valves, as Doppler reads) |
+| B2 | done (septum: constriction gap 2.65 mmHg at stiffness 6; normal and neonate within 3 % on vs off; cache key includes septum; off by default until R-B) |
+| B3 | in progress |
+| A7 | in progress |
+| D2 | done (shock + CP P8: MAP 63 → 75, LVEDP 18.5 → 11.9, PP 8; PVA down; current tracks placement signal r 1.00; suction with LV floor; aortic malposition flat placement, no unloading). Note: merge commit faf21d9 was recorded with conflict markers in `fromModel.ts` and `scripts/bench-engine.ts`; 80c9897 removed them (both sides kept). Pushed history left as is. |
+| Physics follow-ups (from A5b review) | (1) aortic peak instantaneous gradient 15.7 mmHg vs clinical 4–8 (peak aortic flow ~667 ml/s is high; Gorlin vs 4v²) — with E5; (2) RA waveform amplitudes: severe TR v wave ~9 mmHg vs clinical 15–20, and cannon a only ~1.4× the ordinary a wave (self-flagging test in `tests/liveHeart.test.ts`) |
 | P2c | done (bridge trace time strictly increasing; reload clears the bridge; valve areas only with a real gradient; gross-flow Gorlin test) |
 | A6 | done (live = periodic within 0.1 %; PVC 71 → 12 → 85 ml; CHB cannon waves; AF SV–RR r 0.80; 112× real time) |
 | P7c | done (cath page: Right heart and Left heart tabs reuse the Simulator panels; identical rows for all 7 library cases) |
@@ -175,6 +180,12 @@ scenario recalibrations as tasks.
   carries the LV–aortic pressure difference (the placement signal). Constants [assumed] unless sourced.
 - Reverse flow sees only R0: acceptable.
 - Inertance: L = ρℓ/A of the cannula (Impella-like: ℓ ≈ 13 cm, d ≈ 4 mm gives about 0.08 mmHg·s²/ml), per device.
+
+**Decisions from D2 review:** flow above the class figure in shock is correct (lower pressure difference across the cannula).
+D3 tunes the suction-alarm margin per model so that a normal heart at P6 does not alarm (today Vc = V0 + 30 ml can alarm a normal
+heart at high level). D4 switches position live with two flow elements (LV→AO and AO→AO), speed given only to the active one,
+which keeps the one-flow-per-element rule.
+
 
 | ID | Who | Task | Depends | Files | Acceptance |
 |---|---|---|---|---|---|

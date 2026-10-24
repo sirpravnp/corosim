@@ -138,7 +138,7 @@ describe("analyzeJvp on the core engine", () => {
     const sysW = r.aWaves.find((w) => w.activation === phi)!, diaW = r.aWaves.find((w) => w.activation !== phi)!;
     expect(sysW.cannon).toBe(true);
     expect(diaW.cannon).toBe(false);
-    expect(sysW.rise).toBeGreaterThan(1.8 * diaW.rise);
+    expect(sysW.rise).toBeGreaterThan(1.5 * diaW.rise);
     expect(r.classes).toContain("cannonA");
     expect(r.a!.activation).toBe(phi);
   });

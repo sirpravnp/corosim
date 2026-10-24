@@ -30,7 +30,7 @@ export const ACS_CORE = {
    */
   nitroVenousTone: 0.2, nitroVenousFull: 0.4, nitroArterialOnset: 0.2,
   /** IABP placeholder (until D5): resistance × (1 − k) from afterload reduction, plus SUPPORT.iabpCoronaryAug on the coronary pressure. [assumed] */
-  iabpAfterload: 0.06,
+  iabpAfterload: 0.12,
   /** Impella placeholder (until D3): flow SUPPORT.impellaFlow L/min, ramped with this time constant (s), floor margin and width above the LV's V0 (ml). [assumed] */
   impellaTau: 2, deviceFlowTau: 1.5, impellaMargin: 6, impellaWidth: 2,
   /**

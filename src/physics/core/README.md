@@ -44,7 +44,7 @@ Units: mmHg, ml, ml/s, s.
 | Inertial edge, valve with inertance (A3) | `Element` | flow | flow Q |
 | 3-element Windkessel (A5) | characteristic impedance `Zc` is a parameter of the outflow valve (`OneWayValve`, `InertialValve`): the valve and Zc solve ΔP = K·Q·|Q| + Zc·Q in closed form (or, inertial, Zc·Q joins the state equation); phase 2b adds Zc·Q to the artery node, which then reads the proximal pressure Pc + Zc·Q, so no stiff root node is needed | series, flow | none or Q |
 | Pericardium (B1) | `Element` | field: `addExternal` on the "pericardial" group from total heart volume + effusion | effusion volume |
-| Septum (B2) | `Element` | field: `shiftVolume` LV ↔ RV from the septal balance | none (quasi-static solve) or septal volume |
+| Septum (B2) | `Element` (`septum.ts`, `fromModel(m, { septum: true })`) | field: `shiftVolume` LV −V_spt, RV +V_spt; V_spt solved each evaluation from P_LV(V_LV−V_spt) − P_RV(V_RV+V_spt) = E_s(t)·V_spt (safeguarded Newton, bisection fallback, no allocation; never NaN). The ventricles keep a free-wall fraction of the lumped laws (`config/septum.ts`) | none (quasi-static solve); `stats` count solves and iterations |
 | Intrathoracic pressure (B3) | `Element` | field: `addExternal` on "thoracic" (and "pericardial") nodes | none |
 | Rotary pump: Impella, ECMO, Impella RP (D1, D2, D6, D7) | `Element` | flow; taps for the console | pump flow Q |
 | IABP (D5) | `Element` | field: `shiftVolume` on the descending aorta; `onEvent` for triggering | balloon volume |
@@ -63,3 +63,13 @@ If a later task needs something this table cannot express, change `types.ts` in 
 - **Unstressed volume.** `Compliance` has `Vu`; stressed volume is max(V − Vu, 0). `fillingOf` gives total, stressed volume and mean systemic filling pressure (stressed / total compliance). Venoconstriction (C1) is `Tunable.set({ Vu })` on SVC, IVC or SPL. Veins built with Vu > 0 collapse smoothly toward −1 mmHg below Vu.
 - **Splanchnic reservoir** (node SPL): the lower-body bed drains DAO → BEDL → SPL → SPLV → IVC. The upper body has no split (small, little controllable volume).
 - Convergence: with unstressed volume `periodic()` judges convergence on the IVC and SPL pressures instead of the IVC volume.
+
+## Impella (D2)
+
+`devices/impella.ts`: `Impella` is a `RotaryPump` (D1) with per-model numbers from `IMPELLA` in `config/devices.ts` (all `[assumed]`, none manufacturer data).
+
+- **Wiring.** `fromModel(m, { impella: { model: "2.5" | "CP" | "5.5", level: 0-9, position: "correct" | "aortic" | "deep" } })` adds the element `impella` (LV to AO; AO to AO for `aortic`). In `LiveHeart` pass `extra: [(m) => Impella.forModel(m, cfg)]` (an entry of `extra` may be a function of the built `Model`, since the suction law needs the LV's own V0). `set({ level })` changes the P-level live; `position` is fixed at construction.
+- **Suction and floor are relative to V0** of the inflow chamber (R-D1): collapse volume Vc = V0 + 30 ml, hard floor V0 + 2 ml. The floor is a limiter on the pump state, not an extra damper: over `Q_lim = (V - floor)/floorTau` the flow equation is replaced by `dQ/dt = -(Q - Q_lim)/limitTau` (blended in over a small band so the rate stays continuous). The volume terms are LV laws and are off for `aortic`. The limiter stops the pump drawing the LV below the floor; the heart's own ejection can still take the chamber toward V0 with or without a device.
+- **Motor current** `I = i0 + i2·ω² + kI·max(H·Q, 0)/ω` (mA; H the rotor head at the present Q, mmHg; Q ml/s; ω krpm): speed-dependent loss plus hydraulic torque. Its waveform follows the LV-AO pressure difference (correlation with the placement signal 1.00 in tests).
+- **Placement signal** is `P_out - P_in` (aortic minus LV pressure) over the beat: about 0 in systole and the full aortic-LV difference in diastole when correctly placed; flat at 0 in the aorta.
+- **Console.** Element taps (instantaneous): `flow`, `current`, `placement`, `level`, `suction`/`suctionAlarm`, `suctionLevel`. `ImpellaConsole(engine)` turns them into per-beat numbers (`last`: flow and current statistics, `pulsatility` of the current, placement mean/min/max/amplitude, `suctionFraction`, `suctionLevel`, `suctionAlarm` = highest suction level of the beat at or above 0.2).
