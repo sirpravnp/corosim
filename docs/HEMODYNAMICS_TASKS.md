@@ -84,8 +84,10 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | A5b | done (inertance on by default; MV gradients near clinical, E/A 1.70; flow-based convective gradient for inertial valves, as Doppler reads) |
 | B2 | done (septum: constriction gap 2.65 mmHg at stiffness 6; normal and neonate within 3 % on vs off; cache key includes septum; off by default until R-B) |
 | B3 | done (normal pulsus 5.3, tamponade 10.7 mmHg; ventilated PPV 18 % hypovolemic vs 9 % volume-loaded; PEEP effects; Kussmaul only "fails to fall", true rise is a self-flagging gap; septum adds little to tamponade pulsus — for R-B) |
-| A7 | in rework (rebase on A5b/B2/D2; placeholder Impella floor; restore CVP ≥ 10 as a known gap) |
-| D5 | in progress |
+| A7 | done (core engine behind `engine: "core"`; legacy default and fixtures unchanged; STEMI PCWP 19; RV infarct CVP 7.4, 11.5 after 1 L; baroreflex stable 10 min) |
+| R-A2 | passed: legacy stays the default until A7b; then flip to core together with P16 and re-check this table |
+| A7b | not started |
+| D5 | done (1:2 augmentation +22 mmHg, assisted EDP lower, coronary integral +32 %; shock PVA down, CO up; three textbook criteria are self-flagging gaps: unloading ≥ 5 % (4.2 %), early-deflation dip-and-rise, late deflation not unloading) |
 | D2 | done (shock + CP P8: MAP 63 → 75, LVEDP 18.5 → 11.9, PP 8; PVA down; current tracks placement signal r 1.00; suction with LV floor; aortic malposition flat placement, no unloading). Note: merge commit faf21d9 was recorded with conflict markers in `fromModel.ts` and `scripts/bench-engine.ts`; 80c9897 removed them (both sides kept). Pushed history left as is. |
 | Physics follow-ups | (1) aortic peak instantaneous gradient 15.7 mmHg vs clinical 4–8 (peak aortic flow ~667 ml/s is high; Gorlin vs 4v²) — with E5; (2) RA waveform amplitudes: severe TR v wave ~9 mmHg vs clinical 15–20, and cannon a only ~1.4× the ordinary a wave (self-flagging test in `tests/liveHeart.test.ts`); (3) true Kussmaul rise (B3, self-flagging); (4) `volumeOffsetFor`'s cache key ignores the pericardium, so the first caller wins (found in B3) |
 | P2c | done (bridge trace time strictly increasing; reload clears the bridge; valve areas only with a real gradient; gross-flow Gorlin test) |
@@ -152,6 +154,19 @@ default.
 
 **Gate R-A2 (reviewer):** compare legacy and core side by side on every scenario. Decide the flag default and list the
 scenario recalibrations as tasks.
+
+**A7b — core recalibration before the default flips (from R-A2).** One task, implementer, reviewer gate after:
+1. Venous compliance and stressed-volume calibration so the RV infarct with heart block reaches CVP ≥ 10 before fluids
+   (self-flagging test in `tests/simulationCore.test.ts`), and hemorrhage is compensated without A7's saturating
+   volume-deficit patch (class II: MAP held, HR up; class III: MAP falls).
+2. `hemorrhage-fluids-norepi` over-recovers on core (SV 83, HR 66 against legacy 53, 83): recalibrate the retained fraction of
+   fluids (C2 will replace it) and norepinephrine's venous gain.
+3. Fold the baroreceptor input offset (+6.8 mmHg) into a proper autonomic calibration for the core.
+4. `circ.hr` in AF: use the AF ventricular rate.
+5. Expose the warm-up steady state from `LiveHeart`, so `circ` never shows legacy values in the first second (needed by P16).
+6. Review LVEDP ≫ PCWP in the anterior STEMI (27 against 19): the bridge's stiffness gain may be too high for the live heart.
+Acceptance: the compare-engines table (`scripts/compare-engines.ts`) within clinical ranges on all five scenarios; every
+self-flagging gap above either met or explained.
 
 ## Phase C: fluids
 
