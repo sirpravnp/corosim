@@ -87,6 +87,8 @@ export interface Element {
   /** States this element owns; the engine binds them to consecutive indices starting at `offset`. */
   readonly states?: readonly StateDecl[];
   bind?(offset: number): void;
+  /** Called once when the engine is built, with the engine, for elements that watch it (a device console, a timing detector). */
+  attach?(engine: Engine): void;
   /** Phase 1: write external pressures and volume shifts from the volumes. */
   field?(ctx: Ctx, out: Rates): void;
   /**

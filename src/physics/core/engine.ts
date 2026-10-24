@@ -76,6 +76,7 @@ class CoreEngine implements Engine {
     this.Vview = this.y.subarray(0, NN);
     this.view = new SampleView(this);
     this.refresh();
+    for (const el of this.all) el.attach?.(this);
   }
 
   node(name: string): NodeId {
