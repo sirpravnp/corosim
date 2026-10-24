@@ -6,6 +6,7 @@ import { fromModel, type FromModelOptions } from "../src/physics/core/fromModel"
 import { BeatRecorder } from "../src/physics/core/recorder";
 import { Impella, ImpellaConsole, levelSpeed, motorCurrent } from "../src/physics/core/devices/impella";
 import { cannulaInertance, IMPELLA, IMPELLA_SUCTION } from "../src/config/devices";
+import { loopMetrics as e1LoopMetrics } from "../src/physics/loopMetrics";
 import { LiveHeart } from "../src/physics/core/live";
 import { Compliance } from "../src/physics/core/chamber";
 import { pumpHead } from "../src/physics/core/devices/pump";
@@ -20,15 +21,10 @@ const LV = NODES.indexOf("LV");
 /** Cardiogenic-shock baseline: LV Ees cut and the LV stiffened, as the ischemia mapping of src/config/bridge.ts does. */
 const SHOCK: StructuralSpec = { lvEes: 0.35, lvStiffness: 1.6 };
 
-/**
- * PVA from an LV loop (one beat of P, V samples, mmHg and ml): stroke work = |∮P dV| (the loop area, trapezoids, mmHg·ml),
- * potential energy PE = ½·P_es·(V_es − V0) with the end-systolic point at the maximum of P/(V − V0), PVA = SW + PE.
- */
+/** PVA from an LV loop (E1: src/physics/loopMetrics.ts): stroke work, potential energy at the maximum-P/(V - V0) point, PVA = SW + PE. */
 function loopMetrics(P: number[], V: number[], v0: number) {
-  let sw = 0; for (let i = 1; i < P.length; i++) sw += 0.5 * (P[i] + P[i - 1]) * (V[i] - V[i - 1]);
-  let k = 0, best = -Infinity; for (let i = 0; i < P.length; i++) { const e = P[i] / Math.max(V[i] - v0, 1e-6); if (e > best) { best = e; k = i; } }
-  const pe = 0.5 * P[k] * (V[k] - v0);
-  return { sw: Math.abs(sw), pe, pva: Math.abs(sw) + pe, ves: V[k], pes: P[k] };
+  const m = e1LoopMetrics(P, V, { v0, hr: HR });
+  return { sw: m.strokeWork, pe: m.pe, pva: m.pva, ves: m.ves, pes: m.pes };
 }
 
 interface RunOpts { dt?: number; hr?: number }
