@@ -31,6 +31,7 @@ import { jvpPanel } from "./panels/jvp";
 import { BridgeSource } from "./sim/bridgeSource";
 import { createWorkerSolver } from "./sim/bridgeWorkerSolver";
 import { decodePatient } from "./sim/llm";
+import { SimPropsView } from "./sim/propsView";
 import type { PatientSpec } from "./sim/patient";
 import type { BridgeSolver } from "./sim/bridgeSolver";
 import { o2Frame, o2Legend, myocardiumO2Color, vesselO2Color, type O2Frame } from "./sim/o2View";
@@ -49,6 +50,7 @@ const S = {
   hide: false, // game: the lesion is kept out of every display (lumen, vessel shading, marker, perfusion table)
   hideIsch: false, // game: the myocardium does not darken either
   rhythm: "sinus" as Rhythm, bbb: "none" as Bbb, // what the patient brought with them
+  props: false, // structural valves, defects and jets inside the heart (not in the game)
   posterior: false, // show V7–V9 as a fifth column
 };
 // The physics lives in the shared headless Simulation (the MCP server and the tests step the same object);
@@ -84,6 +86,8 @@ const rim = new THREE.DirectionalLight(0xffffff, 0.8); rim.position.set(-60, 90,
 scene.add(new THREE.AmbientLight(0xffffff, 0.15));
 
 const heartGroup = new THREE.Group(); scene.add(heartGroup);
+const propsView = new SimPropsView(heartGroup); // built when the toggle is first on, for the patient of a shared link
+let heartBeforeProps: HeartView | null = null; // the heart view the toggle replaced with see-through, put back when it is turned off
 
 // ---------------------------------------------------------------- helpers
 const hash = (s: string) => { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return ((h >>> 0) % 10000) / 10000; };
@@ -391,6 +395,7 @@ function controlsUi() {
   $("occ").textContent = S.occ ? "Reperfuse" : "Occlude";
   $("occ").classList.toggle("on", S.occ); $("exert").classList.toggle("on", S.exert);
   $("flowbtn").classList.toggle("on", S.flow);
+  $("propsbtn").classList.toggle("on", S.props);
   for (const m of ["real", "anat", "pressure", "velocity", "wss", "o2"]) $("m_" + m).classList.toggle("on", S.mode === m);
   for (const s of [1, 3, 6]) $("s" + s).classList.toggle("on", S.speed === s);
   // the folded sections carry their state in the header
@@ -399,7 +404,7 @@ function controlsUi() {
   $("anatomysum").textContent = `${DOM[V.dominance]} · ${LMP[V.lm]} · ${LADC[V.ladCourse]} · SA node from ${V.saNodeFrom}`;
   const MODE = { real: "Anatomic", anat: "Territory", pressure: "Pressure", velocity: "Velocity", wss: "Wall shear", o2: "O₂ sat" };
   $("volumesum").textContent = volumeSummary();
-  $("displaysum").textContent = `${MODE[S.mode]} · ${S.heart === "solid" ? "solid" : S.heart === "ghost" ? "see-through" : "no"} heart · ${S.exag}×${S.flow ? " · flow" : ""}${S.posterior ? " · V7–V9" : ""}`;
+  $("displaysum").textContent = `${MODE[S.mode]} · ${S.heart === "solid" ? "solid" : S.heart === "ghost" ? "see-through" : "no"} heart · ${S.exag}×${S.flow ? " · flow" : ""}${S.props ? " · valves and defects" : ""}${S.posterior ? " · V7–V9" : ""}`;
   for (const r of ["sinus", "af"]) $("r_" + r).classList.toggle("on", S.rhythm === r);
   for (const b of ["none", "rbbb", "lbbb"]) $("c_" + b).classList.toggle("on", S.bbb === b);
   $("postbtn").classList.toggle("on", S.posterior); $("stmap").classList.toggle("wide", S.posterior); ecg.posterior = S.posterior;
@@ -629,6 +634,15 @@ for (const b of ["none", "rbbb", "lbbb"] as Bbb[]) on("c_" + b, () => { S.bbb = 
 on("postbtn", () => { S.posterior = !S.posterior; controlsUi(); liveUi(); });
 (["real", "anat", "pressure", "velocity", "wss", "o2"] as Mode[]).forEach((m) => on("m_" + m, () => { S.mode = m; shapeVessels(); controlsUi(); }));
 (["solid", "ghost", "none"] as HeartView[]).forEach((h) => on("h_" + h, () => { S.heart = h; applyHeartView(); controlsUi(); }));
+/** "Valves and defects": the structural props inside the heart. On, a solid heart becomes see-through so they show; off, it comes back. */
+function setProps(on: boolean) {
+  if (on === S.props) return;
+  S.props = on;
+  if (on) { heartBeforeProps = null; if (S.heart === "solid") { heartBeforeProps = "solid"; S.heart = "ghost"; } }
+  else if (heartBeforeProps && S.heart === "ghost") { S.heart = heartBeforeProps; heartBeforeProps = null; }
+  propsView.show(on); applyHeartView(); controlsUi();
+}
+on("propsbtn", () => setProps(!S.props));
 on("flowbtn", () => { S.flow = !S.flow; points.visible = S.flow; shapeVessels(); controlsUi(); });
 for (const k of Object.keys(VIEWS)) on(k, () => setView(k));
 on("spin", () => { controls.autoRotate = !controls.autoRotate; controls.autoRotateSpeed = 1.2; $("spin").classList.toggle("on", controls.autoRotate); });
@@ -755,7 +769,7 @@ const G = {
 };
 let o2Clock = 0, o2Key = "";
 const LESION_KEYS = ["lesionSeg", "pos", "ds", "occ", "exert", "mode", "flow", "speed", "rhythm", "bbb", "posterior"] as const;
-const LOCKED = ["m_pressure", "m_velocity", "m_wss", "m_o2", "flowbtn", "s1", "s3", "s6", "postbtn"]; // displays that would show the lesion, the clock, and the leads
+const LOCKED = ["m_pressure", "m_velocity", "m_wss", "m_o2", "flowbtn", "propsbtn", "s1", "s3", "s6", "postbtn"]; // displays that would show the lesion, the clock, and the leads
 /** What the player did with a day's case, kept in this browser so the day is played once and can be looked at again. */
 interface Played { total: number; distance: number; elapsed: number; call: Point | null; rv?: boolean | null; archive?: boolean; cls: string; result: string; why: string; treat?: TreatScore; treatWhy?: string }
 const STORE = "corosim.daily";
@@ -783,7 +797,7 @@ function enterGame() {
   G.saved = { V: { ...V }, S: Object.fromEntries(LESION_KEYS.map((k) => [k, S[k]])) };
   // pressure and velocity colouring and the flow particles would all show where the blood stops
   if (S.mode !== "real" && S.mode !== "anat") S.mode = "real";
-  S.flow = false; points.visible = false;
+  S.flow = false; points.visible = false; setProps(false); // the game hides the lesion; the defects stay out too
   S.speed = POINTS.speed; // one clock for every player
   S.posterior = true; // the back of the heart is in play
   for (const id of LOCKED) ($(id) as HTMLButtonElement).disabled = true;
@@ -1080,7 +1094,7 @@ function openShared() {
   if (!shared) return;
   try {
     const spec = decodePatient(shared[1]);
-    bridgeOpts.patient = spec; bridge?.refresh();
+    bridgeOpts.patient = spec; bridge?.refresh(); propsView.setPatient(spec);
     const w = loadScenario(spec); if (w.length) console.warn("CoroSim: the shared patient was adjusted:", w.join("; ")); }
   catch (e) { console.warn("CoroSim: could not open the shared patient", e); }
 }
