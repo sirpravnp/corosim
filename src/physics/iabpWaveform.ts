@@ -91,6 +91,21 @@ export function iabpBeats(tr: Trace, events: readonly number[], assisted: readon
   return out;
 }
 
+/**
+ * Where an assisted beat's pressure sits above an unassisted one: both traces are compared at the same time since their R wave
+ * (`tA` and `tU` are the two R-wave times, `len` the span, s). `start` and `end` are the first and last times (since the R wave) at which
+ * the assisted pressure exceeds the unassisted one by more than `thresh` mmHg (NaN if never); `minGap` is the lowest difference after
+ * `end` (the end-diastolic undershoot of a deflated balloon, negative) and `endGap` the difference at the end of the span.
+ * Valid for a steady rhythm, where the two beats differ only by the balloon.
+ */
+export function augmentationSpan(tr: Trace, tA: number, tU: number, len: number, thresh = 5, step = 0.002) {
+  let start = NaN, end = NaN, minGap = Infinity, endGap = NaN;
+  const gap: number[] = [];
+  for (let x = 0; x <= len + 1e-9; x += step) { const g = lerp(tr.t, tr.p, tA + x) - lerp(tr.t, tr.p, tU + x); gap.push(g); if (g > thresh) { if (Number.isNaN(start)) start = x; end = x; } endGap = g; }
+  if (!Number.isNaN(end)) for (let i = Math.round(end / step); i < gap.length; i++) minGap = Math.min(minGap, gap[i]);
+  return { start, end, minGap: Number.isFinite(minGap) ? minGap : NaN, endGap };
+}
+
 export interface IabpSummary {
   /** Mean peak diastolic pressure of assisted beats (augmented) and of unassisted ones, mmHg; their systolic pressures. */
   peakDiastolicAssisted: number; peakDiastolicUnassisted: number;

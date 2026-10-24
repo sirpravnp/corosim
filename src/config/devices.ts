@@ -82,7 +82,7 @@ export const IMPELLA_CONSOLE = { i0: 150, i2: 0.12, eta: 0.2, kt: 0.0035, alarmL
 // ---- Intra-aortic balloon pump (task D5) ----------------------------------------------------------------------------------------
 /**
  * IABP constants (core/devices/iabp.ts). All [assumed] teaching values, none from a console manual.
- * Gas shuttle: the balloon volume follows its target with first-order lags (inflate 45 ms, deflate 60 ms; helium through a long
+ * Gas shuttle: the balloon volume follows its target with first-order lags (inflate 40 ms, deflate 50 ms; helium through a long
  * catheter, so deflation is a little slower). The target is a smoothed on/off window (`edgeS`, half-width of the smoothstep) so
  * the RK4 steps see a continuous rate. `deflateLeadS`: with correct timing deflation starts this long before the predicted next R
  * wave, so the balloon is mostly empty when the ventricle starts contracting. Systolic-duration fallback (before the first AV
@@ -90,4 +90,4 @@ export const IMPELLA_CONSOLE = { i0: 150, i2: 0.12, eta: 0.2, kt: 0.0035, alarmL
  * assumed when no interval has been seen yet. `smooth`: weight of the newest measured closure delay in the running estimate.
  * `openFlow` / `closedFlow` (ml/s): AV flow above which the valve counts as open, and below which (after it opened) as closed.
  */
-export const IABP = { volumeMl: 40, tauInflateS: 0.045, tauDeflateS: 0.06, edgeS: 0.012, deflateLeadS: 0.09, closeBase: 0.12, closePerRr: 0.2, defaultRrS: 0.83, smooth: 0.5, openFlow: 5, closedFlow: 1 };
+export const IABP = { volumeMl: 40, tauInflateS: 0.04, tauDeflateS: 0.05, edgeS: 0.012, deflateLeadS: 0.13, closeBase: 0.12, closePerRr: 0.2, defaultRrS: 0.83, smooth: 0.5, openFlow: 5, closedFlow: 1 };
