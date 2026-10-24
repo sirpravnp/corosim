@@ -285,13 +285,18 @@ function shapeVessels() {
 }
 
 function legend() {
+  $("legend2").hidden = S.mode !== "o2";
   const bar = $("bar");
   const set = (g: string, a: string, m: string, z: string) => { bar.style.background = g; $("l0").textContent = a; $("lmid").textContent = m; $("l1").textContent = z; };
   if (S.mode === "real") set("linear-gradient(90deg,#8e3a33 0 50%,#4e3a5a 50%)", "Myocardium", "", "Ischemic");
   else if (S.mode === "anat") set("linear-gradient(90deg,#1f5fa8 0 33%,#2e7d4f 33% 66%,#c77c00 66%)", "LAD", "Circumflex", "RCA");
   else if (S.mode === "pressure") set(`linear-gradient(90deg,${VIRIDIS.join(",")})`, "20 mmHg", "55", "90 mmHg");
   else if (S.mode === "velocity") set(`linear-gradient(90deg,${MAGMA.join(",")})`, "0.01 m/s", "log", "4 m/s");
-  else if (S.mode === "o2") { const l = o2Legend(o2Now()); set(l.gradient, l.lo, l.mid, l.hi); }
+  else if (S.mode === "o2") {
+    const l = o2Legend(o2Now());
+    set(l.blood.gradient, l.blood.lo, l.blood.mid, l.blood.hi);
+    $("bar2").style.background = l.tissue.gradient; $("m0").textContent = l.tissue.lo; $("mmid").textContent = l.tissue.mid; $("m1").textContent = l.tissue.hi; $("lnote").textContent = l.note;
+  }
   else set(`linear-gradient(90deg,${MAGMA.join(",")})`, "0.1 Pa", "log", "1000 Pa");
 }
 

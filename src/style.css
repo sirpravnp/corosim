@@ -76,6 +76,10 @@ figcaption b { color: var(--ink); font-weight: 600; letter-spacing: 0; }
 #tag { position: absolute; left: 10px; top: 8px; font: 12px var(--font-data); color: var(--muted); pointer-events: none; }
 #legend { position: absolute; left: 10px; bottom: 10px; width: 220px; font: 11px/1.3 var(--font-data); color: var(--ink); pointer-events: none; }
 #bar { height: 8px; border-radius: 8px; margin-bottom: 3px; }
+#legend2 { margin-top: 6px; }
+#legend2[hidden] { display: none; }
+#bar2 { height: 8px; border-radius: 8px; margin-bottom: 3px; }
+#lnote { margin-top: 2px; color: var(--muted); }
 .lg { display: flex; justify-content: space-between; gap: 6px; }
 #pick { display: none; position: absolute; right: 10px; top: 10px; max-width: 250px; padding: 8px 10px; font: 12px/1.55 var(--font-data); color: var(--ink); background: var(--panel); border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--sh-line)); }
 #ecg { display: block; width: 100%; height: 300px; border: 1px solid #e3b3ad; }
