@@ -394,7 +394,7 @@ export function volumeOffsetFor(spec: StructuralSpec, core?: FromModelOptions, b
   const kind = spec.patient ?? "adult", key = JSON.stringify([PATIENTS[kind], resolveCore(core), { zc: true, unstressed: true, splanchnic: true, atrialEesScale: ACTIVATION.atrialEesScale, ...build }, VESSELS, ACTIVATION, SOLVER, ISTH_R]), hit = offsets.get(key);
   if (hit !== undefined) return hit;
   const target = PATIENTS[kind].map;
-  const err = (off: number) => simulate(buildModel({ patient: kind }, off, build), { waveform: false, core }).p.AO.mean - target;
+  const err = (off: number) => simulate(buildModel({ patient: kind }, off, build), { waveform: false, core: core?.thorax ? { ...core, thorax: undefined } : core }).p.AO.mean - target; // the blood volume is calibrated at the model's zero intrathoracic pressure: no breathing
   let x0 = 0, f0 = err(x0), x1 = 0.1 * target * PATIENTS[kind].weightKg, f1 = err(x1);
   for (let i = 0; i < 8 && Math.abs(f1) > 0.1; i++) {
     const x2 = x1 - (f1 * (x1 - x0)) / (f1 - f0 || 1e-9);
