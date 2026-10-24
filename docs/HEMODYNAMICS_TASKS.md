@@ -89,6 +89,7 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | A7b | in progress |
 | D6 | done (flow within 2 % of target; shock MAP 63 → 96 at 4 L/min; AV opens less; drainage suction; differential hypoxemia 0.78 vs 0.94). LV distension weak (+0.6–0.8 mmHg): self-flagging gaps, task D6b, prerequisite for D7 |
 | E1 | done (SW, PVA, MVO₂, Ea/Ees, dP/dt, CPO; normal CPO 1.03 W, MVO₂ 8.8 ml/min/100 g, Ea/Ees 0.486 — strict 0.5 bound is a self-flagging gap). Follow-ups: verify Suga's `a`; move `src/panels/loopMath.ts` helpers into `src/physics` (physics must not import panels) |
+| P11 | done (structural props in the Simulator's heart behind a display toggle; built in a worker; follow-ups: P12 must call `propsView.setPatient` for non-link patient changes; vessels clutter the see-through view) |
 | P9 | done (O₂ sat 3D mode: vessels on the blood SaO₂ scale, myocardium on tissue O₂ relative to normal; two legend rows) |
 | D6b | not started (LV distension on VA-ECMO: bronchial/Thebesian return to the LV, and an LV that cannot open its valve against ECMO afterload; the two `it.fails` in `tests/ecmo.test.ts` must pass) |
 | D5 | done (1:2 augmentation +22 mmHg, assisted EDP lower, coronary integral +32 %; shock PVA down, CO up; three textbook criteria are self-flagging gaps: unloading ≥ 5 % (4.2 %), early-deflation dip-and-rise, late deflation not unloading) |
