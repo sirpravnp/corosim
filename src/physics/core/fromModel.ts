@@ -9,6 +9,7 @@ import { Septum, type SeptumParams } from "./septum";
 import { Thorax, type ThoraxParams } from "./thorax";
 import { InertialValve, inertance, OneWayValve, Orifice, Resistor } from "./valves";
 import { Impella, type ImpellaConfig } from "./devices/impella";
+import { Iabp, type IabpParams } from "./devices/iabp";
 import type { Element, Engine, ExternalGroup, NodeDef } from "./types";
 
 /**
@@ -35,6 +36,8 @@ export interface FromModelOptions {
   septum?: boolean | Partial<SeptumParams>;
   /** Add an Impella (core/devices/impella.ts; element name "impella"): LV to AO (or AO to AO for position "aortic"). Absent: no device, no change. */
   impella?: Omit<ImpellaConfig, "v0">;
+  /** Add an intra-aortic balloon pump (core/devices/iabp.ts; element name "iabp") in the descending aorta: `true` for 1:1, correct timing, 40 ml, or a partial parameter set. Absent/false: no balloon, no change. */
+  iabp?: boolean | Partial<IabpParams>;
   /** Add the thorax (core/thorax.ts): pleural pressure on the "thoracic" and "pericardial" nodes, abdominal pressure on the "abdominal" ones. Absent: no thorax, no change. Not part of the volume calibration (`resolveCore`): the blood volume is calibrated at end-expiration. */
   thorax?: Partial<ThoraxParams>;
 }
@@ -72,6 +75,7 @@ export function fromModel(m: Model, opts: FromModelOptions = {}): { nodes: NodeD
     elements.push(new Septum(nodes[lv].model as ElastanceChamber, nodes[rv].model as ElastanceChamber, lv, rv, opts.septum === true ? {} : opts.septum));
   }
   if (opts.impella) elements.push(Impella.forModel(m, opts.impella));
+  if (opts.iabp) elements.push(Iabp.forModel(m, opts.iabp === true ? {} : opts.iabp));
   if (opts.thorax) {
     const ids = (gs: ExternalGroup[]) => nodes.flatMap((n, i) => (gs.includes(n.group) ? [i] : []));
     const sac = elements.find((e): e is Pericardium => e instanceof Pericardium) ?? null;
