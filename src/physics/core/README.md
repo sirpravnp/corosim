@@ -74,6 +74,15 @@ If a later task needs something this table cannot express, change `types.ts` in 
 - **Placement signal** is `P_out - P_in` (aortic minus LV pressure) over the beat: about 0 in systole and the full aortic-LV difference in diastole when correctly placed; flat at 0 in the aorta.
 - **Console.** Element taps (instantaneous): `flow`, `current`, `placement`, `level`, `suction`/`suctionAlarm`, `suctionLevel`. `ImpellaConsole(engine)` turns them into per-beat numbers (`last`: flow and current statistics, `pulsatility` of the current, placement mean/min/max/amplitude, `suctionFraction`, `suctionLevel`, `suctionAlarm` = highest suction level of the beat at or above 0.2).
 
+## VA-ECMO (D6)
+
+`devices/ecmo.ts`: `Ecmo` (element `ecmo`) is a `RotaryPump` from RA (or IVC, `drain: "IVC"`) to DAO with the oxygenator folded into the circuit resistance. Constants `ECMO_PUMP`, `ECMO_SUCTION`, `ECMO_OXYGENATOR` in `config/devices.ts` [assumed].
+
+- **Wiring.** `fromModel(m, { ecmo: { flowLpm, sweepLpm, fio2, drain } })`, or in `LiveHeart` `extra: [(m) => Ecmo.forModel(m, cfg)]`; `set({ flowLpm, sweepLpm, fio2 })` live.
+- **States.** Flow Q, rotor speed ω and the filtered drainage volume Vf. ω relaxes (0.5 s) to the closed-form inverse of the HQ curve at the present pressures and suction resistance, clamped to 0-5 krpm. Suction and the soft floor act on Vf (the RA empties to V0 at each atrial systole, so the instantaneous volume cannot be used), relative to the node's V0.
+- **Oxygen.** `solveOxygen(m, h, { from, to, flow, oxygenate })` (exported from `structural.ts`) takes the ECMO stream as an extra source into DAO; `Ecmo.returnSat(sIn)` is the oxygenator (`oxygenatorSat`). Without the argument the solve is unchanged.
+- **Taps.** `flow`, `speed`, `rpm`, `targetLpm`, `suctionAlarm`, `suctionLevel`, `membraneDp`.
+
 ## IABP (D5)
 
 `devices/iabp.ts`: `Iabp` (element `iabp`), `fromModel(m, { iabp: true | { ratio, inflateMs, deflateMs, volumeMl } })`, or in `LiveHeart` `extra: [(m) => Iabp.forModel(m, cfg)]`. Constants `IABP` in `config/devices.ts` [assumed].
