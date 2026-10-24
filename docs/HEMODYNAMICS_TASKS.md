@@ -86,7 +86,11 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | B3 | done (normal pulsus 5.3, tamponade 10.7 mmHg; ventilated PPV 18 % hypovolemic vs 9 % volume-loaded; PEEP effects; Kussmaul only "fails to fall", true rise is a self-flagging gap; septum adds little to tamponade pulsus — for R-B) |
 | A7 | done (core engine behind `engine: "core"`; legacy default and fixtures unchanged; STEMI PCWP 19; RV infarct CVP 7.4, 11.5 after 1 L; baroreflex stable 10 min) |
 | R-A2 | passed: legacy stays the default until A7b; then flip to core together with P16 and re-check this table |
-| A7b | not started |
+| A7b | in progress |
+| D6 | done (flow within 2 % of target; shock MAP 63 → 96 at 4 L/min; AV opens less; drainage suction; differential hypoxemia 0.78 vs 0.94). LV distension weak (+0.6–0.8 mmHg): self-flagging gaps, task D6b, prerequisite for D7 |
+| E1 | done (SW, PVA, MVO₂, Ea/Ees, dP/dt, CPO; normal CPO 1.03 W, MVO₂ 8.8 ml/min/100 g, Ea/Ees 0.486 — strict 0.5 bound is a self-flagging gap). Follow-ups: verify Suga's `a`; move `src/panels/loopMath.ts` helpers into `src/physics` (physics must not import panels) |
+| P9 | done (O₂ sat 3D mode: vessels on the blood SaO₂ scale, myocardium on tissue O₂ relative to normal; two legend rows) |
+| D6b | not started (LV distension on VA-ECMO: bronchial/Thebesian return to the LV, and an LV that cannot open its valve against ECMO afterload; the two `it.fails` in `tests/ecmo.test.ts` must pass) |
 | D5 | done (1:2 augmentation +22 mmHg, assisted EDP lower, coronary integral +32 %; shock PVA down, CO up; three textbook criteria are self-flagging gaps: unloading ≥ 5 % (4.2 %), early-deflation dip-and-rise, late deflation not unloading) |
 | D2 | done (shock + CP P8: MAP 63 → 75, LVEDP 18.5 → 11.9, PP 8; PVA down; current tracks placement signal r 1.00; suction with LV floor; aortic malposition flat placement, no unloading). Note: merge commit faf21d9 was recorded with conflict markers in `fromModel.ts` and `scripts/bench-engine.ts`; 80c9897 removed them (both sides kept). Pushed history left as is. |
 | Physics follow-ups | (1) aortic peak instantaneous gradient 15.7 mmHg vs clinical 4–8 (peak aortic flow ~667 ml/s is high; Gorlin vs 4v²) — with E5; (2) RA waveform amplitudes: severe TR v wave ~9 mmHg vs clinical 15–20, and cannon a only ~1.4× the ordinary a wave (self-flagging test in `tests/liveHeart.test.ts`); (3) true Kussmaul rise (B3, self-flagging); (4) `volumeOffsetFor`'s cache key ignores the pericardium, so the first caller wins (found in B3) |
