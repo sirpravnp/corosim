@@ -6,6 +6,7 @@ import { ACTIVATION, INERTANCE, VESSELS } from "../../config/structural";
 import { SEPTUM } from "../../config/septum";
 import { Pericardium, type PericardiumParams } from "./pericardium";
 import { Septum, type SeptumParams } from "./septum";
+import { Thorax, type ThoraxParams } from "./thorax";
 import { InertialValve, inertance, OneWayValve, Orifice, Resistor } from "./valves";
 import { Impella, type ImpellaConfig } from "./devices/impella";
 import type { Element, Engine, ExternalGroup, NodeDef } from "./types";
@@ -34,6 +35,8 @@ export interface FromModelOptions {
   septum?: boolean | Partial<SeptumParams>;
   /** Add an Impella (core/devices/impella.ts; element name "impella"): LV to AO (or AO to AO for position "aortic"). Absent: no device, no change. */
   impella?: Omit<ImpellaConfig, "v0">;
+  /** Add the thorax (core/thorax.ts): pleural pressure on the "thoracic" and "pericardial" nodes, abdominal pressure on the "abdominal" ones. Absent: no thorax, no change. Not part of the volume calibration (`resolveCore`): the blood volume is calibrated at end-expiration. */
+  thorax?: Partial<ThoraxParams>;
 }
 
 /**
@@ -69,6 +72,11 @@ export function fromModel(m: Model, opts: FromModelOptions = {}): { nodes: NodeD
     elements.push(new Septum(nodes[lv].model as ElastanceChamber, nodes[rv].model as ElastanceChamber, lv, rv, opts.septum === true ? {} : opts.septum));
   }
   if (opts.impella) elements.push(Impella.forModel(m, opts.impella));
+  if (opts.thorax) {
+    const ids = (gs: ExternalGroup[]) => nodes.flatMap((n, i) => (gs.includes(n.group) ? [i] : []));
+    const sac = elements.find((e): e is Pericardium => e instanceof Pericardium) ?? null;
+    elements.push(new Thorax(ids(["thoracic"]).filter((i) => nodes[i].name !== "SVC"), ids(["abdominal"]), opts.thorax, [...ids(["pericardial"]), NODES.indexOf("SVC")], sac));
+  }
   return { nodes, elements, options: { defaultPr: opts.pr ?? defaultPr, converge: m.vu.some((v) => v > 0) ? CONVERGE_VU : CONVERGE } };
 }
 
