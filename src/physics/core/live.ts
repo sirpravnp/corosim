@@ -8,6 +8,7 @@ import { createEngine } from "./engine";
 import { defaultPr, fromModel, type FromModelOptions } from "./fromModel";
 import { BeatRecorder, type NodeStat, type ValveStat } from "./recorder";
 import { Resistor } from "./valves";
+import type { Thorax } from "./thorax";
 import { Compliance } from "./vessels";
 import type { Element, Engine, HeartEvent } from "./types";
 
@@ -24,7 +25,7 @@ import type { Element, Engine, HeartEvent } from "./types";
  *  - `preload`        alias of `venousTone` (used when `venousTone` is not given), so a `BeatModifiers` record can be passed on
  *                     as it is. `AutonomicEffects.preloadResp` carries breathing too; the respiratory part belongs to B3.
  *  - `relax`          relaxScale of both ventricles × factor (range 0.5-3): > 1 is slower relaxation (longer τ).
- *  - `thoracic`       intrathoracic pressure, mmHg. Hook for B3 (thorax): stored and returned, no effect yet.
+ *  - `thoracic`       intrathoracic pressure, mmHg. Added as a constant to the thoracic and pericardial nodes when the heart was built with `core.thorax` (B3); otherwise stored and returned only.
  * `hrScale` and `deviceFlow` are not parameters of the heart: rate arrives as beats, a pump is a device element.
  */
 export interface LiveModifiers { contractility?: number; resistance?: number; venousTone?: number; preload?: number; relax?: number; thoracic?: number }
@@ -191,8 +192,9 @@ export class LiveHeart {
     this.applyVentricles();
     for (const b of this.beds) b.el.set({ R: b.R * mods.resistance });
     for (const v of this.veins) v.el.set({ Vu: v.vu * range(1 - v.gain * (mods.venousTone - 1), VENOUS_TONE.factorRange) });
-    // mods.thoracic: hook for B3 (intrathoracic pressure on the "thoracic" and "pericardial" groups); no effect yet
+    this.thorax()?.set({ offsetMmHg: mods.thoracic }); // B3: constant intrathoracic pressure on top of the breath (only when built with `core.thorax`)
   }
+  private thorax(): Thorax | null { try { return this.engine.element<Thorax>("thorax"); } catch { return null; } }
 
   /**
    * Per-ventricle factors on the design point, separate from the autonomic `contractility` so the two multiply (A7): the ventricle's
