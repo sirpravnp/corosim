@@ -33,11 +33,13 @@ import { createWorkerSolver } from "./sim/bridgeWorkerSolver";
 import { decodePatient } from "./sim/llm";
 import type { PatientSpec } from "./sim/patient";
 import type { BridgeSolver } from "./sim/bridgeSolver";
+import { o2Frame, o2Legend, myocardiumO2Color, vesselO2Color, type O2Frame } from "./sim/o2View";
+import type { Saturations } from "./sim/hemoSource";
 import { Case, MAX_SCORE, POINTS, Point, TREAT, TreatRecord, TreatScore, dailyCase, dayKey, dayNumber, explain, explainTreatment, fullFindings, judge, keyOfDay, muscleSaved, parseDay, rvInvolvement, score, streaks, treatScore } from "./game";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const MMHG = 133.322;
-type Mode = "real" | "anat" | "pressure" | "velocity" | "wss";
+type Mode = "real" | "anat" | "pressure" | "velocity" | "wss" | "o2";
 type HeartView = "solid" | "ghost" | "none";
 
 const V: Variant = { ...TYPICAL };
@@ -155,11 +157,18 @@ function prepareMyocardium() {
     for (let k = 0; k < NB; k++) bedW[i * NB + k] /= sum || 1;
   }
 }
+/** The O₂ sat mode's frame: the bridge's saturations (null before the panel workspace exists, i.e. in the game). */
+function o2Now(): O2Frame { return o2Frame(bridge ? bridge.saturations() : noSat()); }
+const noSat = (): Saturations => ({ node: {} as Saturations["node"], spo2: NaN, preductal: NaN, postductal: NaN, svo2: NaN, do2: NaN, vo2: NaN, lactate: NaN, bed: {}, bedSource: "ischemia-derived" });
 function paintMyocardium() {
-  const ca = heartGeo.attributes.color as THREE.BufferAttribute, c = new THREE.Color();
+  const ca = heartGeo.attributes.color as THREE.BufferAttribute, c = new THREE.Color(), base = new THREE.Color();
+  const o2 = S.mode === "o2" ? o2Now() : null, bk: string[] = ["", "", "", ""], bw = [0, 0, 0, 0];
   for (let i = 0; i < hRef.length; i++) {
     c.copy(PART_COLOR[hPart[i] as Part]).multiplyScalar(grain[i]);
-    if (isVentricle(i)) {
+    if (o2 && isVentricle(i)) {
+      for (let k = 0; k < NB; k++) { bk[k] = sites[bedIdx[i * NB + k]].key; bw[k] = bedW[i * NB + k]; }
+      base.copy(c); myocardiumO2Color(o2, bk, bw, cover[i], base, c);
+    } else if (isVentricle(i)) {
       let isch = 0;
       if (!S.hideIsch) for (let k = 0; k < NB; k++) isch += bedW[i * NB + k] * (sev[sites[bedIdx[i * NB + k]].key] ?? 0);
       isch *= cover[i];
@@ -245,7 +254,7 @@ function lumen(b: Built) {
 }
 
 function shapeVessels() {
-  const c = new THREE.Color();
+  const c = new THREE.Color(), o2f = S.mode === "o2" ? o2Now() : null;
   for (const b of built) {
     const r = A.cond.seg[b.seg.id], n = r.s.length;
     const pa = b.mesh.geometry.attributes.position as THREE.BufferAttribute, ca = b.mesh.geometry.attributes.color as THREE.BufferAttribute;
@@ -257,6 +266,7 @@ function shapeVessels() {
       const blocked = b.blocked[i] && !S.hide;
       if (S.mode === "real") c.copy(ARTERY).lerp(ARTERY_DEEP, 0.35 * (1 - b.d[i] / dMax) + (blocked ? 0.45 : 0));
       else if (S.mode === "anat") c.setHex(GROUP_COLOR[b.seg.group]);
+      else if (S.mode === "o2") vesselO2Color(o2f!, c);
       else if (blocked) c.copy(GRAY);
       else if (S.mode === "pressure") c.copy(ramp(VIRIDIS, (r.P[i] / MMHG - 20) / 70));
       else if (S.mode === "velocity") c.copy(ramp(MAGMA, lg(r.v[i], 0.01, 4)));
@@ -271,7 +281,7 @@ function shapeVessels() {
     pa.needsUpdate = true; ca.needsUpdate = true; b.mesh.geometry.computeVertexNormals();
   }
   vesselMat.transparent = S.flow; vesselMat.opacity = S.flow ? 0.42 : 1; vesselMat.depthWrite = !S.flow; vesselMat.needsUpdate = true;
-  legend();
+  legend(); paintMyocardium();
 }
 
 function legend() {
@@ -281,6 +291,7 @@ function legend() {
   else if (S.mode === "anat") set("linear-gradient(90deg,#1f5fa8 0 33%,#2e7d4f 33% 66%,#c77c00 66%)", "LAD", "Circumflex", "RCA");
   else if (S.mode === "pressure") set(`linear-gradient(90deg,${VIRIDIS.join(",")})`, "20 mmHg", "55", "90 mmHg");
   else if (S.mode === "velocity") set(`linear-gradient(90deg,${MAGMA.join(",")})`, "0.01 m/s", "log", "4 m/s");
+  else if (S.mode === "o2") { const l = o2Legend(o2Now()); set(l.gradient, l.lo, l.mid, l.hi); }
   else set(`linear-gradient(90deg,${MAGMA.join(",")})`, "0.1 Pa", "log", "1000 Pa");
 }
 
@@ -375,13 +386,13 @@ function controlsUi() {
   $("occ").textContent = S.occ ? "Reperfuse" : "Occlude";
   $("occ").classList.toggle("on", S.occ); $("exert").classList.toggle("on", S.exert);
   $("flowbtn").classList.toggle("on", S.flow);
-  for (const m of ["real", "anat", "pressure", "velocity", "wss"]) $("m_" + m).classList.toggle("on", S.mode === m);
+  for (const m of ["real", "anat", "pressure", "velocity", "wss", "o2"]) $("m_" + m).classList.toggle("on", S.mode === m);
   for (const s of [1, 3, 6]) $("s" + s).classList.toggle("on", S.speed === s);
   // the folded sections carry their state in the header
   $("patientsum").textContent = `${S.rhythm === "af" ? "Atrial fibrillation" : "Sinus"} · ${S.bbb === "none" ? "normal conduction" : S.bbb.toUpperCase()}`;
   const DOM = { right: "Right-dominant", co: "Co-dominant", left: "Left-dominant" }, LMP = { bifurcation: "bifurcation", trifurcation: "ramus", absent: "absent left main" }, LADC = { normal: "LAD to apex", short: "short LAD", wrap: "wrapping LAD" };
   $("anatomysum").textContent = `${DOM[V.dominance]} · ${LMP[V.lm]} · ${LADC[V.ladCourse]} · SA node from ${V.saNodeFrom}`;
-  const MODE = { real: "Anatomic", anat: "Territory", pressure: "Pressure", velocity: "Velocity", wss: "Wall shear" };
+  const MODE = { real: "Anatomic", anat: "Territory", pressure: "Pressure", velocity: "Velocity", wss: "Wall shear", o2: "O₂ sat" };
   $("volumesum").textContent = volumeSummary();
   $("displaysum").textContent = `${MODE[S.mode]} · ${S.heart === "solid" ? "solid" : S.heart === "ghost" ? "see-through" : "no"} heart · ${S.exag}×${S.flow ? " · flow" : ""}${S.posterior ? " · V7–V9" : ""}`;
   for (const r of ["sinus", "af"]) $("r_" + r).classList.toggle("on", S.rhythm === r);
@@ -611,7 +622,7 @@ for (const s of [1, 3, 6]) on("s" + s, () => { S.speed = s; controlsUi(); });
 for (const r of ["sinus", "af"] as Rhythm[]) on("r_" + r, () => { S.rhythm = r; controlsUi(); });
 for (const b of ["none", "rbbb", "lbbb"] as Bbb[]) on("c_" + b, () => { S.bbb = b; controlsUi(); });
 on("postbtn", () => { S.posterior = !S.posterior; controlsUi(); liveUi(); });
-(["real", "anat", "pressure", "velocity", "wss"] as Mode[]).forEach((m) => on("m_" + m, () => { S.mode = m; shapeVessels(); controlsUi(); }));
+(["real", "anat", "pressure", "velocity", "wss", "o2"] as Mode[]).forEach((m) => on("m_" + m, () => { S.mode = m; shapeVessels(); controlsUi(); }));
 (["solid", "ghost", "none"] as HeartView[]).forEach((h) => on("h_" + h, () => { S.heart = h; applyHeartView(); controlsUi(); }));
 on("flowbtn", () => { S.flow = !S.flow; points.visible = S.flow; shapeVessels(); controlsUi(); });
 for (const k of Object.keys(VIEWS)) on(k, () => setView(k));
@@ -718,6 +729,7 @@ function frame(now: number) {
   if (G.phase === "treat") treatStep(dt, minutes);
   if (S.flow) stepParticles(dt);
   if ((paintClock += dt) > 0.1) { paintClock = 0; paintMyocardium(); }
+  if (S.mode === "o2" && (o2Clock += dt) > 0.5) { o2Clock = 0; const f = o2Now(), k = `${f.ready}|${f.arterial.toFixed(3)}`; if (k !== o2Key) { o2Key = k; shapeVessels(); } }
   if ((uiClock += dt) > 0.25) { uiClock = 0; liveUi(); }
   controls.update(); camera.updateMatrixWorld(); updateMarkers(dt); renderer.render(scene, camera);
   requestAnimationFrame(frame);
@@ -736,8 +748,9 @@ const G = {
   kase: null as Case | null, saved: null as null | { V: Variant; S: Partial<typeof S> },
   treat: null as Treating | null,
 };
+let o2Clock = 0, o2Key = "";
 const LESION_KEYS = ["lesionSeg", "pos", "ds", "occ", "exert", "mode", "flow", "speed", "rhythm", "bbb", "posterior"] as const;
-const LOCKED = ["m_pressure", "m_velocity", "m_wss", "flowbtn", "s1", "s3", "s6", "postbtn"]; // displays that would show the lesion, the clock, and the leads
+const LOCKED = ["m_pressure", "m_velocity", "m_wss", "m_o2", "flowbtn", "s1", "s3", "s6", "postbtn"]; // displays that would show the lesion, the clock, and the leads
 /** What the player did with a day's case, kept in this browser so the day is played once and can be looked at again. */
 interface Played { total: number; distance: number; elapsed: number; call: Point | null; rv?: boolean | null; archive?: boolean; cls: string; result: string; why: string; treat?: TreatScore; treatWhy?: string }
 const STORE = "corosim.daily";
