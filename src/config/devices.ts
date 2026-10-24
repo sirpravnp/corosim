@@ -91,3 +91,28 @@ export const IMPELLA_CONSOLE = { i0: 150, i2: 0.12, eta: 0.2, kt: 0.0035, alarmL
  * `openFlow` / `closedFlow` (ml/s): AV flow above which the valve counts as open, and below which (after it opened) as closed.
  */
 export const IABP = { volumeMl: 40, tauInflateS: 0.04, tauDeflateS: 0.05, edgeS: 0.012, deflateLeadS: 0.13, closeBase: 0.12, closePerRr: 0.2, defaultRrS: 0.83, smooth: 0.5, openFlow: 5, closedFlow: 1 };
+
+// ---- VA-ECMO (task D6) -------------------------------------------------------------------------------------------------------------
+/**
+ * Centrifugal pump and circuit of the VA-ECMO model (core/devices/ecmo.ts). All [assumed] teaching values, no console data.
+ * HQ design (same recipe as `IMPELLA`): shut-off head 450 mmHg and free flow 130 ml/s (7.8 L/min) at the top speed 5 krpm, split f = 0.4:
+ * a = H0/ω², b = f·H0/(ω·Qf), c = (1 − f)·H0/Qf². About 3.6 krpm gives 4 L/min against 70 mmHg plus the circuit loss.
+ * `L` is the inertance of about 2 m of 3/8 inch tubing (ρℓ/A). The circuit resistance R0 is cannulae plus oxygenator in series
+ * (0.15 + 0.30 mmHg·s/ml: about 30 mmHg at 4 L/min); `oxygenatorR` is the oxygenator part, reported as the membrane pressure drop.
+ * `speedTau`: time constant (s) of the speed controller.
+ */
+export const ECMO_PUMP = { speedMax: 5, a: 18, b: 0.277, c: 0.016, L: 0.22, cannulaR: 0.15, oxygenatorR: 0.3, speedTau: 0.5 };
+
+/**
+ * Venous drainage law, set relative to the drainage node's unloaded volume (R-D1): suction half developed at Vc = V0 + `vcMarginMl`,
+ * Q is softly limited so the volume stays above V0 + `floorMl` (Q ≤ (V − floor)/`floorTau`, blended in over `limitBand` ml/s as for the Impella).
+ * The volume is the node's volume low-pass filtered with time constant `volumeTau` (s): an atrium empties to V0 at every systole. `alarmLevel`: suction level (0-1) at which the console alarm goes. [assumed]
+ */
+export const ECMO_SUCTION = { volumeTau: 0.6, vcMarginMl: 5, wV: 2, Pth: -6, wP: 1.5, Rmax: 60, suctionAt: 0.5, floorMl: 2, floorTau: 0.06, limitTau: 0.01, limitBand: 3, alarmLevel: 0.2 };
+
+/**
+ * Oxygenator. The blood leaving it is brought toward `satMax(FiO₂)` by the sweep gas: s_out = s_in + (satMax − s_in)·(1 − exp(−sweep/sweepTau)),
+ * satMax = satAir + (satO2 − satAir)·(FiO₂ − 0.21)/0.79. A saturating function of sweep (0 = no gas exchange: the blood returns as it came),
+ * linear in FiO₂ between air and pure oxygen. [assumed]
+ */
+export const ECMO_OXYGENATOR = { sweepTau: 0.6, satAir: 0.96, satO2: 1.0 };
