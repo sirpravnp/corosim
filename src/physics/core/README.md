@@ -27,6 +27,10 @@ else here is added by the tasks in `docs/HEMODYNAMICS_TASKS.md`.
 
 - **Live play (A6).** `live.ts` `LiveHeart` schedules events from the rhythm model's beats and steps the engine; `BeatRecorder` built with `T = null` closes a beat at each ventricular event (`closeBeat()`, called from an element's `onEvent`) instead of every `T` seconds. Slow inputs are `Tunable.set` patches from design-point factors (`setModifiers`).
 
+- **Beat strength (A7).** An event's `strength` below 1 scales the activation (a weak PVC); above 1 (post-extrasystolic potentiation) it scales Ees (`ElastanceChamber.eesGain`), so activation stays within 0..1 and the passive term never goes negative.
+- **Ventricle factors (A7).** `LiveHeart.setVentricleFactors({ lvEes, rvEes, lvStiffness, rvStiffness })` sets per-ventricle factors on the design Ees and passive stiffness (`a`), separate from the autonomic `contractility` modifier (they multiply). Ischemia and scar act here (`config/ischemia.ts`). `LiveBeat.atrialKick` is true when an atrial event actually came 0.04-0.35 s before the ventricular one (`LIVE.kickMinLead/kickMaxLead`), whatever the beat's labels.
+- **ACS simulation (A7).** `Simulation({}, { engine: "core" })` runs the ACS patient on `LiveHeart` (mapping in the "Core engine" comment of `sim/simulation.ts`). Placeholders until D3/D5: `devices/placeholder.ts` (Impella flow element) and `volume.ts` (`VolumeExchange`: fluids and hemorrhage, until C2).
+
 Units: mmHg, ml, ml/s, s.
 
 ## How each planned piece fits

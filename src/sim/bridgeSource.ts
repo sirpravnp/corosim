@@ -8,6 +8,7 @@ import { BASE_SVR } from "../physics/circulation";
 import { PATIENTS, O2_PER_G_HB } from "../config/structural";
 import { SUPPORT } from "../config/management";
 import { BRIDGE } from "../config/bridge";
+import { ISCHEMIA } from "../config/ischemia";
 import { syncSolver } from "./bridgeSolver";
 import type { BridgeSolver, SolveRequest, SolveResult } from "./bridgeSolver";
 
@@ -41,12 +42,12 @@ interface Inputs { hr: number; lv: number; rv: number; map: number; svr: number 
  *  - `heart` lesions: the optional PatientSpec passed to the constructor (Simulation keeps only the normalised Scenario,
  *    not the structural fields). Its fields are copied as given.
  *  - `hr`: `sim.circ.hr`, the ventricular rate the rhythm implies (not the noisy measured one).
- *  - `lvEes` = (heart.lvEes ?? 1) x max(0.2, 1 - BRIDGE.lvEesLoss x sim.circ.lvIschemia): left-ventricular end-systolic
+ *  - `lvEes` = (heart.lvEes ?? 1) x max(0.2, 1 - ISCHEMIA.lvEesLoss x sim.circ.lvIschemia): left-ventricular end-systolic
  *    elastance only. The loss (1.25) is above the ACS model's own 0.8 because ischemic segments bulge. The ACS constant
  *    is not touched, so the monitor is unaffected. The stroke volume the structural engine returns is its own answer.
- *  - `lvStiffness` / `rvStiffness` = (heart value ?? 1) x (1 + BRIDGE.*StiffGain x ischemia): passive stiffness rises
+ *  - `lvStiffness` / `rvStiffness` = (heart value ?? 1) x (1 + ISCHEMIA.*StiffGain x ischemia): passive stiffness rises
  *    during acute ischemia, so filling pressure is higher at a given volume.
- *  - `rvEes` = (heart.rvEes ?? 1) x (1 - BRIDGE.rvEesLoss x sim.circ.rvIschemia): weaker RV contraction only. (Not
+ *  - `rvEes` = (heart.rvEes ?? 1) x (1 - ISCHEMIA.rvEesLoss x sim.circ.rvIschemia): weaker RV contraction only. (Not
  *    `rvContractility`, which also stiffens the RV and would hold CVP down.)
  *  - `svrScale` = sim.circ.svr / BASE_SVR x (heart.svrScale ?? 1): systemic resistance comes from the ACS model, which
  *    already holds the sympathetic, vagal and drug effects, so it is not fitted to MAP.
@@ -191,9 +192,9 @@ export class BridgeSource implements HemoSource {
     return {
       ...h, patient: this.opts.patient?.kind ?? "adult", hr: c.hr,
       svrScale: (c.svr / BASE_SVR) * (h.svrScale ?? 1), volumeMl: (h.volumeMl ?? 0) + volumeMl,
-      lvEes: (h.lvEes ?? 1) * Math.max(0.2, 1 - BRIDGE.lvEesLoss * c.lvIschemia),
-      lvStiffness: (h.lvStiffness ?? 1) * (1 + BRIDGE.lvStiffGain * c.lvIschemia), rvStiffness: (h.rvStiffness ?? 1) * (1 + BRIDGE.rvStiffGain * c.rvIschemia),
-      rvEes: (h.rvEes ?? 1) * Math.max(0.2, 1 - BRIDGE.rvEesLoss * c.rvIschemia),
+      lvEes: (h.lvEes ?? 1) * Math.max(ISCHEMIA.eesFloor, 1 - ISCHEMIA.lvEesLoss * c.lvIschemia),
+      lvStiffness: (h.lvStiffness ?? 1) * (1 + ISCHEMIA.lvStiffGain * c.lvIschemia), rvStiffness: (h.rvStiffness ?? 1) * (1 + ISCHEMIA.rvStiffGain * c.rvIschemia),
+      rvEes: (h.rvEes ?? 1) * Math.max(ISCHEMIA.eesFloor, 1 - ISCHEMIA.rvEesLoss * c.rvIschemia),
     };
   }
 

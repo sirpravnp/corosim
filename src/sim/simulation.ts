@@ -15,7 +15,14 @@ import { circulation, Circulation, CIRC } from "../physics/circulation";
 import { Support, supportedRhythm } from "../physics/support";
 import { BeatStream } from "../physics/beatStream";
 import { BeatHemodynamics } from "../physics/beatHemo";
-import { Autonomic } from "../physics/autonomic";
+import { Autonomic, AUTONOMIC, AutonomicEffects } from "../physics/autonomic";
+import { LiveHeart, LiveBeat } from "../physics/core/live";
+import { PlaceholderImpella } from "../physics/core/devices/placeholder";
+import { VolumeExchange } from "../physics/core/volume";
+import { NODES } from "../physics/structuralGraph";
+import { PATIENTS } from "../config/structural";
+import { ACS_CORE, PLACEHOLDER_WARNINGS } from "../config/acsCore";
+import { ischemiaFactors } from "../config/ischemia";
 import { Normalized, Scenario, normalizeScenario, toScenario, supportSpec } from "./scenario";
 import { BeatRecord, computeMetrics, Metrics } from "./metrics";
 
@@ -23,6 +30,13 @@ import { BeatRecord, computeMetrics, Metrics } from "./metrics";
 const DRUG_TAU = 8, VOLUME_TAU = 10;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const MAX_HISTORY = 20000; // beats kept for metrics (~3 h at 70 bpm)
+
+/** Which hemodynamic engine runs the circulation: today's algebraic `circulation()` + `BeatHemodynamics`, or the core engine's `LiveHeart` (A7). */
+export type EngineKind = "legacy" | "core";
+const NODE = (name: string) => NODES.indexOf(name as (typeof NODES)[number]);
+const NEUTRAL_FX: AutonomicEffects = { sympathetic: AUTONOMIC.restSympathetic, vagal: AUTONOMIC.restVagal, hrScale: 1, contractility: 1, resistance: 1, preloadResp: 1, vascular: AUTONOMIC.restSympathetic, afferent: 0, respPhase: 0 };
+/** Ventricular rate the rhythm implies, bpm (the warm-up rate of the live heart; atrial fibrillation conducts at its own rate). */
+const ventRate = (r: RhythmState) => (r.avDegree === 3 ? r.escapeRate : r.rhythm === "af" ? r.afRate : r.avDegree === 2 ? r.sinusRate * 0.75 : r.sinusRate);
 
 /**
  * The whole model with no DOM and no renderer: anatomy → coronary network → ischemia and infarction → rhythm →
@@ -80,7 +94,30 @@ export class Simulation {
   /** Called with each new ventricular beat (UI hooks, tests). */
   onBeat?: (b: BeatRecord) => void;
 
-  constructor(input: Scenario = {}) {
+  /**
+   * Which engine computes the circulation. "legacy" (default) is `circulation()` + `BeatHemodynamics`, untouched. "core" runs the
+   * ACS patient on the core engine (`LiveHeart`), see the section "Core engine" below. Takes effect at the next `reset()`.
+   */
+  engine: EngineKind;
+  /** The live heart of the core engine (undefined with "legacy"). */
+  live?: LiveHeart;
+  // ---- core engine state
+  private impella?: PlaceholderImpella;
+  private exchange?: VolumeExchange;
+  private bv0 = 4900;
+  private volApplied = 0; // ml added (+) or removed (-) from the circulation so far, by fluids and hemorrhage
+  private fluidGiven = 0; // litres of fluid, ramped
+  private impellaLevel = 0; // 0..1, ramped
+  private delta = NaN; // s: live time = stream time + delta, set when the first beat is aligned
+  private fed = new WeakSet<Beat>();
+  private fx: AutonomicEffects = NEUTRAL_FX;
+  private fxQueue: AutonomicEffects[] = [];
+  private liveSeen = false;
+  private sm = { sv: 0, co: 0, ef: 0, pcwp: 0, cvp: 0, sbp: 0, dbp: 0, dev: 0 };
+  private base!: Circulation; // circulation() of the legacy model: the fractions and demand the core circ borrows
+
+  constructor(input: Scenario = {}, opts: { engine?: EngineKind } = {}) {
+    this.engine = opts.engine ?? "legacy";
     this.mod = {
       rate: (t) => (this.paced() ? 1 : this.autonomic.hrScaleAt(t)),
       jitter: () => (this.paced() ? 0 : this.autonomic.jitter()),
@@ -91,6 +128,7 @@ export class Simulation {
   /** Start over from a scenario. `settled` puts ischemia at its steady value instead of starting from a normal heart. */
   reset(input: Scenario = {}, opts: { settled?: boolean } = {}) {
     const { scenario, warnings } = normalizeScenario(input);
+    this.live = undefined; this.liveSeen = false;
     this.n = scenario; this.warnings = warnings;
     this.support = { ...scenario.support }; this.patient = { ...scenario.patient }; this.grafts = [];
     this.t = 0; this.clinicalMinutes = 0; this.ischemicMinutes = 0; this.treated = untreated(); this.history = []; this.beatCount = 0;
@@ -105,6 +143,7 @@ export class Simulation {
     this.rebuildAnatomy();
     this.updateCirculation();
     if (opts.settled) { Object.assign(this.sev, this.target); this.updateCirculation(); }
+    if (this.engine === "core") this.initCore();
   }
 
   /** Back to a resting heart with the same scenario: no ischemia, no scar, pressure at baseline. */
@@ -115,6 +154,7 @@ export class Simulation {
     this.beatHemo.reset();
     this.resolveCoronaries(true);
     this.updateCirculation();
+    if (this.engine === "core") this.initCore();
   }
 
   /** Change part of the scenario while it runs (add a lesion, give a drug, drop the volume). State carries over. */
@@ -125,6 +165,7 @@ export class Simulation {
     const anatomyChanged = JSON.stringify(scenario.anatomy) !== JSON.stringify(prev.anatomy);
     this.n = scenario;
     if (patch.support) this.support = { ...scenario.support, atropine: this.support.atropine };
+    this.addDeviceWarnings();
     if (patch.patient) this.patient = { ...scenario.patient };
     this.autonomic.controls = { ...scenario.autonomic };
     if (anatomyChanged) { this.grafts = []; this.rebuildAnatomy(); } else this.resolveCoronaries(true);
@@ -163,7 +204,9 @@ export class Simulation {
   private updateCirculation() {
     const g = globalSeverity(ischemicBurden(this.sites, this.sev)), sup = this.effSupport();
     this.rstate = supportedRhythm(rhythmState(this.sites, this.sev, g, this.patient), sup);
-    this.circ = circulation(this.sites, this.sev, this.rstate, sup, this.scar, 1); // the baroreflex is dynamic here
+    const c = circulation(this.sites, this.sev, this.rstate, sup, this.scar, 1); // the baroreflex is dynamic here
+    this.base = c;
+    this.circ = this.live && this.liveSeen ? this.coreCirc(c) : c;
   }
 
   /** ECG injury vector and T-wave boost for the strip, from the current ischemia. */
@@ -188,6 +231,7 @@ export class Simulation {
     const a = 1 - Math.exp(-(h * this.speed) / DRUG_TAU), v = 1 - Math.exp(-(h * this.speed) / VOLUME_TAU);
     for (const k of ["betaBlocker", "atropine", "vasopressor"] as const) this.drug[k] += (this.n.drugs[k] - this.drug[k]) * a;
     this.bloodLoss += (this.n.bloodLoss - this.bloodLoss) * v;
+    this.fluidGiven += (this.support.fluids - this.fluidGiven) * v; // only the core engine reads it
   }
 
   private sub(h: number, minutes: number) {
@@ -202,12 +246,12 @@ export class Simulation {
     const ctl = this.autonomic.controls;
     ctl.betaBlock = this.drug.betaBlocker;
     ctl.vagalBlock = Math.max(this.drug.atropine, this.support.atropine ? 1 : 0);
-    ctl.volumeDeficit = Math.max(0, this.bloodLoss);
+    ctl.volumeDeficit = Math.max(0, this.live ? this.bloodLoss - (this.fluidGiven * 1000 * ACS_CORE.fluidRetained) / this.bv0 : this.bloodLoss); // core: the net deficit, fluids refill it
     this.autonomic.step(h);
     this.stream.extend(this.t, this.rstate, this.mod);
     this.stream.prune(this.t);
     this.t += h;
-    for (const b of this.stream.drain(this.t)) this.handleBeat(b);
+    if (this.live) this.coreStep(h); else for (const b of this.stream.drain(this.t)) this.handleBeat(b);
     // Coronary perfusion follows the pressure the heart actually generates (plus any balloon augmentation),
     // and demand follows what drugs and devices do to it.
     const aug = this.support.iabp ? SUPPORT.iabpCoronaryAug : 0;
@@ -242,6 +286,185 @@ export class Simulation {
     this.history.push(rec);
     if (this.history.length > MAX_HISTORY) this.history.splice(0, this.history.length - MAX_HISTORY);
     this.onBeat?.(rec);
+  }
+
+
+  // ======================================================================================================================
+  // Core engine (engine === "core", task A7)
+  //
+  // The beat stream feeds `LiveHeart` (every beat, with its atrial event, ahead of time); the live heart is stepped with the
+  // simulation's clock (live time = stream time + delta, delta fixed when the first beat is aligned with the end of the warm-up).
+  // Mapping, all constants in config/acsCore.ts and config/ischemia.ts:
+  //  - ischemia -> ventricles: with L, R the ischemic (or scarred) fractions circulation() computes, LV Ees x max(0.2, 1 - 1.25 L),
+  //    RV Ees x max(0.2, 1 - 0.8 R), passive stiffness (the `a` of the end-diastolic curve) x (1 + 1.5 L), x (1 + 2 R)
+  //    (`LiveHeart.setVentricleFactors`, separate from the autonomic contractility, so they multiply);
+  //  - autonomic -> engine: contractility x effects.contractility, resistance x effects.resistance (and the ischemic reflex terms
+  //    circulation() has: x (1 + 0.2 sympathetic) x (1 - 0.12 vagal), and the vasopressor drug), venous tone 1 + 0.2 (vascular tone - rest) + 0.35 tanh(deficit / 0.2)
+  //    (the volume-deficit reflex on the veins; deficit = fraction of blood volume lost net of fluids; the reflex on rate and tone as before); rate arrives as beats;
+  //  - support: norepinephrine resistance x (1 + 0.35 d) and venous tone x (1 + 0.3 d); dobutamine Ees x (1 + 0.45 d) and resistance
+  //    x (1 - 0.12 d); nitroglycerin venous tone x (1 - 0.2 e_v) (e_v = min(1, d / 0.4)) then resistance x (1 - 0.22 e_a)
+  //    (e_a = max(0, (d - 0.2) / 0.8)); fluids add `fluidRetained` x litres of blood (ramped, like the hemorrhage that removes
+  //    blood); impella and IABP are PLACEHOLDERS (see PLACEHOLDER_WARNINGS);
+  //  - outputs: `circ` is filled from the smoothed beats (see coreCirc).
+  // ======================================================================================================================
+
+  private feedFrom = 0; // stream time before which beats belong to a previous heart
+  private warmHr = 72;
+
+  /** Blood (ml) the circulation should hold relative to the patient's own: fluids given less blood lost. */
+  private targetVolume(): number { return this.fluidGiven * 1000 * ACS_CORE.fluidRetained - this.bloodLoss * this.bv0; }
+
+  private initCore() {
+    const p = PATIENTS.adult;
+    this.sm = { sv: 0, co: 0, ef: 0, pcwp: 0, cvp: 0, sbp: 0, dbp: 0, dev: 0 };
+    this.fed = new WeakSet(); this.fxQueue = []; this.fx = NEUTRAL_FX; this.liveSeen = false; this.delta = NaN; this.feedFrom = this.t;
+    this.bv0 = p.bloodMlPerKg * p.weightKg;
+    this.fluidGiven = this.support.fluids;
+    this.volApplied = Math.max(ACS_CORE.startVolumeMl[0], Math.min(ACS_CORE.startVolumeMl[1], this.targetVolume())); // what the structural spec accepts; the rest follows at the rate limit
+    const veins = ["SVC", "IVC", "SPL"].map(NODE), vessels = ["SVC", "IVC", "SPL", "PA", "PV", "AO", "DAO"].map(NODE);
+    const impella = (this.impella = new PlaceholderImpella(NODE("LV"), NODE("AO"), { margin: ACS_CORE.impellaMargin, width: ACS_CORE.impellaWidth }));
+    this.exchange = new VolumeExchange("volumeExchange", veins, vessels);
+    const live = (this.live = new LiveHeart({ volumeMl: this.volApplied }, { extra: [impella, this.exchange] }));
+    impella.set({ v0: live.model.chambers[NODE("LV")]!.v0 });
+    this.impellaLevel = this.support.impella ? 1 : 0;
+    this.pushImpella();
+    this.pushInputs();
+    this.warmHr = Math.max(20, ventRate(this.rstate));
+    live.warm(this.warmHr);
+    live.onRecord((b) => this.handleLiveBeat(b));
+    this.sensor = { events: [], tStart: NaN, start: 0, peak: 0, armed: false, ao: live.engine.node("AO") };
+    live.engine.onSample((smp) => this.senseTick(smp.t, smp.P[this.sensor.ao]));
+    this.addDeviceWarnings();
+  }
+
+  /** The placeholder devices say what they are in `warnings` whenever one is on. */
+  private addDeviceWarnings() {
+    if (this.engine !== "core") return;
+    for (const [on, msg] of [[this.support.impella, PLACEHOLDER_WARNINGS.impella], [this.support.iabp, PLACEHOLDER_WARNINGS.iabp]] as const)
+      if (on && !this.warnings.includes(msg)) this.warnings = [...this.warnings, msg];
+  }
+
+  private pushImpella() { this.impella?.set({ flow: (this.impellaLevel * SUPPORT.impellaFlow * 1000) / 60 }); }
+
+  /** Slow inputs of the heart from the ischemia, the autonomic state, the drugs and the devices (see the mapping above). */
+  private pushInputs() {
+    const live = this.live!, K = ACS_CORE, S = SUPPORT, sup = this.support, fx = this.fx, rs = this.rstate, vaso = this.drug.vasopressor;
+    live.setVentricleFactors(ischemiaFactors(this.base.lvIschemia, this.base.rvIschemia));
+    const nitroV = Math.min(1, sup.nitro / K.nitroVenousFull), nitroA = Math.max(0, (sup.nitro - K.nitroArterialOnset) / (1 - K.nitroArterialOnset));
+    const resistance = fx.resistance * (vaso >= 0 ? 1 + 0.5 * vaso : 1 + 0.4 * vaso)
+      * (1 + CIRC.sympatheticSvr * rs.sympathetic) * (1 - CIRC.vagalSvr * rs.vagal)
+      * (1 + S.norepiSvr * sup.norepi) * (1 - S.dobSvr * sup.dobutamine) * (1 - S.nitroSvr * nitroA) * (sup.iabp ? 1 - K.iabpAfterload : 1);
+    const venousTone = (1 + K.venousToneGain * (fx.vascular - AUTONOMIC.restSympathetic) + K.volumeVenousMax * Math.tanh(this.autonomic.controls.volumeDeficit / K.volumeVenousScale)) * (1 + K.norepiVenousTone * sup.norepi) * (1 - K.nitroVenousTone * nitroV);
+    live.setModifiers({ contractility: fx.contractility * (1 + S.dobContractility * sup.dobutamine), resistance, venousTone });
+  }
+
+  /** One sub-step: hand over the new beats, set the slow inputs, move blood in or out, and advance the live heart to the simulation's clock. */
+  private coreStep(h: number) {
+    const live = this.live!;
+    const fresh = this.stream.beats.filter((b) => !this.fed.has(b) && b.t >= this.feedFrom - 1e-9).sort((a, b) => a.t - b.t);
+    if (Number.isNaN(this.delta)) {
+      const first = fresh.find((b) => !b.pOnly);
+      if (!first) return; // no ventricular beat yet: the live heart waits in diastole
+      this.delta = -first.t; // the first beat falls at live time 0: it follows the warm-up (which ends just before an event) at the steady rate
+    }
+    for (const b of fresh) {
+      this.fed.add(b);
+      if (!b.pOnly) { this.fx = this.autonomic.effects(); this.fxQueue.push(this.fx); }
+      live.onBeat({ ...b, t: b.t + this.delta });
+      if (!b.pOnly) this.sensor.events.push(b.t + this.delta + (live.engine.t - live.time));
+    }
+    const dt = this.t + this.delta - live.time;
+    if (dt <= 1e-9) return;
+    this.impellaLevel += ((this.support.impella ? 1 : 0) - this.impellaLevel) * (1 - Math.exp(-dt / ACS_CORE.impellaTau));
+    this.pushImpella();
+    this.addDeviceWarnings();
+    this.pushInputs();
+    const q = Math.max(-ACS_CORE.maxVolumeRate, Math.min(ACS_CORE.maxVolumeRate, (this.targetVolume() - this.volApplied) / dt)); // ml/s, so the circulation holds the (ramped) volume
+    this.exchange!.set({ rate: q }); this.volApplied += q * dt;
+    live.step(dt);
+    if (this.impellaLevel > 1e-3 || this.sm.dev > 1e-3) this.sm.dev += (this.deviceFlowNow() - this.sm.dev) * (1 - Math.exp(-dt / ACS_CORE.deviceFlowTau));
+    if (this.liveSeen) this.circ = this.coreCirc(this.base);
+  }
+
+  /**
+   * The baroreceptors read each beat's pressure shortly after systole, not when the beat record closes (a beat later): the
+   * aortic pressure at the ventricular event is the diastolic, the highest value in the next `senseDelay` seconds the systolic.
+   */
+  private sensor = { events: [] as number[], tStart: NaN, start: 0, peak: 0, armed: false, ao: 0 };
+  private senseTick(t: number, ao: number) {
+    const k = this.sensor;
+    while (k.events.length && k.events[0] <= t + 1e-9) { k.tStart = k.events.shift()!; k.start = ao; k.peak = ao; k.armed = true; }
+    if (!k.armed) return;
+    if (ao > k.peak) k.peak = ao;
+    if (t - k.tStart >= ACS_CORE.senseDelay) { this.autonomic.sense(k.peak + ACS_CORE.baroOffset, k.start + ACS_CORE.baroOffset); k.armed = false; }
+  }
+
+  /** A completed beat of the live heart: baroreflex, smoothed pressure and output, history. */
+  private handleLiveBeat(lb: LiveBeat) {
+    const fx = this.fxQueue.shift() ?? this.fx;
+    const a = (tau: number) => (this.liveSeen ? 1 - Math.exp(-lb.interval / tau) : 1);
+    const sm = this.sm, tau = ACS_CORE.smoothTau, co = (lb.strokeVolume / lb.interval) * 0.06;
+    this.map += (lb.map - this.map) * a(2);
+    sm.sv += (lb.strokeVolume - sm.sv) * a(tau); sm.co += (co - sm.co) * a(tau);
+    sm.ef += (lb.strokeVolume / lb.edv.LV - sm.ef) * a(tau);
+    sm.pcwp += (lb.p.LA.mean - sm.pcwp) * a(tau); sm.cvp += (lb.p.RA.mean - sm.cvp) * a(tau);
+    sm.sbp += (lb.systolic - sm.sbp) * a(tau); sm.dbp += (lb.diastolic - sm.dbp) * a(tau);
+    this.liveSeen = true;
+    const rec: BeatRecord = {
+      n: this.beatCount++, t: +(lb.t - this.delta).toFixed(3), interval: +lb.interval.toFixed(4), hr: 60 / lb.interval,
+      sbp: lb.systolic, dbp: lb.diastolic, map: lb.map, sv: lb.strokeVolume, pvc: lb.pvc, atrialKick: lb.atrialKick,
+      sympathetic: fx.sympathetic, vagal: fx.vagal, afferent: fx.afferent, respPhase: fx.respPhase,
+    };
+    this.history.push(rec);
+    if (this.history.length > MAX_HISTORY) this.history.splice(0, this.history.length - MAX_HISTORY);
+    this.circ = this.coreCirc(this.base);
+    this.onBeat?.(rec);
+  }
+
+  /**
+   * `circ` from the live heart, given the legacy `circulation()` result `c` (which supplies only the ischemic fractions, the
+   * rate the rhythm implies, the support's oxygen demand factor). From the smoothed beats (time constant `ACS_CORE.smoothTau`):
+   *  - strokeVolume, ml: net volume through the aortic valve; cardiacOutput, L/min: its per-beat rate plus the device flow;
+   *  - map, systolic, diastolic, mmHg: the smoothed mean, peak and start-of-beat aortic pressure;
+   *  - svr, mmHg·min/L: MAP / CO as BASE_SVR is defined (no venous pressure subtracted);
+   *  - deviceFlow, L/min: the Impella placeholder's, smoothed over `deviceFlowTau` (it follows the cardiac cycle);
+   *  - congestion, 0..1: from the smoothed PCWP (left atrial mean), 0 up to 12 mmHg, 1 at 25 (`pcwpOnset`, `pcwpFull`);
+   *  - ejectionFraction: stroke volume / end-diastolic volume of the LV;
+   *  - coronaryPressure: the smoothed MAP plus the IABP placeholder's augmentation;
+   *  - state: from the smoothed MAP as `state()` does.
+   */
+  private coreCirc(c: Circulation): Circulation {
+    const K = ACS_CORE, sm = this.sm, dev = sm.dev;
+    const co = sm.co + dev;
+    return {
+      ...c, strokeVolume: sm.sv, cardiacOutput: co, map: this.map, systolic: sm.sbp, diastolic: sm.dbp,
+      svr: co > 0.1 ? this.map / co : c.svr, coronaryPressure: this.map + (this.support.iabp ? SUPPORT.iabpCoronaryAug : 0), deviceFlow: dev,
+      congestion: Math.min(1, Math.max(0, (sm.pcwp - K.pcwpOnset) / (K.pcwpFull - K.pcwpOnset))), ejectionFraction: sm.ef,
+      state: this.map < CIRC.shockMap ? "shock" : this.map < CIRC.hypotensionMap ? "hypotension" : "stable",
+    };
+  }
+
+  private deviceFlowNow(): number {
+    const t = this.live!.engine.sample().taps["impellaPlaceholder"];
+    return t ? t.flow : 0;
+  }
+
+  /**
+   * Catheter-style numbers of the core engine, means over the beats of the last `seconds` (mmHg, ml): CVP (mean RA), PCWP (mean
+   * LA), LVEDP and RVEDP (ventricular pressure at the start of the beat), PA systolic/diastolic/mean, LV end-diastolic and
+   * end-systolic volume. null with the legacy engine or before the first beat.
+   */
+  hemo(seconds = 10) {
+    const live = this.live;
+    if (!live) return null;
+    const rs = live.records.filter((b) => b.t - this.delta > this.t - seconds);
+    if (!rs.length) return null;
+    const mean = (f: (b: LiveBeat) => number) => rs.reduce((s, b) => s + f(b), 0) / rs.length;
+    return {
+      cvp: mean((b) => b.p.RA.mean), pcwp: mean((b) => b.p.LA.mean), lvedp: mean((b) => b.p.LV.end), rvedp: mean((b) => b.p.RV.end),
+      pa: { systolic: mean((b) => b.p.PA.max), diastolic: mean((b) => b.p.PA.min), mean: mean((b) => b.p.PA.mean) },
+      lvEdv: mean((b) => b.edv.LV), lvEsv: mean((b) => b.esv.LV), beats: rs.length,
+    };
   }
 
   /** Run for `seconds` of simulated time and return the beats that occurred. */

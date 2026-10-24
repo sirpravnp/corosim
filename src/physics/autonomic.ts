@@ -115,6 +115,7 @@ export interface AutonomicEffects {
   hrScale: number; // multiplies the sinus rate (slow tones only; respiration is added by hrScaleAt)
   contractility: number; resistance: number; // multipliers on stroke volume and systemic resistance
   preloadResp: number; // multiplier on filling from breathing and venous tone
+  vascular: number; // vascular sympathetic tone, 0..1.6 (the venoconstriction drive; rests at restSympathetic)
   afferent: number; // −1..1, normalised baroreceptor drive (+ = pressure above the set point)
   respPhase: number; // rad, 0 = start of inspiration
 }
@@ -223,7 +224,7 @@ export class Autonomic {
     const preloadResp = (1 - P.intrathoracicSv * C.respDepth * (lung - 0.5) * 2) * venous;
     return {
       sympathetic: s, vagal: v, hrScale: this.hrScaleAt(this.t), contractility, resistance,
-      preloadResp, afferent: this.afferent, respPhase: this.respPhase,
+      preloadResp, vascular: sv, afferent: this.afferent, respPhase: this.respPhase,
     };
   }
 }
