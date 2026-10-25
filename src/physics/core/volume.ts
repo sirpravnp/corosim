@@ -13,16 +13,22 @@ export interface VolumeExchangeParams {
  */
 export class VolumeExchange implements Element, Tunable<VolumeExchangeParams> {
   readonly params: VolumeExchangeParams = { rate: 0 };
-  constructor(readonly name: string, private readonly into: readonly NodeId[], private readonly from: readonly NodeId[]) {}
+  /**
+   * `lossWeight(node, volume)` (ml) is each `from` node's share of a loss; the default is its volume. A bleed drains the blood that
+   * is under pressure, not the unstressed volume of a vein, so the ACS simulation passes the stressed volume (A7b). A bolus always
+   * divides by the volume of the `into` nodes.
+   */
+  constructor(readonly name: string, private readonly into: readonly NodeId[], private readonly from: readonly NodeId[], private readonly lossWeight: (node: NodeId, volume: number) => number = (_n, v) => v) {}
   set(patch: Partial<VolumeExchangeParams>) { Object.assign(this.params, patch); }
   flow(ctx: Ctx, out: Rates) {
     const q = this.params.rate;
     if (q === 0) return;
     const nodes = q > 0 ? this.into : this.from;
     let tot = 0;
-    for (const n of nodes) tot += Math.max(ctx.V[n], 0);
+    const weight = (n: NodeId) => Math.max(q > 0 ? ctx.V[n] : this.lossWeight(n, ctx.V[n]), 0);
+    for (const n of nodes) tot += weight(n);
     for (const n of nodes) {
-      const w = tot > 1e-9 ? Math.max(ctx.V[n], 0) / tot : 1 / nodes.length;
+      const w = tot > 1e-9 ? weight(n) / tot : 1 / nodes.length;
       if (q > 0) out.flow(OUTSIDE, n, q * w); else out.flow(n, OUTSIDE, -q * w);
     }
   }

@@ -19,9 +19,10 @@ import { Autonomic, AUTONOMIC, AutonomicEffects } from "../physics/autonomic";
 import { LiveHeart, LiveBeat } from "../physics/core/live";
 import { PlaceholderImpella } from "../physics/core/devices/placeholder";
 import { VolumeExchange } from "../physics/core/volume";
+import { Compliance } from "../physics/core/vessels";
 import { NODES } from "../physics/structuralGraph";
 import { PATIENTS } from "../config/structural";
-import { ACS_CORE, PLACEHOLDER_WARNINGS } from "../config/acsCore";
+import { ACS_CORE, AUTONOMIC_CORE, PLACEHOLDER_WARNINGS } from "../config/acsCore";
 import { ischemiaFactors } from "../config/ischemia";
 import { Normalized, Scenario, normalizeScenario, toScenario, supportSpec } from "./scenario";
 import { BeatRecord, computeMetrics, Metrics } from "./metrics";
@@ -138,7 +139,7 @@ export class Simulation {
     this.drug = { ...scenario.drugs }; this.bloodLoss = scenario.bloodLoss;
     this.stream = new BeatStream(scenario.seed, Simulation.LOOKAHEAD, 0.05);
     this.beatHemo = new BeatHemodynamics();
-    this.autonomic = new Autonomic(scenario.seed);
+    this.autonomic = new Autonomic(scenario.seed, this.engine === "core" ? { ...AUTONOMIC, ...AUTONOMIC_CORE } : AUTONOMIC);
     this.autonomic.controls = { ...scenario.autonomic };
     this.rebuildAnatomy();
     this.updateCirculation();
@@ -299,8 +300,8 @@ export class Simulation {
   //    RV Ees x max(0.2, 1 - 0.8 R), passive stiffness (the `a` of the end-diastolic curve) x (1 + 1.5 L), x (1 + 2 R)
   //    (`LiveHeart.setVentricleFactors`, separate from the autonomic contractility, so they multiply);
   //  - autonomic -> engine: contractility x effects.contractility, resistance x effects.resistance (and the ischemic reflex terms
-  //    circulation() has: x (1 + 0.2 sympathetic) x (1 - 0.12 vagal), and the vasopressor drug), venous tone 1 + 0.2 (vascular tone - rest) + 0.35 tanh(deficit / 0.2)
-  //    (the volume-deficit reflex on the veins; deficit = fraction of blood volume lost net of fluids; the reflex on rate and tone as before); rate arrives as beats;
+  //    circulation() has: x (1 + 0.2 sympathetic) x (1 - 0.12 vagal), and the vasopressor drug), venous tone 1 + 0.75 (vascular tone - rest)
+  //    (the volume reflex reaches the veins through the vascular tone: core autonomic calibration `AUTONOMIC_CORE`, config/acsCore.ts; deficit = fraction of blood volume lost net of fluids); rate arrives as beats;
   //  - support: norepinephrine resistance x (1 + 0.35 d) and venous tone x (1 + 0.3 d); dobutamine Ees x (1 + 0.45 d) and resistance
   //    x (1 - 0.12 d); nitroglycerin venous tone x (1 - 0.2 e_v) (e_v = min(1, d / 0.4)) then resistance x (1 - 0.22 e_a)
   //    (e_a = max(0, (d - 0.2) / 0.8)); fluids add `fluidRetained` x litres of blood (ramped, like the hemorrhage that removes
@@ -323,7 +324,7 @@ export class Simulation {
     this.volApplied = Math.max(ACS_CORE.startVolumeMl[0], Math.min(ACS_CORE.startVolumeMl[1], this.targetVolume())); // what the structural spec accepts; the rest follows at the rate limit
     const veins = ["SVC", "IVC", "SPL"].map(NODE), vessels = ["SVC", "IVC", "SPL", "PA", "PV", "AO", "DAO"].map(NODE);
     const impella = (this.impella = new PlaceholderImpella(NODE("LV"), NODE("AO"), { margin: ACS_CORE.impellaMargin, width: ACS_CORE.impellaWidth }));
-    this.exchange = new VolumeExchange("volumeExchange", veins, vessels);
+    this.exchange = new VolumeExchange("volumeExchange", veins, vessels, (n, v) => { const m = this.live!.engine.nodes[n].model; return m instanceof Compliance ? m.stressed(v) : v; });
     const live = (this.live = new LiveHeart({ volumeMl: this.volApplied }, { extra: [impella, this.exchange] }));
     impella.set({ v0: live.model.chambers[NODE("LV")]!.v0 });
     this.impellaLevel = this.support.impella ? 1 : 0;
@@ -331,10 +332,21 @@ export class Simulation {
     this.pushInputs();
     this.warmHr = Math.max(20, ventRate(this.rstate));
     live.warm(this.warmHr);
+    this.seedFromWarm(live.warmBeat!);
     live.onRecord((b) => this.handleLiveBeat(b));
     this.sensor = { events: [], tStart: NaN, start: 0, peak: 0, armed: false, ao: live.engine.node("AO") };
     live.engine.onSample((smp) => this.senseTick(smp.t, smp.P[this.sensor.ao]));
     this.addDeviceWarnings();
+  }
+
+  /** The warm-up's steady state is the first smoothed beat: `circ` shows the core's numbers from the first instant, never the legacy ones (A7b). */
+  private seedFromWarm(lb: LiveBeat) {
+    const sm = this.sm;
+    this.map = lb.map;
+    sm.sv = lb.strokeVolume; sm.co = (lb.strokeVolume / lb.interval) * 0.06; sm.ef = lb.strokeVolume / lb.edv.LV;
+    sm.pcwp = lb.p.LA.mean; sm.cvp = lb.p.RA.mean; sm.sbp = lb.systolic; sm.dbp = lb.diastolic;
+    this.liveSeen = true;
+    this.circ = this.coreCirc(this.base);
   }
 
   /** The placeholder devices say what they are in `warnings` whenever one is on. */
@@ -354,7 +366,7 @@ export class Simulation {
     const resistance = fx.resistance * (vaso >= 0 ? 1 + 0.5 * vaso : 1 + 0.4 * vaso)
       * (1 + CIRC.sympatheticSvr * rs.sympathetic) * (1 - CIRC.vagalSvr * rs.vagal)
       * (1 + S.norepiSvr * sup.norepi) * (1 - S.dobSvr * sup.dobutamine) * (1 - S.nitroSvr * nitroA) * (sup.iabp ? 1 - K.iabpAfterload : 1);
-    const venousTone = (1 + K.venousToneGain * (fx.vascular - AUTONOMIC.restSympathetic) + K.volumeVenousMax * Math.tanh(this.autonomic.controls.volumeDeficit / K.volumeVenousScale)) * (1 + K.norepiVenousTone * sup.norepi) * (1 - K.nitroVenousTone * nitroV);
+    const venousTone = (1 + K.venousToneGain * (fx.vascular - AUTONOMIC.restSympathetic)) * (1 + K.norepiVenousTone * sup.norepi) * (1 - K.nitroVenousTone * nitroV);
     live.setModifiers({ contractility: fx.contractility * (1 + S.dobContractility * sup.dobutamine), resistance, venousTone });
   }
 
@@ -396,7 +408,7 @@ export class Simulation {
     while (k.events.length && k.events[0] <= t + 1e-9) { k.tStart = k.events.shift()!; k.start = ao; k.peak = ao; k.armed = true; }
     if (!k.armed) return;
     if (ao > k.peak) k.peak = ao;
-    if (t - k.tStart >= ACS_CORE.senseDelay) { this.autonomic.sense(k.peak + ACS_CORE.baroOffset, k.start + ACS_CORE.baroOffset); k.armed = false; }
+    if (t - k.tStart >= ACS_CORE.senseDelay) { this.autonomic.sense(k.peak, k.start); k.armed = false; }
   }
 
   /** A completed beat of the live heart: baroreflex, smoothed pressure and output, history. */
@@ -424,6 +436,7 @@ export class Simulation {
   /**
    * `circ` from the live heart, given the legacy `circulation()` result `c` (which supplies only the ischemic fractions, the
    * rate the rhythm implies, the support's oxygen demand factor). From the smoothed beats (time constant `ACS_CORE.smoothTau`):
+   *  - hr, bpm: the ventricular rate the rhythm implies (AF: the AF rate, complete block: the escape rate), not the sinus rate;
    *  - strokeVolume, ml: net volume through the aortic valve; cardiacOutput, L/min: its per-beat rate plus the device flow;
    *  - map, systolic, diastolic, mmHg: the smoothed mean, peak and start-of-beat aortic pressure;
    *  - svr, mmHg·min/L: MAP / CO as BASE_SVR is defined (no venous pressure subtracted);
@@ -437,7 +450,7 @@ export class Simulation {
     const K = ACS_CORE, sm = this.sm, dev = sm.dev;
     const co = sm.co + dev;
     return {
-      ...c, strokeVolume: sm.sv, cardiacOutput: co, map: this.map, systolic: sm.sbp, diastolic: sm.dbp,
+      ...c, hr: ventRate(this.rstate), strokeVolume: sm.sv, cardiacOutput: co, map: this.map, systolic: sm.sbp, diastolic: sm.dbp,
       svr: co > 0.1 ? this.map / co : c.svr, coronaryPressure: this.map + (this.support.iabp ? SUPPORT.iabpCoronaryAug : 0), deviceFlow: dev,
       congestion: Math.min(1, Math.max(0, (sm.pcwp - K.pcwpOnset) / (K.pcwpFull - K.pcwpOnset))), ejectionFraction: sm.ef,
       state: this.map < CIRC.shockMap ? "shock" : this.map < CIRC.hypotensionMap ? "hypotension" : "stable",

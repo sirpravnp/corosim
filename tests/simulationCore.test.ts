@@ -92,9 +92,7 @@ describe("anterior STEMI (proximal LAD occlusion)", () => {
 
 describe("right ventricular infarct (proximal RCA occlusion, complete heart block)", () => {
   const normal = measure(make()), s = make(RCA), m = measure(s);
-  // Known gap: the brief asks for CVP >= 10 before any fluid. The core's venous compliance and stressed volume (A5 calibration: 98 ml/mmHg,
-  // 0.8 L stressed) keep it lower (see the numbers in the next test). Calibrating them is task A7b; when it lands this becomes a plain `it`.
-  it.fails("raises CVP to at least 10 mmHg before any fluid (venous calibration follow-up, A7b)", () => { expect(m.cvp).toBeGreaterThanOrEqual(10); });
+  it("raises CVP to at least 10 mmHg before any fluid", () => { expect(m.cvp).toBeGreaterThanOrEqual(10); });
   it("raises the right-sided pressure with a clear wedge and low pressure", () => {
     say("RCA", m, "normal", normal);
     expect(m.cvp).toBeGreaterThan(1.8 * normal.cvp);
@@ -154,6 +152,32 @@ describe("hemorrhage of 15 % of the blood volume", () => {
     say("blood lost", v0 - total(a));
     expect(v0 - total(a)).toBeGreaterThan(0.15 * 4900 * 0.99);
     expect(v0 - total(a)).toBeLessThan(0.15 * 4900 * 1.01);
+  });
+});
+
+describe("A7b: first second, AF rate, class III", () => {
+  it("shows the core's numbers from the first instant after a reset (the warm-up steady state), not the legacy ones", () => {
+    const s = new Simulation({}, { engine: "core" }); s.reset({ seed: 3 }, { settled: true });
+    const w = s.live!.warmBeat!;
+    expect(w).not.toBeNull();
+    expect(s.circ.strokeVolume).toBeCloseTo(w.strokeVolume, 6);
+    expect(s.circ.systolic).toBeCloseTo(w.systolic, 6);
+    expect(s.circ.map).toBeCloseTo(w.map, 6);
+    expect(s.circ.strokeVolume).toBeGreaterThan(55); expect(s.circ.strokeVolume).toBeLessThan(90);
+    expect(s.circ.ejectionFraction).toBeCloseTo(w.strokeVolume / w.edv.LV, 6);
+  });
+  it("circ.hr is the atrial fibrillation ventricular rate, not the sinus rate", () => {
+    const s = make({ patient: { rhythm: "af" } }, 5);
+    const rs = (s as unknown as { rstate: { rhythm: string; afRate: number; sinusRate: number } }).rstate;
+    expect(rs.rhythm).toBe("af");
+    expect(Math.abs(rs.afRate - rs.sinusRate)).toBeGreaterThan(5);
+    expect(s.circ.hr).toBeCloseTo(rs.afRate, 6);
+  });
+  it("a 30 % hemorrhage is class III: the pressure falls and the rate climbs, past a 15 % one", () => {
+    const n = measure(make()), b15 = measure(make({ bloodLoss: 0.15 })), b30 = measure(make({ bloodLoss: 0.3 }));
+    expect(b30.map).toBeLessThan(n.map - 10);
+    expect(b30.map).toBeLessThan(b15.map);
+    expect(b30.hr).toBeGreaterThan(b15.hr);
   });
 });
 
