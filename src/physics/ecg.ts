@@ -21,6 +21,7 @@ export interface Beat {
   pOnly?: boolean; // atrial depolarization that did not conduct (AV block)
   noP?: boolean; // ventricular complex with no preceding P (junctional escape, or atrial fibrillation)
   bbb?: Bbb; // conducted with a bundle branch block
+  alt?: number; // QRS amplitude x for this beat (electrical alternans: 1 + a, 1 - a on alternate beats); absent = 1
 }
 
 const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -65,25 +66,25 @@ function beatVector(dt: number, beat: Beat, injury: Vec3, tBoost: number): Vec3 
   }
   if (!beat.noP) add(WAVES.P.v, gauss(dt, -(beat.pr ?? -WAVES.P.t), WAVES.P.w));
   if (beat.pOnly) return out;
-  const tc = T_CENTER(beat.rr), tw = T_WIDTH(beat.rr), bbb = beat.bbb ?? "none";
+  const tc = T_CENTER(beat.rr), tw = T_WIDTH(beat.rr), bbb = beat.bbb ?? "none", A = beat.alt ?? 1;
   // Injury current flows during the ST segment (J point → end of T); a block's discordant ST shares the window.
   const win = sigmoid((dt - ST.jPoint) / ST.edge) - sigmoid((dt - (tc + 2 * tw)) / ST.edge);
   if (bbb === "lbbb") {
     // No septal q; one broad wave toward the late left ventricle; repolarization runs the other way.
     const L = BBB.lbbb;
-    add(L.r.v, gauss(dt, L.r.t, L.r.w));
-    add(L.s.v, gauss(dt, L.s.t, L.s.w));
+    add(L.r.v, A * gauss(dt, L.r.t, L.r.w));
+    add(L.s.v, A * gauss(dt, L.s.t, L.s.w));
     add(L.t, (1 + tBoost) * gauss(dt, tc + 0.03, tw * 1.2));
     add(L.st, win);
   } else {
-    add(WAVES.Q.v, gauss(dt, WAVES.Q.t, WAVES.Q.w));
-    add(WAVES.R.v, gauss(dt, WAVES.R.t, WAVES.R.w));
-    add(WAVES.S.v, gauss(dt, WAVES.S.t, WAVES.S.w));
+    add(WAVES.Q.v, A * gauss(dt, WAVES.Q.t, WAVES.Q.w));
+    add(WAVES.R.v, A * gauss(dt, WAVES.R.t, WAVES.R.w));
+    add(WAVES.S.v, A * gauss(dt, WAVES.S.t, WAVES.S.w));
     add(WAVES.T.v, (1 + tBoost) * gauss(dt, tc, tw));
     if (bbb === "rbbb") {
       // The right ventricle depolarizes late through muscle: a terminal rightward-anterior wave after the normal QRS.
       const R = BBB.rbbb;
-      add(R.rPrime.v, gauss(dt, R.rPrime.t, R.rPrime.w));
+      add(R.rPrime.v, A * gauss(dt, R.rPrime.t, R.rPrime.w));
       add(R.t, gauss(dt, tc + 0.02, tw));
       add(R.st, win);
     }

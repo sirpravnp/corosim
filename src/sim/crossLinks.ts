@@ -1,6 +1,7 @@
 import { decodePatient, encodePatient } from "./llm";
 import type { HeartSpec, PatientSpec } from "./patient";
 import type { Scenario } from "./scenario";
+import { ALTERNANS, alternansAmplitude } from "../config/pericardium";
 import { defaults, LESIONS, LesionDef, lesionHash, patientFromLesionHash } from "./structural";
 
 /**
@@ -27,7 +28,7 @@ export interface CrossLink {
 }
 
 /** The PatientSpec fields that are not part of a Scenario (src/sim/patient.ts); a page that only holds a Scenario keeps them aside. */
-const EXTRA = ["kind", "heart", "pericardium", "fluids", "ventilation", "devices"] as const;
+const EXTRA = ["kind", "heart", "pericardium", "septum", "fluids", "ventilation", "devices"] as const;
 
 /** A scenario plus the structural sections of the spec the page was opened with (the simulator and cath lab keep the two apart). */
 export function joinPatient(scenario: Scenario, shared?: PatientSpec | null): PatientSpec {
@@ -100,7 +101,7 @@ export function lesionForHeart(patient: PatientSpec): { id: LesionDef["id"]; val
 /** Library presets (src/ekg/presets.ts) the links choose among; a test checks every id exists. */
 export const EKG_PRESET_LABEL: Record<string, string> = {
   "stemi-anterior": "Anterior STEMI", "stemi-inferior": "Inferior STEMI", "stemi-lateral": "High lateral STEMI", "stemi-posterior": "Posterior STEMI (circumflex)",
-  af: "Atrial fibrillation", lbbb: "Left bundle branch block", rbbb: "Right bundle branch block", nsr: "Normal sinus rhythm",
+  alternans: "Pericardial effusion: electrical alternans", af: "Atrial fibrillation", lbbb: "Left bundle branch block", rbbb: "Right bundle branch block", nsr: "Normal sinus rhythm",
 };
 /** The territory an occluded artery supplies, as a preset. */
 function presetForArtery(a: string): string | null {
@@ -109,8 +110,9 @@ function presetForArtery(a: string): string | null {
   if (/^(RCA|PDA|PLV|AM)/.test(a)) return "stemi-inferior";
   return null;
 }
-/** The EKG preset closest to the patient: an occluded artery's STEMI first, then the rhythm or bundle branch block, else normal sinus. */
+/** The EKG preset closest to the patient: a large pericardial effusion's electrical alternans (above `ALTERNANS.thresholdMl`) first, then an occluded artery's STEMI, then the rhythm or bundle branch block, else normal sinus. */
 export function ekgPresetFor(patient: PatientSpec): string {
+  if (alternansAmplitude(patient.pericardium?.effusionMl, patient.pericardium?.open) > 0 && (patient.kind ?? "adult") === "adult") return ALTERNANS.presetId; // a large effusion: electrical alternans (B4)
   for (const l of patient.lesions ?? []) if (l.occluded) { const p = presetForArtery(String(l.artery).toUpperCase()); if (p) return p; }
   const pt = patient.patient;
   if (pt?.rhythm === "af") return "af";

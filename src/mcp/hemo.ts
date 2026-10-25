@@ -27,7 +27,7 @@ import { PATIENTS } from "../config/structural";
  */
 
 // ---------------------------------------------------------------- the remembered PatientSpec
-const EXTRA = ["kind", "heart", "pericardium", "fluids", "ventilation", "devices"] as const;
+const EXTRA = ["kind", "heart", "pericardium", "septum", "fluids", "ventilation", "devices"] as const;
 const extras = new WeakMap<Simulation, PatientSpec>();
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -50,6 +50,14 @@ export function rememberPatient(sim: Simulation, spec: PatientSpec) {
 export function patchPatient(sim: Simulation, patch: PatientSpec) {
   const e = { ...(extras.get(sim) ?? {}) } as Record<string, unknown>;
   for (const k of EXTRA) if (patch[k] !== undefined) e[k] = deepMerge(e[k], JSON.parse(JSON.stringify(patch[k])));
+  // pericardiocentesis is an action: it comes off the remembered effusion and is not kept
+  const peri = e.pericardium as Record<string, unknown> | undefined;
+  if (peri && "drainMl" in peri) {
+    const drain = Number(peri.drainMl) || 0;
+    delete peri.drainMl;
+    if (peri.effusionMl !== undefined) peri.effusionMl = Math.max(0, Number(peri.effusionMl) - drain);
+    if (!Object.keys(peri).length) delete e.pericardium;
+  }
   extras.set(sim, e as PatientSpec);
 }
 /** The whole current patient: the Scenario as the simulation holds it plus the remembered PatientSpec fields. What a share link encodes. */

@@ -229,9 +229,11 @@ describe("thorax: constriction and the Kussmaul sign", () => {
     expect(con.dRA).toBeGreaterThan(-0.5); // fails to fall (stays within half a mmHg of flat)
     expect(con.dRA).toBeGreaterThan(spont.dRA + 0.7);
   });
-  // Known gap (review of B3): the true Kussmaul sign is a RISE in right atrial pressure on inspiration; the model reaches only
-  // "fails to fall" (-0.24 mmHg). A rise needs a stronger inspiratory venous return into a non-compliant right heart. Flags itself when met.
-  it.fails("the right atrial pressure rises on inspiration in constriction (true Kussmaul sign; follow-up)", () => {
+  // The true Kussmaul sign is a RISE in right atrial pressure on inspiration. B3 reached only "fails to fall" (-0.24 mmHg); B4 adds the inspiratory
+  // squeeze of the splanchnic and caval reservoir by the descending diaphragm (THORAX.diaphragmAbdominal 1 -> 2.9 mmHg): the abdomen is not shielded
+  // by the sac, so more blood reaches a right atrium that cannot follow the pleural fall.
+  it("the right atrial pressure rises on inspiration in constriction (true Kussmaul sign)", () => {
+    log(`constriction: RA(insp - exp) ${f(con.dRA, 2)} mmHg`);
     expect(con.dRA).toBeGreaterThan(0);
   });
   it("the shield is 1/6 at stiffness 6 and 1 for an opened sac", () => {

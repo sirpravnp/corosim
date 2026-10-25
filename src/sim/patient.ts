@@ -15,6 +15,12 @@ export interface PatientSpec extends Scenario {
   /** Valves, septal defects, ductus, shunts and chamber sizes, as the structural engine takes them. */
   heart?: HeartSpec;
   pericardium?: PericardiumSpec;
+  /**
+   * Ventricular interdependence through the septum (core/septum.ts), adult core engine: the septum bows toward the lower-pressure ventricle, so
+   * a failing or overloaded right ventricle takes volume from the left (RV infarct, pulmonary embolism, tamponade). Off by default, which leaves
+   * every other patient as it was; the RV infarct and tamponade presets switch it on.
+   */
+  septum?: boolean;
   fluids?: FluidSpec;
   ventilation?: VentilationSpec;
   /** Mechanical support with settings. `support.iabp` / `support.impella` (booleans) stay valid and mean the defaults here. */
@@ -30,6 +36,12 @@ export interface PericardiumSpec {
   /** Multiplies the sac's stiffness: 1 normal, > 1 constrictive, < 1 a chronically stretched sac. */
   stiffness?: number;
   open?: boolean; // pericardium opened (after cardiac surgery): no constraint
+  /**
+   * Pericardiocentesis, an action and not a state: ml of effusion to remove from the sac now (a patch for `Simulation.apply` / `corosim_adjust`;
+   * 50-100 ml relieves a tamponade). The engine subtracts it from the effusion in force, keeps `effusionMl` at what is left and forgets this
+   * field, so it is never part of a stored or shared patient.
+   */
+  drainMl?: number;
 }
 
 export type FluidKind = "crystalloid" | "colloid" | "albumin" | "blood";
@@ -70,7 +82,7 @@ export interface DeviceSpec {
 
 /** Ranges the new fields are clamped to. [assumed]: wide enough for any teaching case, narrow enough to keep the engines stable. */
 export const PATIENT_RANGES = {
-  effusionMl: [0, 2000], effusionRateMlMin: [0, 100], stiffness: [0.2, 10], // pericardium: ml; ml per clinical minute; multiple of normal
+  effusionMl: [0, 2000], drainMl: [0, 2000], effusionRateMlMin: [0, 100], stiffness: [0.2, 10], // pericardium: ml; ml per clinical minute; multiple of normal
   fluidMl: [0, 5000], fluidAtMin: [0, 1440], fluidOverMin: [0, 1440], hemorrhageMlMin: [0, 500], capillaryLeak: [0, 1], // fluids (a day at most)
   peep: [0, 25], tidalMlKg: [2, 15], // ventilation: cmH2O; ml per kg ideal weight
   impellaLevel: [0, 9], // P-level
@@ -96,7 +108,7 @@ const isObj = (x: unknown): x is Record<string, unknown> => typeof x === "object
 export function normalizePatient(input: PatientSpec = {}): NormalizedPatient {
   const n = normalizeScenario(input), warnings = [...n.warnings];
   const spec: PatientSpec = { ...input };
-  for (const k of ["kind", "heart", "pericardium", "fluids", "ventilation", "devices"] as const) delete spec[k];
+  for (const k of ["kind", "heart", "pericardium", "septum", "fluids", "ventilation", "devices"] as const) delete spec[k];
 
   const num = (o: Record<string, unknown>, k: string, path: string, [lo, hi]: readonly [number, number]): number | undefined => {
     const v = o[k]; if (v === undefined) return undefined;
@@ -147,10 +159,13 @@ export function normalizePatient(input: PatientSpec = {}): NormalizedPatient {
   if (peri) {
     const p = compact<PericardiumSpec>({
       effusionMl: num(peri, "effusionMl", "pericardium", R.effusionMl), effusionRateMlMin: num(peri, "effusionRateMlMin", "pericardium", R.effusionRateMlMin),
-      stiffness: num(peri, "stiffness", "pericardium", R.stiffness), open: bool(peri, "open", "pericardium"),
+      stiffness: num(peri, "stiffness", "pericardium", R.stiffness), open: bool(peri, "open", "pericardium"), drainMl: num(peri, "drainMl", "pericardium", R.drainMl),
     });
     if (p) spec.pericardium = p;
   }
+
+  const septum = bool(input as Record<string, unknown>, "septum", "patient");
+  if (septum !== undefined) spec.septum = septum;
 
   const fl = section(input.fluids, "fluids");
   if (fl) {
