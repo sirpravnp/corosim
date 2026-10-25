@@ -158,7 +158,7 @@ export class Simulation {
   /** The fluid compartments of the core engine (C2); undefined with the legacy engine. They decide the blood volume the circulation holds. */
   private fluidModel?: FluidCompartments;
   private fluidSpec: FluidSpec = {};
-  private fluidP: { pa: number; pv: number } | null = null; // smoothed mean aortic and venous pressure the compartments read
+  private fluidP: { pa: number; pv: number; pcwp: number; pap: number } | null = null; // smoothed mean aortic and venous pressure the compartments read
   private delta = NaN; // s: live time = stream time + delta, set when the first beat is aligned
   private fed = new WeakSet<Beat>();
   private fx: AutonomicEffects = NEUTRAL_FX;
@@ -382,14 +382,27 @@ export class Simulation {
     }
   }
 
+  /** Congestion (0..1) from the lung water of the fluid compartments (core engine; 0 without them). */
+  private lungCongestion(): number {
+    const fm = this.fluidModel;
+    return fm ? Math.min(1, Math.max(0, fm.read().lungWaterIndex - FLUIDS.lung.evlwMlPerKg) / FLUIDS.lung.congestionMlPerKg) : 0;
+  }
+
+  /**
+   * Fall of the pulmonary venous saturation caused by the lung water now (C3), a fraction: 0 with the legacy engine and with dry lungs.
+   * The oxygen solves take it off `satLung` (`LiveSource.saturations`, and the bridge's spec for the panels and the MCP oxygen tool).
+   */
+  lungSatDrop(): number { return this.fluidModel ? this.fluidModel.satDrop : 0; }
+
   /** The compartments take the engine's pressures and advance `minutes` of clinical time (core engine). */
   private stepFluids(minutes: number) {
     const fm = this.fluidModel!, live = this.live, b = live && (live.last ?? live.warmBeat);
     if (!live) return; // the heart is being built: the compartments wait with the clock
     if (b) {
-      const pa = b.map, pv = (b.p.SVC.mean + b.p.IVC.mean + b.p.SPL.mean) / 3, k = this.fluidP && minutes > 0 ? 1 - Math.exp(-minutes / FLUIDS.pressureTauMin) : 1; // a stopped clinical clock follows the engine as it is
-      this.fluidP = this.fluidP ? { pa: this.fluidP.pa + (pa - this.fluidP.pa) * k, pv: this.fluidP.pv + (pv - this.fluidP.pv) * k } : { pa, pv }; // the beat-to-beat swing is not the capillary's pressure
-      fm.setPressures(this.fluidP.pa, this.fluidP.pv);
+      const pa = b.map, pv = (b.p.SVC.mean + b.p.IVC.mean + b.p.SPL.mean) / 3, pcwp = b.p.LA.mean, pap = b.p.PA.mean, k = this.fluidP && minutes > 0 ? 1 - Math.exp(-minutes / FLUIDS.pressureTauMin) : 1; // a stopped clinical clock follows the engine as it is
+      const f0 = this.fluidP;
+      this.fluidP = f0 ? { pa: f0.pa + (pa - f0.pa) * k, pv: f0.pv + (pv - f0.pv) * k, pcwp: f0.pcwp + (pcwp - f0.pcwp) * k, pap: f0.pap + (pap - f0.pap) * k } : { pa, pv, pcwp, pap }; // the beat-to-beat swing is not the capillary's pressure
+      fm.setPressures(this.fluidP.pa, this.fluidP.pv); fm.setLungPressures(this.fluidP.pcwp, this.fluidP.pap);
     }
     fm.advance(minutes);
   }
@@ -832,7 +845,9 @@ export class Simulation {
    *  - map, systolic, diastolic, mmHg: the smoothed mean, peak and start-of-beat aortic pressure;
    *  - svr, mmHg·min/L: MAP / CO as BASE_SVR is defined (no venous pressure subtracted);
    *  - deviceFlow, L/min: the Impella's, smoothed over `deviceFlowTau` (it follows the cardiac cycle);
-   *  - congestion, 0..1: from the smoothed PCWP (left atrial mean), 0 up to 12 mmHg, 1 at 25 (`pcwpOnset`, `pcwpFull`);
+   *  - congestion, 0..1: the larger of the smoothed PCWP (left atrial mean) ramp, 0 up to 12 mmHg, 1 at 25 (`pcwpOnset`, `pcwpFull`), and the lung
+   *    water (C3: the excess over rest as a share of `FLUIDS.lung.congestionMlPerKg`), which keeps a flooded lung congested after the wedge pressure falls.
+   *    The legacy `congestionGain` (litres of fluid × LV ischemia) lives on the legacy engine only;
    *  - ejectionFraction: stroke volume / end-diastolic volume of the LV;
    *  - coronaryPressure: the smoothed MAP plus the diastolic augmentation measured on the aortic trace (0 without a balloon pump);
    *  - state: from the smoothed MAP as `state()` does.
@@ -843,7 +858,7 @@ export class Simulation {
     return {
       ...c, demandFactor: this.coreDemand(), hr: ventRate(this.rstate), strokeVolume: sm.sv, cardiacOutput: co, map: this.map, systolic: sm.sbp, diastolic: sm.dbp,
       svr: co > 0.1 ? this.map / co : c.svr, coronaryPressure: this.map + this.dx.aug, deviceFlow: dev,
-      congestion: Math.min(1, Math.max(0, (sm.pcwp - K.pcwpOnset) / (K.pcwpFull - K.pcwpOnset))), ejectionFraction: sm.ef,
+      congestion: Math.min(1, Math.max(Math.max(0, (sm.pcwp - K.pcwpOnset) / (K.pcwpFull - K.pcwpOnset)), this.lungCongestion())), ejectionFraction: sm.ef,
       state: this.map < CIRC.shockMap ? "shock" : this.map < CIRC.hypotensionMap ? "hypotension" : "stable",
     };
   }
@@ -920,7 +935,9 @@ export class Simulation {
    * blood and interstitial volume (ml), hematocrit and Hb (g/dl), plasma protein and the oncotic pressures, capillary and interstitial
    * pressure (mmHg), filtration, lymph and the net transcapillary flow out of the vessels (ml per clinical minute; negative while the
    * interstitium refills the plasma), urine, and the cumulative fluid given, blood lost and urine (ml). `conservation` is the error of
-   * the total water balance, ml (zero up to rounding).
+   * the total water balance, ml (zero up to rounding). Lung water (C3): `lungWater` (extravascular lung water, ml), `lungWaterExcess`,
+   * `lungWaterIndex` (ml per kg), the pulmonary capillary and lung interstitial pressures, lung filtration and lymph (ml/min) and
+   * `lungSatDrop`, the fall of the pulmonary venous saturation (a fraction).
    */
   fluids(): (FluidReadout & { conservation: number }) | null {
     return this.fluidModel ? { ...this.fluidModel.read(), conservation: this.fluidModel.balance() } : null;

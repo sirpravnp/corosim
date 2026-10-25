@@ -38,7 +38,7 @@ export function bedOxygen(sim: Simulation): Record<string, number> {
 }
 
 /** What a solve was made from; a re-solve is due when the live inputs move away from it. */
-interface Inputs { hr: number; lv: number; rv: number; map: number; svr: number; co: number }
+interface Inputs { hr: number; lv: number; rv: number; map: number; svr: number; co: number; lung: number }
 
 /**
  * `HemoSource` over today's engines (task P2): the ACS `Simulation` supplies the state of the patient, the structural
@@ -216,7 +216,7 @@ export class BridgeSource implements HemoSource {
   private inputs(): Inputs {
     const c = this.sim.circ;
     const m = this.sim.rolling(BRIDGE.mapWindowS).map;
-    return { hr: c.hr, lv: c.lvIschemia, rv: c.rvIschemia, map: Number.isFinite(m) ? m : this.sim.map, svr: c.svr, co: c.cardiacOutput - c.deviceFlow };
+    return { hr: c.hr, lv: c.lvIschemia, rv: c.rvIschemia, map: Number.isFinite(m) ? m : this.sim.map, svr: c.svr, co: c.cardiacOutput - c.deviceFlow, lung: this.sim.lungSatDrop() };
   }
 
   private maybeSolve() {
@@ -225,14 +225,16 @@ export class BridgeSource implements HemoSource {
     if (this.standalone) return; // the monitor does not drive this patient
     if (this.sim.t - this.lastSolveT < BRIDGE.minSolveIntervalS) return;
     const a = this.inputs(), b = this.lastInputs, T = BRIDGE.threshold;
-    if (Math.abs(a.hr - b.hr) > T.hrBpm || Math.abs(a.lv - b.lv) > T.ischemia || Math.abs(a.rv - b.rv) > T.ischemia || Math.abs(a.map - b.map) > T.mapMmHg || Math.abs(a.svr / b.svr - 1) > T.svrFrac || Math.abs(a.co / b.co - 1) > BRIDGE.coThresholdFrac) this.solve();
+    if (Math.abs(a.hr - b.hr) > T.hrBpm || Math.abs(a.lv - b.lv) > T.ischemia || Math.abs(a.rv - b.rv) > T.ischemia || Math.abs(a.map - b.map) > T.mapMmHg || Math.abs(a.svr / b.svr - 1) > T.svrFrac || Math.abs(a.co / b.co - 1) > BRIDGE.coThresholdFrac || Math.abs(a.lung - b.lung) > T.lungSat) this.solve();
   }
 
   private spec(volumeMl: number): StructuralSpec {
     const h = this.opts.patient?.heart ?? {}, c = this.sim.circ;
     if (this.standalone) return { ...h, patient: this.patientKind, hr: PATIENTS[this.patientKind].hr };
+    const drop = this.sim.lungSatDrop(); // lung water (C3) lowers the saturation the lungs put out; 0 on the legacy engine
     return {
       ...h, patient: this.opts.patient?.kind ?? "adult", hr: c.hr,
+      ...(drop > 0 ? { satLung: (h.satLung ?? PATIENTS[this.opts.patient?.kind ?? "adult"].satLung) - drop } : {}),
       svrScale: (c.svr / BASE_SVR) * (h.svrScale ?? 1), volumeMl: (h.volumeMl ?? 0) + volumeMl,
       lvEes: (h.lvEes ?? 1) * Math.max(ISCHEMIA.eesFloor, 1 - ISCHEMIA.lvEesLoss * c.lvIschemia),
       lvStiffness: (h.lvStiffness ?? 1) * (1 + ISCHEMIA.lvStiffGain * c.lvIschemia), rvStiffness: (h.rvStiffness ?? 1) * (1 + ISCHEMIA.rvStiffGain * c.rvIschemia),

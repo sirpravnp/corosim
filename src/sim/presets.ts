@@ -70,6 +70,10 @@ export const PRESETS: Preset[] = [
     spec: { bloodLoss: 0.3, fluids: { given: [{ kind: "crystalloid", ml: 1000, atMin: 5, overMin: 10 }] } },
   },
   {
+    id: "flash-pulmonary-edema", label: "Hypertensive acute pulmonary edema", blurb: "A stiff, volume-loaded left ventricle against a high systemic resistance (flash pulmonary edema): the wedge pressure goes to about 28 mmHg and the lungs fill over tens of clinical minutes, so the oxygen saturation falls from 98% toward the low 90s while the pressure is held. Unloading (nitroglycerin, diuresis) lets the lung water clear slowly.",
+    spec: { heart: { lvStiffness: 3, volumeMl: 700, svrScale: 1.8, lvEes: 0.8 } },
+  },
+  {
     id: "va-ecmo-poor-lv", label: "VA-ECMO with a poor LV", blurb: "A large infarct with a left ventricle at 30% of its contractility, on VA-ECMO at 4 L/min. The left ventricle cannot open its valve against the flow and is not vented: the wedge pressure climbs, which is why a vent is added.",
     spec: { lesions: [{ artery: "LAD", occluded: true, position: 0.15 }], heart: { lvEes: 0.3 }, support: { norepinephrine: 0.3 }, devices: { ecmo: { flowLpm: 4, sweepLpm: 2, fio2: 0.6 } } },
   },
