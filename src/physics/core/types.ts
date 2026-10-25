@@ -109,6 +109,12 @@ export interface Element {
 export interface NodeModel extends Element {
   /** Transmural pressure from the node's effective volume (own + shift) at time t; the engine adds the external pressure. */
   pressure(volume: number, t: number): number;
+  /**
+   * Volume (ml) at which the node, at rest (no activation, no shift, no external pressure), sits at transmural pressure `p` (mmHg): the
+   * inverse of its passive law. `restVolume(0)` is its unstressed volume. Used for the stop-flow equilibrium (core/vessels.ts); absent on
+   * a model with no passive law.
+   */
+  restVolume?(p: number): number;
 }
 
 /**

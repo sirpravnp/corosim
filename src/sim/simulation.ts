@@ -581,7 +581,8 @@ export class Simulation {
   /**
    * Catheter-style numbers of the core engine, means over the beats of the last `seconds` (mmHg, ml): CVP (mean RA), PCWP (mean
    * LA), LVEDP and RVEDP (ventricular pressure at the start of the beat), PA systolic/diastolic/mean, LV end-diastolic and
-   * end-systolic volume. null with the legacy engine or before the first beat.
+   * end-systolic volume, and `filling` (C1): stressed and unstressed blood volume per node and in total, ml, and the mean systemic
+   * filling pressure `filling.msfp`, mmHg (see `filling()`). null with the legacy engine or before the first beat.
    */
   hemo(seconds = 10) {
     const live = this.live;
@@ -592,9 +593,17 @@ export class Simulation {
     return {
       cvp: mean((b) => b.p.RA.mean), pcwp: mean((b) => b.p.LA.mean), lvedp: mean((b) => b.p.LV.end), rvedp: mean((b) => b.p.RV.end),
       pa: { systolic: mean((b) => b.p.PA.max), diastolic: mean((b) => b.p.PA.min), mean: mean((b) => b.p.PA.mean) },
-      lvEdv: mean((b) => b.edv.LV), lvEsv: mean((b) => b.esv.LV), beats: rs.length,
+      lvEdv: mean((b) => b.edv.LV), lvEsv: mean((b) => b.esv.LV), beats: rs.length, filling: live.filling(),
     };
   }
+
+  /**
+   * Stressed volume and mean systemic filling pressure of the core engine now (C1), null with the legacy engine: total, stressed
+   * and unstressed blood volume (ml), the same per node (`nodes`), `msfp` (mmHg, the pressure every vessel and chamber would settle
+   * to after a stop-flow, from the compliances and the total volume) and `systemic` (the estimate from the systemic vessels alone).
+   * Venous tone moves blood from the unstressed to the stressed volume and raises `msfp`; blood given or lost changes the total.
+   */
+  filling() { return this.live ? this.live.filling() : null; }
 
   /** Run for `seconds` of simulated time and return the beats that occurred. */
   run(seconds: number): BeatRecord[] {

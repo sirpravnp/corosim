@@ -1,6 +1,6 @@
 import { LIVE, MODIFIER_RANGE, VENOUS_TONE } from "../../config/live";
 import type { VentricleFactors } from "../../config/ischemia";
-import { buildModel, volumeOffsetFor, type Model, type StructuralSpec } from "../structural";
+import { buildModel, SYSTEMIC, volumeOffsetFor, type Model, type StructuralSpec } from "../structural";
 import type { Beat } from "../ecg";
 import type { BeatHemo } from "../beatHemo";
 import { ElastanceChamber } from "./chamber";
@@ -9,7 +9,7 @@ import { defaultPr, fromModel, type FromModelOptions } from "./fromModel";
 import { BeatRecorder, type NodeStat, type ValveStat } from "./recorder";
 import { Resistor } from "./valves";
 import type { Thorax } from "./thorax";
-import { Compliance } from "./vessels";
+import { Compliance, stressedVolumes, type Stressed } from "./vessels";
 import type { Element, Engine, HeartEvent } from "./types";
 
 /**
@@ -212,6 +212,11 @@ export class LiveHeart {
     for (const v of this.veins) v.el.set({ Vu: v.vu * range(1 - v.gain * (mods.venousTone - 1), VENOUS_TONE.factorRange) });
     this.thorax()?.set({ offsetMmHg: mods.thoracic }); // B3: constant intrathoracic pressure on top of the breath (only when built with `core.thorax`)
   }
+  /**
+   * Stressed and unstressed volume (ml) per node and in total, and the mean systemic filling pressure (mmHg), of the engine's state
+   * now (C1; see `stressedVolumes`). Venous tone (`setModifiers`) moves blood between the unstressed and the stressed part with the total unchanged.
+   */
+  filling(): Stressed { return stressedVolumes(this.engine.nodes, this.engine.sample().V, SYSTEMIC); }
   private thorax(): Thorax | null { try { return this.engine.element<Thorax>("thorax"); } catch { return null; } }
 
   /**
