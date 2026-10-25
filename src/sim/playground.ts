@@ -35,7 +35,7 @@ export const GROUP_INFO: Record<string, FieldGroupInfo> = {
   kind: { id: "kind", label: "Patient kind", modelled: "yes", note: "The bridge builds the neonate or the adult circulation. The ACS monitor and ECG are adult models either way." },
   heart: { id: "heart", label: "Structural heart", modelled: "yes", note: "The bridge's structural engine reads every field (Gorlin valves, shunts, chamber sizes). The ACS monitor does not see it." },
   pericardium: { id: "pericardium", label: "Pericardium", modelled: "no", note: "Not modelled on this page yet: stored in the spec and shared." },
-  fluids: { id: "fluids", label: "Fluids and hemorrhage", modelled: "no", note: "Not modelled on this page yet: stored in the spec and shared. Blood loss (Volume and drugs) and IV fluid (Management) are modelled." },
+  fluids: { id: "fluids", label: "Fluids and hemorrhage", modelled: "no", note: "Modelled by the core engine only (C2: Starling exchange between plasma and interstitium, doses, bleeding rate, capillary leak, urine, Hb), which this page does not run yet, so here it is stored in the spec and shared. Passive leg raise is not modelled yet (C4). Blood loss (Volume and drugs) and IV fluid (Management) are modelled by the legacy engine." },
   ventilation: { id: "ventilation", label: "Ventilation", modelled: "no", note: "Not modelled on this page yet: stored in the spec and shared." },
   impella: { id: "impella", label: "Impella", modelled: "legacy", note: "On or off drives the legacy ACS Impella model; model, level and position are not modelled on this page yet." },
   iabp: { id: "iabp", label: "Balloon pump", modelled: "legacy", note: "On or off drives the legacy ACS balloon-pump model; ratio is not modelled on this page yet." },
