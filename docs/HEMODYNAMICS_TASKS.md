@@ -98,10 +98,10 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | P2e | done (non-adult patients solve standalone on their own baseline; neonatal VSD LVEDP 73 → 7, CVP 70 → 6; valves graded by kind) |
 | D3 | done (real Impella and IABP in the core-mode simulation; measured coronary augmentation; `sim.devices()`; STEMI + CP P6 PCWP 20.6 → 14.8). Known gap: total output +0.08 L/min with Impella (clinically 0.5–1); follow-up: IABP deflation lead should scale with RR (balloon ~10 ml full at peak systole at HR 110) |
 | P12 | done (playground mode: one PatientSpec on every control, 11 presets, share link, per-group modelled/legacy/stored-only badges; neonate uses P2e's standalone bridge with a monitor banner). Pericardium, fluids, ventilation, ECMO and Impella level are stored only until P16 puts the core engine on the page |
-| C2 | restarting (first attempt stopped before committing; needs C1) |
+| C2 | in progress (restarted on top of C1) |
 | C1 | done (stressed/unstressed per node and total, MSFP from the compliances = actual stop-flow within 0.05 mmHg; adult total 4614 ml, stressed 928, MSFP 6.55 whole circulation / 7.09 systemic vessels; venous tone 1.5: MSFP 6.5 → 15.6, CO 5.21 → 6.87, total unchanged; `sim.filling()`, `hemo().filling`). Known gap: whole-circulation MSFP 6.55 is below 7-10 (`it.fails` in `tests/filling.test.ts`); the systemic estimate 7.09 is in range |
 | P16 | in progress |
-| P3b | in progress |
+| P3b | done (monitor and ECG adopted into workspace panels, parked when closed so the game page is untouched; layout v2 migration; ECG zero-width guard) |
 | P15 | done (corosim_heart_cath, corosim_jvp, corosim_oxygen, corosim_loop_metrics with versioned formats; full PatientSpec in adjust, compare and share link; bridge cached per simulation, ~1 s cold solve; engine choice on set_scenario, legacy default) |
 | P13 | done (pause, slow motion, step-one-beat on one clock; 3 snapshots overlaid on traces, loops and numbers; CSV export). Follow-up for P12: unify the two speed controls (new beat-clock buttons and the old 1×/3×/6× clinical-clock buttons) |
 | P11 | done (structural props in the Simulator's heart behind a display toggle; built in a worker; follow-ups: P12 must call `propsView.setPatient` for non-link patient changes; vessels clutter the see-through view) |
