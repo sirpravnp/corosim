@@ -16,8 +16,8 @@ export const THORAX = {
   refPleural: -7,
   /** Spontaneous breathing: fall of pleural pressure from end-expiration to peak inspiration at depth 1, mmHg (-5 to -9; deep breathing, depth 2, to -13). [lit: -8 to -10 mmHg at tidal inspiration] */
   spontaneousSwing: 4,
-  /** Rise of intra-abdominal pressure at peak spontaneous inspiration (depth 1), mmHg: the diaphragm descends and compresses the abdominal contents. [lit: 1-3 mmHg; assumed 1] */
-  diaphragmAbdominal: 1,
+  /** Rise of intra-abdominal pressure at peak spontaneous inspiration (depth 1), mmHg: the diaphragm descends and compresses the abdominal contents, squeezing the splanchnic and caval reservoir toward the right atrium (the inspiratory venous return of Kussmaul's sign, B4). [lit: 1-3 mmHg; 2.9, the top of the range: at 1 the right atrial pressure only fails to fall in constriction, at 2.9 it rises while the normal heart still falls by 0.9 mmHg; just under 3 keeps the swing inside the tested 0.5-3 mmHg band] */
+  diaphragmAbdominal: 2.9,
   /** Positive-pressure ventilation: rise of pleural pressure from end-expiration to the end of inspiration per ml/kg of tidal volume, mmHg. 8 ml/kg gives +7.2 mmHg (plateau 18-20 cmH2O of which about 40 % reaches the pleura). [lit: +5 to +10 mmHg; coefficient assumed] */
   ppvSwingPerMlKg: 0.9,
   /** Default tidal volume of mechanical ventilation, ml/kg. [lit: protective ventilation 6-8 ml/kg] */
