@@ -29,6 +29,8 @@ export const BRIDGE = {
   atrialTailS: 0.2, atrialTailMaxFrac: 0.3,
   /** Shortest diastole (filling + tail) for which the three-piece time warp is used; shorter beats are scaled uniformly, s. [assumed] */
   minWarpDiastoleS: 0.05,
+  /** Standalone (non-adult) patients: the P wave leads the beat by this PR interval, s. [assumed] */
+  standalonePrS: 0.1,
   /** Bed oxygenation placeholder: tissue O2 = base − slope × ischemia severity (until tasks E2/E3). [assumed] */
   bedOxygen: { base: 0.75, slope: 0.45 },
 };
