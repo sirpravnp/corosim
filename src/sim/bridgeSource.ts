@@ -28,7 +28,7 @@ const noSaturations = (): Saturations => ({
 });
 
 /** What a solve was made from; a re-solve is due when the live inputs move away from it. */
-interface Inputs { hr: number; lv: number; rv: number; map: number; svr: number }
+interface Inputs { hr: number; lv: number; rv: number; map: number; svr: number; co: number }
 
 /**
  * `HemoSource` over today's engines (task P2): the ACS `Simulation` supplies the state of the patient, the structural
@@ -49,8 +49,8 @@ interface Inputs { hr: number; lv: number; rv: number; map: number; svr: number 
  *    during acute ischemia, so filling pressure is higher at a given volume.
  *  - `rvEes` = (heart.rvEes ?? 1) x (1 - ISCHEMIA.rvEesLoss x sim.circ.rvIschemia): weaker RV contraction only. (Not
  *    `rvContractility`, which also stiffens the RV and would hold CVP down.)
- *  - `svrScale` = sim.circ.svr / BASE_SVR x (heart.svrScale ?? 1): systemic resistance comes from the ACS model, which
- *    already holds the sympathetic, vagal and drug effects, so it is not fitted to MAP.
+ *  - `svrScale` = sim.circ.svr / BASE_SVR x (heart.svrScale ?? 1) x `svrMul`: the starting resistance comes from the ACS
+ *    model (sympathetic, vagal and drug effects); `svrMul` is the calibrated correction, see "Cardiac output" below.
  *  - `volumeMl` = (heart.volumeMl ?? 0) + a calibrated volume, see below.
  *  - Not mapped: drugs and fluids as such (their effect on MAP reaches the engine through svr and the calibrated volume),
  *    Impella/IABP (the structural engine has no devices; see devices()), the pericardium, fluids and ventilation of a PatientSpec.
@@ -63,6 +63,19 @@ interface Inputs { hr: number; lv: number; rv: number; map: number; svr: number 
  * to `sim.map` before there are beats). The beat-to-beat MAP of the ACS model swings by about +-5 mmHg from respiration
  * and the baroreflex, which would force a re-solve every 3 s; the averaged value is the trigger and the target. `calibrationError` is the remaining difference (structural minus monitor, mmHg), nonzero when the volume clamp binds. The volume is public as `volume`. If
  * the PatientSpec has a lesion the ACS model knows nothing about, the calibration still forces MAP to the monitor's.
+ *
+ * Cardiac output (task P2d): matching MAP alone left the bridge's CO well off the monitor's (RV infarct: 2.88 against 1.84
+ * L/min). Two causes, measured: (1) `circ.svr` is the ACS model's open-loop resistance; its MAP is baroreflex-buffered
+ * (map = baseMap - (baseMap - CO x svr) x retained), so the resistance its own MAP and CO imply, (MAP - RAP) / CO, is higher
+ * (about 24 against 16 mmHg.min/L in the RV infarct); (2) the structural engine's heart is stronger than the ACS model's
+ * in the RV infarct at the same filling (it lacks the series RV-LV interdependence, septal shift and pericardial
+ * constraint that cut the real LV preload), so volume alone cannot give both CO and the high CVP of the syndrome (CO 1.85
+ * needed a volume that put CVP at 3). So the solve has three knobs, in two phases (src/sim/bridgeSolver.ts): the volume
+ * for MAP (filling, as before), then with the volume fixed `svrMul` on systemic resistance (effective resistance, from MAP
+ * and RAP) and `eesMul` on LV end-systolic elastance (the unmodelled LV dysfunction of interdependence, 0.5 in the RV
+ * infarct, 0.9 in an anterior STEMI) until MAP is within 1 mmHg and the structural flow within 3 % of the monitor's native
+ * CO (`circ.cardiacOutput` minus the device flow, which the structural engine does not see). The multipliers are public
+ * (`svrMul`, `eesMul`), `coError` is the remaining flow difference. A re-solve is also due when that CO moves by 5 %.
  *
  * Re-solving: never every frame. A solve (several analyze calls, ~100 ms each) runs when an input moved from its value at
  * the last solve by more than a threshold (HR 3 bpm, ischemia 0.03 of either ventricle, monitor MAP 3 mmHg) and at least
@@ -118,6 +131,8 @@ export class BridgeSource implements HemoSource {
   private solver: BridgeSolver;
   /** ml added (+) or removed (-) by the MAP calibration at the last solve. */
   volume = 0;
+  /** Multipliers the cardiac-output calibration put on svrScale and lvEes at the last solve, and the flow error (structural minus monitor, L/min). */
+  svrMul = 1; eesMul = 1; coError = NaN;
   private blendFrom: Waveform | null = null;
   private ring: BeatSummary[] = [];
   private subs = new Set<(b: BeatSummary) => void>();
@@ -166,7 +181,7 @@ export class BridgeSource implements HemoSource {
     if (t < this.clockSeen - 1e-6) {
       this.epoch++;
       this.ring = []; this.report = null; this.wave = null; this.blendFrom = null; this.lastInputs = null;
-      this.lastSolveT = -Infinity; this.queued = false; this.pPhase = 0; this.volume = 0; this.calibrationError = NaN;
+      this.lastSolveT = -Infinity; this.queued = false; this.pPhase = 0; this.volume = 0; this.calibrationError = NaN; this.svrMul = 1; this.eesMul = 1; this.coError = NaN;
     }
     if (t > this.clockSeen || t < this.clockSeen) this.clockSeen = t;
   }
@@ -176,7 +191,7 @@ export class BridgeSource implements HemoSource {
   private inputs(): Inputs {
     const c = this.sim.circ;
     const m = this.sim.rolling(BRIDGE.mapWindowS).map;
-    return { hr: c.hr, lv: c.lvIschemia, rv: c.rvIschemia, map: Number.isFinite(m) ? m : this.sim.map, svr: c.svr };
+    return { hr: c.hr, lv: c.lvIschemia, rv: c.rvIschemia, map: Number.isFinite(m) ? m : this.sim.map, svr: c.svr, co: c.cardiacOutput - c.deviceFlow };
   }
 
   private maybeSolve() {
@@ -184,7 +199,7 @@ export class BridgeSource implements HemoSource {
     if (!this.report || !this.lastInputs) { if (this.sim.t - this.lastSolveT >= BRIDGE.minSolveIntervalS) this.solve(); return; }
     if (this.sim.t - this.lastSolveT < BRIDGE.minSolveIntervalS) return;
     const a = this.inputs(), b = this.lastInputs, T = BRIDGE.threshold;
-    if (Math.abs(a.hr - b.hr) > T.hrBpm || Math.abs(a.lv - b.lv) > T.ischemia || Math.abs(a.rv - b.rv) > T.ischemia || Math.abs(a.map - b.map) > T.mapMmHg || Math.abs(a.svr / b.svr - 1) > T.svrFrac) this.solve();
+    if (Math.abs(a.hr - b.hr) > T.hrBpm || Math.abs(a.lv - b.lv) > T.ischemia || Math.abs(a.rv - b.rv) > T.ischemia || Math.abs(a.map - b.map) > T.mapMmHg || Math.abs(a.svr / b.svr - 1) > T.svrFrac || Math.abs(a.co / b.co - 1) > BRIDGE.coThresholdFrac) this.solve();
   }
 
   private spec(volumeMl: number): StructuralSpec {
@@ -201,7 +216,7 @@ export class BridgeSource implements HemoSource {
   /** Start a solve of the live inputs. With an asynchronous solver, one at a time; a call during a solve is queued. */
   private solve() {
     if (this.inFlight) { this.queued = true; return; }
-    const inputs = this.inputs(), req: SolveRequest = { base: this.spec(0), volume: this.volume, targetMap: inputs.map };
+    const inputs = this.inputs(), req: SolveRequest = { base: this.spec(0), volume: this.volume, targetMap: inputs.map, targetCo: inputs.co, warm: this.report ? { svr: this.svrMul, ees: this.eesMul } : undefined };
     let out: SolveResult | Promise<SolveResult>;
     try { out = this.solver.solve(req); } catch (e) { this.failed(e); return; }
     if (!(out instanceof Promise)) { this.apply(out, inputs); return; }
@@ -228,7 +243,7 @@ export class BridgeSource implements HemoSource {
   /** Cache a solved report; the next beat blends from the previous waveform to this one. */
   private apply(r: SolveResult, inputs: Inputs) {
     this.analyzeCalls += r.analyzeCalls;
-    this.volume = r.volume; this.calibrationError = r.calibrationError;
+    this.volume = r.volume; this.calibrationError = r.calibrationError; this.svrMul = r.svrMul; this.eesMul = r.eesMul; this.coError = r.coError;
     if (this.wave) this.blendFrom = this.wave;
     this.report = r.report; this.wave = r.report.waveform ?? null;
     this.lastInputs = inputs; this.lastSolveT = this.sim.t; this.solves++;

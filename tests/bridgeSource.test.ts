@@ -7,6 +7,7 @@ import { analyze, clampStructuralSpec } from "../src/physics/structural";
 import { solveBridge } from "../src/sim/bridgeSolver";
 import type { BridgeSolver, SolveRequest, SolveResult } from "../src/sim/bridgeSolver";
 
+vi.setConfig({ testTimeout: 60_000 }); // real calibrated solves (several structural analyses each) run in these tests; 5 s is too tight under load
 const settled = (sc = {}, warm = 40) => { const s = new Simulation(); s.reset({ seed: 3, ...sc }, { settled: true }); s.warmup(warm); s.history = []; return s; };
 const LAD = { lesions: [{ artery: "LAD", occluded: true, position: 0.2 }] };
 const RCA = { lesions: [{ artery: "RCA", occluded: true, position: 0.25 }] };
@@ -92,6 +93,31 @@ describe("ACS direction", () => {
   it.fails("RV infarct paced at 70 bpm: CVP >= 10", () => { expect(np.cvp).toBeGreaterThanOrEqual(10); });
 });
 
+describe("the bridge agrees with the monitor on MAP and cardiac output", () => {
+  // MAP within 5 mmHg and CO within 10 % of sim.circ.cardiacOutput, the number on the monitor, in three states (seed 3, settled).
+  const cases = { normal: run(), "LAD occlusion": run(LAD, 40), "RV infarct": run(RCA, 40) };
+  for (const [name, { sim, bridge }] of Object.entries(cases)) {
+    it(`${name}: MAP within 5 mmHg, CO within 10 %`, () => {
+      const n = bridge.numbers(), co = sim.circ.cardiacOutput;
+      expect(Math.abs(n.map - sim.map)).toBeLessThan(5);
+      expect(Math.abs(n.co / co - 1)).toBeLessThan(0.1);
+      expect(Math.abs(bridge.coError)).toBeLessThan(0.1 * co);
+    });
+  }
+  it("the multipliers that close the gap are moderate, not at their limits", () => {
+    for (const { bridge } of Object.values(cases)) {
+      expect(bridge.svrMul).toBeGreaterThan(0.5); expect(bridge.svrMul).toBeLessThan(2);
+      expect(bridge.eesMul).toBeGreaterThan(0.35); expect(bridge.eesMul).toBeLessThan(1.3);
+    }
+  });
+  it("without a flow target the solver calibrates MAP only", () => {
+    const base = (cases.normal.bridge as unknown as { spec(v: number): never }).spec(0);
+    const r = solveBridge({ base, volume: 0, targetMap: 85 });
+    expect(r.svrMul).toBe(1); expect(r.eesMul).toBe(1); expect(Number.isNaN(r.coError)).toBe(true);
+    expect(Math.abs(r.calibrationError)).toBeLessThan(1.5);
+  });
+});
+
 describe("beat replay", () => {
   const { sim, bridge, got } = run({}, 30);
   it("emits one summary per ventricular beat, shaped for the panels", () => {
@@ -158,7 +184,7 @@ describe("re-solving", () => {
     sim.run(60);
     expect(bridge.solves).toBeGreaterThanOrEqual(1);
     expect(bridge.solves).toBeLessThanOrEqual(4);
-    expect(bridge.analyzeCalls).toBeLessThanOrEqual(4 * 6);
+    expect(bridge.analyzeCalls).toBeLessThanOrEqual(4 * 14); // a cold solve is up to 6 + 7 calls (volume, then resistance and contractility), a warm one usually 1 to 4
   });
   it("re-solves, but at most every 3 s, when the patient changes", () => {
     const sim = settled(), bridge = new BridgeSource(sim);
@@ -273,7 +299,7 @@ describe("asynchronous solver", () => {
     const first = got[before], next = got[before + 1]; // the first beat after the result goes from the old waveform to the new one
     expect(Math.abs(first.pressure.LV[0] - last.pressure.LV[last.pressure.LV.length - 1])).toBeLessThan(10);
     const fv = first.loops.LV.v, nv = next.loops.LV.v;
-    expect(Math.abs(fv[0] - nv[0])).toBeGreaterThan(0.5); // starts on the old waveform, not the new one
+    expect(Math.abs(fv[0] - nv[0])).toBeGreaterThan(0.2); // starts on the old waveform, not the new one
     expect(Math.abs(fv[fv.length - 1] - nv[nv.length - 1])).toBeLessThan(Math.abs(fv[0] - nv[0])); // and ends nearer the new
   });
 

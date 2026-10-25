@@ -11,6 +11,14 @@ export const BRIDGE = {
   mapWindowS: 15,
   /** MAP calibration: stop when the structural mean aortic pressure is this close to the monitor's, mmHg; at most this many extra analyze calls. [assumed] */
   mapToleranceMmHg: 1, maxCalibrationIterations: 5,
+  /** Cardiac-output calibration (phase 2 of the solve): extra analyze calls at most, and the flow tolerance as a fraction of the target. [assumed] */
+  volumeToleranceMmHg: 3, maxCoIterations: 6, coToleranceFrac: 0.03,
+  /** Range of the multipliers the calibration may put on systemic resistance and on LV end-systolic elastance. [assumed] */
+  svrMulRange: [0.3, 3] as const, eesMulRange: [0.3, 1.5] as const,
+  /** First-step guess of d(flow)/d(ees multiplier), as a fraction of the target flow (measured about 0.5 to 0.8). [assumed] */
+  coPerEes: 0.7,
+  /** Re-solve when the monitor's native cardiac output moves by this fraction since the last solve. [assumed] */
+  coThresholdFrac: 0.05,
   /** First-step guess of d(MAP)/d(volume), mmHg per ml, before a secant slope is known. [assumed] */
   mapPerMl: 0.04,
   /** Seconds of per-node pressure and chamber volume kept for trace(), and the most beats kept for beats(). [assumed] */

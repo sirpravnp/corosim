@@ -11,6 +11,9 @@ import { heartReports, openHeartBridge } from "../src/cath/heart";
 import type { PatientSpec } from "../src/sim/patient";
 import type { Scenario } from "../src/sim/scenario";
 
+/** Vitest's 5 s default is too tight for a test that waits on real calibrated solves when the machine is under load. */
+const SOLVE_TEST_TIMEOUT_MS = 60_000;
+
 /** The patient as the cath page loads it. */
 function lab(sc: Scenario, spec?: PatientSpec) {
   const sim = new Simulation({ seed: 1 });
@@ -40,7 +43,7 @@ describe("cath page heart tabs", () => {
     sim.step(8, { minutes: 0 });
     const r = heartReports(bridge);
     expect(r.right).not.toBeNull(); expect(r.left).not.toBeNull();
-  });
+  }, SOLVE_TEST_TIMEOUT_MS); // two real solves (several structural analyses each, ~0.3 s apiece on a busy machine) on top of the warm-up
   for (const c of CASES) {
     it(`${c.id}: same rows as the Simulator panels`, () => {
       const { sim, bridge } = lab(c.scenario);
