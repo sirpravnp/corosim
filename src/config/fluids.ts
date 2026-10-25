@@ -88,6 +88,8 @@ export const FLUIDS = {
     lymphSlope: 0.35, lymphMax: 10,
     /** Interstitial pressure from the water above rest x (ml per 70 kg; same form as the body's): a stiff first part (`ciLow`, over `stiffSpan` mmHg: the perivascular cuffs fill first) and a loose part beyond (`ciHigh`: once the interstitium is full the fluid floods the alveoli). [assumed] */
     ciLow: 25, ciHigh: 120, stiffSpan: 3,
+    /** Below its resting water the lung interstitium is stiff (ml/mmHg per 70 kg): a hemorrhaged patient's low wedge pressure does not dry the lung. [assumed] */
+    ciDry: 5,
     /** Gas exchange: the fall of the pulmonary venous saturation (a fraction) is `satDropMax`·h/(h + 1) with h = (excess/x50)^n for the lung water above rest, ml per kg. The interstitial fluid costs little; the alveolar flooding of the second stage costs a lot (shunt and V/Q mismatch; Staub 1974). [assumed, tuned to the task targets] */
     satDropMax: 0.45, dropMlPerKg50: 7.5, dropHill: 2.5,
     /** The excess of lung water (ml/kg) at which the core's `circ.congestion` is 1 (alveolar edema). [assumed] */

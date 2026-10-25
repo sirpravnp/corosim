@@ -124,7 +124,7 @@ export class FluidCompartments {
   private readonly pi0: number; private readonly kE: number; private readonly kf: number; private readonly l0: number;
   private readonly ciLow: number; private readonly ciHigh: number; private readonly u0: number;
   // the lung
-  private readonly vl0: number; private readonly piL0: number; private readonly kfL: number; private readonly lL0: number; private readonly ciLowL: number; private readonly ciHighL: number;
+  private readonly vl0: number; private readonly piL0: number; private readonly kfL: number; private readonly lL0: number; private readonly ciLowL: number; private readonly ciHighL: number; private readonly ciDryL: number;
 
   constructor(patient: FluidPatient, pa = FLUIDS.mapRest, pv = 6) {
     const F = FLUIDS, s = (this.s = patient.weightKg / 70), hct = patient.hb / F.mchc;
@@ -141,7 +141,7 @@ export class FluidCompartments {
     const Lg = F.lung;
     this.pcwp = Lg.pcwpRest; this.pap = Lg.papRest;
     this.vl0 = this.y[VL] = Lg.evlwMlPerKg * patient.weightKg;
-    this.kfL = Lg.kf * s; this.lL0 = Lg.lymphRest * s; this.ciLowL = Lg.ciLow * s; this.ciHighL = Lg.ciHigh * s;
+    this.kfL = Lg.kf * s; this.lL0 = Lg.lymphRest * s; this.ciLowL = Lg.ciLow * s; this.ciHighL = Lg.ciHigh * s; this.ciDryL = Lg.ciDry * s;
     this.piL0 = this.pcLungOf() - Lg.sigma * (oncotic(F.plasmaProtein) - this.piLungOncotic(F.plasmaProtein)) - this.lL0 / this.kfL;
   }
 
@@ -210,7 +210,7 @@ export class FluidCompartments {
   private piLungOncotic(cp: number) { return oncotic(FLUIDS.lung.proteinRatio * cp); }
   private piLungOf(vl: number) {
     const x = vl - this.vl0, span = FLUIDS.lung.stiffSpan;
-    return this.piL0 + x / this.ciHighL + (x > 0 ? span * Math.tanh(x / (span * this.ciLowL)) : 0);
+    return x < 0 ? this.piL0 + x / this.ciDryL : this.piL0 + x / this.ciHighL + span * Math.tanh(x / (span * this.ciLowL)); // the lung does not dry out: below rest the interstitium is stiff
   }
   /** Fall of the pulmonary venous saturation (a fraction) with the lung water `vl` (ml). */
   private satDropOf(vl: number) {
