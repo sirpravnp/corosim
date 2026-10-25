@@ -28,6 +28,9 @@ button.ws-x:hover { color: var(--ink); }
 .hp-seg button { font: 600 11px/1.4 var(--font-data); padding: 2px 8px; color: var(--muted); background: transparent; border: 1px solid var(--rule); border-radius: 999px; cursor: pointer; }
 .hp-seg button[aria-pressed="true"] { color: var(--ink); background: var(--stage-2); }
 .ws-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; min-width: 0; }
+.ws-tools-group.ws-time { flex-direction: column; align-items: flex-start; gap: 4px; }
+.ws-time-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ws-time-label { min-width: 92px; font: 600 11px/1.4 var(--font-data); text-transform: uppercase; color: var(--muted); cursor: help; }
 .ws-tools-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .ws-tools button { font-size: 12px; padding: 4px 9px; }
 .ws-tools button[aria-pressed="true"] { background: var(--stage-2); color: var(--ink); }

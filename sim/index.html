@@ -78,8 +78,22 @@
       <div class="row q-live"><button id="qquit">Leave the case</button></div>
     </section>
 
+    <section id="pgentry">
+      <h2>Mode</h2>
+      <div class="row" style="margin-top:0" role="group" aria-label="Page mode">
+        <button id="pg_off" class="on" aria-pressed="true">Simulator</button>
+        <button id="pg_on" aria-pressed="false" title="Edit one patient with every control: coronary and structural lesions, rhythm, pericardium, fluids, ventilation, devices, kind">Playground</button>
+      </div>
+      <p class="note">Playground edits one patient with every control and drives every panel from it; its share link opens the same patient.</p>
+    </section>
+    <div id="pgmount" hidden></div>
+
     <section>
       <h2>Monitor</h2>
+      <div id="pgbanner" class="pg-banner" role="note" hidden>
+        <span>The monitor, ECG and 3D heart show the adult coronary model. The panels below show this neonatal heart.</span>
+        <button id="pg_adult" type="button" title="Back to an adult patient: the coronary view and controls return">Switch to adult</button>
+      </div>
       <table class="readout">
         <tr class="q-hide"><td>Circulation</td><td id="circ"></td></tr>
         <tr><td>Blood pressure (MAP)</td><td id="bp"></td></tr>
@@ -115,7 +129,7 @@
           <button id="exert">Exertion (2×)</button>
         </div>
         <p class="glabel" id="ts-l">Time scale</p>
-        <div class="row" style="margin-top:0">
+        <div class="row" id="ts-row" style="margin-top:0">
           <button id="s1" class="on">1×</button>
           <button id="s3">3×</button>
           <button id="s6">6×</button>
