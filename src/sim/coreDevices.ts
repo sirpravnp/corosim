@@ -57,4 +57,19 @@ export interface IabpReadout {
   coronaryAugmentationMmHg: number;
 }
 
-export interface DevicesReadout { impella: ImpellaReadout | null; iabp: IabpReadout | null }
+/**
+ * VA-ECMO console (present in `DevicesReadout` only when the patient has the circuit): flow L/min (net, through the pump), target, speed,
+ * oxygenator settings, the drainage site, suction level 0-1 and alarm, pressure drop across the oxygenator (mmHg) and pump head (mmHg).
+ * The saturation of the blood it returns is computed from the drained blood's: see `LiveSource.devices()`.
+ */
+export interface EcmoReadout {
+  on: boolean; drain: "RA" | "IVC"; flowLpm: number; targetLpm: number; rpm: number; sweepLpm: number; fio2: number;
+  suctionLevel: number; suctionAlarm: boolean; membraneDpMmHg: number; headMmHg: number;
+}
+
+/** Impella RP console (present only when the patient has it): P-level, speed, mean flow over the last beat (L/min), motor current (mA), placement signal (PA minus IVC pressure, mmHg) and the suction alarm. */
+export interface ImpellaRpReadout {
+  on: boolean; level: number; speedKrpm: number; flowLpm: number; motorCurrentMa: number; placementMmHg: number; suctionAlarm: boolean;
+}
+
+export interface DevicesReadout { impella: ImpellaReadout | null; iabp: IabpReadout | null; ecmo?: EcmoReadout; impellaRp?: ImpellaRpReadout }

@@ -50,6 +50,8 @@ export class Pericardium implements Element, Tunable<PericardiumParams> {
   set(patch: Partial<PericardiumParams>) { Object.assign(this.params, patch); }
   /** Pericardiocentesis: remove up to `ml` of effusion; takes effect from the next derivative evaluation (call between steps). */
   drain(ml: number) { const d = Math.max(0, Math.min(ml, this.lastEff)); this.drained += d; this.lastEff -= d; }
+  /** Set the effusion to `ml` now (a slider on a running sac); takes effect from the next derivative evaluation, like `drain`. */
+  setEffusion(ml: number) { const target = Math.max(0, ml); this.drained += this.lastEff - target; this.lastEff = target; }
   /** Effusion at the last evaluation, ml. */
   get effusionMl() { return this.lastEff; }
 

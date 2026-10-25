@@ -27,6 +27,16 @@ const noSaturations = (): Saturations => ({
   node: NaNs(NODES), spo2: NaN, preductal: NaN, postductal: NaN, svo2: NaN, do2: NaN, vo2: NaN, lactate: NaN, bed: {}, bedSource: "ischemia-derived",
 });
 
+/**
+ * Per-bed tissue oxygenation placeholder until tasks E2/E3: 0.75 - 0.45 x the bed's ischemia (`BRIDGE.bedOxygen`), for the ischemia sites
+ * (not the nodal ones). Shared by every source, so the O2 view reads the same whichever engine runs.
+ */
+export function bedOxygen(sim: Simulation): Record<string, number> {
+  const bed: Record<string, number> = {}, B = BRIDGE.bedOxygen;
+  for (const s of sim.sites) if (!/^(SAN|AVN)#/.test(s.key)) bed[s.key] = clamp(B.base - B.slope * (sim.sev[s.key] ?? 0), 0, 1);
+  return bed;
+}
+
 /** What a solve was made from; a re-solve is due when the live inputs move away from it. */
 interface Inputs { hr: number; lv: number; rv: number; map: number; svr: number; co: number }
 
@@ -413,8 +423,7 @@ export class BridgeSource implements HemoSource {
     if (!r) return noSaturations();
     const node = {} as Record<HemoNode, number>;
     for (const n of NODES) node[n] = r.saturation[n];
-    const bed: Record<string, number> = {}, B = BRIDGE.bedOxygen;
-    for (const s of this.sim.sites) if (!/^(SAN|AVN)#/.test(s.key)) bed[s.key] = clamp(B.base - B.slope * (this.sim.sev[s.key] ?? 0), 0, 1);
+    const bed = bedOxygen(this.sim);
     return {
       node, spo2: r.preductalSat, preductal: r.preductalSat, postductal: r.postductalSat, svo2: r.saturation.PA,
       do2: r.qs * base.hb * 10 * O2_PER_G_HB * r.preductalSat, vo2: base.vo2PerKg * base.weightKg,

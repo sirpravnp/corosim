@@ -88,6 +88,17 @@ export class Thorax implements Element, Tunable<ThoraxParams> {
     else if (p.mode === "positive") { const up = p.peepTransmission * Math.max(0, p.peep) * THORAX.mmHgPerCmH2O + THORAX.ppvSwingPerMlKg * Math.max(0, p.tidalMlKg) * s; pl = THORAX.endExpPleural + up; ab = p.abdominalTransmission * up; }
     return { pleural: pl + p.offsetMmHg, chest: pl - THORAX.refPleural + p.offsetMmHg, abdomen: ab, lung: s };
   }
+  /**
+   * Breath-averaged pressure applied to the chest nodes, mmHg (the mean of `at(t).chest` over a breath; the inspiratory fraction averages 1/2).
+   * A heart settled with the thorax "off" and this as `offsetMmHg` is at the mean load of the breathing pattern, so it needs no
+   * long re-settling when the breaths start: breathing makes the beat-to-beat state non-periodic, which `periodic()` cannot settle.
+   */
+  static meanChest(p: Pick<ThoraxParams, "mode" | "depth" | "peep" | "tidalMlKg" | "peepTransmission">): number {
+    const depth = Math.min(THORAX.depthRange[1], Math.max(THORAX.depthRange[0], p.depth));
+    if (p.mode === "spontaneous") return THORAX.endExpPleural - depth * THORAX.spontaneousSwing * 0.5 - THORAX.refPleural;
+    if (p.mode === "positive") return THORAX.endExpPleural + p.peepTransmission * Math.max(0, p.peep) * THORAX.mmHgPerCmH2O + THORAX.ppvSwingPerMlKg * Math.max(0, p.tidalMlKg) * 0.5 - THORAX.refPleural;
+    return 0;
+  }
   /** Fraction of the chest pressure that reaches the cavities: 1/(1 + k·(s − 1)); 1 without a sac, with an open sac or a sac that is not stiff. */
   shield(): number {
     const sac = this.sac;

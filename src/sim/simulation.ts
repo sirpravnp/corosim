@@ -19,9 +19,15 @@ import { Autonomic, AUTONOMIC, AutonomicEffects } from "../physics/autonomic";
 import { LiveHeart, LiveBeat } from "../physics/core/live";
 import { Iabp } from "../physics/core/devices/iabp";
 import { ImpellaConsole } from "../physics/core/devices/impella";
+import { ImpellaRp } from "../physics/core/devices/impellaRp";
+import { Ecmo } from "../physics/core/devices/ecmo";
+import type { Pericardium } from "../physics/core/pericardium";
+import { Thorax } from "../physics/core/thorax";
+import type { FromModelOptions } from "../physics/core/fromModel";
+import { THORAX } from "../config/thorax";
 import { IABP } from "../config/devices";
 import { SwitchableImpella, DevicesReadout } from "./coreDevices";
-import { PatientSpec, DeviceSpec, normalizePatient, effectiveDevices, DEFAULT_IMPELLA, DEFAULT_IABP } from "./patient";
+import { PatientSpec, DeviceSpec, HeartSpec, PericardiumSpec, VentilationSpec, normalizePatient, effectiveDevices, DEFAULT_IMPELLA, DEFAULT_IABP } from "./patient";
 import { VolumeExchange } from "../physics/core/volume";
 import { Compliance } from "../physics/core/vessels";
 import { NODES } from "../physics/structuralGraph";
@@ -107,12 +113,27 @@ export class Simulation {
   engine: EngineKind;
   /** The live heart of the core engine (undefined with "legacy"). */
   live?: LiveHeart;
+  /** Simulation clock minus stream time of the live heart (live time = `t` + delta); NaN until the first beat has aligned them (core engine). A source reading the live heart maps its stream times to the simulation clock with it. */
+  get liveDelta(): number { return this.delta; }
   // ---- core engine state
   private impella?: SwitchableImpella;
   private iabp?: Iabp;
   private impConsole?: ImpellaConsole;
-  /** Devices the patient has (core engine): settings of the real Impella and IABP, from the spec (booleans mean the defaults). */
+  private rp?: ImpellaRp;
+  private rpConsole?: ImpellaConsole;
+  private ecmo?: Ecmo;
+  /** Devices the patient has (core engine): settings of the real Impella and IABP, ECMO and Impella RP, from the spec (booleans mean the defaults). */
   private devSpec: DeviceSpec = {};
+  // ---- the PatientSpec fields the core engine builds (task P16), see `setPatient`
+  private heartSpec: HeartSpec = {};
+  private periSpec?: PericardiumSpec;
+  private ventSpec?: VentilationSpec;
+  private builtSig = "";
+  private appliedEffusion = NaN; // the spec's effusion as last handed to a running sac
+  /** The kind of the PatientSpec the core engine was given. It runs the adult ACS patient whatever the kind: a neonate's structural fields are not applied to it (the bridge solves a neonate on its own baseline). */
+  patientKind: "adult" | "neonate" = "adult";
+  /** Why the core engine runs a plain adult instead of the patient specified (its structural fields would not settle); "" when it runs the patient as specified. Pages fall back to the bridge when this is set. */
+  coreNote = "";
   /** Per-beat aortic measurements of the diastole (valve closed) and the IABP console numbers, see `onDiastoleSample` / `handleLiveBeat`. */
   private dia = { t: NaN, aoT: 0, aoSum: 0, dT: 0, dSum: 0, peak: -Infinity, sys: -Infinity, closed: false, opened: false, balloon: 0, fill: 0 };
   private dx = { rho: NaN, aug: 0, peak: 0, mean: 0, sys: 0, balloon: 0 };
@@ -143,7 +164,7 @@ export class Simulation {
     this.live = undefined; this.liveSeen = false;
     this.n = scenario; this.warnings = warnings;
     this.support = { ...scenario.support }; this.patient = { ...scenario.patient }; this.grafts = [];
-    if (this.engine === "core") this.readDevices(input);
+    if (this.engine === "core") this.readPatient(input);
     this.t = 0; this.clinicalMinutes = 0; this.ischemicMinutes = 0; this.treated = untreated(); this.history = []; this.beatCount = 0;
     for (const k of Object.keys(this.sev)) delete this.sev[k];
     for (const k of Object.keys(this.scar)) delete this.scar[k];
@@ -160,14 +181,61 @@ export class Simulation {
   }
 
   /**
-   * Devices of a spec (core engine): `effectiveDevices` folds the legacy booleans into the defaults (Impella CP, P6, correct position;
-   * IABP 1:1, correct timing, 40 ml); a `devices.impella` / `devices.iabp` also switches that device on.
+   * The PatientSpec fields the core engine reads (task P16), from a spec. Devices: `effectiveDevices` folds the legacy booleans into
+   * the defaults (Impella CP, P6, correct position; IABP 1:1, correct timing, 40 ml); a `devices.impella` / `devices.iabp` also
+   * switches that device on; `devices.ecmo` / `devices.impellaRp` are on by being present. Structural heart, pericardium and
+   * ventilation are built into the heart (`initCore`); the core runs the adult ACS patient, so for `kind: "neonate"` they are left
+   * out (the bridge solves a neonate on its own baseline).
    */
-  private readDevices(input: PatientSpec) {
-    const d = effectiveDevices({ support: input.support, devices: normalizePatient(input).spec.devices });
-    this.devSpec = { impella: d.impella && { ...d.impella }, iabp: d.iabp && { ...d.iabp } };
+  private readPatient(input: PatientSpec) {
+    const np = normalizePatient(input).spec, adult = (np.kind ?? "adult") === "adult";
+    const d = effectiveDevices({ support: input.support, devices: np.devices });
+    this.devSpec = { impella: d.impella && { ...d.impella }, iabp: d.iabp && { ...d.iabp }, ecmo: d.ecmo && { ...d.ecmo }, impellaRp: d.impellaRp && { ...d.impellaRp } };
     if (d.impella) this.support.impella = true;
     if (d.iabp) this.support.iabp = true;
+    this.patientKind = np.kind ?? "adult";
+    this.heartSpec = adult && np.heart ? JSON.parse(JSON.stringify(np.heart)) : {};
+    this.periSpec = adult && np.pericardium ? { ...np.pericardium } : undefined;
+    this.ventSpec = adult && np.ventilation ? { ...np.ventilation } : undefined;
+  }
+
+  /**
+   * Change the patient's PatientSpec fields while it runs (core engine only; a no-op with the legacy engine). What the heart is built
+   * from is rebuilt and settled again (a short pause, about a third of a second, the state of the ACS loop carries over): the structural
+   * heart, the presence of a pericardial sac, of the thorax (any `ventilation`), of ECMO or an Impella RP, and
+   * the Impella's model and position. Everything else is applied between steps without a rebuild: pericardium effusion, stiffness and
+   * `open`; ventilation mode, PEEP and tidal volume; Impella P-level; IABP ratio, timing and volume; ECMO flow, sweep and FiO2; Impella RP
+   * level. Calling it with the spec already in force does nothing, so a page may call it on every edit (and should debounce slider drags).
+   * The Scenario part of the spec (lesions, rhythm, drugs) is not read here: `apply` / `reset` take that.
+   */
+  setPatient(spec: PatientSpec) {
+    if (this.engine !== "core") return;
+    this.readPatient(spec);
+    if (this.structureSig() !== this.builtSig) this.initCore();
+    else this.pushPatient();
+  }
+
+  /** A patch of `heart`, `pericardium`, `ventilation` or `kind` merged into the patient in force (objects field by field, anything else replaced), as `apply` takes it. */
+  private patchStructure(patch: PatientSpec) {
+    const merge = (base: unknown, add: unknown): unknown => {
+      if (!add || typeof add !== "object" || Array.isArray(add) || !base || typeof base !== "object" || Array.isArray(base)) return add;
+      const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
+      for (const [k, v] of Object.entries(add)) out[k] = v === undefined ? out[k] : merge(out[k], v);
+      return out;
+    };
+    const kind = patch.kind ?? this.patientKind, adult = kind === "adult", cur = { heart: this.heartSpec, pericardium: this.periSpec, ventilation: this.ventSpec };
+    const np = normalizePatient({ kind, heart: merge(cur.heart, patch.heart) as HeartSpec, pericardium: merge(cur.pericardium, patch.pericardium) as PericardiumSpec, ventilation: merge(cur.ventilation, patch.ventilation) as VentilationSpec }).spec;
+    this.patientKind = kind;
+    this.heartSpec = adult && np.heart ? JSON.parse(JSON.stringify(np.heart)) : {};
+    this.periSpec = adult ? np.pericardium : undefined;
+    this.ventSpec = adult ? np.ventilation : undefined;
+    if (this.structureSig() !== this.builtSig) this.initCore(); else this.pushPatient();
+  }
+
+  /** Everything the heart is built from: when this changes, the heart is rebuilt. */
+  private structureSig(): string {
+    const d = this.devSpec, im = d.impella ?? DEFAULT_IMPELLA;
+    return JSON.stringify([this.heartSpec, !!this.periSpec, !!this.ventSpec, !!d.ecmo, !!d.impellaRp, im.model, im.position]);
   }
 
   /** Back to a resting heart with the same scenario: no ischemia, no scar, pressure at baseline. */
@@ -190,6 +258,7 @@ export class Simulation {
     this.n = scenario;
     if (patch.support) this.support = { ...scenario.support, atropine: this.support.atropine };
     if (this.engine === "core" && patch.devices) this.patchDevices(patch);
+    if (this.engine === "core" && (patch.heart || patch.pericardium || patch.ventilation || patch.kind)) this.patchStructure(patch);
     if (patch.patient) this.patient = { ...scenario.patient };
     this.autonomic.controls = { ...scenario.autonomic };
     if (anatomyChanged) { this.grafts = []; this.rebuildAnatomy(); } else this.resolveCoronaries(true);
@@ -275,7 +344,7 @@ export class Simulation {
     this.stream.extend(this.t, this.rstate, this.mod);
     this.stream.prune(this.t);
     this.t += h;
-    if (this.live) this.coreStep(h); else for (const b of this.stream.drain(this.t)) this.handleBeat(b);
+    if (this.live) this.coreStep(h, minutes); else for (const b of this.stream.drain(this.t)) this.handleBeat(b);
     // Coronary perfusion follows the pressure the heart actually generates (plus any balloon augmentation),
     // and demand follows what drugs and devices do to it.
     const aug = this.live ? this.dx.aug : this.support.iabp ? SUPPORT.iabpCoronaryAug : 0; // core: the augmentation measured on the aortic trace
@@ -338,35 +407,95 @@ export class Simulation {
   /** Blood (ml) the circulation should hold relative to the patient's own: fluids given less blood lost. */
   private targetVolume(): number { return this.fluidGiven * 1000 * ACS_CORE.fluidRetained - this.bloodLoss * this.bv0; }
 
+  /**
+   * Build the live heart for the patient (and settle it). The spec's structural heart, pericardium, ventilation, ECMO and Impella RP
+   * go into the build (`buildCore`); if the core cannot settle that patient (it throws, or the settled beat has no finite pressure) it
+   * runs a plain adult instead and `coreNote` says why, so a page can fall back to the bridge for the patient it cannot represent.
+   */
   private initCore() {
-    const p = PATIENTS.adult;
+    const sig = this.structureSig();
+    try { this.buildCore(); this.coreNote = ""; }
+    catch (e) {
+      this.coreNote = `the core engine could not settle this patient (${e instanceof Error ? e.message : String(e)}); showing a plain adult`;
+      this.heartSpec = {}; this.periSpec = undefined; this.ventSpec = undefined;
+      this.devSpec = { ...this.devSpec, ecmo: undefined, impellaRp: undefined };
+      this.buildCore();
+    }
+    this.builtSig = sig; // the requested structure, so an identical request does not rebuild again
+  }
+
+  private buildCore() {
+    const p = PATIENTS.adult, hv = this.heartSpec.volumeMl ?? 0;
     this.sm = { sv: 0, co: 0, ef: 0, pcwp: 0, cvp: 0, sbp: 0, dbp: 0, dev: 0 };
     this.fed = new WeakSet(); this.fxQueue = []; this.fx = NEUTRAL_FX; this.liveSeen = false; this.delta = NaN; this.feedFrom = this.t;
     this.bv0 = p.bloodMlPerKg * p.weightKg;
     this.fluidGiven = this.support.fluids;
-    this.volApplied = Math.max(ACS_CORE.startVolumeMl[0], Math.min(ACS_CORE.startVolumeMl[1], this.targetVolume())); // what the structural spec accepts; the rest follows at the rate limit
+    // the structural spec accepts [-1000, 5000] ml in all, the lesion's own volume included; the rest follows at the rate limit
+    this.volApplied = Math.max(ACS_CORE.startVolumeMl[0] - hv, Math.min(ACS_CORE.startVolumeMl[1] - hv, this.targetVolume()));
     const veins = ["SVC", "IVC", "SPL"].map(NODE), vessels = ["SVC", "IVC", "SPL", "PA", "PV", "AO", "DAO"].map(NODE);
     const di = this.devSpec.impella ?? DEFAULT_IMPELLA, lvN = NODE("LV"), aoN = NODE("AO");
+    this.impella = this.iabp = this.ecmo = this.rp = undefined;
     const impellaEl = (m: Model) => (this.impella = new SwitchableImpella("impella", di.position === "aortic" ? aoN : lvN, aoN, { model: di.model, level: di.level, position: di.position, v0: m.chambers[lvN]!.v0 }));
     const iabpEl = (m: Model) => (this.iabp = Iabp.forModel(m, { ...DEFAULT_IABP, ...this.devSpec.iabp, volumeMl: 0 })); // off during the warm-up
+    const ecmoEl = (m: Model) => (this.ecmo = Ecmo.forModel(m, { ...this.devSpec.ecmo }));
+    const rpEl = (m: Model) => (this.rp = ImpellaRp.forModel(m, { ...this.devSpec.impellaRp }));
     this.exchange = new VolumeExchange("volumeExchange", veins, vessels, (n, v) => { const m = this.live!.engine.nodes[n].model; return m instanceof Compliance ? m.stressed(v) : v; });
-    const live = (this.live = new LiveHeart({ volumeMl: this.volApplied }, { extra: [impellaEl, iabpEl, this.exchange] }));
+    const core: FromModelOptions = {}, pe = this.periSpec, ve = this.ventSpec;
+    if (pe) core.pericardium = { effusionMl: pe.effusionMl ?? 0, stiffness: pe.stiffness ?? 1, open: pe.open ?? false };
+    if (ve) core.thorax = { mode: ve.mode ?? "spontaneous", peep: ve.peep ?? 0, tidalMlKg: ve.tidalMlKg ?? THORAX.defaultTidalMlKg, rate: (ve.mode ?? "spontaneous") === "spontaneous" ? this.autonomic.controls.respRate : THORAX.defaultRate, depth: this.autonomic.controls.respDepth };
+    this.appliedEffusion = pe?.effusionMl ?? 0;
+    const live = (this.live = new LiveHeart({ ...this.heartSpec, volumeMl: hv + this.volApplied }, { core, extra: [impellaEl, iabpEl, this.exchange, ...(this.devSpec.ecmo ? [ecmoEl] : []), ...(this.devSpec.impellaRp ? [rpEl] : [])] }));
     this.impConsole?.dispose(); this.impConsole = new ImpellaConsole(live.engine);
+    this.rpConsole?.dispose(); this.rpConsole = this.rp ? new ImpellaConsole(live.engine, "impellaRp") : undefined;
     this.dia = { t: NaN, aoT: 0, aoSum: 0, dT: 0, dSum: 0, peak: -Infinity, sys: -Infinity, closed: false, opened: false, balloon: 0, fill: 0 };
     this.dx = { rho: NaN, aug: 0, peak: 0, mean: 0, sys: 0, balloon: 0 };
     const aoIdx = live.engine.node("AO");
     live.engine.onSample((smp) => this.onDiastoleSample(smp, aoIdx)); // before the warm-up: it also measures the unassisted diastolic ratio
     this.pushDevices(true);
     this.pushInputs();
+    // Breathing makes the beats non-periodic, which `periodic()` cannot settle (it would run to its beat limit, seconds): settle with the
+    // thorax off at the breathing pattern's mean load, then start the breaths.
+    const th = this.thorax();
+    const breathing = th ? { ...th.params } : null;
+    if (th && breathing) th.set({ mode: "off", offsetMmHg: Thorax.meanChest(breathing) });
     this.warmHr = Math.max(20, ventRate(this.rstate));
     live.warm(this.warmHr);
+    if (th && breathing) th.set({ mode: breathing.mode, offsetMmHg: 0 });
+    const w = live.warmBeat!;
+    if (![w.map, w.systolic, w.strokeVolume, w.p.RA.mean, w.p.LA.mean].every(Number.isFinite)) throw new Error("the settled beat has no finite pressures");
     this.dx.rho = this.dia.dT > 0 && this.dia.aoT > 0 ? this.dia.dSum / this.dia.dT / (this.dia.aoSum / this.dia.aoT) : ACS_CORE.diastolicRatio;
     this.dia = { ...this.dia, t: NaN, aoT: 0, aoSum: 0, dT: 0, dSum: 0, peak: -Infinity, sys: -Infinity, closed: false, opened: false, balloon: 0, fill: 0 };
-    this.seedFromWarm(live.warmBeat!);
+    this.seedFromWarm(w);
     live.onRecord((b) => this.handleLiveBeat(b));
     this.sensor = { events: [], tStart: NaN, start: 0, peak: 0, armed: false, ao: live.engine.node("AO") };
     live.engine.onSample((smp) => this.senseTick(smp.t, smp.P[this.sensor.ao]));
+    for (const cb of [...this.coreBuilt]) cb(live);
   }
+
+  private coreBuilt = new Set<(live: LiveHeart) => void>();
+  /** Called with the new live heart each time the core engine builds one (a reset, a patient change that rebuilds). A source that reads the live heart attaches here. Returns the unsubscribe function. */
+  onCoreBuilt(cb: (live: LiveHeart) => void): () => void { this.coreBuilt.add(cb); return () => { this.coreBuilt.delete(cb); }; }
+
+  /** Settings that need no rebuild, from the spec in force: sac (effusion, stiffness, open), thorax (mode, PEEP, tidal volume), and through `pushDevices` the devices. */
+  private pushPatient() {
+    const live = this.live;
+    if (!live) return;
+    const sac = this.sac(), pe = this.periSpec;
+    if (sac) {
+      if (pe) {
+        if ((pe.effusionMl ?? 0) !== this.appliedEffusion) { sac.setEffusion(pe.effusionMl ?? 0); this.appliedEffusion = pe.effusionMl ?? 0; }
+        sac.set({ stiffness: pe.stiffness ?? 1, open: pe.open ?? false });
+      } else { sac.setEffusion(0); this.appliedEffusion = 0; sac.set({ stiffness: 1, open: false, effusionRateMlS: 0 }); } // spec removed: a normal sac
+    }
+    const th = this.thorax(), ve = this.ventSpec;
+    if (th) {
+      if (ve) { const mode = ve.mode ?? "spontaneous"; th.set({ mode, peep: ve.peep ?? 0, tidalMlKg: ve.tidalMlKg ?? THORAX.defaultTidalMlKg, rate: mode === "spontaneous" ? this.autonomic.controls.respRate : THORAX.defaultRate }); }
+      else th.set({ mode: "off" });
+    }
+    this.pushDevices();
+  }
+  private sac(): Pericardium | null { try { return this.live?.engine.element<Pericardium>("pericardium") ?? null; } catch { return null; } }
+  private thorax(): Thorax | null { try { return this.live?.engine.element<Thorax>("thorax") ?? null; } catch { return null; } }
 
   /** The warm-up's steady state is the first smoothed beat: `circ` shows the core's numbers from the first instant, never the legacy ones (A7b). */
   private seedFromWarm(lb: LiveBeat) {
@@ -389,6 +518,9 @@ export class Simulation {
     const di = this.devSpec.impella ?? DEFAULT_IMPELLA, dI = { ...DEFAULT_IABP, ...this.devSpec.iabp }, level = di.level ?? DEFAULT_IMPELLA.level;
     im.enabled = this.support.impella && level > 0;
     if (im.level !== Math.min(9, Math.max(0, Math.round(level)))) im.set({ level });
+    const ec = this.devSpec.ecmo, rp = this.devSpec.impellaRp;
+    if (this.ecmo && ec) this.ecmo.set({ flowLpm: ec.flowLpm ?? 4, sweepLpm: ec.sweepLpm ?? 3, fio2: ec.fio2 ?? 1 });
+    if (this.rp && rp) this.rp.set({ level: rp.level ?? 6 });
     ia.set({ ratio: dI.ratio, inflateMs: dI.inflateMs, deflateMs: dI.deflateMs, volumeMl: this.support.iabp && !warm ? dI.volumeMl : 0 });
   }
 
@@ -415,6 +547,10 @@ export class Simulation {
         this.warnings = [...this.warnings, "Impella model and position change at the next reset(); the P-level changed now."];
     }
     if (dv.iabp) { this.devSpec = { ...this.devSpec, iabp: { ...DEFAULT_IABP, ...this.devSpec.iabp, ...dv.iabp } }; this.support.iabp = true; }
+    if (dv.ecmo || dv.impellaRp) { // a patch changes the settings of a circuit that is there; adding one is a rebuild, which setPatient does
+      if (dv.ecmo && this.devSpec.ecmo) this.devSpec = { ...this.devSpec, ecmo: { ...this.devSpec.ecmo, ...dv.ecmo } };
+      if (dv.impellaRp && this.devSpec.impellaRp) this.devSpec = { ...this.devSpec, impellaRp: { ...this.devSpec.impellaRp, ...dv.impellaRp } };
+    }
     this.pushDevices();
   }
 
@@ -431,7 +567,7 @@ export class Simulation {
   }
 
   /** One sub-step: hand over the new beats, set the slow inputs, move blood in or out, and advance the live heart to the simulation's clock. */
-  private coreStep(h: number) {
+  private coreStep(h: number, minutes = 0) {
     const live = this.live!;
     const fresh = this.stream.beats.filter((b) => !this.fed.has(b) && b.t >= this.feedFrom - 1e-9).sort((a, b) => a.t - b.t);
     if (Number.isNaN(this.delta)) {
@@ -449,10 +585,14 @@ export class Simulation {
     if (dt <= 1e-9) return;
     this.pushDevices();
     this.pushInputs();
+    const sac = this.sac(), pe = this.periSpec;
+    if (sac && pe) sac.set({ effusionRateMlS: h > 0 ? ((pe.effusionRateMlMin ?? 0) * minutes) / h : 0 }); // ml per clinical minute, on the clinical minutes this sub-step stands for
+    const th = this.thorax();
+    if (th && this.ventSpec && (this.ventSpec.mode ?? "spontaneous") === "spontaneous") { th.set({ depth: this.autonomic.controls.respDepth }); th.setPhase(this.autonomic.phase, live.engine.t + dt); } // the pleural swing runs with the respiratory sinus arrhythmia of the baroreflex loop
     const q = Math.max(-ACS_CORE.maxVolumeRate, Math.min(ACS_CORE.maxVolumeRate, (this.targetVolume() - this.volApplied) / dt)); // ml/s, so the circulation holds the (ramped) volume
     this.exchange!.set({ rate: q }); this.volApplied += q * dt;
     live.step(dt);
-    if (this.impella?.enabled || this.sm.dev > 1e-3) this.sm.dev += (this.deviceFlowNow() - this.sm.dev) * (1 - Math.exp(-dt / ACS_CORE.deviceFlowTau));
+    if (this.impella?.enabled || this.ecmo || this.sm.dev > 1e-3) this.sm.dev += (this.deviceFlowNow() - this.sm.dev) * (1 - Math.exp(-dt / ACS_CORE.deviceFlowTau));
     if (this.liveSeen) this.circ = this.coreCirc(this.base);
   }
 
@@ -532,7 +672,10 @@ export class Simulation {
     const im = this.impella, ia = this.iabp, live = this.live;
     if (!live || !im || !ia) return null;
     const c = this.impConsole?.last, t = live.engine.sample().taps, ti = t.impella, tb = t.iabp, x = this.dx, p = ia.params, on = im.enabled;
+    const te = t.ecmo, tr = t.impellaRp, cr = this.rpConsole?.last, rp = this.rp, ec = this.ecmo;
     return {
+      ...(ec && te ? { ecmo: { on: true, drain: ec.drain, flowLpm: te.flow, targetLpm: te.targetLpm, rpm: te.rpm, sweepLpm: te.sweepLpm, fio2: te.fio2, suctionLevel: te.suctionLevel, suctionAlarm: te.suctionAlarm > 0, membraneDpMmHg: te.membraneDp, headMmHg: te.head } } : {}),
+      ...(rp && tr ? { impellaRp: { on: rp.level > 0, level: rp.level, speedKrpm: rp.params.speed, flowLpm: cr?.flow.mean ?? tr.flow, motorCurrentMa: cr?.current.mean ?? tr.current, placementMmHg: cr?.placement.mean ?? tr.placement, suctionAlarm: !!cr?.suctionAlarm || tr.suctionAlarm > 0 } } : {}),
       impella: {
         on, model: im.model, position: im.position, level: im.level, speedKrpm: on ? im.params.speed : 0,
         flowLpm: on ? c?.flow.mean ?? ti.flow : 0, flowMinLpm: on ? c?.flow.min ?? ti.flow : 0, flowMaxLpm: on ? c?.flow.max ?? ti.flow : 0,
@@ -573,9 +716,10 @@ export class Simulation {
     };
   }
 
+  /** Flow the circulation gets from its pumps now, L/min: the Impella's (LV to aorta) and the ECMO circuit's (RA to descending aorta); the Impella RP is in series with the lungs and adds nothing. */
   private deviceFlowNow(): number {
-    const t = this.live!.engine.sample().taps["impella"];
-    return t ? t.flow : 0;
+    const taps = this.live!.engine.sample().taps;
+    return (taps["impella"]?.flow ?? 0) + (taps["ecmo"]?.flow ?? 0);
   }
 
   /**
@@ -594,6 +738,14 @@ export class Simulation {
       pa: { systolic: mean((b) => b.p.PA.max), diastolic: mean((b) => b.p.PA.min), mean: mean((b) => b.p.PA.mean) },
       lvEdv: mean((b) => b.edv.LV), lvEsv: mean((b) => b.esv.LV), beats: rs.length,
     };
+  }
+
+  /** The pericardial sac now (core engine with a `pericardium` in the spec): effusion ml, pericardial pressure mmHg, sac volume ml. null without a sac. */
+  pericardium(): { effusionMl: number; pressureMmHg: number; sacVolumeMl: number } | null {
+    const live = this.live;
+    if (!live || !this.sac()) return null;
+    const t = live.engine.sample().taps.pericardium;
+    return { effusionMl: t.effusionMl, pressureMmHg: t.pericardialPressure, sacVolumeMl: t.sacVolumeMl };
   }
 
   /** Run for `seconds` of simulated time and return the beats that occurred. */
