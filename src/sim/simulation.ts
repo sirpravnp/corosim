@@ -17,12 +17,17 @@ import { BeatStream } from "../physics/beatStream";
 import { BeatHemodynamics } from "../physics/beatHemo";
 import { Autonomic, AUTONOMIC, AutonomicEffects } from "../physics/autonomic";
 import { LiveHeart, LiveBeat } from "../physics/core/live";
-import { PlaceholderImpella } from "../physics/core/devices/placeholder";
+import { Iabp } from "../physics/core/devices/iabp";
+import { ImpellaConsole } from "../physics/core/devices/impella";
+import { IABP } from "../config/devices";
+import { SwitchableImpella, DevicesReadout } from "./coreDevices";
+import { PatientSpec, DeviceSpec, normalizePatient, effectiveDevices, DEFAULT_IMPELLA, DEFAULT_IABP } from "./patient";
 import { VolumeExchange } from "../physics/core/volume";
 import { Compliance } from "../physics/core/vessels";
 import { NODES } from "../physics/structuralGraph";
+import type { Model } from "../physics/structural";
 import { PATIENTS } from "../config/structural";
-import { ACS_CORE, AUTONOMIC_CORE, PLACEHOLDER_WARNINGS } from "../config/acsCore";
+import { ACS_CORE, AUTONOMIC_CORE } from "../config/acsCore";
 import { ischemiaFactors } from "../config/ischemia";
 import { Normalized, Scenario, normalizeScenario, toScenario, supportSpec } from "./scenario";
 import { BeatRecord, computeMetrics, Metrics } from "./metrics";
@@ -103,12 +108,18 @@ export class Simulation {
   /** The live heart of the core engine (undefined with "legacy"). */
   live?: LiveHeart;
   // ---- core engine state
-  private impella?: PlaceholderImpella;
+  private impella?: SwitchableImpella;
+  private iabp?: Iabp;
+  private impConsole?: ImpellaConsole;
+  /** Devices the patient has (core engine): settings of the real Impella and IABP, from the spec (booleans mean the defaults). */
+  private devSpec: DeviceSpec = {};
+  /** Per-beat aortic measurements of the diastole (valve closed) and the IABP console numbers, see `onDiastoleSample` / `handleLiveBeat`. */
+  private dia = { t: NaN, aoT: 0, aoSum: 0, dT: 0, dSum: 0, peak: -Infinity, sys: -Infinity, closed: false, opened: false, balloon: 0, fill: 0 };
+  private dx = { rho: NaN, aug: 0, peak: 0, mean: 0, sys: 0, balloon: 0 };
   private exchange?: VolumeExchange;
   private bv0 = 4900;
   private volApplied = 0; // ml added (+) or removed (-) from the circulation so far, by fluids and hemorrhage
   private fluidGiven = 0; // litres of fluid, ramped
-  private impellaLevel = 0; // 0..1, ramped
   private delta = NaN; // s: live time = stream time + delta, set when the first beat is aligned
   private fed = new WeakSet<Beat>();
   private fx: AutonomicEffects = NEUTRAL_FX;
@@ -127,11 +138,12 @@ export class Simulation {
   }
 
   /** Start over from a scenario. `settled` puts ischemia at its steady value instead of starting from a normal heart. */
-  reset(input: Scenario = {}, opts: { settled?: boolean } = {}) {
+  reset(input: PatientSpec = {}, opts: { settled?: boolean } = {}) {
     const { scenario, warnings } = normalizeScenario(input);
     this.live = undefined; this.liveSeen = false;
     this.n = scenario; this.warnings = warnings;
     this.support = { ...scenario.support }; this.patient = { ...scenario.patient }; this.grafts = [];
+    if (this.engine === "core") this.readDevices(input);
     this.t = 0; this.clinicalMinutes = 0; this.ischemicMinutes = 0; this.treated = untreated(); this.history = []; this.beatCount = 0;
     for (const k of Object.keys(this.sev)) delete this.sev[k];
     for (const k of Object.keys(this.scar)) delete this.scar[k];
@@ -147,6 +159,17 @@ export class Simulation {
     if (this.engine === "core") this.initCore();
   }
 
+  /**
+   * Devices of a spec (core engine): `effectiveDevices` folds the legacy booleans into the defaults (Impella CP, P6, correct position;
+   * IABP 1:1, correct timing, 40 ml); a `devices.impella` / `devices.iabp` also switches that device on.
+   */
+  private readDevices(input: PatientSpec) {
+    const d = effectiveDevices({ support: input.support, devices: normalizePatient(input).spec.devices });
+    this.devSpec = { impella: d.impella && { ...d.impella }, iabp: d.iabp && { ...d.iabp } };
+    if (d.impella) this.support.impella = true;
+    if (d.iabp) this.support.iabp = true;
+  }
+
   /** Back to a resting heart with the same scenario: no ischemia, no scar, pressure at baseline. */
   resetPhysiology() {
     for (const k of Object.keys(this.sev)) delete this.sev[k];
@@ -159,14 +182,14 @@ export class Simulation {
   }
 
   /** Change part of the scenario while it runs (add a lesion, give a drug, drop the volume). State carries over. */
-  apply(patch: Scenario) {
+  apply(patch: PatientSpec) {
     const prev = { ...this.n, support: { ...this.support }, patient: { ...this.patient } };
     const { scenario, warnings } = normalizeScenario(patch, prev);
     this.warnings = warnings;
     const anatomyChanged = JSON.stringify(scenario.anatomy) !== JSON.stringify(prev.anatomy);
     this.n = scenario;
     if (patch.support) this.support = { ...scenario.support, atropine: this.support.atropine };
-    this.addDeviceWarnings();
+    if (this.engine === "core" && patch.devices) this.patchDevices(patch);
     if (patch.patient) this.patient = { ...scenario.patient };
     this.autonomic.controls = { ...scenario.autonomic };
     if (anatomyChanged) { this.grafts = []; this.rebuildAnatomy(); } else this.resolveCoronaries(true);
@@ -255,7 +278,7 @@ export class Simulation {
     if (this.live) this.coreStep(h); else for (const b of this.stream.drain(this.t)) this.handleBeat(b);
     // Coronary perfusion follows the pressure the heart actually generates (plus any balloon augmentation),
     // and demand follows what drugs and devices do to it.
-    const aug = this.support.iabp ? SUPPORT.iabpCoronaryAug : 0;
+    const aug = this.live ? this.dx.aug : this.support.iabp ? SUPPORT.iabpCoronaryAug : 0; // core: the augmentation measured on the aortic trace
     this.perfusion += (this.map + aug - this.perfusion) * (1 - Math.exp(-(h * this.speed) / 2));
     if ((this.mapClock += h) > 0.5) {
       this.mapClock = 0;
@@ -323,20 +346,26 @@ export class Simulation {
     this.fluidGiven = this.support.fluids;
     this.volApplied = Math.max(ACS_CORE.startVolumeMl[0], Math.min(ACS_CORE.startVolumeMl[1], this.targetVolume())); // what the structural spec accepts; the rest follows at the rate limit
     const veins = ["SVC", "IVC", "SPL"].map(NODE), vessels = ["SVC", "IVC", "SPL", "PA", "PV", "AO", "DAO"].map(NODE);
-    const impella = (this.impella = new PlaceholderImpella(NODE("LV"), NODE("AO"), { margin: ACS_CORE.impellaMargin, width: ACS_CORE.impellaWidth }));
+    const di = this.devSpec.impella ?? DEFAULT_IMPELLA, lvN = NODE("LV"), aoN = NODE("AO");
+    const impellaEl = (m: Model) => (this.impella = new SwitchableImpella("impella", di.position === "aortic" ? aoN : lvN, aoN, { model: di.model, level: di.level, position: di.position, v0: m.chambers[lvN]!.v0 }));
+    const iabpEl = (m: Model) => (this.iabp = Iabp.forModel(m, { ...DEFAULT_IABP, ...this.devSpec.iabp, volumeMl: 0 })); // off during the warm-up
     this.exchange = new VolumeExchange("volumeExchange", veins, vessels, (n, v) => { const m = this.live!.engine.nodes[n].model; return m instanceof Compliance ? m.stressed(v) : v; });
-    const live = (this.live = new LiveHeart({ volumeMl: this.volApplied }, { extra: [impella, this.exchange] }));
-    impella.set({ v0: live.model.chambers[NODE("LV")]!.v0 });
-    this.impellaLevel = this.support.impella ? 1 : 0;
-    this.pushImpella();
+    const live = (this.live = new LiveHeart({ volumeMl: this.volApplied }, { extra: [impellaEl, iabpEl, this.exchange] }));
+    this.impConsole?.dispose(); this.impConsole = new ImpellaConsole(live.engine);
+    this.dia = { t: NaN, aoT: 0, aoSum: 0, dT: 0, dSum: 0, peak: -Infinity, sys: -Infinity, closed: false, opened: false, balloon: 0, fill: 0 };
+    this.dx = { rho: NaN, aug: 0, peak: 0, mean: 0, sys: 0, balloon: 0 };
+    const aoIdx = live.engine.node("AO");
+    live.engine.onSample((smp) => this.onDiastoleSample(smp, aoIdx)); // before the warm-up: it also measures the unassisted diastolic ratio
+    this.pushDevices(true);
     this.pushInputs();
     this.warmHr = Math.max(20, ventRate(this.rstate));
     live.warm(this.warmHr);
+    this.dx.rho = this.dia.dT > 0 && this.dia.aoT > 0 ? this.dia.dSum / this.dia.dT / (this.dia.aoSum / this.dia.aoT) : ACS_CORE.diastolicRatio;
+    this.dia = { ...this.dia, t: NaN, aoT: 0, aoSum: 0, dT: 0, dSum: 0, peak: -Infinity, sys: -Infinity, closed: false, opened: false, balloon: 0, fill: 0 };
     this.seedFromWarm(live.warmBeat!);
     live.onRecord((b) => this.handleLiveBeat(b));
     this.sensor = { events: [], tStart: NaN, start: 0, peak: 0, armed: false, ao: live.engine.node("AO") };
     live.engine.onSample((smp) => this.senseTick(smp.t, smp.P[this.sensor.ao]));
-    this.addDeviceWarnings();
   }
 
   /** The warm-up's steady state is the first smoothed beat: `circ` shows the core's numbers from the first instant, never the legacy ones (A7b). */
@@ -349,14 +378,45 @@ export class Simulation {
     this.circ = this.coreCirc(this.base);
   }
 
-  /** The placeholder devices say what they are in `warnings` whenever one is on. */
-  private addDeviceWarnings() {
-    if (this.engine !== "core") return;
-    for (const [on, msg] of [[this.support.impella, PLACEHOLDER_WARNINGS.impella], [this.support.iabp, PLACEHOLDER_WARNINGS.iabp]] as const)
-      if (on && !this.warnings.includes(msg)) this.warnings = [...this.warnings, msg];
+  /**
+   * Switch and set the devices from the support toggles and the device settings, between steps. Impella: inserted and running when
+   * `support.impella` is on and the P-level is above 0; P-level from the spec (live: `setImpellaLevel`). IABP: the balloon is full-size
+   * (`volumeMl`) when `support.iabp` is on, else 0 (it empties); ratio and timing offsets from the spec (live: `setIabp`).
+   */
+  private pushDevices(warm = false) {
+    const im = this.impella, ia = this.iabp;
+    if (!im || !ia) return;
+    const di = this.devSpec.impella ?? DEFAULT_IMPELLA, dI = { ...DEFAULT_IABP, ...this.devSpec.iabp }, level = di.level ?? DEFAULT_IMPELLA.level;
+    im.enabled = this.support.impella && level > 0;
+    if (im.level !== Math.min(9, Math.max(0, Math.round(level)))) im.set({ level });
+    ia.set({ ratio: dI.ratio, inflateMs: dI.inflateMs, deflateMs: dI.deflateMs, volumeMl: this.support.iabp && !warm ? dI.volumeMl : 0 });
   }
 
-  private pushImpella() { this.impella?.set({ flow: (this.impellaLevel * SUPPORT.impellaFlow * 1000) / 60 }); }
+  /** Change the Impella's P-level (0..9; 0 is off) while it runs. The model and position are fixed at `reset`. */
+  setImpellaLevel(level: number) {
+    if (!Number.isFinite(level)) return;
+    this.devSpec = { ...this.devSpec, impella: { ...DEFAULT_IMPELLA, ...this.devSpec.impella, level: Math.min(9, Math.max(0, Math.round(level))) } };
+    this.pushDevices();
+  }
+
+  /** Change the IABP's ratio (1..3), timing offsets (ms, negative early) or balloon volume (ml) while it runs. Core engine only. */
+  setIabp(patch: NonNullable<DeviceSpec["iabp"]>) {
+    this.patchDevices({ devices: { iabp: patch } });
+  }
+
+  private patchDevices(patch: PatientSpec) {
+    const dv = normalizePatient({ devices: patch.devices }).spec.devices;
+    if (!dv) return;
+    if (dv.impella) {
+      const cur = this.devSpec.impella ?? DEFAULT_IMPELLA;
+      this.devSpec = { ...this.devSpec, impella: { ...cur, ...dv.impella } };
+      this.support.impella = true;
+      if ((dv.impella.model && dv.impella.model !== cur.model) || (dv.impella.position && dv.impella.position !== cur.position))
+        this.warnings = [...this.warnings, "Impella model and position change at the next reset(); the P-level changed now."];
+    }
+    if (dv.iabp) { this.devSpec = { ...this.devSpec, iabp: { ...DEFAULT_IABP, ...this.devSpec.iabp, ...dv.iabp } }; this.support.iabp = true; }
+    this.pushDevices();
+  }
 
   /** Slow inputs of the heart from the ischemia, the autonomic state, the drugs and the devices (see the mapping above). */
   private pushInputs() {
@@ -365,7 +425,7 @@ export class Simulation {
     const nitroV = Math.min(1, sup.nitro / K.nitroVenousFull), nitroA = Math.max(0, (sup.nitro - K.nitroArterialOnset) / (1 - K.nitroArterialOnset));
     const resistance = fx.resistance * (vaso >= 0 ? 1 + 0.5 * vaso : 1 + 0.4 * vaso)
       * (1 + CIRC.sympatheticSvr * rs.sympathetic) * (1 - CIRC.vagalSvr * rs.vagal)
-      * (1 + S.norepiSvr * sup.norepi) * (1 - S.dobSvr * sup.dobutamine) * (1 - S.nitroSvr * nitroA) * (sup.iabp ? 1 - K.iabpAfterload : 1);
+      * (1 + S.norepiSvr * sup.norepi) * (1 - S.dobSvr * sup.dobutamine) * (1 - S.nitroSvr * nitroA);
     const venousTone = (1 + K.venousToneGain * (fx.vascular - AUTONOMIC.restSympathetic)) * (1 + K.norepiVenousTone * sup.norepi) * (1 - K.nitroVenousTone * nitroV);
     live.setModifiers({ contractility: fx.contractility * (1 + S.dobContractility * sup.dobutamine), resistance, venousTone });
   }
@@ -387,14 +447,12 @@ export class Simulation {
     }
     const dt = this.t + this.delta - live.time;
     if (dt <= 1e-9) return;
-    this.impellaLevel += ((this.support.impella ? 1 : 0) - this.impellaLevel) * (1 - Math.exp(-dt / ACS_CORE.impellaTau));
-    this.pushImpella();
-    this.addDeviceWarnings();
+    this.pushDevices();
     this.pushInputs();
     const q = Math.max(-ACS_CORE.maxVolumeRate, Math.min(ACS_CORE.maxVolumeRate, (this.targetVolume() - this.volApplied) / dt)); // ml/s, so the circulation holds the (ramped) volume
     this.exchange!.set({ rate: q }); this.volApplied += q * dt;
     live.step(dt);
-    if (this.impellaLevel > 1e-3 || this.sm.dev > 1e-3) this.sm.dev += (this.deviceFlowNow() - this.sm.dev) * (1 - Math.exp(-dt / ACS_CORE.deviceFlowTau));
+    if (this.impella?.enabled || this.sm.dev > 1e-3) this.sm.dev += (this.deviceFlowNow() - this.sm.dev) * (1 - Math.exp(-dt / ACS_CORE.deviceFlowTau));
     if (this.liveSeen) this.circ = this.coreCirc(this.base);
   }
 
@@ -422,6 +480,7 @@ export class Simulation {
     sm.pcwp += (lb.p.LA.mean - sm.pcwp) * a(tau); sm.cvp += (lb.p.RA.mean - sm.cvp) * a(tau);
     sm.sbp += (lb.systolic - sm.sbp) * a(tau); sm.dbp += (lb.diastolic - sm.dbp) * a(tau);
     this.liveSeen = true;
+    this.diastolicBeat(lb, a(2));
     const rec: BeatRecord = {
       n: this.beatCount++, t: +(lb.t - this.delta).toFixed(3), interval: +lb.interval.toFixed(4), hr: 60 / lb.interval,
       sbp: lb.systolic, dbp: lb.diastolic, map: lb.map, sv: lb.strokeVolume, pvc: lb.pvc, atrialKick: lb.atrialKick,
@@ -433,6 +492,63 @@ export class Simulation {
     this.onBeat?.(rec);
   }
 
+  /** Sample hook: the aortic pressure with the aortic valve closed (after it opened) is the diastole; also the balloon's pressure and fill. */
+  private onDiastoleSample(smp: { t: number; P: Readonly<Float64Array>; q: Readonly<Record<string, number>>; taps: Readonly<Record<string, Record<string, number>>> }, ao: number) {
+    const d = this.dia, h = Number.isFinite(d.t) ? Math.min(smp.t - d.t, 0.05) : 0, p = smp.P[ao], q = smp.q.AV ?? 0;
+    d.t = smp.t;
+    if (h > 0) { d.aoT += h; d.aoSum += p * h; }
+    if (q > IABP.openFlow) d.opened = true;
+    else if (d.opened && q < IABP.closedFlow && h > 0) { d.closed = true; d.dT += h; d.dSum += p * h; if (p > d.peak) d.peak = p; }
+    if (d.opened && !d.closed && p > d.sys) d.sys = p; // the ejection peak: before the valve closes
+    const b = smp.taps.iabp;
+    if (b) { if (b.augmentation > d.balloon) d.balloon = b.augmentation; if (b.fill > d.fill) d.fill = b.fill; }
+  }
+
+  /**
+   * Diastolic measurements of a completed beat. D = time-mean aortic pressure with the valve closed. The unassisted diastolic ratio
+   * rho = D / (time-mean aortic pressure) is learned on beats without balloon assistance (and from the warm-up); on an assisted beat the
+   * measured augmentation, in mean-pressure terms, is D - rho * mean, smoothed with factor `k` into `dx.aug` (0 on unassisted beats, so
+   * 1:2 shows half). `circ.coronaryPressure` = MAP + dx.aug. Without a balloon pump aug is 0 and coronary pressure is MAP.
+   */
+  private diastolicBeat(lb: LiveBeat, k: number) {
+    const d = this.dia, x = this.dx;
+    if (d.dT > 0.05 && d.aoT > 0) {
+      const D = d.dSum / d.dT, mean = d.aoSum / d.aoT, assisted = d.fill > 0.5;
+      if (assisted) x.aug += (Math.max(0, D - x.rho * mean) - x.aug) * k;
+      else { x.rho += (D / mean - x.rho) * Math.min(1, k * 0.5); x.aug += (0 - x.aug) * k; }
+      if (d.sys > 0) x.sys += (d.sys - x.sys) * (x.sys ? k : 1);
+      x.peak += (d.peak - x.peak) * (x.peak ? k : 1); x.mean += (D - x.mean) * (x.mean ? k : 1);
+      if (assisted) x.balloon += (d.balloon - x.balloon) * k;
+    } else x.aug += (0 - x.aug) * k;
+    if (d.fill <= 0.5 && x.balloon > 0) x.balloon += (0 - x.balloon) * k * 0.5;
+    this.dia = { ...d, aoT: 0, aoSum: 0, dT: 0, dSum: 0, peak: -Infinity, sys: -Infinity, closed: false, opened: false, balloon: 0, fill: 0 };
+  }
+
+  /**
+   * The device consoles in plain numbers (types and keys: `ImpellaReadout`, `IabpReadout` in sim/coreDevices.ts). null with the legacy
+   * engine. `impella` / `iabp` are always present on the core engine; `on` says whether they are running.
+   */
+  devices(): DevicesReadout | null {
+    const im = this.impella, ia = this.iabp, live = this.live;
+    if (!live || !im || !ia) return null;
+    const c = this.impConsole?.last, t = live.engine.sample().taps, ti = t.impella, tb = t.iabp, x = this.dx, p = ia.params, on = im.enabled;
+    return {
+      impella: {
+        on, model: im.model, position: im.position, level: im.level, speedKrpm: on ? im.params.speed : 0,
+        flowLpm: on ? c?.flow.mean ?? ti.flow : 0, flowMinLpm: on ? c?.flow.min ?? ti.flow : 0, flowMaxLpm: on ? c?.flow.max ?? ti.flow : 0,
+        motorCurrentMa: on ? c?.current.mean ?? ti.current : 0, currentPulsatilityMa: on ? c?.pulsatility ?? 0 : 0,
+        placementMmHg: on ? c?.placement.mean ?? ti.placement : 0, placementAmplitudeMmHg: on ? c?.placement.amplitude ?? 0 : 0,
+        suctionLevel: on ? c?.suctionLevel ?? ti.suctionLevel : 0, suctionFraction: on ? c?.suctionFraction ?? 0 : 0, suctionAlarm: on && !!c?.suctionAlarm,
+      },
+      iabp: {
+        on: this.support.iabp, ratio: p.ratio, inflateMs: p.inflateMs, deflateMs: p.deflateMs, volumeMl: { ...DEFAULT_IABP, ...this.devSpec.iabp }.volumeMl,
+        balloonVolumeMl: tb.vb, fill: tb.fill, assisted: tb.assisted > 0,
+        balloonPressureMmHg: x.balloon, peakDiastolicMmHg: x.peak, diastolicMeanMmHg: x.mean, endDiastolicMmHg: this.sm.dbp, systolicMmHg: x.sys,
+        coronaryAugmentationMmHg: x.aug,
+      },
+    };
+  }
+
   /**
    * `circ` from the live heart, given the legacy `circulation()` result `c` (which supplies only the ischemic fractions, the
    * rate the rhythm implies, the support's oxygen demand factor). From the smoothed beats (time constant `ACS_CORE.smoothTau`):
@@ -440,10 +556,10 @@ export class Simulation {
    *  - strokeVolume, ml: net volume through the aortic valve; cardiacOutput, L/min: its per-beat rate plus the device flow;
    *  - map, systolic, diastolic, mmHg: the smoothed mean, peak and start-of-beat aortic pressure;
    *  - svr, mmHg·min/L: MAP / CO as BASE_SVR is defined (no venous pressure subtracted);
-   *  - deviceFlow, L/min: the Impella placeholder's, smoothed over `deviceFlowTau` (it follows the cardiac cycle);
+   *  - deviceFlow, L/min: the Impella's, smoothed over `deviceFlowTau` (it follows the cardiac cycle);
    *  - congestion, 0..1: from the smoothed PCWP (left atrial mean), 0 up to 12 mmHg, 1 at 25 (`pcwpOnset`, `pcwpFull`);
    *  - ejectionFraction: stroke volume / end-diastolic volume of the LV;
-   *  - coronaryPressure: the smoothed MAP plus the IABP placeholder's augmentation;
+   *  - coronaryPressure: the smoothed MAP plus the diastolic augmentation measured on the aortic trace (0 without a balloon pump);
    *  - state: from the smoothed MAP as `state()` does.
    */
   private coreCirc(c: Circulation): Circulation {
@@ -451,14 +567,14 @@ export class Simulation {
     const co = sm.co + dev;
     return {
       ...c, hr: ventRate(this.rstate), strokeVolume: sm.sv, cardiacOutput: co, map: this.map, systolic: sm.sbp, diastolic: sm.dbp,
-      svr: co > 0.1 ? this.map / co : c.svr, coronaryPressure: this.map + (this.support.iabp ? SUPPORT.iabpCoronaryAug : 0), deviceFlow: dev,
+      svr: co > 0.1 ? this.map / co : c.svr, coronaryPressure: this.map + this.dx.aug, deviceFlow: dev,
       congestion: Math.min(1, Math.max(0, (sm.pcwp - K.pcwpOnset) / (K.pcwpFull - K.pcwpOnset))), ejectionFraction: sm.ef,
       state: this.map < CIRC.shockMap ? "shock" : this.map < CIRC.hypotensionMap ? "hypotension" : "stable",
     };
   }
 
   private deviceFlowNow(): number {
-    const t = this.live!.engine.sample().taps["impellaPlaceholder"];
+    const t = this.live!.engine.sample().taps["impella"];
     return t ? t.flow : 0;
   }
 

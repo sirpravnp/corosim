@@ -27,10 +27,10 @@ export const ACS_CORE = {
    * `nitroArterialOnset` and is full at dose 1. [assumed]
    */
   nitroVenousTone: 0.4, nitroVenousFull: 0.4, nitroArterialOnset: 0.2,
-  /** IABP placeholder (until D5): resistance × (1 − k) from afterload reduction, plus SUPPORT.iabpCoronaryAug on the coronary pressure. [assumed] */
-  iabpAfterload: 0.12,
-  /** Impella placeholder (until D3): flow SUPPORT.impellaFlow L/min, ramped with this time constant (s), floor margin and width above the LV's V0 (ml). [assumed] */
-  impellaTau: 2, deviceFlowTau: 1.5, impellaMargin: 6, impellaWidth: 2,
+  /** Device flow shown in `circ.deviceFlow` is the Impella's flow smoothed over this time constant (s): it follows the cardiac cycle. */
+  deviceFlowTau: 1.5,
+  /** Fallback ratio of the mean aortic pressure with the valve closed to the mean aortic pressure, for a balloon pump that runs from the first beat. Normally learned in the warm-up and on unassisted beats (D3). [assumed] */
+  diastolicRatio: 0.85,
   /**
    * Fluids: fraction of the litres given that stays in the circulation (blood added, ramped with the volume time constant).
    * Crystalloid mostly leaves the vessels within the hour; this is the part that is there during the resuscitation: 20-30 % at
@@ -65,9 +65,4 @@ export const ACS_CORE = {
 export const AUTONOMIC_CORE = {
   setPoint: 88.7 - 6.8, cnsOnset: 60 - 6.8, cnsFull: 40 - 6.8,
   volumeSympathetic: 1.8, volumeVascularShare: 0.8,
-};
-
-export const PLACEHOLDER_WARNINGS = {
-  impella: "Impella (core engine): placeholder — a constant-flow LV-to-aorta element limited at the unloaded LV volume, no pump curve, suction or console. Real device in D2/D3.",
-  iabp: "IABP (core engine): placeholder — keeps the old coronary-pressure augmentation and a small afterload reduction, no balloon in the aorta. Real device in D5.",
 };
