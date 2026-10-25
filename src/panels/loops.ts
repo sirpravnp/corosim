@@ -5,6 +5,7 @@
  */
 import type { BeatSummary, Chamber, HemoSource } from "../sim/hemoSource";
 import type { Panel, PanelDef } from "./panel";
+import { snapshots } from "./snapshots";
 import { DASH, fmt } from "./numbers";
 import { cleanLoop, fitEDPVR, fitESPVR, loopStats, rescaleAxis, type Axis, type LoopStats, type Pt } from "./loopMath";
 
@@ -31,10 +32,10 @@ export const loopsPanel: PanelDef = {
     let dirty = true;
     let seen: BeatSummary | undefined;
     let choice: Choice = "LV";
-    let ghost: BeatSummary | null = null;
+    let ghost: BeatSummary | null = null; // the selected snapshot's beat (shared store, saved from the workspace bar)
+    let unsubStore: (() => void) | undefined;
     let vAxis: Axis | null = null, pAxis: Axis | null = null;
     let canvas: HTMLCanvasElement, wait: HTMLElement, table: HTMLTableElement, note: HTMLElement;
-    let clearBtn: HTMLButtonElement, saveBtn: HTMLButtonElement;
     let lastW = 0;
 
     const subscribe = () => { unsub?.(); unsub = src.onBeat(() => { dirty = true; }); };
@@ -65,12 +66,11 @@ export const loopsPanel: PanelDef = {
 
     function render(): void {
       const beats = src.beats(TRAIL_BEATS + 1);
+      ghost = snapshots.selected()?.beat ?? null;
       const live = beats[beats.length - 1];
       seen = live;
       wait.hidden = !!live;
       canvas.hidden = !live;
-      saveBtn.disabled = !live;
-      clearBtn.disabled = !ghost;
       if (!live) { table.replaceChildren(); note.textContent = ""; return; }
       const chs = chambersOf(choice);
       let vlo = Infinity, vhi = -Infinity, phi = 0;
@@ -160,7 +160,7 @@ export const loopsPanel: PanelDef = {
         const wd = g.measureText(c).width; lx -= wd + 18;
         g.fillStyle = COLOR[c]; g.fillRect(lx, 8, 10, 3); g.fillText(c, lx + 14, 16);
       }
-      if (ghost) { g.fillStyle = "#8a8a80"; g.fillText("- - ghost", lx - 78, 16); }
+      if (ghost) { const t = `- - ${snapshots.selected()?.label ?? "snapshot"}`; g.fillStyle = "#8a8a80"; g.fillText(t, lx - g.measureText(t).width - 12, 16); }
       if (live.pvc) { g.fillStyle = "#ff6b5b"; g.fillText("PVC", L + 90, 16); }
     }
 
@@ -176,16 +176,7 @@ export const loopsPanel: PanelDef = {
         sel.style.cssText = "width:auto;min-width:0";
         for (const [v, t] of OPTIONS) { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.append(o); }
         sel.addEventListener("change", () => { choice = sel.value as Choice; vAxis = pAxis = null; dirty = true; });
-        saveBtn = document.createElement("button");
-        saveBtn.textContent = "Save loop";
-        saveBtn.addEventListener("click", () => {
-          const b = src.beats(1)[0];
-          if (b) { ghost = b; vAxis = pAxis = null; dirty = true; }
-        });
-        clearBtn = document.createElement("button");
-        clearBtn.textContent = "Clear";
-        clearBtn.addEventListener("click", () => { ghost = null; dirty = true; });
-        ctl.append(sel, saveBtn, clearBtn);
+        ctl.append(sel);
         wait = document.createElement("p");
         wait.className = "note";
         wait.textContent = "waiting for first solve";
@@ -199,8 +190,9 @@ export const loopsPanel: PanelDef = {
         note.className = "note";
         el.append(ctl, wait, canvas, table, note);
         subscribe();
+        unsubStore = snapshots.subscribe(() => { vAxis = pAxis = null; dirty = true; });
       },
-      setSource(s) { src = s; ghost = null; vAxis = pAxis = null; seen = undefined; dirty = true; subscribe(); },
+      setSource(s) { src = s; vAxis = pAxis = null; seen = undefined; dirty = true; subscribe(); },
       resize() { dirty = true; },
       draw() {
         if (canvas.clientWidth && Math.abs(canvas.clientWidth - lastW) > 1) dirty = true;
@@ -208,7 +200,7 @@ export const loopsPanel: PanelDef = {
         dirty = false;
         render();
       },
-      dispose() { unsub?.(); unsub = undefined; },
+      dispose() { unsub?.(); unsub = undefined; unsubStore?.(); unsubStore = undefined; },
     };
   },
 };

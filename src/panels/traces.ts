@@ -5,6 +5,7 @@
 import { LEFT, RIGHT, type Trace } from "../structural/traces";
 import type { HemoSource, Series } from "../sim/hemoSource";
 import type { Panel, PanelDef } from "./panel";
+import { snapshots } from "./snapshots";
 import { DEFAULT_WINDOW, WINDOWS, axisBottom, dataRange, gridStep, isWaiting, legendText, legendValues, nextTop, pickMaxPoints } from "./traceMath";
 
 const ASPECT = 0.4;
@@ -24,7 +25,10 @@ function drawBand(b: Band, source: HemoSource, now: number, seconds: number): vo
   g.fillStyle = "#0b0b0b"; g.fillRect(0, 0, W, H);
   g.font = FONT; g.textBaseline = "alphabetic";
   const waiting = isWaiting(series);
-  const { min, max } = dataRange(series);
+  // The selected snapshot's last seconds, pinned to the right edge (its saved moment is "now"), drawn dashed behind live data.
+  const snap = snapshots.selected();
+  const ghosts: (Series | undefined)[] = snap ? b.traces.map(t => snap.traces[t.node]) : [];
+  const { min, max } = dataRange([...series, ...ghosts.filter((s): s is Series => !!s)]);
   const top = (b.top = nextTop(b.top, max)), bottom = axisBottom(min);
   const x = (t: number) => L + ((t - (now - seconds)) / seconds) * (R - L);
   const y = (p: number) => B - ((p - bottom) / (top - bottom)) * (B - T);
@@ -41,6 +45,7 @@ function drawBand(b: Band, source: HemoSource, now: number, seconds: number): vo
     g.fillStyle = tr.color; g.fillRect(lx, 29, 8, 3); g.fillText(text, lx + 11, 33);
     lx += g.measureText(text).width + 22;
   }
+  if (snap) { g.fillStyle = "#8a8a80"; g.fillText(`- - ${snap.label}`, R - 120, 16); }
   g.font = FONT;
   if (waiting) {
     g.fillStyle = "#8a8a80"; g.textAlign = "center";
@@ -48,6 +53,22 @@ function drawBand(b: Band, source: HemoSource, now: number, seconds: number): vo
     return;
   }
   g.save(); g.beginPath(); g.rect(L, T - 4, R - L, B - T + 8); g.clip();
+  if (snap) {
+    g.setLineDash([5, 4]); g.lineWidth = 1.6; g.globalAlpha = 0.65;
+    b.traces.forEach((tr, k) => {
+      const s = ghosts[k];
+      if (!s) return;
+      g.strokeStyle = tr.color; g.beginPath();
+      let pen = false;
+      for (let i = 0; i < s.t.length; i++) {
+        if (!Number.isFinite(s.v[i])) { pen = false; continue; }
+        const px = x(s.t[i] + (now - snap.t));
+        if (pen) g.lineTo(px, y(s.v[i])); else { g.moveTo(px, y(s.v[i])); pen = true; }
+      }
+      g.stroke();
+    });
+    g.setLineDash([]); g.globalAlpha = 1;
+  }
   b.traces.forEach((tr, k) => {
     const s = series[k];
     g.strokeStyle = tr.color; g.lineWidth = tr.node === "LV" || tr.node === "RV" ? 1.6 : 2.2; g.beginPath();

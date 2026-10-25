@@ -5,9 +5,15 @@
 import "./workspace.css";
 import type { HemoSource } from "../sim/hemoSource";
 import type { Panel, PanelDef } from "./panel";
+import { createPlaygroundBar, type PlaygroundBar } from "./playgroundBar";
+import { snapshots, type SnapshotStore } from "./snapshots";
+import type { PlayClock } from "./timeControl";
 import {
   PHONE_MAX_WIDTH, loadLayout, pickerItems, saveLayout, setActive, setPanelOn, visibleIds, type LayoutState,
 } from "./layout";
+
+/** Optional page hooks: the simulation clock's play controls (absent in tests), and the snapshot store panels share. */
+export interface WorkspaceOptions { clock?: PlayClock; snapshots?: SnapshotStore }
 
 interface Live { panel: Panel; card: HTMLElement; tab: HTMLButtonElement }
 
@@ -22,8 +28,9 @@ export class Workspace {
   private grid = document.createElement("div");
   private menu = document.createElement("div");
   private pickBtn = document.createElement("button");
+  private tools: PlaygroundBar;
 
-  constructor(private root: HTMLElement, private defs: readonly PanelDef[], private source: HemoSource) {
+  constructor(private root: HTMLElement, private defs: readonly PanelDef[], private source: HemoSource, opts: WorkspaceOptions = {}) {
     this.layout = loadLayout(defs);
     root.classList.add("ws");
     this.bar.className = "ws-bar";
@@ -39,7 +46,8 @@ export class Workspace {
     const pick = document.createElement("div");
     pick.className = "ws-pick";
     pick.append(this.pickBtn, this.menu);
-    this.bar.append(this.tabs, pick);
+    this.tools = createPlaygroundBar(source, opts.clock, opts.snapshots ?? snapshots);
+    this.bar.append(this.tabs, this.tools.el, pick);
     root.append(this.bar, this.grid);
     document.addEventListener("click", e => { if (!pick.contains(e.target as Node)) this.toggleMenu(false); });
     document.addEventListener("keydown", e => { if (e.key === "Escape") this.toggleMenu(false); });
@@ -54,12 +62,14 @@ export class Workspace {
 
   setSource(source: HemoSource): void {
     this.source = source;
+    this.tools.setSource(source);
     for (const l of this.live.values()) l.panel.setSource?.(source);
   }
 
   dispose(): void {
     cancelAnimationFrame(this.raf);
     this.ro?.disconnect();
+    this.tools.dispose();
     for (const l of this.live.values()) l.panel.dispose();
     this.live.clear();
   }
@@ -149,6 +159,6 @@ export class Workspace {
   };
 }
 
-export function mountWorkspace(root: HTMLElement, defs: readonly PanelDef[], source: HemoSource): Workspace {
-  return new Workspace(root, defs, source);
+export function mountWorkspace(root: HTMLElement, defs: readonly PanelDef[], source: HemoSource, opts?: WorkspaceOptions): Workspace {
+  return new Workspace(root, defs, source, opts);
 }

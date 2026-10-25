@@ -1,6 +1,7 @@
 /** The "Hemodynamics" panel: the catheter-lab numbers as a compact table. Draws only; computes nothing. */
 import type { HemoNumbers, HemoSource, Saturations } from "../sim/hemoSource";
 import type { Panel, PanelDef } from "./panel";
+import { snapshots } from "./snapshots";
 
 export const DASH = "–";
 
@@ -34,6 +35,28 @@ export function numberRows(n: HemoNumbers, s: Saturations): [string, string][] {
   ];
 }
 
+/**
+ * The one value per row of `numberRows` that a delta compares (BP: the mean; PA: the mean; CO / CI: CO), in the same
+ * order, with the decimals the row shows. Fractions (EF, saturation) are in percentage points.
+ */
+export function deltaBasis(n: HemoNumbers, s: Saturations): { value: number; digits: number; unit: string }[] {
+  const pt = (x: number) => ({ value: x * 100, digits: 0, unit: " pts" });
+  return [
+    { value: n.hr, digits: 0, unit: "" }, { value: n.map, digits: 0, unit: "" }, { value: n.cvp, digits: 0, unit: "" },
+    { value: n.pa.mean, digits: 0, unit: "" }, { value: n.pcwp, digits: 0, unit: "" }, { value: n.lvedp, digits: 0, unit: "" },
+    { value: n.rvedp, digits: 0, unit: "" }, { value: n.co, digits: 1, unit: "" }, { value: n.svr, digits: 1, unit: "" },
+    { value: n.pvr, digits: 1, unit: "" }, pt(n.lvEf), pt(n.rvEf), { value: n.qpQs, digits: 2, unit: "" }, pt(s.spo2), pt(s.svo2),
+  ];
+}
+
+/** Signed difference live − snapshot as text, or DASH when either is missing. Rounds to the row's decimals; no "-0". */
+export function deltaText(live: number, snap: number, digits: number, unit = ""): string {
+  if (!Number.isFinite(live) || !Number.isFinite(snap)) return DASH;
+  const d = Number((live - snap).toFixed(digits));
+  if (d === 0) return `0${unit}`;
+  return `${d > 0 ? "+" : "−"}${Math.abs(d).toFixed(digits)}${unit}`;
+}
+
 export function badgeText(kind: HemoSource["kind"]): string { return kind === "live" ? "live" : "bridge"; }
 
 export const numbersPanel: PanelDef = {
@@ -44,6 +67,7 @@ export const numbersPanel: PanelDef = {
     let src: HemoSource;
     let badge: HTMLElement, body: HTMLElement;
     let last = "";
+    let head: HTMLElement, unsub: (() => void) | undefined;
     return {
       id: "numbers",
       title: "Hemodynamics",
@@ -53,8 +77,10 @@ export const numbersPanel: PanelDef = {
         badge.className = "hp-badge";
         const table = document.createElement("table");
         table.className = "readout";
+        head = document.createElement("thead");
         body = document.createElement("tbody");
-        table.append(body);
+        table.append(head, body);
+        unsub = snapshots.subscribe(() => { last = ""; });
         const unit = document.createElement("p");
         unit.className = "note";
         unit.textContent = "mmHg, L/min, L/min/m², Wood units. – means not available.";
@@ -62,22 +88,35 @@ export const numbersPanel: PanelDef = {
       },
       setSource(s) { src = s; last = ""; },
       draw() {
-        const rows = numberRows(src.numbers(), src.saturations());
-        const key = badgeText(src.kind) + rows.map(r => r[1]).join("|");
+        const n = src.numbers(), sat = src.saturations(), snap = snapshots.selected();
+        const rows = numberRows(n, sat);
+        const snapRows = snap ? numberRows(snap.numbers, snap.saturations) : null;
+        const key = badgeText(src.kind) + (snap ? `#${snap.id}` : "") + rows.map(r => r[1]).join("|");
         if (key === last) return; // numbers change at beat rate; skip identical frames
         last = key;
         badge.textContent = badgeText(src.kind);
         badge.title = src.kind === "live" ? "Beat-by-beat engine" : "Steady-state solve replayed";
-        body.replaceChildren(...rows.map(([k, v]) => {
+        const lb = deltaBasis(n, sat), sb = snap ? deltaBasis(snap.numbers, snap.saturations) : null;
+        const hr = document.createElement("tr");
+        if (snap) {
+          for (const t of ["", "Live", snap.label, "Δ"]) { const th = document.createElement("th"); th.textContent = t; hr.append(th); }
+          head.replaceChildren(hr);
+        } else head.replaceChildren();
+        body.replaceChildren(...rows.map(([k, v], i) => {
           const tr = document.createElement("tr");
-          const a = document.createElement("td"), b = document.createElement("td");
-          a.textContent = k; b.textContent = v;
-          if (v === DASH) b.style.color = "var(--muted)";
-          tr.append(a, b);
+          const cells = snapRows && sb
+            ? [k, v, snapRows[i][1], deltaText(lb[i].value, sb[i].value, lb[i].digits, lb[i].unit)]
+            : [k, v];
+          cells.forEach((t, j) => {
+            const td = document.createElement("td");
+            td.textContent = t;
+            if (t === DASH || (j === 2 && snap)) td.style.color = "var(--muted)";
+            tr.append(td);
+          });
           return tr;
         }));
       },
-      dispose() { body?.replaceChildren(); },
+      dispose() { unsub?.(); unsub = undefined; body?.replaceChildren(); },
     };
   },
 };

@@ -22,6 +22,7 @@ import { encodeScenario, decodeScenario } from "./sim/llm";
 import { TOOLS } from "./mcp/tools";
 import { mountShell } from "./shell/shell";
 import { mountWorkspace } from "./panels/workspace";
+import { PlayClock } from "./panels/timeControl";
 import { numbersPanel } from "./panels/numbers";
 import { tracesPanel } from "./panels/traces";
 import { loopsPanel } from "./panels/loops";
@@ -729,9 +730,12 @@ function updateMarkers(dt: number) {
 }
 
 let last = performance.now(), uiClock = 0, paintClock = 0;
+/** Pause, slow motion and step-one-beat for the Simulator page (task P13); scales heartbeat time only, never the game. */
+const playClock = new PlayClock();
 let rstate: RhythmState | null = sim.rstate, circ: Circulation | null = sim.circ;
 function frame(now: number) {
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const realDt = Math.min(0.05, (now - last) / 1000); last = now;
+  const dt = G.phase === "idle" ? playClock.advance(realDt, sim.t, () => sim.stream.beats.filter((b) => !b.pOnly).map((b) => b.t)) : realDt;
   flush();
   const inCase = G.phase === "play" || G.phase === "treat";
   if (inCase) G.clock += dt * S.speed;
@@ -1107,10 +1111,10 @@ if (!inGame) {
   const ws = $("workspace"); (ws.parentElement as HTMLElement).hidden = false;
   bridgeOpts.solver = createWorkerSolver();
   bridge = new BridgeSource(sim, bridgeOpts);
-  mountWorkspace(ws, [numbersPanel, tracesPanel, loopsPanel, rhcPanel, leftHeartCathPanel, jvpPanel], bridge);
+  mountWorkspace(ws, [numbersPanel, tracesPanel, loopsPanel, rhcPanel, leftHeartCathPanel, jvpPanel], bridge, { clock: playClock });
 }
 void shell.ai.start();
 /** Handle for scripts and browser-driving assistants: corosim.sim, corosim.load(scenario), corosim.live. */
-(window as unknown as { corosim: object }).corosim = { sim, load: loadScenario, live: shell.ai.live, account: shell.ai.account, refresh: () => { controlsUi(); liveUi(); } };
+(window as unknown as { corosim: object }).corosim = { sim, load: loadScenario, clock: playClock, live: shell.ai.live, account: shell.ai.account, refresh: () => { controlsUi(); liveUi(); } };
 requestAnimationFrame(frame);
 void LEADS;
