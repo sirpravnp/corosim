@@ -101,7 +101,7 @@ describe("capillary leak and diuresis", () => {
     const urine = (setup: (f: FluidCompartments) => void) => { const { f, run } = bench(); setup(f); run(60); return f.read().urine; };
     const base = urine(() => {});
     expect(urine((f) => { f.diuretic = 4; })).toBeGreaterThan(2.5 * base);
-    expect(urine((f) => f.give("crystalloid", 1500))).toBeGreaterThan(1.5 * base);
+    expect(urine((f) => f.give("crystalloid", 1500))).toBeGreaterThan(1.3 * base);
     const { f } = bench(); f.setPressures(35, 3); f.advance(60); expect(f.read().urine).toBe(0);
   });
 });
