@@ -78,8 +78,10 @@ export const IMPELLA_POSITION = { deep: { vcExtraMl: 15, pthExtra: 8 } };
  * i0 + i2·ω² is the speed-dependent loss (bearing, windage, purge flow); kI follows from shaft power = hydraulic power/η and
  * torque = shaft power/ω, I = torque/Kt:  kI = 1000 mA/A · 1.333e-4 W per mmHg·ml/s ÷ (η · 2π/60 · 1000 rad/s per krpm · Kt) = 1.82 mA per (mmHg·ml/s/krpm)
  * with η = 0.2 and Kt = 0.0035 N·m/A. All [assumed].
+ * Position alarm (D4): raised when the mean flow exceeds `positionMinFlowLpm` and the beat's range of the placement signal (aortic minus LV pressure)
+ * is below `positionAmpMmHg`; a correctly placed pump sees 60-100 mmHg swing, an inflow in the aorta sees almost none.
  */
-export const IMPELLA_CONSOLE = { i0: 150, i2: 0.12, eta: 0.2, kt: 0.0035, alarmLevel: 0.2, strideS: 0.004 };
+export const IMPELLA_CONSOLE = { i0: 150, i2: 0.12, eta: 0.2, kt: 0.0035, alarmLevel: 0.2, strideS: 0.004, positionAmpMmHg: 12, positionMinFlowLpm: 0.5 };
 
 // ---- Intra-aortic balloon pump (task D5) ----------------------------------------------------------------------------------------
 /**

@@ -223,9 +223,9 @@ export class LiveSource implements HemoSource {
     if (d?.impella?.on) {
       const i = d.impella;
       out.push(lazy({
-        id: "impella", label: `Impella ${i.model} P-${i.level}`, alarms: i.suctionAlarm ? ["Suction: the inflow is collapsing onto the ventricular wall"] : [],
-        readings: { flowLpm: i.flowLpm, flowMinLpm: i.flowMinLpm, flowMaxLpm: i.flowMaxLpm, level: i.level, speedKrpm: i.speedKrpm, motorCurrentMa: i.motorCurrentMa, currentPulsatilityMa: i.currentPulsatilityMa, placementMmHg: i.placementMmHg, placementAmplitudeMmHg: i.placementAmplitudeMmHg, suctionLevel: i.suctionLevel, suctionFraction: i.suctionFraction },
-      }, () => ({ placement: this.difference("AO", "LV") })));
+        id: "impella", label: `Impella ${i.model} P-${i.level}`, alarms: i.alarms,
+        readings: { flowLpm: i.flowLpm, flowMinLpm: i.flowMinLpm, flowMaxLpm: i.flowMaxLpm, level: i.level, speedKrpm: i.speedKrpm, motorCurrentMa: i.motorCurrentMa, currentPulsatilityMa: i.currentPulsatilityMa, placementMmHg: i.placementMmHg, placementAmplitudeMmHg: i.placementAmplitudeMmHg, suctionLevel: i.suctionLevel, suctionFraction: i.suctionFraction, inletMeanMmHg: i.inletMeanMmHg, inletMinMmHg: i.inletMinMmHg, inletMaxMmHg: i.inletMaxMmHg, inletAmplitudeMmHg: i.inletAmplitudeMmHg },
+      }, () => ({ placement: this.difference("AO", i.position === "aortic" ? "AO" : "LV") })));
     }
     if (d?.iabp?.on) {
       const i = d.iabp;
