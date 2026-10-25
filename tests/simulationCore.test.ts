@@ -206,8 +206,8 @@ describe("support on the core engine", () => {
     const l = measure(make({ ...LAD, support: { norepinephrine: 0.6 } }));
     expect(l.map).toBeGreaterThan(lad.map + 4);
   });
-  // C2: the same autotransfusion lifts the anterior STEMI's baseline, leaving the norepinephrine gain 0.12 mmHg short of +5. The bar stays.
-  it.fails("norepinephrine raises the anterior STEMI's MAP by 5 mmHg", () => {
+  // C2 left this 0.12 mmHg short of +5 as an it.fails; with norepinephrine's receptor-level alpha-1 resistance gain (E4) the bar is met, unchanged.
+  it("norepinephrine raises the anterior STEMI's MAP by 5 mmHg", () => {
     const l = measure(make({ ...LAD, support: { norepinephrine: 0.6 } }));
     expect(l.map).toBeGreaterThan(lad.map + 5);
   });
