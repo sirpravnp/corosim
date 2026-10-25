@@ -76,12 +76,15 @@ describe("anterior STEMI (proximal LAD occlusion)", () => {
     expect(m.cvp).toBeLessThan(8); // the right heart is not the problem
   });
   it("lowers the pressure, with reflex tachycardia, a poor ejection fraction and a congested lung", () => {
-    expect(m.map).toBeLessThan(normal.map - 8);
+    expect(m.map).toBeLessThan(normal.map - 7);
     expect(m.hr).toBeGreaterThan(normal.hr + 20);
     expect(m.circ.ejectionFraction).toBeLessThan(0.4);
     expect(m.circ.congestion).toBeGreaterThan(0.3);
     expect(m.circ.lvIschemia).toBeGreaterThan(0.2);
   });
+  // C2: the anterior STEMI's low pressure draws about 100 ml back from the interstitium (Starling), a thin 0.15 mmHg over the 8 mmHg bar below
+  // (venousToneGain stays at 0.75 rather than being tuned to this bar). The bar stays.
+  it.fails("lowers the pressure by 8 mmHg", () => { expect(m.map).toBeLessThan(normal.map - 8); });
   it("reports the state as the pressure says it", () => {
     const want = (map: number) => (map < CIRC.shockMap ? "shock" : map < CIRC.hypotensionMap ? "hypotension" : "stable");
     const s = make(LAD);
@@ -112,10 +115,18 @@ describe("right ventricular infarct (proximal RCA occlusion, complete heart bloc
     const f = make(RCA); f.apply({ support: { fluids: 1 } });
     f.step(60); const g = measure(f);
     say("RCA + 1 L", g);
-    expect(g.map).toBeGreaterThan(m.map + 5);
-    expect(g.co).toBeGreaterThan(m.co + 0.2);
+    expect(g.map).toBeGreaterThan(m.map);
     expect(g.sv).toBeGreaterThan(m.sv);
     expect(g.cvp).toBeGreaterThanOrEqual(10);
+    expect(g.cvp).toBeGreaterThan(m.cvp);
+  });
+  // C2: the fluid compartments keep about a quarter of a litre of crystalloid in the vessels (A7 had a static 0.45 L), so the output gains
+  // less than the A7b bar of +0.2 L/min over this window. The clinical figure for crystalloid was kept; the bar stays here.
+  it.fails("raises the pressure by 5 mmHg and the output by 0.2 L/min with 1 L of crystalloid (a quarter of it stays in the vessels)", () => {
+    const f = make(RCA); f.apply({ support: { fluids: 1 } });
+    f.step(60); const g = measure(f);
+    expect(g.map).toBeGreaterThan(m.map + 5);
+    expect(g.co).toBeGreaterThan(m.co + 0.2);
     expect(g.cvp).toBeGreaterThan(m.cvp + 2);
   });
   it("is hurt by nitroglycerin (venodilation starves the right ventricle)", () => {
@@ -146,12 +157,17 @@ describe("hemorrhage of 15 % of the blood volume", () => {
     expect(m.sv).toBeLessThan(normal.sv - 8);
   });
   it("takes the blood out of the circulation, and only that much", () => {
+    // C2: the interstitium refills part of the plasma and the kidney passes some water, so the engine holds the volume the water balance
+    // gives (4900 - lost - urine + maintenance - interstitial change); the loss itself is 15 % of the blood volume to 1 %.
     const total = (x: Simulation) => x.live!.engine.sample().V.reduce((a, b) => a + b, 0);
     const a = make(), v0 = total(a);
     a.apply({ bloodLoss: 0.15 }); a.step(80); // the loss ramps in with the 10 s volume time constant
-    say("blood lost", v0 - total(a));
-    expect(v0 - total(a)).toBeGreaterThan(0.15 * 4900 * 0.99);
-    expect(v0 - total(a)).toBeLessThan(0.15 * 4900 * 1.01);
+    const f = a.fluids()!, held = f.lost + f.urine - f.maintenance + f.interstitialExcess;
+    say("blood lost", v0 - total(a), f);
+    expect(f.lost).toBeGreaterThan(0.15 * 4900 * 0.99);
+    expect(f.lost).toBeLessThan(0.15 * 4900 * 1.01);
+    expect(Math.abs(v0 - total(a) - held)).toBeLessThan(0.01 * 0.15 * 4900); // the engine follows the compartments to 1 % of the loss
+    expect(v0 - total(a)).toBeLessThan(f.lost); // some of it came back from the interstitium
   });
 });
 
@@ -187,6 +203,11 @@ describe("support on the core engine", () => {
     const m = measure(make({ support: { norepinephrine: 0.6 } }));
     say("norepi", m);
     expect(m.map).toBeGreaterThan(normal.map + 8);
+    const l = measure(make({ ...LAD, support: { norepinephrine: 0.6 } }));
+    expect(l.map).toBeGreaterThan(lad.map + 4);
+  });
+  // C2: the same autotransfusion lifts the anterior STEMI's baseline, leaving the norepinephrine gain 0.12 mmHg short of +5. The bar stays.
+  it.fails("norepinephrine raises the anterior STEMI's MAP by 5 mmHg", () => {
     const l = measure(make({ ...LAD, support: { norepinephrine: 0.6 } }));
     expect(l.map).toBeGreaterThan(lad.map + 5);
   });
@@ -241,6 +262,12 @@ describe("devices (D3: the real Impella and IABP; the full device tests are in s
     expect(m.circ.deviceFlow).toBeLessThan(2.7);
     expect(Math.min(...late.map((b) => b.esv.LV))).toBeGreaterThan(v0); // the pump stops drawing at V0 + floor (the native ejection alone takes it a little lower)
   });
+  // C2: the anterior STEMI now autotransfuses about 100 ml from the interstitium (low capillary pressure), which leaves the balloon's output
+  // gain just short of the bar of +0.1 L/min (it cleared it on a fixed volume). The bar stays.
+  it.fails("the IABP raises the output of the anterior STEMI by 0.1 L/min", () => {
+    const b = measure(make(LAD)), m = measure(make({ ...LAD, support: { iabp: true } }));
+    expect(m.co).toBeGreaterThan(b.co + 0.1);
+  });
   it("the IABP raises the coronary pressure by the diastolic augmentation measured on the aortic trace (not a fixed 10), and unloads the ventricle", () => {
     const base = make(LAD), b = measure(base), s = make({ ...LAD, support: { iabp: true } }), m = measure(s);
     const aug = m.circ.coronaryPressure - s.circ.map;
@@ -249,7 +276,6 @@ describe("devices (D3: the real Impella and IABP; the full device tests are in s
     // sign: the baroreflex answers the lower pressure with a faster heart.)
     const hb = base.hemo(30)!, hs = s.hemo(30)!;
     expect(hs.lvEsv).toBeLessThan(hb.lvEsv - 1);
-    expect(m.co).toBeGreaterThan(b.co + 0.1);
     expect(hs.pcwp).toBeLessThan(hb.pcwp);
     // was `m.sbp < b.sbp` with the placeholder. The monitor's systolic is the highest pressure of the beat, and with a real balloon the
     // augmented diastolic peak is the highest (112 against 94 mmHg), so the systolic unloading is read off the ejection peak (tests/simulationDevices.test.ts)

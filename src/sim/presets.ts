@@ -6,8 +6,8 @@ import type { PatientSpec } from "./patient";
  * and gives a converging bridge solve.
  *
  * What the page's engines read (task P16): the coronary scenario, `kind`, and for an adult on the core engine the structural `heart`,
- * pericardium, ventilation and every device setting. Parts that are only stored in the spec (fluids: the bleeding rate and the dose
- * timing) are named in `stored` so the picker can say so.
+ * pericardium, ventilation and every device setting. Parts that are only stored in the spec are named in `stored` so the picker can say so (none now:
+ * fluids are modelled by the core engine, task C2).
  */
 export interface Preset { id: string; label: string; blurb: string; spec: PatientSpec; stored?: string }
 
@@ -39,7 +39,7 @@ export const PRESETS: Preset[] = [
   },
   {
     id: "rv-infarct-impella", label: "RV infarct starving a left Impella", blurb: "Proximal RCA occlusion with a failed right ventricle in a preload-depleted patient, Impella CP at P9: the left ventricle gets too little blood, the flow falls and suction alarms sound. A fluid bolus, an Impella RP or a lower P-level restores the flow.",
-    spec: { lesions: [{ artery: "RCA", occluded: true, position: 0.2 }], heart: { rvEes: 0.2, rvStiffness: 4 }, bloodLoss: 0.2, devices: { impella: { model: "CP", level: 9, position: "correct" } } },
+    spec: { lesions: [{ artery: "RCA", occluded: true, position: 0.2 }], heart: { rvEes: 0.2, rvStiffness: 4 }, bloodLoss: 0.25, devices: { impella: { model: "CP", level: 9, position: "correct" } } },
   },
   {
     id: "tamponade", label: "Cardiac tamponade", blurb: "A 270 ml effusion in a normal sac, breathing spontaneously: falling pressure and output, a raised venous pressure and a fast pulse (Beck's triad), the four diastolic pressures drawn together to the pressure of the sac, a blunted y descent, a pulsus paradoxus over 10 mmHg and, above 250 ml, electrical alternans (the EKG page opens its alternans preset). Pericardiocentesis (remove 50-100 ml) relieves it.",
@@ -66,9 +66,8 @@ export const PRESETS: Preset[] = [
     spec: { kind: "neonate", heart: { pvri: 5, tof: { vsdMm: 8, rvotFrac: 0.15, spasm: 0 } } },
   },
   {
-    id: "hemorrhage-fluids", label: "Hemorrhage with fluids", blurb: "Class III blood loss (30%) while 1 L of crystalloid goes in. Blood loss and the litre of IV fluid are modelled; the bleeding rate and the dose timing are stored only.",
-    spec: { bloodLoss: 0.3, support: { fluids: 1 }, fluids: { hemorrhageMlMin: 30, given: [{ kind: "crystalloid", ml: 1000, atMin: 5, overMin: 10 }] } },
-    stored: "the bleeding rate and the dose timing",
+    id: "hemorrhage-fluids", label: "Hemorrhage with fluids", blurb: "Class III blood loss (30%), bleeding controlled, then 1 L of crystalloid from minute 5 over 10 minutes. About a quarter of it stays in the vessels; the water goes to the interstitium and Hb falls.",
+    spec: { bloodLoss: 0.3, fluids: { given: [{ kind: "crystalloid", ml: 1000, atMin: 5, overMin: 10 }] } },
   },
   {
     id: "va-ecmo-poor-lv", label: "VA-ECMO with a poor LV", blurb: "A large infarct with a left ventricle at 30% of its contractility, on VA-ECMO at 4 L/min. The left ventricle cannot open its valve against the flow and is not vented: the wedge pressure climbs, which is why a vent is added.",

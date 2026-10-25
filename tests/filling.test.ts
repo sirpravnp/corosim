@@ -142,7 +142,9 @@ describe("on the core simulation", () => {
     n.run(20); b.run(60);
     const fn = n.filling()!, fb = b.filling()!, lost = fn.total - fb.total;
     say(`bleed: total ${fn.total.toFixed(0)} -> ${fb.total.toFixed(0)}, stressed ${fn.stressed.toFixed(0)} -> ${fb.stressed.toFixed(0)}, MSFP ${fn.msfp.toFixed(2)} -> ${fb.msfp.toFixed(2)}, tone ${b.live!.modifiers.venousTone.toFixed(2)}`);
-    expect(lost).toBeGreaterThan(600); expect(lost).toBeLessThan(800);
+    // C2: the interstitium refills part of the plasma, so the circulation holds less than the 15 % less the refill: the bleed itself is 600-800 ml, the net loss a good half of it
+    expect(b.fluids()!.lost).toBeGreaterThan(600); expect(b.fluids()!.lost).toBeLessThan(800);
+    expect(lost).toBeGreaterThan(0.6 * b.fluids()!.lost); expect(lost).toBeLessThan(800);
     expect(fb.msfp).toBeLessThan(fn.msfp);
     expect(fn.stressed - fb.stressed).toBeLessThan(lost); // recruited unstressed volume made up part of it
     expect(b.live!.modifiers.venousTone).toBeGreaterThan(1.1);
