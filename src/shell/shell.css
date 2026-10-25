@@ -90,3 +90,13 @@
   .shell-menu { width: min(280px, calc(100vw - 32px)); }
 }
 @media (prefers-reduced-motion: reduce) { .shell-menu, .ai-panel { animation: none; } .shell-cur svg { transition: none; } }
+
+/* "Open this patient in…" link rows (task P14): small, quiet, one hairline weight like the rest of the shell. */
+.xlinks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 10px 0 0; font: 500 13px/1 var(--font-ui); letter-spacing: 0; text-transform: none; }
+.xlinks[hidden] { display: none; }
+.xlinks-lead { color: var(--muted); margin-right: 2px; }
+.xlink { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; color: var(--ink); text-decoration: none; border: 1px solid var(--sh-line); border-radius: var(--sh-radius); transition: background-color 0.15s var(--sh-ease), border-color 0.15s var(--sh-ease); }
+.xlink:hover { background: var(--sh-hover); border-color: var(--sh-line-strong); }
+.xlink:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.xlink[data-carries="false"] { color: var(--muted); }
+.xlink[data-carries="false"]:hover { color: var(--ink); }
