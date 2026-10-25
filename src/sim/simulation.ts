@@ -129,6 +129,7 @@ export class Simulation {
   private periSpec?: PericardiumSpec;
   private ventSpec?: VentilationSpec;
   private builtSig = "";
+  private hasSac = false; private hasThorax = false; // what the live heart was built with
   private appliedEffusion = NaN; // the spec's effusion as last handed to a running sac
   /** The kind of the PatientSpec the core engine was given. It runs the adult ACS patient whatever the kind: a neonate's structural fields are not applied to it (the bridge solves a neonate on its own baseline). */
   patientKind: "adult" | "neonate" = "adult";
@@ -211,7 +212,7 @@ export class Simulation {
   setPatient(spec: PatientSpec) {
     if (this.engine !== "core") return;
     this.readPatient(spec);
-    if (this.structureSig() !== this.builtSig) this.initCore();
+    if (this.structureSig(true) !== this.builtSig) this.initCore();
     else this.pushPatient();
   }
 
@@ -229,13 +230,14 @@ export class Simulation {
     this.heartSpec = adult && np.heart ? JSON.parse(JSON.stringify(np.heart)) : {};
     this.periSpec = adult ? np.pericardium : undefined;
     this.ventSpec = adult ? np.ventilation : undefined;
-    if (this.structureSig() !== this.builtSig) this.initCore(); else this.pushPatient();
+    if (this.structureSig(true) !== this.builtSig) this.initCore(); else this.pushPatient();
   }
 
   /** Everything the heart is built from: when this changes, the heart is rebuilt. */
-  private structureSig(): string {
-    const d = this.devSpec, im = d.impella ?? DEFAULT_IMPELLA;
-    return JSON.stringify([this.heartSpec, !!this.periSpec, !!this.ventSpec, !!d.ecmo, !!d.impellaRp, im.model, im.position]);
+  private structureSig(sticky = false): string {
+    const d = this.devSpec, im = { ...DEFAULT_IMPELLA, ...d.impella };
+    // the sac and the thorax stay once built (a removed spec makes them neutral, see `pushPatient`), so only adding one rebuilds
+    return JSON.stringify([this.heartSpec, !!this.periSpec || (sticky && this.hasSac), !!this.ventSpec || (sticky && this.hasThorax), !!d.ecmo, !!d.impellaRp, im.model, im.position]);
   }
 
   /** Back to a resting heart with the same scenario: no ischemia, no scar, pressure at baseline. */
@@ -433,7 +435,7 @@ export class Simulation {
     // the structural spec accepts [-1000, 5000] ml in all, the lesion's own volume included; the rest follows at the rate limit
     this.volApplied = Math.max(ACS_CORE.startVolumeMl[0] - hv, Math.min(ACS_CORE.startVolumeMl[1] - hv, this.targetVolume()));
     const veins = ["SVC", "IVC", "SPL"].map(NODE), vessels = ["SVC", "IVC", "SPL", "PA", "PV", "AO", "DAO"].map(NODE);
-    const di = this.devSpec.impella ?? DEFAULT_IMPELLA, lvN = NODE("LV"), aoN = NODE("AO");
+    const di = { ...DEFAULT_IMPELLA, ...this.devSpec.impella }, lvN = NODE("LV"), aoN = NODE("AO");
     this.impella = this.iabp = this.ecmo = this.rp = undefined;
     const impellaEl = (m: Model) => (this.impella = new SwitchableImpella("impella", di.position === "aortic" ? aoN : lvN, aoN, { model: di.model, level: di.level, position: di.position, v0: m.chambers[lvN]!.v0 }));
     const iabpEl = (m: Model) => (this.iabp = Iabp.forModel(m, { ...DEFAULT_IABP, ...this.devSpec.iabp, volumeMl: 0 })); // off during the warm-up
@@ -443,7 +445,7 @@ export class Simulation {
     const core: FromModelOptions = {}, pe = this.periSpec, ve = this.ventSpec;
     if (pe) core.pericardium = { effusionMl: pe.effusionMl ?? 0, stiffness: pe.stiffness ?? 1, open: pe.open ?? false };
     if (ve) core.thorax = { mode: ve.mode ?? "spontaneous", peep: ve.peep ?? 0, tidalMlKg: ve.tidalMlKg ?? THORAX.defaultTidalMlKg, rate: (ve.mode ?? "spontaneous") === "spontaneous" ? this.autonomic.controls.respRate : THORAX.defaultRate, depth: this.autonomic.controls.respDepth };
-    this.appliedEffusion = pe?.effusionMl ?? 0;
+    this.appliedEffusion = pe?.effusionMl ?? 0; this.hasSac = !!pe; this.hasThorax = !!ve;
     const live = (this.live = new LiveHeart({ ...this.heartSpec, volumeMl: hv + this.volApplied }, { core, extra: [impellaEl, iabpEl, this.exchange, ...(this.devSpec.ecmo ? [ecmoEl] : []), ...(this.devSpec.impellaRp ? [rpEl] : [])] }));
     this.impConsole?.dispose(); this.impConsole = new ImpellaConsole(live.engine);
     this.rpConsole?.dispose(); this.rpConsole = this.rp ? new ImpellaConsole(live.engine, "impellaRp") : undefined;

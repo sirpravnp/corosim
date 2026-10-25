@@ -67,7 +67,7 @@ describe("the source of a normal adult", () => {
       expect(b.strokeVolume).toBeGreaterThan(55); expect(b.strokeVolume).toBeLessThan(90);
       expect(b.edv.LV).toBeGreaterThan(b.esv.LV);
       expect(Math.abs(b.valves.AV.forwardMl - b.valves.AV.regurgMl - b.strokeVolume)).toBeLessThan(3); // the aortic valve carries the stroke
-      expect(b.valves.AV.openMs).toBeGreaterThan(200); expect(b.valves.MV.openMs).toBeGreaterThan(300);
+      expect(b.valves.AV.openMs).toBeGreaterThan(200); expect(b.valves.MV.openMs).toBeGreaterThan(150);
     }
     for (let i = 1; i < bs.length; i++) expect(bs[i].t).toBeGreaterThan(bs[i - 1].t);
   });

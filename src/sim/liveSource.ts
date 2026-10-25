@@ -235,10 +235,11 @@ export class LiveSource implements HemoSource {
       }, () => ({ arterial: this.trace("AO", CFG.deviceTraceS) })));
     }
     if (d?.ecmo) {
-      const e = d.ecmo, rs = oxygenatorSat(this.saturations().node[e.drain], e.sweepLpm, e.fio2);
+      const e = d.ecmo, rs = oxygenatorSat(this.saturations().node[e.drain], e.sweepLpm, e.fio2), { recs } = this.window();
+      const T = recs.reduce((s, r) => s + r.rr, 0), mean = T > 0 ? (recs.reduce((s, r) => s + (r.lb.flows.fwd.ecmo ?? 0) - (r.lb.flows.bwd.ecmo ?? 0), 0) / T) * 0.06 : e.flowLpm; // the pump's flow over the window, as a flow meter averages it
       out.push({
-        id: "ecmo", label: `VA-ECMO ${e.flowLpm.toFixed(1)} L/min`, alarms: e.suctionAlarm ? ["Suction: the drainage cannula is starved (low venous volume)"] : [],
-        readings: { flowLpm: e.flowLpm, targetLpm: e.targetLpm, rpm: e.rpm, sweepLpm: e.sweepLpm, fio2: e.fio2, returnSat: rs, suctionLevel: e.suctionLevel, membraneDpMmHg: e.membraneDpMmHg, headMmHg: e.headMmHg },
+        id: "ecmo", label: `VA-ECMO ${mean.toFixed(1)} L/min`, alarms: e.suctionAlarm ? ["Suction: the drainage cannula is starved (low venous volume)"] : [],
+        readings: { flowLpm: mean, targetLpm: e.targetLpm, rpm: e.rpm, sweepLpm: e.sweepLpm, fio2: e.fio2, returnSat: rs, suctionLevel: e.suctionLevel, membraneDpMmHg: e.membraneDpMmHg, headMmHg: e.headMmHg },
       });
     }
     if (d?.impellaRp?.on) {
