@@ -25,6 +25,7 @@ import type { Pericardium } from "../physics/core/pericardium";
 import { Thorax } from "../physics/core/thorax";
 import type { FromModelOptions } from "../physics/core/fromModel";
 import { THORAX } from "../config/thorax";
+import { alternansAmplitude } from "../config/pericardium";
 import { IABP } from "../config/devices";
 import { SwitchableImpella, DevicesReadout } from "./coreDevices";
 import { PatientSpec, DeviceSpec, HeartSpec, PericardiumSpec, VentilationSpec, normalizePatient, effectiveDevices, DEFAULT_IMPELLA, DEFAULT_IABP } from "./patient";
@@ -129,7 +130,8 @@ export class Simulation {
   private periSpec?: PericardiumSpec;
   private ventSpec?: VentilationSpec;
   private builtSig = "";
-  private hasSac = false; private hasThorax = false; // what the live heart was built with
+  private septumSpec = false;
+  private hasSac = false; private hasThorax = false; private hasSeptum = false; // what the live heart was built with
   private appliedEffusion = NaN; // the spec's effusion as last handed to a running sac
   /** The kind of the PatientSpec the core engine was given. It runs the adult ACS patient whatever the kind: a neonate's structural fields are not applied to it (the bridge solves a neonate on its own baseline). */
   patientKind: "adult" | "neonate" = "adult";
@@ -197,6 +199,8 @@ export class Simulation {
     this.patientKind = np.kind ?? "adult";
     this.heartSpec = adult && np.heart ? JSON.parse(JSON.stringify(np.heart)) : {};
     this.periSpec = adult && np.pericardium ? { ...np.pericardium } : undefined;
+    if (this.periSpec) { delete this.periSpec.drainMl; if (!Object.keys(this.periSpec).length) this.periSpec = undefined; } // an action, not a state: a spec in force never carries it
+    this.septumSpec = adult && !!np.septum;
     this.ventSpec = adult && np.ventilation ? { ...np.ventilation } : undefined;
   }
 
@@ -216,7 +220,7 @@ export class Simulation {
     else this.pushPatient();
   }
 
-  /** A patch of `heart`, `pericardium`, `ventilation` or `kind` merged into the patient in force (objects field by field, anything else replaced), as `apply` takes it. */
+  /** A patch of `heart`, `pericardium`, `septum`, `ventilation` or `kind` merged into the patient in force (objects field by field, anything else replaced), as `apply` takes it. */
   private patchStructure(patch: PatientSpec) {
     const merge = (base: unknown, add: unknown): unknown => {
       if (!add || typeof add !== "object" || Array.isArray(add) || !base || typeof base !== "object" || Array.isArray(base)) return add;
@@ -225,10 +229,19 @@ export class Simulation {
       return out;
     };
     const kind = patch.kind ?? this.patientKind, adult = kind === "adult", cur = { heart: this.heartSpec, pericardium: this.periSpec, ventilation: this.ventSpec };
-    const np = normalizePatient({ kind, heart: merge(cur.heart, patch.heart) as HeartSpec, pericardium: merge(cur.pericardium, patch.pericardium) as PericardiumSpec, ventilation: merge(cur.ventilation, patch.ventilation) as VentilationSpec }).spec;
+    const np = normalizePatient({ kind, heart: merge(cur.heart, patch.heart) as HeartSpec, pericardium: merge(cur.pericardium, patch.pericardium) as PericardiumSpec, septum: patch.septum ?? this.septumSpec, ventilation: merge(cur.ventilation, patch.ventilation) as VentilationSpec }).spec;
+    // pericardiocentesis: `drainMl` comes off the effusion in force (the sac's, which includes what has accumulated since the spec was set), then it is forgotten
+    const drain = np.pericardium?.drainMl ?? 0;
+    if (np.pericardium) {
+      delete np.pericardium.drainMl;
+      if (drain > 0 && !this.sac() && !cur.pericardium) delete np.pericardium; // nothing to drain: do not build a sac for it
+      else if (drain > 0) np.pericardium.effusionMl = Math.max(0, (patch.pericardium?.effusionMl !== undefined ? np.pericardium.effusionMl ?? 0 : this.sac()?.effusionMl ?? cur.pericardium?.effusionMl ?? 0) - drain);
+      if (np.pericardium && !Object.keys(np.pericardium).length) delete np.pericardium;
+    }
     this.patientKind = kind;
     this.heartSpec = adult && np.heart ? JSON.parse(JSON.stringify(np.heart)) : {};
     this.periSpec = adult ? np.pericardium : undefined;
+    this.septumSpec = adult && !!np.septum;
     this.ventSpec = adult ? np.ventilation : undefined;
     if (this.structureSig(true) !== this.builtSig) this.initCore(); else this.pushPatient();
   }
@@ -237,7 +250,7 @@ export class Simulation {
   private structureSig(sticky = false): string {
     const d = this.devSpec, im = { ...DEFAULT_IMPELLA, ...d.impella };
     // the sac and the thorax stay once built (a removed spec makes them neutral, see `pushPatient`), so only adding one rebuilds
-    return JSON.stringify([this.heartSpec, !!this.periSpec || (sticky && this.hasSac), !!this.ventSpec || (sticky && this.hasThorax), !!d.ecmo, !!d.impellaRp, im.model, im.position]);
+    return JSON.stringify([this.heartSpec, !!this.periSpec || (sticky && this.hasSac), !!this.ventSpec || (sticky && this.hasThorax), !!d.ecmo, !!d.impellaRp, im.model, im.position, this.septumSpec || (sticky && this.hasSeptum)]);
   }
 
   /** Back to a resting heart with the same scenario: no ischemia, no scar, pressure at baseline. */
@@ -260,7 +273,7 @@ export class Simulation {
     this.n = scenario;
     if (patch.support) this.support = { ...scenario.support, atropine: this.support.atropine };
     if (this.engine === "core" && patch.devices) this.patchDevices(patch);
-    if (this.engine === "core" && (patch.heart || patch.pericardium || patch.ventilation || patch.kind)) this.patchStructure(patch);
+    if (this.engine === "core" && (patch.heart || patch.pericardium || patch.septum !== undefined || patch.ventilation || patch.kind)) this.patchStructure(patch);
     if (patch.patient) this.patient = { ...scenario.patient };
     this.autonomic.controls = { ...scenario.autonomic };
     if (anatomyChanged) { this.grafts = []; this.rebuildAnatomy(); } else this.resolveCoronaries(true);
@@ -343,6 +356,7 @@ export class Simulation {
     ctl.vagalBlock = Math.max(this.drug.atropine, this.support.atropine ? 1 : 0);
     ctl.volumeDeficit = Math.max(0, this.live ? this.bloodLoss - (this.fluidGiven * 1000 * ACS_CORE.fluidRetained) / this.bv0 : this.bloodLoss); // core: the net deficit, fluids refill it
     this.autonomic.step(h);
+    this.stream.alternans = alternansAmplitude(this.sac()?.effusionMl, this.periSpec?.open);
     this.stream.extend(this.t, this.rstate, this.mod);
     this.stream.prune(this.t);
     this.t += h;
@@ -445,7 +459,8 @@ export class Simulation {
     const core: FromModelOptions = {}, pe = this.periSpec, ve = this.ventSpec;
     if (pe) core.pericardium = { effusionMl: pe.effusionMl ?? 0, stiffness: pe.stiffness ?? 1, open: pe.open ?? false };
     if (ve) core.thorax = { mode: ve.mode ?? "spontaneous", peep: ve.peep ?? 0, tidalMlKg: ve.tidalMlKg ?? THORAX.defaultTidalMlKg, rate: (ve.mode ?? "spontaneous") === "spontaneous" ? this.autonomic.controls.respRate : THORAX.defaultRate, depth: this.autonomic.controls.respDepth };
-    this.appliedEffusion = pe?.effusionMl ?? 0; this.hasSac = !!pe; this.hasThorax = !!ve;
+    if (this.septumSpec) core.septum = true;
+    this.appliedEffusion = pe?.effusionMl ?? 0; this.hasSac = !!pe; this.hasThorax = !!ve; this.hasSeptum = this.septumSpec;
     const live = (this.live = new LiveHeart({ ...this.heartSpec, volumeMl: hv + this.volApplied }, { core, extra: [impellaEl, iabpEl, this.exchange, ...(this.devSpec.ecmo ? [ecmoEl] : []), ...(this.devSpec.impellaRp ? [rpEl] : [])] }));
     this.impConsole?.dispose(); this.impConsole = new ImpellaConsole(live.engine);
     this.rpConsole?.dispose(); this.rpConsole = this.rp ? new ImpellaConsole(live.engine, "impellaRp") : undefined;
@@ -763,6 +778,19 @@ export class Simulation {
     return { effusionMl: t.effusionMl, pressureMmHg: t.pericardialPressure, sacVolumeMl: t.sacVolumeMl };
   }
 
+  /**
+   * Pericardiocentesis (core engine with a sac): remove up to `ml` of effusion from the running patient now. The effusion comes off the sac's own
+   * (including what has accumulated since the spec was set), the spec in force keeps what is left, and the rate of accumulation is unchanged
+   * (a bleed that continues refills the sac). Returns the ml removed (0 without a sac or with the legacy engine). `apply({ pericardium: { drainMl } })`
+   * does the same through a patch, which is how `corosim_adjust` and the playground ask for it.
+   */
+  drainPericardium(ml: number): number {
+    const before = this.sac()?.effusionMl;
+    if (this.engine !== "core" || before === undefined || !(ml > 0)) return 0;
+    this.patchStructure({ pericardium: { drainMl: ml } });
+    return before - (this.sac()?.effusionMl ?? 0);
+  }
+
   /** Run for `seconds` of simulated time and return the beats that occurred. */
   run(seconds: number): BeatRecord[] {
     const from = this.history.length ? this.history[this.history.length - 1].n + 1 : 0;
@@ -840,6 +868,7 @@ export class Simulation {
       ventricularRate: recent.length ? Math.round(recent.reduce((a, b) => a + b.hr, 0) / recent.length) : null,
       pvcsLast10s: recent.filter((b) => b.pvc).length,
       prMs: rs.rhythm === "af" || rs.avDegree === 3 ? null : Math.round(rs.pr * 1000),
+      electricalAlternans: alternansAmplitude(this.sac()?.effusionMl, this.periSpec?.open), // QRS alternates 1 +/- this on alternate beats (large pericardial effusion); 0 = none
       qrs: rs.bbb === "lbbb" ? "wide, left bundle branch block" : rs.bbb === "rbbb" ? "wide, right bundle branch block" : "narrow",
       ischemia: this.ischemiaPattern(),
       note: "ST in mm at J+60 ms; V7–V9 are posterior leads. Subendocardial (demand) ischemia gives non-localizing ST depression; transmural ischemia gives localizing ST elevation. No Q waves or T-wave inversion are modelled.",

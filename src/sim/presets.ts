@@ -42,8 +42,16 @@ export const PRESETS: Preset[] = [
     spec: { lesions: [{ artery: "RCA", occluded: true, position: 0.2 }], heart: { rvEes: 0.2, rvStiffness: 4 }, bloodLoss: 0.2, devices: { impella: { model: "CP", level: 9, position: "correct" } } },
   },
   {
-    id: "tamponade", label: "Cardiac tamponade", blurb: "A 180 ml effusion in a normal sac: falling pressure and output, a raised venous pressure and a fast pulse (Beck's triad), with the filling pressures drawing together.",
-    spec: { pericardium: { effusionMl: 180, stiffness: 1 } },
+    id: "tamponade", label: "Cardiac tamponade", blurb: "A 270 ml effusion in a normal sac, breathing on his own: falling pressure and output, a raised venous pressure and a fast pulse (Beck's triad), the four diastolic pressures drawn together to the pressure of the sac, a blunted y descent, a pulsus paradoxus over 10 mmHg and, above 250 ml, electrical alternans (the EKG page opens its alternans preset). Pericardiocentesis (remove 50-100 ml) relieves it.",
+    spec: { pericardium: { effusionMl: 270, stiffness: 1 }, septum: true, ventilation: { mode: "spontaneous" }, autonomic: { respDepth: 1.5 } },
+  },
+  {
+    id: "constrictive-pericarditis", label: "Constrictive pericarditis", blurb: "A scarred, stiff sac (3x normal) with no fluid and 1.5 L of retained volume: a high venous pressure with a steep y descent (the dip-and-plateau, or square-root sign, on the right ventricular trace), both ventricles filling to the same pressure, and Kussmaul's sign (the venous pressure rises on inspiration).",
+    spec: { pericardium: { stiffness: 3 }, heart: { volumeMl: 1500 }, septum: true, ventilation: { mode: "spontaneous" } },
+  },
+  {
+    id: "rv-infarct-septal", label: "RV infarct with septal shift", blurb: "Proximal RCA occlusion with a failed, dilated right ventricle: a high venous pressure with clear lungs, and the septum bowing into the left ventricle, which fills less (a low output at a normal wedge pressure). Fluids help; nitrates harm.",
+    spec: { lesions: [{ artery: "RCA", occluded: true, position: 0.2 }], septum: true },
   },
   {
     id: "severe-as", label: "Severe aortic stenosis", blurb: "Aortic valve at 20% of its normal opening: a high left ventricular pressure against a normal aortic pressure.",

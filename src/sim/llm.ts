@@ -16,7 +16,8 @@ export const SCENARIO_REFERENCE = `Scenario JSON (all fields optional; omitted =
   (PatientSpec additions, all optional:)
   "kind": "adult|neonate",
   "heart": { "valves": { "av|mv|tv|pv": { "open": 0..1 (1 = normal orifice), "reg": 0..10 (regurgitant orifice, cm2) } }, "pda|asd|vsd|bt": { "diameterMm": 0..40 }, "tof": { "vsdMm", "rvotFrac": 0..1, "spasm": 0..1 }, "pvri": 0.2..60 (WU.m2), "svrScale": 0.1..5, "satLung": 0.3..1, "volumeMl": -1000..5000, "lvSize|laSize|rvSize|raSize": 0.05..4, "rvContractility": 0.2..5 },
-  "pericardium": { "effusionMl": 0..2000, "effusionRateMlMin": 0..100, "stiffness": 0.2..10 (1 normal), "open": false },
+  "pericardium": { "effusionMl": 0..2000, "effusionRateMlMin": 0..100, "stiffness": 0.2..10 (1 normal), "open": false, "drainMl": 0..2000 (pericardiocentesis: ml removed now, an action in a patch, never stored) },
+  "septum": false   (true = ventricular interdependence: a failing right ventricle bows the septum into the left),
   "fluids": { "given": [ { "kind": "crystalloid|colloid|albumin|blood", "ml": 0..5000, "atMin": 0..1440, "overMin": 0..1440 } ], "hemorrhageMlMin": 0..500, "capillaryLeak": 0..1, "legRaise": false },
   "ventilation": { "mode": "spontaneous|positive", "peep": 0..25 (cmH2O), "tidalMlKg": 2..15 },
   "devices": { "impella": { "model": "2.5|CP|5.5", "level": 0..9 (P-level), "position": "correct|aortic|deep" }, "impellaRp": { "level": 0..9 }, "iabp": { "ratio": 1|2|3, "inflateMs": -100..100, "deflateMs": -100..100, "volumeMl": 0..50 }, "ecmo": { "flowLpm": 0..7, "sweepLpm": 0..10, "fio2": 0.21..1 } }

@@ -20,13 +20,15 @@ export interface PlaygroundState {
   structural?: { id: LesionId; values: Record<string, number> };
   heart?: HeartSpec;
   pericardium?: PericardiumSpec;
+  /** Ventricular interdependence through the septum (`PatientSpec.septum`). */
+  septum?: boolean;
   fluids?: FluidSpec;
   ventilation?: VentilationSpec;
   devices?: DeviceSpec;
 }
 
 /** The PatientSpec fields the playground controls own; everything else in a spec is the Scenario. */
-export const PLAYGROUND_FIELDS = ["kind", "heart", "pericardium", "fluids", "ventilation", "devices"] as const;
+export const PLAYGROUND_FIELDS = ["kind", "heart", "pericardium", "septum", "fluids", "ventilation", "devices"] as const;
 
 /**
  * What the page's engines read, per group of fields (task P16). An adult runs on the core engine, live beat by beat; a neonate on the
@@ -40,7 +42,7 @@ const NEONATE_BRIDGE = "A neonate runs on the bridge, which has no pericardium, 
 export const GROUP_INFO: Record<string, FieldGroupInfo> = {
   kind: { id: "kind", label: "Patient kind", modelled: "yes", note: "An adult runs on the live core engine (beat by beat). A neonate runs on the bridge: the structural engine solved on the newborn's own baseline and replayed. The ACS monitor and ECG are adult models either way." },
   heart: { id: "heart", label: "Structural heart", modelled: "yes", note: "Adult: the core engine builds every field (Gorlin valves, shunts, chamber sizes, per-ventricle elastance and stiffness) and the monitor, traces, loops and JVP all see it. Neonate: the bridge's structural engine reads it." },
-  pericardium: { id: "pericardium", label: "Pericardium", modelled: "yes", note: "Core engine: effusion, accumulation rate (per clinical minute), stiffness (constriction) and an opened pericardium. The sac does not stretch over days, so a slow effusion is no better tolerated than a fast one.", neonate: "no", neonateNote: NEONATE_BRIDGE },
+  pericardium: { id: "pericardium", label: "Pericardium", modelled: "yes", note: "Core engine: effusion, accumulation rate (per clinical minute), stiffness (constriction) and an opened pericardium, a pericardiocentesis button, and the septum switch (ventricular interdependence: the septum bows toward the lower-pressure ventricle). The sac does not stretch over days, so a slow effusion is no better tolerated than a fast one.", neonate: "no", neonateNote: NEONATE_BRIDGE },
   fluids: { id: "fluids", label: "Fluids and hemorrhage", modelled: "no", note: "Not modelled on this page yet: stored in the spec and shared. Blood loss (Volume and drugs) and IV fluid (Management) are modelled." },
   ventilation: { id: "ventilation", label: "Ventilation", modelled: "yes", note: "Core engine: spontaneous breathing or positive-pressure ventilation with PEEP and tidal volume put the pleural pressure on the chest vessels and the heart, and a smaller swing on the abdomen (pulsus paradoxus, pulse-pressure variation, PEEP reducing venous return). The lungs' own resistance does not change with inflation.", neonate: "no", neonateNote: NEONATE_BRIDGE },
   impella: { id: "impella", label: "Impella", modelled: "yes", note: "Core engine: model (2.5, CP, 5.5), P-level and position (correct, in the aorta, too deep) set the flow, the unloading of the left ventricle, suction and the console readings. Changing the model or the position rebuilds the heart.", neonate: "no", neonateNote: NEONATE_BRIDGE },
@@ -73,6 +75,7 @@ export function stateOfSpec(spec: PatientSpec): PlaygroundState {
   if (spec.kind) st.kind = spec.kind;
   if (spec.heart) st.heart = clone(spec.heart);
   if (spec.pericardium) st.pericardium = clone(spec.pericardium);
+  if (spec.septum) st.septum = true;
   if (spec.fluids) st.fluids = clone(spec.fluids);
   if (spec.ventilation) st.ventilation = clone(spec.ventilation);
   const d = effectiveDevices(spec);
@@ -105,6 +108,7 @@ export function buildPlaygroundSpec(scenario: Scenario, state: PlaygroundState):
   const heart = state.structural ? heartOfPick(state.structural) : clone(state.heart);
   if (!isEmpty(heart)) raw.heart = heart;
   for (const k of ["pericardium", "fluids", "ventilation"] as const) { const v = clone(state[k]); if (!isEmpty(v)) (raw as Record<string, unknown>)[k] = v; }
+  if (state.septum) raw.septum = true;
   const dev = clone(state.devices);
   if (!isEmpty(dev)) raw.devices = dev;
   raw.support = { ...(raw.support ?? {}), impella: !!dev?.impella, iabp: !!dev?.iabp };

@@ -176,6 +176,11 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     slider(body, "Stiffness", R.stiffness[0], R.stiffness[1], 0.1, (s) => s.pericardium?.stiffness, 1, (v) => `${v.toFixed(1)}× normal`, (s, v) => patchSection(s, "pericardium", { stiffness: v === 1 ? undefined : v }));
     slider(body, "Accumulating", 0, 100, 5, (s) => s.pericardium?.effusionRateMlMin, 0, (v) => (v ? `${v} ml per clinical minute` : "stable"), (s, v) => patchSection(s, "pericardium", { effusionRateMlMin: v || undefined }));
     toggle(body, "Pericardium open (after surgery)", (s) => !!s.pericardium?.open, (s, on) => patchSection(s, "pericardium", { open: on || undefined }));
+    const drain = h("button", { type: "button", textContent: "Pericardiocentesis: remove 100 ml", title: "Take 100 ml (or what is left) out of the sac; the pressure and the output recover at once" });
+    drain.addEventListener("click", () => edit((s) => patchSection(s, "pericardium", { effusionMl: Math.max(0, (s.pericardium?.effusionMl ?? 0) - 100) || undefined })));
+    body.append(h("div", { className: "row" }, drain));
+    syncs.push((s) => { drain.disabled = !(s.pericardium?.effusionMl && s.pericardium.effusionMl > 0); });
+    toggle(body, "Ventricular interdependence (septum)", (s) => !!s.septum, (s, on) => ({ ...s, septum: on || undefined }));
     el.append(box);
   }
 
