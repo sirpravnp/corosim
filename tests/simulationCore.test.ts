@@ -84,7 +84,8 @@ describe("anterior STEMI (proximal LAD occlusion)", () => {
   });
   // C2: the anterior STEMI's low pressure draws about 100 ml back from the interstitium (Starling), a thin 0.15 mmHg over the 8 mmHg bar below
   // (venousToneGain stays at 0.75 rather than being tuned to this bar). The bar stays.
-  it.fails("lowers the pressure by 8 mmHg", () => { expect(m.map).toBeLessThan(normal.map - 8); });
+  // C3: the same patient (wedge about 20) now also filters about 100 ml into the lung, which takes it back over the bar, unchanged.
+  it("lowers the pressure by 8 mmHg", () => { expect(m.map).toBeLessThan(normal.map - 8); });
   it("reports the state as the pressure says it", () => {
     const want = (map: number) => (map < CIRC.shockMap ? "shock" : map < CIRC.hypotensionMap ? "hypotension" : "stable");
     const s = make(LAD);
@@ -264,7 +265,8 @@ describe("devices (D3: the real Impella and IABP; the full device tests are in s
   });
   // C2: the anterior STEMI now autotransfuses about 100 ml from the interstitium (low capillary pressure), which leaves the balloon's output
   // gain just short of the bar of +0.1 L/min (it cleared it on a fixed volume). The bar stays.
-  it.fails("the IABP raises the output of the anterior STEMI by 0.1 L/min", () => {
+  // C3: the lung water of the same patient (about 100 ml filtered out of the circulation) lowers the filling a little, and the bar is met again, unchanged.
+  it("the IABP raises the output of the anterior STEMI by 0.1 L/min", () => {
     const b = measure(make(LAD)), m = measure(make({ ...LAD, support: { iabp: true } }));
     expect(m.co).toBeGreaterThan(b.co + 0.1);
   });
