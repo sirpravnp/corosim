@@ -41,6 +41,7 @@ import { BeatRecord, computeMetrics, Metrics } from "./metrics";
 /** Drug and volume changes ramp in over seconds instead of stepping, so interventions play out as transients. */
 const DRUG_TAU = 8, VOLUME_TAU = 10;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+const WARM_CHUNK = 12 * 0.02; // s of reflex warm-up between yields of a deferred build: whole sub-steps (Simulation.DT), so the chunking does not change the numbers
 const MAX_HISTORY = 20000; // beats kept for metrics (~3 h at 70 bpm)
 
 /** Which hemodynamic engine runs the circulation: today's algebraic `circulation()` + `BeatHemodynamics`, or the core engine's `LiveHeart` (A7). */
@@ -435,7 +436,7 @@ export class Simulation {
     }
     this.builtSig = sig; // the requested structure, so an identical request does not rebuild again
     if (this.defer) this.pushPatient(); // edits made while it was being built
-    for (let left = this.jobWarm; left > 1e-9; left -= 0.25) { this.inJob = true; try { this.step(Math.min(0.25, left), { minutes: 0 }); } finally { this.inJob = false; } yield; } // the reflex loop settles with no clinical time passing
+    for (let left = this.jobWarm; left > 1e-9; left -= WARM_CHUNK) { this.inJob = true; try { this.step(Math.min(WARM_CHUNK, left), { minutes: 0 }); } finally { this.inJob = false; } yield; } // the reflex loop settles with no clinical time passing
     this.jobWarm = 0;
   }
 

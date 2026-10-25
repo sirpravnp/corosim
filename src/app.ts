@@ -782,7 +782,7 @@ function frame(now: number) {
   if (sim.settling) { // the core engine is being built: give it a slice of this frame, keep the 3D view alive, hold the clock
     wasSettling = true; settlingUi(true);
     sim.settleStep(10); pumpMyocardium(4);
-    if (now - settleDrawn > 250) { controls.update(); camera.updateMatrixWorld(); updateMarkers(0); renderer.render(scene, camera); settleDrawn = performance.now(); } // the view is drawn a few times a second meanwhile: a slow renderer must not set the pace of the settling
+    if (now - settleDrawn > 500) { controls.update(); camera.updateMatrixWorld(); updateMarkers(0); renderer.render(scene, camera); settleDrawn = performance.now(); } // the view is drawn a few times a second meanwhile: a slow renderer must not set the pace of the settling
     requestAnimationFrame(frame);
     return;
   }
