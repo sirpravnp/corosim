@@ -135,7 +135,8 @@ describe("presets", () => {
       expect(ms).toBeLessThan(10_000);
       for (const v of [n.map, n.co, n.cvp, n.pcwp, n.hr, n.systolic, n.diastolic]) expect(Number.isFinite(v)).toBe(true);
       expect(n.co).toBeGreaterThan(0);
-      if (built.kind === "neonate") { // the adult monitor does not describe a neonate: one uncalibrated solve, in neonatal ranges
+      if (built.kind === "neonate") { // the adult monitor does not describe a neonate: a standalone solve (P2e), in neonatal ranges
+        expect(bridge.standalone).toBe(true);
         expect(bridge.analyzeCalls).toBe(1);
         expect(n.co).toBeLessThan(2); expect(n.map).toBeGreaterThan(25); expect(n.map).toBeLessThan(100); expect(n.cvp).toBeLessThan(15);
       } else {

@@ -27,6 +27,8 @@ export interface PlaygroundUi {
   slot(id: SlotId): HTMLElement;
   /** Show the state: every control takes its value from it. */
   sync(state: PlaygroundState, info: PlaygroundInfo): void;
+  /** Set the patient kind as the buttons do. */
+  setKind(kind: "adult" | "neonate"): void;
 }
 
 const R = PATIENT_RANGES;
@@ -219,6 +221,7 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
   return {
     el,
     slot: (id) => slots[id],
+    setKind: (k) => edit((s) => ({ ...s, kind: k })),
     sync(state, info) {
       for (const f of syncs) f(state);
       preset.value = info.presetId ?? "";

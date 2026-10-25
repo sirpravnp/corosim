@@ -93,6 +93,11 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | P10 | done (Oxygen panel: saturations, DO₂/VO₂/extraction, ductal difference, cues, pleth from arterial pressure) |
 | P2d | done (bridge CO within 5 % of the monitor in normal, LAD, RV infarct; was +56 % in RV infarct; LV elastance factor is a bridge stand-in until P16; real-solve tests given explicit timeouts) |
 | R-P2 | passed (with P2d) |
+| P14 | done (cross-page links with the full PatientSpec; structural via fitted lesion hash; EKG via nearest preset; echo plain link). Surfaced the neonate bug fixed by P2e |
+| D7 | done (venting on ECMO: septostomy 12 mm LVEDP 30 → 11.5, Impella CP P8 → 22, IABP → 29.6; Impella P2 retrograde leak at high afterload; Impella RP CO 3.6 → 5.2 in RV failure; BiPella). Follow-ups: check septostomy shunt magnitude (6–8 L/min at 12 mm) against literature; Impella RP RA-inflow option |
+| P2e | in progress (bridge must not calibrate neonatal patients to the adult ACS monitor: neonatal VSD showed LV 104/67 and a normal mitral valve graded severe stenosis; valve grading by patient kind) |
+| D3 | in progress |
+| P12 | in progress |
 | P13 | done (pause, slow motion, step-one-beat on one clock; 3 snapshots overlaid on traces, loops and numbers; CSV export). Follow-up for P12: unify the two speed controls (new beat-clock buttons and the old 1×/3×/6× clinical-clock buttons) |
 | P11 | done (structural props in the Simulator's heart behind a display toggle; built in a worker; follow-ups: P12 must call `propsView.setPatient` for non-link patient changes; vessels clutter the see-through view) |
 | P9 | done (O₂ sat 3D mode: vessels on the blood SaO₂ scale, myocardium on tissue O₂ relative to normal; two legend rows) |

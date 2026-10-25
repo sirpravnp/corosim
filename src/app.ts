@@ -38,6 +38,8 @@ import { decodePatient, encodePatient } from "./sim/llm";
 import { buildPlaygroundSpec, hasPlaygroundFields, stateOfSpec, withDevice } from "./sim/playground";
 import type { PlaygroundState } from "./sim/playground";
 import { PRESET_BY_ID } from "./sim/presets";
+import { joinPatient } from "./sim/crossLinks";
+import { mountCrossLinks } from "./shell/crossLinkRow";
 import { SimPropsView } from "./sim/propsView";
 import type { PatientSpec } from "./sim/patient";
 import type { BridgeSolver } from "./sim/bridgeSolver";
@@ -994,9 +996,13 @@ on("qshare", share);
 let cathBase = "./cath/";
 /** The shared header and footer; its AI control runs the tools on the patient on screen (see runForAi). */
 const shell = mountShell({ page: "sim", root: "../", ai: { run: (name, args) => runForAi(name, args), restore: (sc) => restoreFromServer(sc), version: "0.4.0" } });
+/** The patient on screen: the simulator's scenario plus the structural sections of a shared link (heart, kind), which the Simulation does not keep. */
+const currentPatient = () => joinPatient(sim.scenario(), bridgeOpts.patient);
 function cathLinkUi() {
   const a = shell.menuLink("cath")!, b = $("openCath") as HTMLAnchorElement; // the page menu's link and the Reperfuse tab's
-  const point = () => { a.href = b.href = inGame ? cathBase : `${cathBase}#s=${encodeScenario(sim.scenario())}`; };
+  const point = () => { a.href = b.href = inGame ? cathBase : `${cathBase}#s=${encodePatient(currentPatient())}`; };
+  const row = mountCrossLinks($("xlinks"), "sim", "../", currentPatient, { skip: ["cath"], hidden: () => inGame }); // the other pages; the game shows none (they would reveal the culprit)
+  addEventListener("hashchange", () => row.refresh());
   for (const el of [a, b]) for (const ev of ["pointerdown", "focus", "mouseenter", "contextmenu", "touchstart"]) el.addEventListener(ev, point);
   a.title = "Open this patient in the cath lab"; a.setAttribute("aria-label", "Open in cath lab");
 }
@@ -1133,6 +1139,7 @@ function pgFromLive(): PlaygroundState {
 function pgView() {
   const neo = (bridgeOpts.patient?.kind ?? pg.kind) === "neonate";
   document.body.classList.toggle("neonate", neo); vesselGroup.visible = !neo;
+  $("pgbanner").hidden = !neo || inGame; // why the monitor does not match the panels (also kept after leaving playground, where the adult view is not restored automatically)
 }
 /** Rebuild the spec from the live Scenario and the playground state and apply it everywhere. */
 function pgApply(refresh: boolean) {
@@ -1189,6 +1196,7 @@ function openShared() {
 }
 on("pg_on", () => pgShow(true));
 on("pg_off", () => pgShow(false));
+on("pg_adult", () => { pgShow(true); pgUi.setKind("adult"); });
 openShared();
 addEventListener("hashchange", openShared);
 cathLinkUi();

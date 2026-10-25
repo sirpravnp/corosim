@@ -90,10 +90,10 @@ const scenarioSchema = {
 } as const;
 
 const numP = (min: number, max: number, description?: string) => ({ type: "number", minimum: min, maximum: max, ...(description ? { description } : {}) });
-/** The Scenario schema plus the PatientSpec fields (src/sim/patient.ts). Passed through unchanged: the engines do not read the additions yet. */
+/** The Scenario schema plus the PatientSpec fields (src/sim/patient.ts). The core engine reads `devices` (Impella model, P-level and position; IABP ratio, timing offsets and volume); the legacy engine ignores it and keeps the on/off toggles. */
 const patientSchema = {
   ...scenarioSchema,
-  description: "Patient and intervention description (a Scenario plus kind, heart, pericardium, fluids, ventilation and devices). Every field optional; omitted fields keep the typical resting adult. The additional fields are accepted and validated but not yet used by the simulator.",
+  description: "Patient and intervention description (a Scenario plus kind, heart, pericardium, fluids, ventilation and devices). Every field optional; omitted fields keep the typical resting adult. The additional fields are accepted and validated; of them the simulator currently reads `devices` (core engine only: P-level, IABP ratio and timing; the legacy engine ignores them).",
   properties: {
     ...scenarioSchema.properties,
     kind: { enum: ["adult", "neonate"], description: "Baseline physiology. Neonates have no coronary view." },
@@ -145,6 +145,7 @@ function bedside(sim: Simulation) {
     scenario: sim.scenario(), // also what the in-chat viewer replays
     state: sim.state(),
     ecg: sim.ecg(),
+    ...(sim.devices() ? { devices: sim.devices() } : {}), // core engine: Impella and IABP consoles (see sim/coreDevices.ts)
     assessment: { problems: a.issues.map((i) => i.text), harmful: a.warnings.map((w) => w.text), guidelineNextSteps: a.steps.map((x) => ({ step: x.text, why: x.why })) },
   };
 }
@@ -195,9 +196,9 @@ export const TOOLS: ToolDef[] = [
   {
     name: "corosim_adjust", title: "Change the patient while it runs", readOnly: false,
     description: `Apply a change to the running patient (give a drug, start a hemorrhage, occlude an artery) and optionally run on to watch the response. Fields you leave out are unchanged; drug and volume changes ramp in over ~10 s like a real bolus. Returns the response time course. ${NOT_CLINICAL}`,
-    inputSchema: { type: "object", required: ["patch"], properties: { patch: scenarioSchema, runSeconds: { type: "number", minimum: 0, maximum: 600, description: "Simulated seconds to run after the change (default 60)." } } },
+    inputSchema: { type: "object", required: ["patch"], properties: { patch: { ...scenarioSchema, properties: { ...scenarioSchema.properties, devices: patientSchema.properties.devices } }, runSeconds: { type: "number", minimum: 0, maximum: 600, description: "Simulated seconds to run after the change (default 60)." } } },
     run(ctx, a) {
-      ctx.sim.apply((a.patch ?? {}) as Scenario);
+      ctx.sim.apply((a.patch ?? {}) as PatientSpec);
       const rep = runReport(ctx, num(a.runSeconds, 60, 0, 600), "none", 0);
       return { applied: ctx.sim.scenario(), ...rep };
     },

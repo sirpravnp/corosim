@@ -282,3 +282,7 @@ body.game #pgentry { display: none; }
 .pg-note { margin-top: 6px; }
 .pg-body details.fold { padding: 0; border: 0; }
 body.neonate .pg-coronary, body.neonate #anatomy, body.neonate #bedsfig, body.neonate #stmap, body.neonate #lesionsec { display: none; }
+.pg-banner { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; padding: 8px 10px; font-size: 12.5px; line-height: 1.4; color: var(--ink); border: 1px solid var(--warn); border-radius: 8px; background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.pg-banner[hidden] { display: none; }
+.pg-banner button { padding: 4px 9px; font-size: 12px; }
+body.neonate table.readout { opacity: 0.55; }

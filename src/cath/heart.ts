@@ -18,6 +18,6 @@ export function openHeartBridge(sim: Simulation, patient?: PatientSpec, solver?:
 
 /** Rows of both reports, or null for a side that has no solve yet. */
 export function heartReports(src: HemoSource): { right: [string, string][] | null; left: [string, string][] | null } {
-  const r = rightHeartCath(src), l = leftHeartCath(src.numbers(), src.beats(1)[0]);
+  const r = rightHeartCath(src), l = leftHeartCath(src.numbers(), src.beats(1)[0], src.patientKind ?? "adult");
   return { right: r ? rhcRows(r) : null, left: l ? cathRows(l) : null };
 }

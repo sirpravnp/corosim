@@ -94,7 +94,7 @@ export const leftHeartCathPanel: PanelDef = {
       resize() { lastKey = ""; },
       draw() {
         const n = src.numbers(), beat = src.beats(1)[0];
-        if (beat !== lastBeat) { lastBeat = beat; cur = leftHeartCath(n, beat); lastKey = ""; }
+        if (beat !== lastBeat) { lastBeat = beat; cur = leftHeartCath(n, beat, src.patientKind ?? "adult"); lastKey = ""; }
         const key = `${cur ? 1 : 0}|${n.co}|${c1.clientWidth}`;
         if (key === lastKey) return;
         lastKey = key;
