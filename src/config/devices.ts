@@ -62,10 +62,12 @@ export const IMPELLA: Record<ImpellaModelName, ImpellaDef> = {
 /**
  * Suction and floor law shared by the Impella models, set relative to the LV's own unloaded volume V0 (the R-D1 decision). All [assumed].
  *  - `vcMarginMl`  collapse volume Vc = V0 + margin: suction is half developed there (wV wide); the pressure term uses `Pth`, `wP`.
+ *                  15 ml (D3; D2 had 30): a normal LV at P6 ends systole at about V0 + 25 ml, so 30 alarmed it. With 15 no model (2.5, CP, 5.5) alarms
+ *                  in a normal heart at P4, P6 or P9, while a 15 % bleed at P6 and a 40 % bleed at P8 still do (tests/simulationDevices.test.ts).
  *  - `floorMl`     hard floor: the flow is softly limited so the LV volume stays above V0 + floor.
  *  - `floorTau`    time constant (s) of the volume approach to the floor: Q_limit = (V − floor)/floorTau; `limitTau` how fast Q follows it, `limitBand` (ml/s) the width over which the limiter is blended in.
  */
-export const IMPELLA_SUCTION = { vcMarginMl: 30, wV: 3, Pth: 0, wP: 1, Rmax: 40, suctionAt: 0.5, floorMl: 2, floorTau: 0.04, limitTau: 0.005, limitBand: 2 };
+export const IMPELLA_SUCTION = { vcMarginMl: 15, wV: 3, Pth: 0, wP: 1, Rmax: 40, suctionAt: 0.5, floorMl: 2, floorTau: 0.04, limitTau: 0.005, limitBand: 2 };
 
 /** Position effects. `aortic`: inflow and outflow both in the aorta (no LV connection). `deep`: the inflow sits against the wall / papillary apparatus: suction develops at a higher volume and pressure. [assumed] */
 export const IMPELLA_POSITION = { deep: { vcExtraMl: 15, pthExtra: 8 } };
