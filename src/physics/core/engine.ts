@@ -206,6 +206,12 @@ class CoreEngine implements Engine {
   }
 
   periodic(hr: number, opts: { maxBeats?: number; minBeats?: number; tol?: number; pr?: number } = {}) {
+    const it = this.periodicSteps(hr, opts);
+    for (;;) { const r = it.next(); if (r.done) return r.value; }
+  }
+
+  /** `periodic()` one beat at a time: yields after each beat so a caller can give the thread back between beats; returns the same result. */
+  *periodicSteps(hr: number, opts: { maxBeats?: number; minBeats?: number; tol?: number; pr?: number } = {}): Generator<void, { beats: number; converged: boolean }> {
     const T = 60 / hr, nSteps = Math.max(50, Math.round(T / SOLVER.dt)), dt = T / nSteps;
     const maxBeats = opts.maxBeats ?? SOLVER.maxBeats, minBeats = opts.minBeats ?? SOLVER.minBeats, tol = opts.tol ?? SOLVER.tol;
     const conv = this.opts.converge, pIdx = (conv ? conv.pressure : this.nodes.map((n) => n.name)).map((n) => this.node(n)), vIdx = (conv?.volume ?? []).map((n) => this.node(n));
@@ -223,6 +229,7 @@ class CoreEngine implements Engine {
         if (prev && sig.every((x, i) => Math.abs(x - prev![i]) <= tol * Math.max(1, Math.abs(x)))) stable++; else stable = 0;
         prev = sig;
         if (beats + 1 >= minBeats && stable >= 3) { converged = true; beats++; break; }
+        yield;
       }
     } finally { this.accP = null; this.accV = null; }
     return { beats, converged };

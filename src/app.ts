@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { buildTree, Tree, Variant, TYPICAL, rotateHeart, Segment, diameterAt } from "./anatomy/tree";
-import { meshHeart, projectToEpicardium, septalDistance, latitude, AV_GROOVE_LAT, Part, PART_NAMES } from "./anatomy/heartSurface";
+import { meshHeart, type SurfaceMesh, projectToEpicardium, septalDistance, latitude, AV_GROOVE_LAT, Part, PART_NAMES } from "./anatomy/heartSurface";
 import { V3 } from "./anatomy/curve";
 import { ALL_LEADS, Bbb, LEADS, Rhythm, ST } from "./config/ecg";
 import { Lesion, Analysis } from "./physics/network";
@@ -70,7 +70,9 @@ const S = {
 // this file draws it, feeds it the controls, and runs the game and the management panel around it.
 // The simulator runs the beat-by-beat core engine (task P16: cannon a waves, PVC loops, AF, device waveforms, pericardium, ventilation, ECMO);
 // the game keeps the legacy engine, whose cases and scoring were tuned to it.
-const sim = new Simulation({ seed: 1 }, { engine: /\/game(\/(index\.html)?)?$/.test(location.pathname) ? "legacy" : "core" });
+// The core engine's build and warm-up (about 1.3 s of work) run in chunks between frames (`sim.settleStep`, in `frame`), so the page paints and answers at once.
+const coreEngine = !/\/game(\/(index\.html)?)?$/.test(location.pathname);
+const sim = new Simulation({ seed: 1 }, { engine: coreEngine ? "core" : "legacy", deferCore: coreEngine });
 let tree: Tree = sim.tree, A: Analysis = sim.analysis, sites: BedSite[] = sim.sites;
 const sev = sim.sev; // per-bed ischemia state (0..1), evolves in time; the simulation clears it in place
 let extraLesions: LesionSpec[] = []; // lesions from a loaded scenario beyond the one the controls edit
@@ -116,11 +118,12 @@ const ARTERY = new THREE.Color(0xc2392f), ARTERY_DEEP = new THREE.Color(0x8a221d
 
 // ---------------------------------------------------------------- heart (chambers, great vessels)
 const heartGeo = new THREE.BufferGeometry();
-const hRef: V3[] = []; // heart-frame position of each vertex
+let hRef: V3[] = []; // heart-frame position of each vertex
 let hPart: Uint8Array = new Uint8Array(0);
-{
-  const m = meshHeart();
+/** Put the heart's mesh into the geometry (it arrives from the worker some time after the page has painted). */
+function installHeart(m: SurfaceMesh) {
   const n = m.positions.length / 3, pos = new Float32Array(n * 3), nor = new Float32Array(n * 3);
+  hRef = [];
   for (let i = 0; i < n; i++) {
     const p: V3 = [m.positions[3 * i], m.positions[3 * i + 1], m.positions[3 * i + 2]];
     hRef.push(p);
@@ -132,12 +135,25 @@ let hPart: Uint8Array = new Uint8Array(0);
   heartGeo.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
   heartGeo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(n * 3), 3));
   heartGeo.setIndex(new THREE.BufferAttribute(m.indices, 1));
+  heartGroup.add(heartMesh);
+  prepareMyocardium();
+}
+/** The heart's mesh: built off the main thread (the page paints meanwhile), on this thread only where there is no worker. */
+function loadHeartMesh(): Promise<SurfaceMesh> {
+  return new Promise((resolve) => {
+    try {
+      const w = new Worker(new URL("./structural/meshWorker.ts", import.meta.url), { type: "module" });
+      w.onmessage = (e: MessageEvent<{ mesh: SurfaceMesh }>) => { w.terminate(); resolve(e.data.mesh); };
+      w.onerror = () => { w.terminate(); resolve(meshHeart()); };
+      w.postMessage({ id: 0, step: 1.4 });
+    } catch { resolve(meshHeart()); }
+  });
 }
 const heartMat = new THREE.MeshPhysicalMaterial({
   vertexColors: true, roughness: 0.55, clearcoat: 0.45, clearcoatRoughness: 0.3, sheen: 0.35, sheenColor: new THREE.Color(0xffc9b8), sheenRoughness: 0.6,
 });
-const heartMesh = new THREE.Mesh(heartGeo, heartMat);
-heartGroup.add(heartMesh);
+const heartMesh = new THREE.Mesh(heartGeo, heartMat); // added to the scene when the mesh arrives (installHeart)
+heartMesh.visible = false;
 // Specimen palette: muscle-red ventricles, thinner darker atria, pale aorta.
 const PART_COLOR: Record<Part, THREE.Color> = {
   [Part.LV]: new THREE.Color(0x7c2a24), [Part.RV]: new THREE.Color(0x82302a), [Part.RA]: new THREE.Color(0x70282a), [Part.LA]: new THREE.Color(0x732b2b),
@@ -149,37 +165,50 @@ let bedIdx: Int16Array = new Int16Array(0), bedW = new Float32Array(0), cover = 
 const NB = 4;
 const isVentricle = (i: number) => hPart[i] === Part.LV || hPart[i] === Part.RV;
 
-/** Per-vertex epicardial fat (in the grooves and along the arteries) and nearest-bed weights for ischemia. */
-function prepareMyocardium() {
+/**
+ * Per-vertex epicardial fat (in the grooves and along the arteries) and nearest-bed weights for ischemia. About 0.7 s of work, so it
+ * runs in slices between frames (`pumpMyocardium`); the arrays are swapped in when it is done, and a new call restarts it.
+ */
+let myoJob: Generator<void> | null = null, myoReady = false;
+function prepareMyocardium() { myoJob = hRef.length ? myocardiumSteps() : null; }
+function pumpMyocardium(ms: number) {
+  if (!myoJob) return;
+  const t0 = performance.now();
+  do { if (myoJob.next().done) { myoJob = null; myoReady = true; applyHeartView(); paintMyocardium(); return; } } while (performance.now() - t0 < ms);
+}
+function* myocardiumSteps(): Generator<void> {
   const n = hRef.length;
-  fatK = new Float32Array(n); grain = new Float32Array(n);
-  bedIdx = new Int16Array(n * NB); bedW = new Float32Array(n * NB); cover = new Float32Array(n);
+  const nFat = new Float32Array(n), nGrain = new Float32Array(n), nIdx = new Int16Array(n * NB), nW = new Float32Array(n * NB), nCover = new Float32Array(n);
   const vs: { p: V3; w: number }[] = [];
   for (const seg of tree.segments) {
     const main = ["LAD", "LCX", "RCA", "PDA_R", "PDA_L", "LM"].includes(seg.id);
     for (let i = 0; i < seg.heartSamples.length; i += 3) vs.push({ p: projectToEpicardium(seg.heartSamples[i], 0).pos, w: main ? 4.2 : 2.6 });
   }
   const bedPos = sites.map((s) => { const [segId, k] = s.key.split("#"), sg = tree.byId[segId]; return projectToEpicardium(sg.curve.at(k === "end" ? 1 : sg.taps[+k].pos), 0).pos; });
+  yield;
   for (let i = 0; i < n; i++) {
+    if (i % 400 === 399) yield;
     const p = hRef[i];
-    grain[i] = 0.92 + 0.08 * Math.sin(p[0] * 0.21 + Math.sin(p[1] * 0.13) * 3) * Math.sin(p[2] * 0.19 + p[1] * 0.07);
-    if (!isVentricle(i)) { cover[i] = 0; continue; }
+    nGrain[i] = 0.92 + 0.08 * Math.sin(p[0] * 0.21 + Math.sin(p[1] * 0.13) * 3) * Math.sin(p[2] * 0.19 + p[1] * 0.07);
+    if (!isVentricle(i)) { nCover[i] = 0; continue; }
     let f = 0;
     for (const v of vs) { const d2 = (p[0] - v.p[0]) ** 2 + (p[1] - v.p[1]) ** 2 + (p[2] - v.p[2]) ** 2; f = Math.max(f, Math.exp(-d2 / (v.w * v.w))); }
     f = Math.max(f, 0.65 * Math.exp(-(((latitude(p) - AV_GROOVE_LAT) / 0.06) ** 2))); // atrioventricular groove
     f = Math.max(f, 0.45 * Math.exp(-((septalDistance(p) / 4.5) ** 2)) * (p[1] < 50 ? 1 : 0)); // interventricular grooves
-    fatK[i] = Math.min(0.72, f * 0.78);
+    nFat[i] = Math.min(0.72, f * 0.78);
     const near = bedPos.map((b, j) => ({ j, d2: (p[0] - b[0]) ** 2 + (p[1] - b[1]) ** 2 + (p[2] - b[2]) ** 2 })).sort((a, b) => a.d2 - b.d2).slice(0, NB);
     let sum = 0;
-    near.forEach((e, k) => { const w = Math.exp(-e.d2 / (22 * 22)); bedIdx[i * NB + k] = e.j; bedW[i * NB + k] = w; sum += w; });
-    cover[i] = Math.min(1, sum * 1.6);
-    for (let k = 0; k < NB; k++) bedW[i * NB + k] /= sum || 1;
+    near.forEach((e, k) => { const w = Math.exp(-e.d2 / (22 * 22)); nIdx[i * NB + k] = e.j; nW[i * NB + k] = w; sum += w; });
+    nCover[i] = Math.min(1, sum * 1.6);
+    for (let k = 0; k < NB; k++) nW[i * NB + k] /= sum || 1;
   }
+  fatK = nFat; grain = nGrain; bedIdx = nIdx; bedW = nW; cover = nCover;
 }
 /** The O₂ sat mode's frame: the panels' source's saturations (none before the panel workspace exists, i.e. in the game). */
 function o2Now(): O2Frame { return o2Frame(panelSource ? panelSource.saturations() : noSat()); }
 const noSat = (): Saturations => ({ node: {} as Saturations["node"], spo2: NaN, preductal: NaN, postductal: NaN, svo2: NaN, do2: NaN, vo2: NaN, lactate: NaN, bed: {}, bedSource: "ischemia-derived" });
 function paintMyocardium() {
+  if (!myoReady) return;
   const ca = heartGeo.attributes.color as THREE.BufferAttribute, c = new THREE.Color(), base = new THREE.Color();
   const o2 = S.mode === "o2" ? o2Now() : null, bk: string[] = ["", "", "", ""], bw = [0, 0, 0, 0];
   for (let i = 0; i < hRef.length; i++) {
@@ -199,7 +228,7 @@ function paintMyocardium() {
   ca.needsUpdate = true;
 }
 function applyHeartView() {
-  heartMesh.visible = S.heart !== "none";
+  heartMesh.visible = S.heart !== "none" && myoReady;
   heartMat.transparent = S.heart === "ghost"; heartMat.opacity = S.heart === "ghost" ? 0.28 : 1; heartMat.depthWrite = S.heart !== "ghost";
   heartMat.needsUpdate = true;
   for (const k of ["solid", "ghost", "none"] as const) $("h_" + k).classList.toggle("on", S.heart === k);
@@ -747,10 +776,20 @@ let last = performance.now(), uiClock = 0, paintClock = 0;
 /** Pause, slow motion and step-one-beat for the Simulator page (task P13); scales heartbeat time only, never the game. */
 const playClock = new PlayClock();
 let rstate: RhythmState | null = sim.rstate, circ: Circulation | null = sim.circ;
+let wasSettling = false, settleDrawn = -Infinity;
 function frame(now: number) {
   const realDt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (sim.settling) { // the core engine is being built: give it a slice of this frame, keep the 3D view alive, hold the clock
+    wasSettling = true; settlingUi(true);
+    sim.settleStep(10); pumpMyocardium(4);
+    if (now - settleDrawn > 500) { controls.update(); camera.updateMatrixWorld(); updateMarkers(0); renderer.render(scene, camera); settleDrawn = performance.now(); } // the view is drawn a few times a second meanwhile: a slow renderer must not set the pace of the settling
+    requestAnimationFrame(frame);
+    return;
+  }
+  if (wasSettling) { wasSettling = false; settlingUi(false); ecg.reset(sim.t); liveUi(); } // settled: the strip starts from now
   const dt = G.phase === "idle" ? playClock.advance(realDt, sim.t, () => sim.stream.beats.filter((b) => !b.pOnly).map((b) => b.t)) : realDt;
   flush();
+  pumpMyocardium(4);
   const inCase = G.phase === "play" || G.phase === "treat";
   if (inCase) G.clock += dt * S.speed;
   // The clinical clock: the simulator's runs at its time scale; a case's at the game's fixed rate; none once a case is over.
@@ -1070,7 +1109,11 @@ function adoptSimState(reset: boolean) {
   prepareMyocardium(); buildVessels(); initParticles(); points.visible = S.flow; buildGrafts();
   controlsUi(); liveUi();
 }
-/** Replace the patient with a scenario and settle it before anyone looks. */
+/** The workspace's "settling" note, shown while the core engine builds and warms up (panels have no beats yet). */
+const settlingNote = document.createElement("div");
+settlingNote.className = "ws-settling"; settlingNote.textContent = "Settling the hemodynamic model\u2026"; settlingNote.setAttribute("role", "status"); settlingNote.hidden = true;
+function settlingUi(on: boolean) { settlingNote.hidden = !on; }
+/** Replace the patient with a scenario and settle it (the core engine does so in chunks while the page runs; `corosim.sim.settleNow()` waits for it). */
 function loadScenario(sc: Scenario): string[] {
   sim.reset(sc, { settled: true });
   sim.warmup(20);
@@ -1086,6 +1129,7 @@ function runForAi(name: string, args: Record<string, unknown>) {
   if (G.phase !== "idle") throw new Error("The user is in the middle of a Find the culprit case; the AI connection is paused until it ends.");
   const tool = TOOLS.find((t) => t.name === name);
   if (!tool) throw new Error(`Unknown tool ${name}`);
+  sim.settleNow(); // the tools read the live heart
   const stream = sim.stream, t0 = sim.t, sig = JSON.stringify(sim.scenario());
   const result = tool.run({ sim, appUrl: appLink().split("#")[0] }, args);
   if (sim.stream !== stream || sim.t !== t0 || JSON.stringify(sim.scenario()) !== sig) adoptSimState(sim.stream !== stream);
@@ -1239,6 +1283,7 @@ cathLinkUi();
 // page's Simulation, or for a neonate the bridge, which solves in a worker so the 3D view and ECG keep running (tasks P2b, P16).
 if (!inGame) {
   const ws = $("workspace"); (ws.parentElement as HTMLElement).hidden = false;
+  (ws.parentElement as HTMLElement).insertBefore(settlingNote, ws);
   pushPatient(true); // a link that was opened before the workspace existed has its structure in the core engine already; this settles the source choice
   panelSource = chooseSource();
   workspace = mountWorkspace(ws, [monitorPanel, ecgPanel, numbersPanel, tracesPanel, loopsPanel, rhcPanel, leftHeartCathPanel, jvpPanel, oxygenPanel], panelSource, {
@@ -1250,5 +1295,6 @@ if (!inGame) {
 void shell.ai.start();
 /** Handle for scripts and browser-driving assistants: corosim.sim, corosim.load(scenario), corosim.live. */
 (window as unknown as { corosim: object }).corosim = { sim, load: loadScenario, playground: { bridge: () => bridge, source: () => panelSource, state: () => pg, spec: () => bridgeOpts.patient, adopt: pgAdopt, show: pgShow }, clock: playClock, live: shell.ai.live, account: shell.ai.account, refresh: () => { controlsUi(); liveUi(); } };
+void loadHeartMesh().then(installHeart); // the heart appears when its mesh has been built (the page is live before that)
 requestAnimationFrame(frame);
 void LEADS;

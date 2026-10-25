@@ -1,5 +1,6 @@
 import { ACTIVATION, BRONCHIAL, O2_PER_G_HB, WU_TO_MMHG_S_ML, PATIENTS, PatientBaseline, PatientKind, SOLVER, VESSELS } from "../config/structural";
 
+import { BAKED_OFFSETS } from "./calibration.baked";
 import { engineFromModel, resolveCore, type FromModelOptions } from "./core/fromModel";
 import { fillingOf, type Filling } from "./core/vessels";
 import { BeatRecorder } from "./core/recorder";
@@ -397,11 +398,23 @@ export function analyze(spec: StructuralSpec = {}, opts: { waveform?: boolean } 
  * every case starts from it. Cached by the baseline's contents, so a different weight or age finds its own.
  */
 const offsets = new Map<string, number>();
-export function volumeOffsetFor(spec: StructuralSpec, core?: FromModelOptions, build?: BuildOptions): number {
-  // everything the calibration depends on, with defaults filled in, so a changed default recalibrates by itself
-  const kind = spec.patient ?? "adult", key = JSON.stringify([PATIENTS[kind], resolveCore(core), { zc: true, unstressed: true, splanchnic: true, bronchial: true, atrialEesScale: ACTIVATION.atrialEesScale, ...build }, VESSELS, ACTIVATION, SOLVER, ISTH_R, BRONCHIAL]), hit = offsets.get(key);
-  if (hit !== undefined) return hit;
-  const target = PATIENTS[kind].map;
+/** Every input the calibration depends on, defaults filled in, as text: the in-memory cache key, and (hashed) the key of the baked values. */
+export function calibrationKey(spec: StructuralSpec, core?: FromModelOptions, build?: BuildOptions): string {
+  const kind = spec.patient ?? "adult";
+  return JSON.stringify([PATIENTS[kind], resolveCore(core), { zc: true, unstressed: true, splanchnic: true, bronchial: true, atrialEesScale: ACTIVATION.atrialEesScale, ...build }, VESSELS, ACTIVATION, SOLVER, ISTH_R, BRONCHIAL]);
+}
+/** The key the baked offsets (`calibration.baked.ts`) are stored under: the patient kind and a 64-bit hash of `calibrationKey`. */
+export function bakedKey(spec: StructuralSpec, core?: FromModelOptions, build?: BuildOptions): string {
+  const text = calibrationKey(spec, core, build);
+  let a = 0x811c9dc5, b = 0x01000193 ^ text.length;
+  for (let i = 0; i < text.length; i++) { const c = text.charCodeAt(i); a = Math.imul(a ^ c, 16777619); b = Math.imul(b + c, 0x5bd1e995) ^ (b >>> 13); }
+  return `${spec.patient ?? "adult"}/${(a >>> 0).toString(16).padStart(8, "0")}${(b >>> 0).toString(16).padStart(8, "0")}`;
+}
+/** The default build of each patient kind with the default core options: what the pages and `analyze` ask for. `scripts/bake-calibration.ts` bakes these and `tests/calibrationBake.test.ts` recomputes them. */
+export const BAKE_SETS: { spec: StructuralSpec; core?: FromModelOptions; build?: BuildOptions }[] = (Object.keys(PATIENTS) as PatientKind[]).map((patient) => ({ spec: { patient } }));
+/** The blood volume (ml) found by the secant search, with no cache and no baked value: what the bake script stores. */
+export function calibrateVolume(spec: StructuralSpec, core?: FromModelOptions, build?: BuildOptions): number {
+  const kind = spec.patient ?? "adult", target = PATIENTS[kind].map;
   const err = (off: number) => simulate(buildModel({ patient: kind }, off, build), { waveform: false, core: core && (core.thorax || core.pericardium) ? { ...core, thorax: undefined, pericardium: undefined } : core }).p.AO.mean - target; // the blood volume is calibrated at the model's zero intrathoracic pressure (no breathing) and with no effusion: the cache key ignores both, so the first caller must not decide it
   let x0 = 0, f0 = err(x0), x1 = 0.1 * target * PATIENTS[kind].weightKg, f1 = err(x1);
   for (let i = 0; i < 8 && Math.abs(f1) > 0.1; i++) {
@@ -409,6 +422,13 @@ export function volumeOffsetFor(spec: StructuralSpec, core?: FromModelOptions, b
     x0 = x1; f0 = f1; x1 = x2; f1 = err(x1);
   }
   if (Math.abs(f1) > 0.5) throw new Error(`Blood-volume calibration for ${kind} did not reach its target pressure (off by ${f1.toFixed(2)} mmHg)`);
-  offsets.set(key, x1);
   return x1;
+}
+export function volumeOffsetFor(spec: StructuralSpec, core?: FromModelOptions, build?: BuildOptions): number {
+  // everything the calibration depends on, with defaults filled in, so a changed default recalibrates by itself (and misses the baked value)
+  const key = calibrationKey(spec, core, build), hit = offsets.get(key);
+  if (hit !== undefined) return hit;
+  const x = BAKED_OFFSETS[bakedKey(spec, core, build)] ?? calibrateVolume(spec, core, build); // a build that is not baked is computed (about two seconds)
+  offsets.set(key, x);
+  return x;
 }
