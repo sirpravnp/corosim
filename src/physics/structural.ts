@@ -1,4 +1,4 @@
-import { ACTIVATION, O2_PER_G_HB, WU_TO_MMHG_S_ML, PATIENTS, PatientBaseline, PatientKind, SOLVER, VESSELS } from "../config/structural";
+import { ACTIVATION, BRONCHIAL, O2_PER_G_HB, WU_TO_MMHG_S_ML, PATIENTS, PatientBaseline, PatientKind, SOLVER, VESSELS } from "../config/structural";
 
 import { engineFromModel, resolveCore, type FromModelOptions } from "./core/fromModel";
 import { fillingOf, type Filling } from "./core/vessels";
@@ -100,12 +100,14 @@ export interface BuildOptions {
   unstressed?: boolean;
   /** Splanchnic reservoir between the lower-body bed and the IVC (default true; false leaves the SPL node empty and unconnected). */
   splanchnic?: boolean;
+  /** Bronchial/Thebesian return, a resistor AO → PV carrying `BRONCHIAL.frac` of the design flow (default true; false leaves the edge out, as the frozen reference was built). */
+  bronchial?: boolean;
   /** Factor on the atrial active elastance (default `ACTIVATION.atrialEesScale`; 1 = the designed 6 mmHg of active pressure). */
   atrialEesScale?: number;
   /** Overrides of a patient baseline in `config/structural.ts` (the pin keeps the adult atrial pressures the reference was made with). */
   baseline?: Partial<Record<PatientKind, Partial<PatientBaseline>>>;
 }
-export const LEGACY_BUILD: Readonly<BuildOptions> = { zc: false, unstressed: false, splanchnic: false, atrialEesScale: 1, baseline: { adult: { rap: 4, lap: 8 } } };
+export const LEGACY_BUILD: Readonly<BuildOptions> = { zc: false, unstressed: false, splanchnic: false, bronchial: false, atrialEesScale: 1, baseline: { adult: { rap: 4, lap: 8 } } };
 
 export function buildModel(input: StructuralSpec = {}, volumeOffset = 0, build: BuildOptions = {}): Model {
   const spec = clampStructuralSpec(input), useZc = build.zc !== false, useVu = build.unstressed !== false, useSpl = build.splanchnic !== false;
@@ -173,6 +175,7 @@ export function buildModel(input: StructuralSpec = {}, volumeOffset = 0, build: 
     { name: "VRL", from: IVC, to: RA, type: "resistor", R: (psv - p.rap) / qL },
     { name: "LUNG", from: PA, to: PV, type: "resistor", R: ((spec.pvri ?? p.pvri) / p.bsa) * WU_TO_MMHG_S_ML, role: "lung" },
     { name: "PVLA", from: PV, to: LA, type: "resistor", R: (ppv - p.lap) / q },
+    ...(build.bronchial !== false ? [{ name: "BRON", from: AO, to: PV, type: "resistor" as const, R: (p.map - ppv) / (BRONCHIAL.frac * q) }] : []), // bronchial/Thebesian return: systemic arterial blood into the left heart
     { name: "ASD", from: LA, to: RA, type: "orifice", area: 0 },
     { name: "VSD", from: LV, to: RV, type: "orifice", area: 0 },
     { name: "PDA", from: DAO, to: PA, type: "orifice", area: 0 },
@@ -396,7 +399,7 @@ export function analyze(spec: StructuralSpec = {}, opts: { waveform?: boolean } 
 const offsets = new Map<string, number>();
 export function volumeOffsetFor(spec: StructuralSpec, core?: FromModelOptions, build?: BuildOptions): number {
   // everything the calibration depends on, with defaults filled in, so a changed default recalibrates by itself
-  const kind = spec.patient ?? "adult", key = JSON.stringify([PATIENTS[kind], resolveCore(core), { zc: true, unstressed: true, splanchnic: true, atrialEesScale: ACTIVATION.atrialEesScale, ...build }, VESSELS, ACTIVATION, SOLVER, ISTH_R]), hit = offsets.get(key);
+  const kind = spec.patient ?? "adult", key = JSON.stringify([PATIENTS[kind], resolveCore(core), { zc: true, unstressed: true, splanchnic: true, bronchial: true, atrialEesScale: ACTIVATION.atrialEesScale, ...build }, VESSELS, ACTIVATION, SOLVER, ISTH_R, BRONCHIAL]), hit = offsets.get(key);
   if (hit !== undefined) return hit;
   const target = PATIENTS[kind].map;
   const err = (off: number) => simulate(buildModel({ patient: kind }, off, build), { waveform: false, core: core?.thorax ? { ...core, thorax: undefined } : core }).p.AO.mean - target; // the blood volume is calibrated at the model's zero intrathoracic pressure: no breathing

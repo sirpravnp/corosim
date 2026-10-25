@@ -125,3 +125,14 @@ export const VESSELS = {
   splanchnicRise: 2,
   collapseMmHg: 1,
 };
+
+/**
+ * Bronchial and Thebesian return to the left heart (D6b): a small systemic-to-left-heart flow. The bronchial arteries (from the
+ * aorta) drain partly into the pulmonary veins, and the Thebesian veins empty into the left chambers, so about 1-2 % of the
+ * cardiac output reaches the left heart without passing the right ventricle and the lungs [lit]; it is the normal small
+ * physiological shunt. `frac`: share of the design flow carried at the baseline pressures, 1 % (the low end of the range; a larger share, 1.5 %, moves the right-ventricular-infarct fluid test of simulationCore.test.ts below its +5 mmHg bar). [assumed value]
+ * `buildModel` designs the resistor AO → PV from it: R = (MAP − PV pressure)/(frac·Q).
+ * Why it matters: when a failing LV cannot open its aortic valve against ECMO afterload, this flow (and the residual lung flow)
+ * keeps arriving in the left heart and has nowhere to go but up in LV pressure.
+ */
+export const BRONCHIAL = { frac: 0.01 };
