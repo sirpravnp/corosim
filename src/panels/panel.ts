@@ -24,5 +24,7 @@ export interface PanelDef {
   title: string;
   /** Shown by default on a first visit. */
   defaultOn: boolean;
+  /** Spans the full width of the grid on wide screens (a twelve-lead strip needs the room). */
+  wide?: boolean;
   create(): Panel;
 }

@@ -70,6 +70,7 @@ export class EcgStrip {
     const c = this.canvas, dpr = devicePixelRatio || 1;
     const layout = this.posterior ? LAYOUT.map((row, r) => [...row, POSTERIOR[r]]) : LAYOUT;
     const cols = layout[0].length, rows = 3, w = c.clientWidth;
+    if (!w) return; // not laid out (its panel is closed or on a hidden tab): nothing to draw, and the paper loop below would not end
     const mm = w / cols / (WIN * 25);
     const ph = Math.max(96, Math.round(mm * 22));
     const h = rows * ph;

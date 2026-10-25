@@ -25,6 +25,8 @@ import { mountWorkspace } from "./panels/workspace";
 import { CLINICAL_SCALES, PlayClock } from "./panels/timeControl";
 import { createPlaygroundUi } from "./panels/playgroundControls";
 import type { SlotId } from "./panels/playgroundControls";
+import { monitorPanel } from "./panels/monitor";
+import { ecgPanel } from "./panels/ecg";
 import { numbersPanel } from "./panels/numbers";
 import { tracesPanel } from "./panels/traces";
 import { loopsPanel } from "./panels/loops";
@@ -1206,7 +1208,7 @@ if (!inGame) {
   const ws = $("workspace"); (ws.parentElement as HTMLElement).hidden = false;
   bridgeOpts.solver = createWorkerSolver();
   bridge = new BridgeSource(sim, bridgeOpts);
-  mountWorkspace(ws, [numbersPanel, tracesPanel, loopsPanel, rhcPanel, leftHeartCathPanel, jvpPanel, oxygenPanel], bridge, {
+  mountWorkspace(ws, [monitorPanel, ecgPanel, numbersPanel, tracesPanel, loopsPanel, rhcPanel, leftHeartCathPanel, jvpPanel, oxygenPanel], bridge, {
     clock: playClock, clinical: { scales: CLINICAL_SCALES, get: () => S.speed, set: (v) => { S.speed = v; controlsUi(); } }, // both clocks in the workspace bar
   });
   $("ts-l").style.display = $("ts-row").style.display = "none"; // the Lesion section's old time-scale buttons: now in the workspace bar

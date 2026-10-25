@@ -93,7 +93,7 @@ export class Workspace {
       const def = byId.get(id)!;
       const panel = def.create();
       const card = document.createElement("section");
-      card.className = "ws-card";
+      card.className = def.wide ? "ws-card ws-wide" : "ws-card";
       const head = document.createElement("header");
       const h = document.createElement("h2");
       h.textContent = def.title;
