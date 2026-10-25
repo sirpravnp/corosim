@@ -28,6 +28,10 @@ export class SwitchableImpella extends Impella {
  *  - placementMmHg: mean of aortic minus LV pressure over the beat (the placement signal); placementAmplitudeMmHg: its max - min.
  *    Large when correctly placed; near zero when the inflow sits in the aorta.
  *  - suctionLevel: highest suction level (0-1) in the beat; suctionFraction: fraction of the beat in suction; suctionAlarm: the console alarm.
+ *  - inletMeanMmHg, inletMinMmHg, inletMaxMmHg, inletAmplitudeMmHg: the pressure at the cannula inflow over the beat. Correct: an LV waveform whose
+ *    minimum is near the end-diastolic pressure; inflow in the aorta: an aortic waveform whose minimum stays at the diastolic pressure.
+ *  - positionAlarm: "IMPELLA POSITION WRONG" (the pump runs but the pressure difference across it does not swing, as with an inflow in the aorta).
+ *  - alarms: the console messages now showing, plain text (suction, position).
  */
 export interface ImpellaReadout {
   on: boolean; model: string; position: string; level: number; speedKrpm: number;
@@ -35,6 +39,8 @@ export interface ImpellaReadout {
   motorCurrentMa: number; currentPulsatilityMa: number;
   placementMmHg: number; placementAmplitudeMmHg: number;
   suctionLevel: number; suctionFraction: number; suctionAlarm: boolean;
+  inletMeanMmHg: number; inletMinMmHg: number; inletMaxMmHg: number; inletAmplitudeMmHg: number;
+  positionAlarm: boolean; alarms: string[];
 }
 
 /**
@@ -57,4 +63,19 @@ export interface IabpReadout {
   coronaryAugmentationMmHg: number;
 }
 
-export interface DevicesReadout { impella: ImpellaReadout | null; iabp: IabpReadout | null }
+/**
+ * VA-ECMO console (present in `DevicesReadout` only when the patient has the circuit): flow L/min (net, through the pump), target, speed,
+ * oxygenator settings, the drainage site, suction level 0-1 and alarm, pressure drop across the oxygenator (mmHg) and pump head (mmHg).
+ * The saturation of the blood it returns is computed from the drained blood's: see `LiveSource.devices()`.
+ */
+export interface EcmoReadout {
+  on: boolean; drain: "RA" | "IVC"; flowLpm: number; targetLpm: number; rpm: number; sweepLpm: number; fio2: number;
+  suctionLevel: number; suctionAlarm: boolean; membraneDpMmHg: number; headMmHg: number;
+}
+
+/** Impella RP console (present only when the patient has it): P-level, speed, mean flow over the last beat (L/min), motor current (mA), placement signal (PA minus IVC pressure, mmHg) and the suction alarm. */
+export interface ImpellaRpReadout {
+  on: boolean; level: number; speedKrpm: number; flowLpm: number; motorCurrentMa: number; placementMmHg: number; suctionAlarm: boolean;
+}
+
+export interface DevicesReadout { impella: ImpellaReadout | null; iabp: IabpReadout | null; ecmo?: EcmoReadout; impellaRp?: ImpellaRpReadout }

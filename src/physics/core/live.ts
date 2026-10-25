@@ -53,6 +53,11 @@ export interface LiveBeat extends BeatHemo {
   tauMs: Record<string, number>;
   /** Activation strength the ventricle was driven with (1 = normal). */
   strength: number;
+  /**
+   * Volume (ml) that flowed forward and backward through every flow element during the beat (the engine's `flowVolumes()`, by element
+   * name: valves, beds, lungs, shunts and any device). With these `solveOxygen` and the Fick numbers can be done per beat (P16).
+   */
+  flows: { fwd: Record<string, number>; bwd: Record<string, number> };
 }
 
 /** Downsampled history of the last `LIVE.traceSeconds`: stream time (s, strictly increasing), node pressures (mmHg) and chamber volumes (ml). */
@@ -68,6 +73,8 @@ export interface LiveOptions {
 interface BeatMeta { t: number; rr: number; pvc: boolean; atrialKick: boolean; strength: number }
 interface Cur extends BeatMeta { aoStart: number; edvLV: number; edvRV: number }
 const CHAMBERS = ["RA", "RV", "LA", "LV"] as const;
+/** Atrial events kept for `atrialBetween`: far more than the beats of the longest record a reader asks for (30 s of heart block at 150 atrial/min is 75). */
+const ATRIAL_LOG = 256;
 const range = (x: number, [lo, hi]: readonly [number, number] | readonly number[]) => Math.min(hi, Math.max(lo, x));
 
 /**
@@ -97,6 +104,8 @@ export class LiveHeart {
   private lastVentT = -Infinity;
   /** Engine time of the latest atrial event delivered (-Infinity: none). */
   private lastAtrialT = -Infinity;
+  /** Stream times of the atrial events delivered so far (oldest first, at most `ATRIAL_LOG`): the P waves of a beat, including those that never conducted (P16). */
+  private atrial: number[] = [];
   private afterPvc = false;
   private queue: BeatMeta[] = [];
   private cur: Cur | null = null;
@@ -120,7 +129,7 @@ export class LiveHeart {
   constructor(spec: StructuralSpec = {}, opts: LiveOptions = {}) {
     this.model = buildModel(spec, volumeOffsetFor(spec, opts.core));
     const g = fromModel(this.model, opts.core);
-    const marker: Element = { name: "beatMarker", onEvent: (ev: HeartEvent) => { if (ev.kind === "atrial") this.lastAtrialT = ev.t; else this.onVentricular(ev); } };
+    const marker: Element = { name: "beatMarker", onEvent: (ev: HeartEvent) => { if (ev.kind === "atrial") { this.lastAtrialT = ev.t; this.atrial.push(ev.t - this.offset); if (this.atrial.length > ATRIAL_LOG) this.atrial.shift(); } else this.onVentricular(ev); } };
     this.engine = createEngine(g.nodes, [...g.elements, marker, ...(opts.extra ?? []).map((e) => (typeof e === "function" ? e(this.model) : e))], g.options);
     const eng = this.engine;
     this.ventricles = (["LV", "RV"] as const).map((n) => { const el = eng.element<ElastanceChamber>(n); return { el, ees: el.params.ees, a: el.params.a, relax: el.params.relaxScale ?? 1 }; });
@@ -161,17 +170,24 @@ export class LiveHeart {
    * first beat or step. Fills `warmBeat` with the last periodic beat.
    */
   warm(hr: number): { beats: number; converged: boolean } {
+    const it = this.warmSteps(hr);
+    for (;;) { const r = it.next(); if (r.done) return r.value; }
+  }
+
+  /** `warm()` one beat at a time (about 25 ms each): yields between beats so a page can give the thread back; returns what `warm()` returns. Run it to the end before the first beat or step. */
+  *warmSteps(hr: number): Generator<void, { beats: number; converged: boolean }> {
     if (this.attached) throw new Error("LiveHeart.warm() must come before the first beat or step");
     const T = 60 / hr, rec = new BeatRecorder(this.engine, T, this.valveNames);
-    const r = this.engine.periodic(hr);
+    const r = yield* this.engine.periodicSteps(hr);
     const beat = rec.beat(), fv = this.engine.flowVolumes(); // right after periodic() the recorder holds the last beat
     rec.dispose();
     this.warmBeat = {
       t: -T, interval: T, strokeVolume: fv.fwd.AV - fv.bwd.AV, systolic: beat.p.AO.max, diastolic: beat.p.AO.end, pvc: false, atrialKick: true,
       map: beat.p.AO.mean, p: beat.p, v: beat.v, edv: { LV: beat.v.LV.end, RV: beat.v.RV.end }, esv: { LV: beat.v.LV.min, RV: beat.v.RV.min },
-      rvStrokeVolume: fv.fwd.PVL - fv.bwd.PVL, valves: beat.valves, tauMs: beat.tauMs, strength: 1,
+      rvStrokeVolume: fv.fwd.PVL - fv.bwd.PVL, valves: beat.valves, tauMs: beat.tauMs, strength: 1, flows: { fwd: { ...fv.fwd }, bwd: { ...fv.bwd } },
     };
     this.offset = this.engine.t;
+    this.atrial = []; // the warm-up's P waves are on the engine's clock, before stream time 0
     this.attach();
     return r;
   }
@@ -248,6 +264,24 @@ export class LiveHeart {
     return { t, p, v };
   }
 
+  /**
+   * One node's pressure (mmHg) or one chamber's volume (ml) since stream time `from`, oldest first, straight from the ring buffer
+   * (no copy of the other nodes: `trace()` copies all of them). `t` is stream time, s. null for an unknown name (a volume is kept
+   * for the four chambers only). The panels of the Simulator page read this at frame rate.
+   */
+  read(name: string, quantity: "pressure" | "volume", from = -Infinity): { t: Float64Array; v: Float32Array } | null {
+    const buf = quantity === "pressure" ? this.trP[this.nodeNames.indexOf(name)] : this.trV[CHAMBERS.indexOf(name as (typeof CHAMBERS)[number])];
+    if (!buf) return null;
+    let n = 0;
+    for (let k = this.trN - 1; k >= 0; k--) { if (this.trT[(this.trHead - this.trN + k + this.cap) % this.cap] < from) break; n++; } // newest first: stop at the first sample before `from`
+    const t = new Float64Array(n), v = new Float32Array(n);
+    for (let k = 0; k < n; k++) { const i = (this.trHead - n + k + this.cap) % this.cap; t[k] = this.trT[i]; v[k] = buf[i]; }
+    return { t, v };
+  }
+
+  /** Stream times (s) of the atrial events delivered in [from, to] (P waves, conducted or not). */
+  atrialBetween(from: number, to: number): number[] { return this.atrial.filter((t) => t >= from - 1e-9 && t <= to + 1e-9); }
+
   // ---- internals ------------------------------------------------------------------------------
   /** Start recording (after any warm-up). */
   private attach() {
@@ -289,7 +323,7 @@ export class LiveHeart {
       const out: LiveBeat = {
         t: cur.t - this.offset, interval, strokeVolume: sv, systolic: done.p.AO.max, diastolic: cur.aoStart, pvc: cur.pvc, atrialKick: cur.atrialKick,
         map: done.p.AO.mean, p: done.p, v: done.v, edv: { LV: cur.edvLV, RV: cur.edvRV }, esv: { LV: done.v.LV.min, RV: done.v.RV.min },
-        rvStrokeVolume: fv.fwd.PVL - fv.bwd.PVL, valves: done.valves, tauMs: done.tauMs, strength: cur.strength,
+        rvStrokeVolume: fv.fwd.PVL - fv.bwd.PVL, valves: done.valves, tauMs: done.tauMs, strength: cur.strength, flows: { fwd: { ...fv.fwd }, bwd: { ...fv.bwd } },
       };
       this.records.push(out);
       if (this.records.length > LIVE.maxRecords) this.records.splice(0, this.records.length - LIVE.maxRecords);

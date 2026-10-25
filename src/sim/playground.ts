@@ -28,18 +28,25 @@ export interface PlaygroundState {
 /** The PatientSpec fields the playground controls own; everything else in a spec is the Scenario. */
 export const PLAYGROUND_FIELDS = ["kind", "heart", "pericardium", "fluids", "ventilation", "devices"] as const;
 
-/** What the page's engines read today, per group of fields. The rest is stored in the spec and shared, nothing more. */
+/**
+ * What the page's engines read, per group of fields (task P16). An adult runs on the core engine, live beat by beat; a neonate on the
+ * bridge (a steady-state solve of the structural engine on its own baseline, replayed), because the core is the adult ACS patient.
+ * `modelled` is the adult's badge; `neonate`, when it differs, the neonate's (with `neonateNote`). What is not read is stored in the
+ * spec and the share link, nothing more.
+ */
 export type Modelled = "yes" | "legacy" | "no";
-export interface FieldGroupInfo { id: string; label: string; modelled: Modelled; note: string }
+export interface FieldGroupInfo { id: string; label: string; modelled: Modelled; note: string; neonate?: Modelled; neonateNote?: string }
+const NEONATE_BRIDGE = "A neonate runs on the bridge, which has no pericardium, thorax or devices: stored in the spec and shared.";
 export const GROUP_INFO: Record<string, FieldGroupInfo> = {
-  kind: { id: "kind", label: "Patient kind", modelled: "yes", note: "The bridge builds the neonate or the adult circulation. The ACS monitor and ECG are adult models either way." },
-  heart: { id: "heart", label: "Structural heart", modelled: "yes", note: "The bridge's structural engine reads every field (Gorlin valves, shunts, chamber sizes). The ACS monitor does not see it." },
-  pericardium: { id: "pericardium", label: "Pericardium", modelled: "no", note: "Not modelled on this page yet: stored in the spec and shared." },
-  fluids: { id: "fluids", label: "Fluids and hemorrhage", modelled: "no", note: "Modelled by the core engine only (C2: Starling exchange between plasma and interstitium, doses, bleeding rate, capillary leak, urine, Hb), which this page does not run yet, so here it is stored in the spec and shared. Passive leg raise is not modelled yet (C4). Blood loss (Volume and drugs) and IV fluid (Management) are modelled by the legacy engine." },
-  ventilation: { id: "ventilation", label: "Ventilation", modelled: "no", note: "Not modelled on this page yet: stored in the spec and shared." },
-  impella: { id: "impella", label: "Impella", modelled: "legacy", note: "On or off drives the legacy ACS Impella model; model, level and position are not modelled on this page yet." },
-  iabp: { id: "iabp", label: "Balloon pump", modelled: "legacy", note: "On or off drives the legacy ACS balloon-pump model; ratio is not modelled on this page yet." },
-  ecmo: { id: "ecmo", label: "ECMO", modelled: "no", note: "Not modelled on this page yet: stored in the spec and shared." },
+  kind: { id: "kind", label: "Patient kind", modelled: "yes", note: "An adult runs on the live core engine (beat by beat). A neonate runs on the bridge: the structural engine solved on the newborn's own baseline and replayed. The ACS monitor and ECG are adult models either way." },
+  heart: { id: "heart", label: "Structural heart", modelled: "yes", note: "Adult: the core engine builds every field (Gorlin valves, shunts, chamber sizes, per-ventricle elastance and stiffness) and the monitor, traces, loops and JVP all see it. Neonate: the bridge's structural engine reads it." },
+  pericardium: { id: "pericardium", label: "Pericardium", modelled: "yes", note: "Core engine: effusion, accumulation rate (per clinical minute), stiffness (constriction) and an opened pericardium. The sac does not stretch over days, so a slow effusion is no better tolerated than a fast one.", neonate: "no", neonateNote: NEONATE_BRIDGE },
+  fluids: { id: "fluids", label: "Fluids and hemorrhage", modelled: "yes", note: "Core engine (C2): boluses of crystalloid, colloid, albumin or blood (amount, start and duration) and the bleeding rate move water between plasma and interstitium by the Starling forces (capillary and oncotic pressure, lymph), set the blood volume the heart holds, dilute or concentrate Hb, and drive urine; the capillary leak raises filtration and protein escape. Passive leg raise is not modelled yet (C4).", neonate: "no", neonateNote: NEONATE_BRIDGE },
+  ventilation: { id: "ventilation", label: "Ventilation", modelled: "yes", note: "Core engine: spontaneous breathing or positive-pressure ventilation with PEEP and tidal volume put the pleural pressure on the chest vessels and the heart, and a smaller swing on the abdomen (pulsus paradoxus, pulse-pressure variation, PEEP reducing venous return). The lungs' own resistance does not change with inflation.", neonate: "no", neonateNote: NEONATE_BRIDGE },
+  impella: { id: "impella", label: "Impella", modelled: "yes", note: "Core engine: model (2.5, CP, 5.5), P-level and position (correct, in the aorta, too deep) set the flow, the unloading of the left ventricle, suction and the console readings. Changing the model or the position rebuilds the heart.", neonate: "no", neonateNote: NEONATE_BRIDGE },
+  iabp: { id: "iabp", label: "Balloon pump", modelled: "yes", note: "Core engine: a real balloon in the descending aorta: ratio 1:1 to 1:3, inflation and deflation timing offsets and balloon volume shape the aortic trace, the diastolic augmentation and the unloading.", neonate: "no", neonateNote: NEONATE_BRIDGE },
+  ecmo: { id: "ecmo", label: "ECMO", modelled: "yes", note: "Core engine: VA-ECMO drains the right atrium and returns oxygenated blood to the descending aorta at the set flow (pump speed is solved for it); sweep gas and FiO₂ set the return saturation, and differential hypoxemia follows from the lungs and the circuit perfusing different parts of the body. The left ventricle is not vented unless something else vents it.", neonate: "no", neonateNote: NEONATE_BRIDGE },
+  impellaRp: { id: "impellaRp", label: "Impella RP", modelled: "yes", note: "Core engine: inflow from the inferior vena cava, outflow into the pulmonary artery, by P-level.", neonate: "no", neonateNote: NEONATE_BRIDGE },
 };
 
 const isEmpty = (o: object | undefined) => !o || Object.keys(o).length === 0;

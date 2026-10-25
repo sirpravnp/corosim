@@ -100,6 +100,10 @@ export interface ImpellaBeat {
   pulsatility: number;
   /** Placement signal: aortic pressure − LV pressure (the pressure difference across the cannula) over the beat. `amplitude` = max − min. */
   placement: { mean: number; min: number; max: number; amplitude: number };
+  /** Inlet pressure (the pressure at the cannula's inflow, mmHg) over the beat: the waveform the console draws as the placement signal. Correct: an LV trace falling to the end-diastolic pressure; in the aorta: an aortic trace that stays at the diastolic pressure. */
+  inlet: { mean: number; min: number; max: number; amplitude: number };
+  /** Console alarm "IMPELLA POSITION WRONG": the pump runs with real flow but the pressure difference across it hardly swings (`IMPELLA_CONSOLE.positionAmpMmHg`), which is what an inflow in the aorta looks like. */
+  positionAlarm: boolean;
   /** Fraction of the beat spent in suction (the `suction` tap), the highest suction level (0-1) reached, and the console alarm (that level at or above `IMPELLA_CONSOLE.alarmLevel`). */
   suctionFraction: number;
   suctionLevel: number;
@@ -112,7 +116,7 @@ export interface ImpellaBeat {
  */
 export class ImpellaConsole {
   last: ImpellaBeat | null = null;
-  private acc = { n: 0, q: [0, 0, -Infinity] as number[], i: [0, 0, -Infinity] as number[], d: [0, 0, -Infinity] as number[], s: 0, lv: 0 };
+  private acc = { n: 0, q: [0, 0, -Infinity] as number[], i: [0, 0, -Infinity] as number[], d: [0, 0, -Infinity] as number[], p: [0, 0, -Infinity] as number[], s: 0, lv: 0 };
   private beat = NaN; private next = -Infinity;
   private readonly off: () => void;
   private listeners: ((b: ImpellaBeat) => void)[] = [];
@@ -126,17 +130,18 @@ export class ImpellaConsole {
       if (Number.isNaN(this.beat)) this.beat = t.beat;
       if (t.beat !== this.beat) { this.close(s.t, t.level); this.beat = t.beat; }
       const a = this.acc; a.n++;
-      for (const [arr, x] of [[a.q, t.flow], [a.i, t.current], [a.d, t.placement]] as const) { arr[0] += x; arr[1] = Math.min(arr[1], x); arr[2] = Math.max(arr[2], x); }
+      for (const [arr, x] of [[a.q, t.flow], [a.i, t.current], [a.d, t.placement], [a.p, t.pIn]] as const) { arr[0] += x; arr[1] = Math.min(arr[1], x); arr[2] = Math.max(arr[2], x); }
       a.s += t.suctionAlarm; a.lv = Math.max(a.lv, t.suctionLevel);
     });
   }
-  private reset() { this.acc = { n: 0, q: [0, Infinity, -Infinity], i: [0, Infinity, -Infinity], d: [0, Infinity, -Infinity], s: 0, lv: 0 }; }
+  private reset() { this.acc = { n: 0, q: [0, Infinity, -Infinity], i: [0, Infinity, -Infinity], d: [0, Infinity, -Infinity], p: [0, Infinity, -Infinity], s: 0, lv: 0 }; }
   private close(t: number, level: number) {
     const a = this.acc;
     if (a.n >= 5) {
       const stat = (x: number[]) => ({ mean: x[0] / a.n, min: x[1], max: x[2] });
-      const d = stat(a.d), frac = a.s / a.n;
-      this.last = { t, level, flow: stat(a.q), current: stat(a.i), pulsatility: a.i[2] - a.i[1], placement: { ...d, amplitude: d.max - d.min }, suctionFraction: frac, suctionLevel: a.lv, suctionAlarm: a.lv >= IMPELLA_CONSOLE.alarmLevel };
+      const d = stat(a.d), pin = stat(a.p), frac = a.s / a.n, flow = stat(a.q), C = IMPELLA_CONSOLE;
+      this.last = { t, level, flow, current: stat(a.i), pulsatility: a.i[2] - a.i[1], placement: { ...d, amplitude: d.max - d.min },
+        inlet: { ...pin, amplitude: pin.max - pin.min }, positionAlarm: level > 0 && flow.mean > C.positionMinFlowLpm && d.max - d.min < C.positionAmpMmHg, suctionFraction: frac, suctionLevel: a.lv, suctionAlarm: a.lv >= IMPELLA_CONSOLE.alarmLevel };
       for (const l of this.listeners) l(this.last);
     }
     this.reset();

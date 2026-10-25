@@ -144,6 +144,8 @@ export interface Engine {
    * Returns the number of beats and whether it settled.
    */
   periodic(hr: number, opts?: { maxBeats?: number; minBeats?: number; tol?: number; pr?: number }): { beats: number; converged: boolean };
+  /** `periodic()` one beat at a time: yields after each beat; returns the same result. */
+  periodicSteps(hr: number, opts?: { maxBeats?: number; minBeats?: number; tol?: number; pr?: number }): Generator<void, { beats: number; converged: boolean }>;
   /**
    * Volume (ml) that has flowed forward (positive) and backward through each flow element since the last reset, integrated
    * with the RK4 weights (the exact integral of the scheme, not a sum of samples). A single-edge element reports its edge;
