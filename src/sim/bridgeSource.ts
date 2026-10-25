@@ -77,6 +77,10 @@ interface Inputs { hr: number; lv: number; rv: number; map: number; svr: number;
  * CO (`circ.cardiacOutput` minus the device flow, which the structural engine does not see). The multipliers are public
  * (`svrMul`, `eesMul`), `coError` is the remaining flow difference. A re-solve is also due when that CO moves by 5 %.
  *
+ * Neonates (`PatientSpec.kind` "neonate"): the ACS monitor is an adult model, so nothing of it is mapped: the spec is the neonate
+ * baseline plus `heart` as given and the solve is not calibrated (one analyze call, `calibrationError` and `coError` NaN). The
+ * replay still follows the simulation's rhythm for beat times; the solved waveform is warped to those beats.
+ *
  * Re-solving: never every frame. A solve (several analyze calls, ~100 ms each) runs when an input moved from its value at
  * the last solve by more than a threshold (HR 3 bpm, ischemia 0.03 of either ventricle, monitor MAP 3 mmHg) and at least
  * 3 s of simulated time have passed; also on `refresh()`. The check runs at each beat and when numbers() or
@@ -204,6 +208,7 @@ export class BridgeSource implements HemoSource {
 
   private spec(volumeMl: number): StructuralSpec {
     const h = this.opts.patient?.heart ?? {}, c = this.sim.circ;
+    if (this.opts.patient?.kind === "neonate") return { ...h, patient: "neonate" }; // the ACS monitor is an adult model: its rate, resistance and ischemia do not describe a neonate (see solve())
     return {
       ...h, patient: this.opts.patient?.kind ?? "adult", hr: c.hr,
       svrScale: (c.svr / BASE_SVR) * (h.svrScale ?? 1), volumeMl: (h.volumeMl ?? 0) + volumeMl,
@@ -216,7 +221,7 @@ export class BridgeSource implements HemoSource {
   /** Start a solve of the live inputs. With an asynchronous solver, one at a time; a call during a solve is queued. */
   private solve() {
     if (this.inFlight) { this.queued = true; return; }
-    const inputs = this.inputs(), req: SolveRequest = { base: this.spec(0), volume: this.volume, targetMap: inputs.map, targetCo: inputs.co, warm: this.report ? { svr: this.svrMul, ees: this.eesMul } : undefined };
+    const inputs = this.inputs(), req: SolveRequest = { base: this.spec(0), volume: this.volume, targetMap: inputs.map, targetCo: inputs.co, warm: this.report ? { svr: this.svrMul, ees: this.eesMul } : undefined, uncalibrated: this.opts.patient?.kind === "neonate" };
     let out: SolveResult | Promise<SolveResult>;
     try { out = this.solver.solve(req); } catch (e) { this.failed(e); return; }
     if (!(out instanceof Promise)) { this.apply(out, inputs); return; }

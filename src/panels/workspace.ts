@@ -7,13 +7,13 @@ import type { HemoSource } from "../sim/hemoSource";
 import type { Panel, PanelDef } from "./panel";
 import { createPlaygroundBar, type PlaygroundBar } from "./playgroundBar";
 import { snapshots, type SnapshotStore } from "./snapshots";
-import type { PlayClock } from "./timeControl";
+import type { ClinicalClock, PlayClock } from "./timeControl";
 import {
   PHONE_MAX_WIDTH, loadLayout, pickerItems, saveLayout, setActive, setPanelOn, visibleIds, type LayoutState,
 } from "./layout";
 
 /** Optional page hooks: the simulation clock's play controls (absent in tests), and the snapshot store panels share. */
-export interface WorkspaceOptions { clock?: PlayClock; snapshots?: SnapshotStore }
+export interface WorkspaceOptions { clock?: PlayClock; clinical?: ClinicalClock; snapshots?: SnapshotStore }
 
 interface Live { panel: Panel; card: HTMLElement; tab: HTMLButtonElement }
 
@@ -46,7 +46,7 @@ export class Workspace {
     const pick = document.createElement("div");
     pick.className = "ws-pick";
     pick.append(this.pickBtn, this.menu);
-    this.tools = createPlaygroundBar(source, opts.clock, opts.snapshots ?? snapshots);
+    this.tools = createPlaygroundBar(source, opts.clock, opts.snapshots ?? snapshots, opts.clinical);
     this.bar.append(this.tabs, this.tools.el, pick);
     root.append(this.bar, this.grid);
     document.addEventListener("click", e => { if (!pick.contains(e.target as Node)) this.toggleMenu(false); });

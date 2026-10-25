@@ -22,7 +22,9 @@ import { encodeScenario, decodeScenario } from "./sim/llm";
 import { TOOLS } from "./mcp/tools";
 import { mountShell } from "./shell/shell";
 import { mountWorkspace } from "./panels/workspace";
-import { PlayClock } from "./panels/timeControl";
+import { CLINICAL_SCALES, PlayClock } from "./panels/timeControl";
+import { createPlaygroundUi } from "./panels/playgroundControls";
+import type { SlotId } from "./panels/playgroundControls";
 import { numbersPanel } from "./panels/numbers";
 import { tracesPanel } from "./panels/traces";
 import { loopsPanel } from "./panels/loops";
@@ -32,7 +34,10 @@ import { jvpPanel } from "./panels/jvp";
 import { oxygenPanel } from "./panels/oxygen";
 import { BridgeSource } from "./sim/bridgeSource";
 import { createWorkerSolver } from "./sim/bridgeWorkerSolver";
-import { decodePatient } from "./sim/llm";
+import { decodePatient, encodePatient } from "./sim/llm";
+import { buildPlaygroundSpec, hasPlaygroundFields, stateOfSpec, withDevice } from "./sim/playground";
+import type { PlaygroundState } from "./sim/playground";
+import { PRESET_BY_ID } from "./sim/presets";
 import { SimPropsView } from "./sim/propsView";
 import type { PatientSpec } from "./sim/patient";
 import type { BridgeSolver } from "./sim/bridgeSolver";
@@ -1093,16 +1098,97 @@ resize(); setView("vAnt"); syncSelects(); rebuildAnatomy(); applyHeartView(); co
 /** Read by the bridge at each solve: a shared link's structural fields (heart lesions), which the Simulation does not keep. */
 const bridgeOpts: { patient?: PatientSpec; solver?: BridgeSolver } = {};
 let bridge: BridgeSource | null = null;
-/** A #s= link opens that patient, on load and when a link is pasted into an open tab. */
+// ---------------------------------------------------------------- playground mode (task P12)
+/**
+ * One PatientSpec drives the page. The Scenario part lives in `sim` and its existing controls; the rest is `pg`, edited by the
+ * playground's controls. Every change rebuilds the spec (`buildPlaygroundSpec`: join, normalise, warn) and applies it: the
+ * Scenario to the Simulation (when a load or the kind changes it), the whole spec to the bridge (`bridgeOpts.patient` and a
+ * refresh), the props view, and the share link in the address bar (`#s=`).
+ */
+let pgOn = false, pg: PlaygroundState = {}, pgPreset: string | null = null, pgSticky: string[] = [], pgSig = "", pgRefreshTimer = 0;
+const PG_MOVES: { slot: SlotId; from: string; skip: string }[] = [{ slot: "coronary", from: "lesionsec", skip: "H2" }, { slot: "rhythm", from: "patient", skip: "SUMMARY" }, { slot: "drugs", from: "volume", skip: "SUMMARY" }];
+const pgMoved = new Map<string, Element[]>();
+const pgUi = createPlaygroundUi({
+  getState: () => pg,
+  setState(next) {
+    const wasNeonate = pg.kind === "neonate";
+    pg = next; pgPreset = null;
+    if (!wasNeonate) pgSticky = [];
+    if (next.kind === "neonate" && sim.scenario().lesions?.length) { // a neonate has no coronary tree: drop the lesions from the simulation too
+      const b = buildPlaygroundSpec(sim.scenario(), pg);
+      loadScenario(b.spec); pgSticky = b.warnings.filter((w) => /neonate has no coronary tree/.test(w));
+    }
+    pgApply(true);
+  },
+  loadPreset(id) { const p = PRESET_BY_ID[id]; if (p) pgAdopt(p.spec, id); },
+  exit: () => pgShow(false),
+});
+$("pgmount").append(pgUi.el);
+/** The playground state of the patient on screen: the spec of a link plus the support switches as they are now. */
+function pgFromLive(): PlaygroundState {
+  const sup = sim.scenario().support ?? {};
+  return stateOfSpec({ ...(bridgeOpts.patient ?? {}), support: { impella: !!sup.impella, iabp: !!sup.iabp } });
+}
+/** Neonates have no coronary view: its controls, tracings and the vessels go; the heart stays. */
+function pgView() {
+  const neo = (bridgeOpts.patient?.kind ?? pg.kind) === "neonate";
+  document.body.classList.toggle("neonate", neo); vesselGroup.visible = !neo;
+}
+/** Rebuild the spec from the live Scenario and the playground state and apply it everywhere. */
+function pgApply(refresh: boolean) {
+  const built = buildPlaygroundSpec(sim.scenario(), pg), spec = built.spec;
+  T.support.impella = !!spec.support?.impella; T.support.iabp = !!spec.support?.iabp; // the legacy device model follows the switches
+  bridgeOpts.patient = spec; propsView.setPatient(spec);
+  if (refresh) { clearTimeout(pgRefreshTimer); pgRefreshTimer = window.setTimeout(() => bridge?.refresh(), 150); }
+  try { window.history.replaceState(null, "", `${location.pathname}${location.search}#s=${encodePatient(spec)}`); } catch { /* sandboxed frame: the link field still shows it */ }
+  pgSig = JSON.stringify([sim.scenario(), pg]);
+  pgView();
+  pgUi.sync(pg, { warnings: [...new Set([...pgSticky, ...built.warnings])], link: location.href, presetId: pgPreset });
+}
+/** Show or hide the playground; its groups hold the page's own controls while it is on. */
+function pgShow(on: boolean) {
+  if (on === pgOn) return;
+  pgOn = on;
+  $("pgmount").hidden = !on; $("pg_on").classList.toggle("on", on); $("pg_off").classList.toggle("on", !on);
+  $("pg_on").setAttribute("aria-pressed", String(on)); $("pg_off").setAttribute("aria-pressed", String(!on));
+  for (const m of PG_MOVES) {
+    const from = $(m.from);
+    if (on) { const kids = [...from.children].filter((c) => c.tagName !== m.skip); pgMoved.set(m.from, kids); pgUi.slot(m.slot).append(...kids); }
+    else from.append(...(pgMoved.get(m.from) ?? []));
+    from.hidden = on;
+  }
+  if (on) { pg = pgFromLive(); pgPreset = null; pgSticky = []; pgUi.el.hidden = false; pgApply(false); }
+  pgView();
+}
+/** Make `spec` the patient: its Scenario to the Simulation, the rest into the controls, then everything follows. */
+function pgAdopt(spec: PatientSpec, presetId: string | null = null) {
+  const st = stateOfSpec(spec), built = buildPlaygroundSpec(spec, st);
+  const wasOn = pgOn;
+  if (!wasOn) pgShow(true);
+  pg = st; pgPreset = presetId; pgSticky = built.warnings;
+  bridgeOpts.patient = built.spec;
+  const w = loadScenario(built.spec); if (w.length) console.warn("CoroSim: the patient was adjusted:", w.join("; "));
+  pgApply(true);
+}
+// The existing controls (lesions, rhythm, drugs, support) change the Scenario inside the Simulation: pick that up for the link and the bridge.
+setInterval(() => {
+  if (!pgOn || inGame) return;
+  for (const id of ["impella", "iabp"] as const) if (!!T.support[id] !== !!pg.devices?.[id]) pg = withDevice(pg, id, !!T.support[id]); // the Management switches and the playground's are one
+  if (JSON.stringify([sim.scenario(), pg]) !== pgSig) pgApply(false);
+}, 300);
+/** A #s= link opens that patient, on load and when a link is pasted into an open tab. A link with playground fields opens in playground mode. */
 function openShared() {
   const shared = !inGame && location.hash.match(/^#s=([\w-]+)/);
   if (!shared) return;
   try {
     const spec = decodePatient(shared[1]);
+    if (pgOn || hasPlaygroundFields(spec)) { pgAdopt(spec); return; }
     bridgeOpts.patient = spec; bridge?.refresh(); propsView.setPatient(spec);
-    const w = loadScenario(spec); if (w.length) console.warn("CoroSim: the shared patient was adjusted:", w.join("; ")); }
+    const w = loadScenario(spec); if (w.length) console.warn("CoroSim: the shared patient was adjusted:", w.join("; ")); pgView(); }
   catch (e) { console.warn("CoroSim: could not open the shared patient", e); }
 }
+on("pg_on", () => pgShow(true));
+on("pg_off", () => pgShow(false));
 openShared();
 addEventListener("hashchange", openShared);
 cathLinkUi();
@@ -1112,10 +1198,13 @@ if (!inGame) {
   const ws = $("workspace"); (ws.parentElement as HTMLElement).hidden = false;
   bridgeOpts.solver = createWorkerSolver();
   bridge = new BridgeSource(sim, bridgeOpts);
-  mountWorkspace(ws, [numbersPanel, tracesPanel, loopsPanel, rhcPanel, leftHeartCathPanel, jvpPanel, oxygenPanel], bridge, { clock: playClock });
+  mountWorkspace(ws, [numbersPanel, tracesPanel, loopsPanel, rhcPanel, leftHeartCathPanel, jvpPanel, oxygenPanel], bridge, {
+    clock: playClock, clinical: { scales: CLINICAL_SCALES, get: () => S.speed, set: (v) => { S.speed = v; controlsUi(); } }, // both clocks in the workspace bar
+  });
+  $("ts-l").style.display = $("ts-row").style.display = "none"; // the Lesion section's old time-scale buttons: now in the workspace bar
 }
 void shell.ai.start();
 /** Handle for scripts and browser-driving assistants: corosim.sim, corosim.load(scenario), corosim.live. */
-(window as unknown as { corosim: object }).corosim = { sim, load: loadScenario, clock: playClock, live: shell.ai.live, account: shell.ai.account, refresh: () => { controlsUi(); liveUi(); } };
+(window as unknown as { corosim: object }).corosim = { sim, load: loadScenario, playground: { bridge: () => bridge, state: () => pg, spec: () => bridgeOpts.patient, adopt: pgAdopt, show: pgShow }, clock: playClock, live: shell.ai.live, account: shell.ai.account, refresh: () => { controlsUi(); liveUi(); } };
 requestAnimationFrame(frame);
 void LEADS;

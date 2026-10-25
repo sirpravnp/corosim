@@ -17,6 +17,11 @@ export interface SolveRequest {
   targetCo?: number;
   /** Multipliers of the previous solve (svrScale, lvEes): where the cardiac-output search starts. Default 1, 1. */
   warm?: { svr: number; ees: number };
+  /**
+   * Solve `base` as given, with no calibration to the monitor (one analyze call). For a patient the ACS monitor does not describe,
+   * such as a neonate: the monitor is an adult model, and matching its MAP and flow would distort the neonate's circulation.
+   */
+  uncalibrated?: boolean;
 }
 export interface SolveResult {
   report: StructuralReport;
@@ -51,6 +56,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
  * `maxCoIterations` extra analyze calls, within `coToleranceFrac` of the target flow and `mapToleranceMmHg`.
  */
 export function solveBridge(req: SolveRequest): SolveResult {
+  if (req.uncalibrated) return { report: analyze(req.base, { waveform: true }), volume: 0, calibrationError: NaN, coError: NaN, svrMul: 1, eesMul: 1, analyzeCalls: 1 };
   const [lo, hi] = BRIDGE.volumeRangeMl, target = req.targetMap;
   let calls = 0;
   const run = (v: number, svr = 1, ees = 1, waveform = true) => {

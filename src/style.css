@@ -254,3 +254,31 @@ details.fold > :not(summary):last-child { margin-bottom: 16px; }
 a.askbtn { padding: 8px 11px; font: 600 13px/1 var(--font-ui); letter-spacing: 0; text-decoration: none; color: var(--ink); background: var(--panel); border: 1px solid var(--sh-line); }
 a.askbtn:hover { background: var(--ink); border-color: var(--ink); color: var(--bg); }
 a.askbtn span { margin-left: 5px; }
+
+/* Playground mode (task P12): the page's patient editor; groups reuse the folds */
+#pgentry[hidden], #pgmount[hidden] { display: none; }
+body.game #pgentry { display: none; }
+.pg { display: grid; gap: 10px; padding: 14px 14px 16px; background: var(--panel); border: 1px solid var(--sh-line); border-radius: 8px; }
+.pg[hidden] { display: none; }
+.pg > * { margin: 0; min-width: 0; }
+.pg-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.pg-head h2 { margin: 0; }
+.pg label.pg-first, .pg .row.pg-first, .pg .note.pg-first { margin-top: 0; }
+.pg-link { display: flex; gap: 6px; min-width: 0; }
+.pg-link input { flex: 1; min-width: 0; font: 500 11.5px/1.4 var(--font-data); }
+.pg-warns:empty { display: none; }
+.pg-warns > div { color: var(--warn); border-color: var(--warn); font-size: 12.5px; }
+.pg details.fold { background: transparent; border-radius: 8px; }
+.pg details.fold summary { gap: 8px; }
+.pg details.fold summary h2 { font-size: 13px; }
+.pg-tag { padding: 1px 7px; font: 600 10.5px/1.5 var(--font-data); text-transform: uppercase; color: var(--muted); border: 1px solid var(--rule); border-radius: 999px; white-space: nowrap; }
+.pg-tag.pg-yes { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, var(--rule)); }
+.pg-tag.pg-no { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, var(--rule)); }
+.pg-body > :first-child { margin-top: 0; }
+.pg-body > .pg-slotted { margin: 0; }
+.pg-sub { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+.pg-sliders { display: contents; }
+.pg-json { word-break: break-all; font-family: var(--font-data); }
+.pg-note { margin-top: 6px; }
+.pg-body details.fold { padding: 0; border: 0; }
+body.neonate .pg-coronary, body.neonate #anatomy, body.neonate #bedsfig, body.neonate #stmap, body.neonate #lesionsec { display: none; }

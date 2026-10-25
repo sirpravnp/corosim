@@ -4,11 +4,16 @@
  * The page's frame loop asks `PlayClock.advance(rawDt, simNow, upcoming)` how many simulated seconds to advance this frame
  * and uses the answer for the simulation, the ECG, the particles and the 3D view, so everything pauses together. The
  * clinical-minutes clock is computed from the same answer (minutes per simulated second are unchanged), so slow motion
- * stretches the heartbeat without changing what a clinical minute means. The 1×/3×/6× buttons (S.speed) are not touched.
+ * stretches the heartbeat without changing what a clinical minute means. The clinical clock (1×/3×/6×, the page's S.speed) is a
+ * separate setting that the page hands to the same control bar as a `ClinicalClock`.
  */
 
-/** Heartbeat-time scales offered next to the existing 1×/3×/6× clinical scales. */
+/** Heartbeat-time scales offered next to the 1×/3×/6× clinical scales. */
 export const SLOW_SCALES = [0.25, 0.5, 1] as const;
+/** Clinical-clock speeds: clinical minutes per second of simulated time are multiplied by this (the page's `S.speed`). */
+export const CLINICAL_SCALES = [1, 3, 6] as const;
+/** The page's clinical clock, handed to the time controls so both clocks sit in one place (task P12). */
+export interface ClinicalClock { scales: readonly number[]; get(): number; set(scale: number): void }
 /** A step that finds no upcoming beat gives up after this many simulated seconds (a stopped heart). */
 export const STEP_GIVE_UP_S = 5;
 const EPS = 1e-6;
