@@ -39,7 +39,7 @@ export const PRESETS: Preset[] = [
   },
   {
     id: "rv-infarct-impella", label: "RV infarct starving a left Impella", blurb: "Proximal RCA occlusion with a failed right ventricle in a preload-depleted patient, Impella CP at P9: the left ventricle gets too little blood, the flow falls and suction alarms sound. A fluid bolus, an Impella RP or a lower P-level restores the flow.",
-    spec: { lesions: [{ artery: "RCA", occluded: true, position: 0.2 }], heart: { rvEes: 0.2, rvStiffness: 4 }, bloodLoss: 0.2, devices: { impella: { model: "CP", level: 9, position: "correct" } } },
+    spec: { lesions: [{ artery: "RCA", occluded: true, position: 0.2 }], heart: { rvEes: 0.2, rvStiffness: 4 }, bloodLoss: 0.25, devices: { impella: { model: "CP", level: 9, position: "correct" } } },
   },
   {
     id: "tamponade", label: "Cardiac tamponade", blurb: "A 180 ml effusion in a normal sac: falling pressure and output, a raised venous pressure and a fast pulse (Beck's triad), with the filling pressures drawing together.",
