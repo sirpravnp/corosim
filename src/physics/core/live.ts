@@ -19,8 +19,8 @@ import type { Element, Engine, HeartEvent } from "./types";
  *
  *  - `contractility`  LV and RV end-systolic elastance Ees × factor (range 0.2-3). Sympathetic inotropy, beta blockade, inotropes.
  *  - `resistance`     systemic bed resistances BEDU and BEDL × factor (range 0.2-4). The pulmonary bed is not touched.
- *  - `venousTone`     unstressed volume Vu of SPL, IVC, SVC: Vu = Vu_design · clamp(1 − gain·(tone − 1), 0.2, 1.8) with gain 0.8 (SPL),
- *                     0.4 (IVC, SVC) and tone in 0.5-2 (`VENOUS_TONE`). Higher tone = lower Vu = more stressed volume (higher mean
+ *  - `venousTone`     unstressed volume Vu of SPL, IVC, SVC: Vu = Vu_design · clamp(1 − gain·(tone − 1), 0.6, 1.8) with gain 0.8 (SPL),
+ *                     0.2 (IVC, SVC) and tone in 0.5-2 (`VENOUS_TONE`). Higher tone = lower Vu = more stressed volume (higher mean
  *                     systemic filling pressure, more venous return); total blood volume is unchanged. [assumed]
  *  - `preload`        alias of `venousTone` (used when `venousTone` is not given), so a `BeatModifiers` record can be passed on
  *                     as it is. `AutonomicEffects.preloadResp` carries breathing too; the respiratory part belongs to B3.
@@ -149,10 +149,28 @@ export class LiveHeart {
     return () => { const i = this.listeners.indexOf(cb); if (i >= 0) this.listeners.splice(i, 1); };
   }
 
-  /** Start from the steady state at `hr` (beats/min) instead of the cold start: `periodic(hr)`, then stream time 0. Only before the first beat or step. */
+  /**
+   * The steady state `warm()` settled on, as a beat record (stream time `t` = −RR, the beat that ended at stream time 0): the same
+   * fields as a live beat, so a reader has real numbers (stroke volume, pressures, filling pressures) from the first instant, before
+   * the first live beat completes. null before `warm()` (A7b).
+   */
+  warmBeat: LiveBeat | null = null;
+
+  /**
+   * Start from the steady state at `hr` (beats/min) instead of the cold start: `periodic(hr)`, then stream time 0. Only before the
+   * first beat or step. Fills `warmBeat` with the last periodic beat.
+   */
   warm(hr: number): { beats: number; converged: boolean } {
     if (this.attached) throw new Error("LiveHeart.warm() must come before the first beat or step");
+    const T = 60 / hr, rec = new BeatRecorder(this.engine, T, this.valveNames);
     const r = this.engine.periodic(hr);
+    const beat = rec.beat(), fv = this.engine.flowVolumes(); // right after periodic() the recorder holds the last beat
+    rec.dispose();
+    this.warmBeat = {
+      t: -T, interval: T, strokeVolume: fv.fwd.AV - fv.bwd.AV, systolic: beat.p.AO.max, diastolic: beat.p.AO.end, pvc: false, atrialKick: true,
+      map: beat.p.AO.mean, p: beat.p, v: beat.v, edv: { LV: beat.v.LV.end, RV: beat.v.RV.end }, esv: { LV: beat.v.LV.min, RV: beat.v.RV.min },
+      rvStrokeVolume: fv.fwd.PVL - fv.bwd.PVL, valves: beat.valves, tauMs: beat.tauMs, strength: 1,
+    };
     this.offset = this.engine.t;
     this.attach();
     return r;

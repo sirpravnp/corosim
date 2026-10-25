@@ -24,12 +24,14 @@ export const LIVE = {
  * Vu = Vu_design · clamp(1 − gain·(τ − 1), factorRange): higher tone lowers Vu, and the blood it frees becomes stressed volume
  * (the total is unchanged). The splanchnic bed is the large, controllable reservoir (about half of the venous capacitance responds
  * to sympathetic tone, Gelman 2008 [lit]); the cavae respond less. Tone is clamped to `toneRange`. The gains and limits are
- * [assumed]: at tone 1.5 the splanchnic Vu falls by 40 %.
+ * [assumed]: at tone 1.5 the splanchnic Vu falls by 40 %. `factorRange[0]` is the venoconstriction reserve: whatever the tone, no
+ * reservoir gives up more than 40 % of its unstressed volume, at most 0.8 L from the splanchnic bed (2 L unstressed), about 15 % of
+ * the blood volume, within the 10-20 % Gelman 2008 [lit] finds recruitable; a large hemorrhage exhausts it (A7b).
  */
 export const VENOUS_TONE = {
-  gain: { SPL: 0.8, IVC: 0.4, SVC: 0.4 } as Record<string, number>,
+  gain: { SPL: 0.8, IVC: 0.2, SVC: 0.2 } as Record<string, number>,
   toneRange: [0.5, 2] as [number, number],
-  factorRange: [0.2, 1.8] as [number, number],
+  factorRange: [0.6, 1.8] as [number, number],
 };
 
 /** Range of the other modifier factors (contractility, resistance, relax): outside it the engine is not meaningful. [assumed] */
