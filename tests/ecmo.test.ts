@@ -75,15 +75,41 @@ describe("shock with ECMO and no vent", () => {
     expect(e3.b.v.LV.min).toBeGreaterThan(e2.b.v.LV.min); expect(e4.b.v.LV.min).toBeGreaterThan(e3.b.v.LV.min); expect(e2.b.v.LV.min).toBeGreaterThan(none.b.v.LV.min);
     expect(e2.avFwd).toBeLessThan(none.avFwd); expect(e3.avFwd).toBeLessThan(e2.avFwd); expect(e4.avFwd).toBeLessThan(e3.avFwd);
   });
-  // Known gaps (review of D6): the brief's bar is LVEDP, EDV and PCWP rising WITH ECMO flow; the model rises only ~0.6-0.8 mmHg
-  // and flattens from 2 to 4 L/min, because nothing keeps filling the LV once the RA is drained (no bronchial/Thebesian return).
-  // Clinically a poor LV distends substantially on VA-ECMO, which is why venting exists. Task D6b; prerequisite for D7 (venting).
-  it.fails("LV distends with ECMO flow: LVEDP at 4 L/min at least 3 mmHg above no ECMO (D6b)", () => {
-    expect(e4.LVEDP).toBeGreaterThanOrEqual(none.LVEDP + 3);
+});
+
+// D6b. Whether a poor LV distends on VA-ECMO depends on its blood volume. The ECMO drains the RA and the lungs and left heart then carry
+// only the reduced native flow, which the LV must still eject against the raised aortic pressure; for a stiff, weak LV at the normal
+// calibrated blood volume (SHOCK) the lower inflow and the higher end-systolic volume cancel (LVEDP +0.8 mmHg, flat). A volume-loaded
+// cardiogenic shock (the usual state after resuscitation, pulmonary congestion) sits on the steep part of the diastolic curve and
+// distends: LVEDP and PCWP rise with every step of flow. The bronchial/Thebesian return (`BRONCHIAL`, 1 % of cardiac output) adds
+// a little (about 0.3 mmHg here) and is the only inflow left when the aortic valve stays shut (SEVERE below).
+const LOADED: StructuralSpec = { ...SHOCK, volumeMl: 300 };
+const nL = run(LOADED, null), l2 = ec(2, LOADED), l3 = ec(3, LOADED), l4 = ec(4, LOADED);
+row("loaded none", nL); row("loaded 2", l2); row("loaded 3", l3); row("loaded 4", l4);
+/** Severe dysfunction, volume-loaded: LV Ees at 0.2, stiff, +800 ml. */
+const SEVERE: StructuralSpec = { lvEes: 0.2, lvStiffness: 3, volumeMl: 800 };
+const sN = run(SEVERE, null), s4 = ec(4, SEVERE), s5 = ec(5, SEVERE), s55 = ec(5.5, SEVERE);
+row("severe none", sN); row("severe 4", s4); row("severe 5", s5); row("severe 5.5", s55);
+log("severe LV/AO peak", sN.b.p.LV.max, s55.b.p.LV.max, s55.b.p.AO.max);
+
+describe("LV distension on VA-ECMO (D6b)", () => {
+  it("LV distends with ECMO flow: LVEDP at 4 L/min at least 3 mmHg above no ECMO", () => {
+    expect(l4.LVEDP).toBeGreaterThanOrEqual(nL.LVEDP + 3);
+    expect(l4.EDV).toBeGreaterThan(nL.EDV);
   });
-  it.fails("LVEDP and PCWP rise with each step of ECMO flow (D6b)", () => {
-    expect(e3.LVEDP).toBeGreaterThan(e2.LVEDP); expect(e4.LVEDP).toBeGreaterThan(e3.LVEDP);
-    expect(e3.PCWP).toBeGreaterThan(e2.PCWP); expect(e4.PCWP).toBeGreaterThan(e3.PCWP);
+  it("LVEDP and PCWP rise with each step of ECMO flow", () => {
+    expect(l2.LVEDP).toBeGreaterThan(nL.LVEDP); expect(l3.LVEDP).toBeGreaterThan(l2.LVEDP); expect(l4.LVEDP).toBeGreaterThan(l3.LVEDP);
+    expect(l2.PCWP).toBeGreaterThan(nL.PCWP); expect(l3.PCWP).toBeGreaterThan(l2.PCWP); expect(l4.PCWP).toBeGreaterThan(l3.PCWP);
+    expect(l3.avFwd).toBeLessThan(l2.avFwd); expect(l4.avFwd).toBeLessThan(l3.avFwd);
+  });
+  it("severe dysfunction: the aortic valve stops opening and LVEDP climbs far above the moderate case", () => {
+    expect(s4.avFwd).toBeLessThan(sN.avFwd); expect(s5.avFwd).toBeLessThan(s4.avFwd); expect(s55.avFwd).toBeLessThan(s5.avFwd);
+    expect(s55.avFwd).toBeLessThan(0.5);
+    expect(s4.LVEDP).toBeGreaterThan(sN.LVEDP + 10); expect(s5.LVEDP).toBeGreaterThan(s4.LVEDP); expect(s55.LVEDP).toBeGreaterThan(s5.LVEDP);
+    expect(s55.LVEDP).toBeGreaterThan(l4.LVEDP + 20);
+    // the LV fills until its contraction meets the aortic pressure
+    expect(s55.b.p.LV.max).toBeGreaterThan(s55.b.p.AO.max - 5);
+    expect(s55.anyNaN).toBe(false);
   });
 });
 
