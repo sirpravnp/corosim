@@ -20,6 +20,8 @@ import { BeatHemodynamics } from "../physics/beatHemo";
 import { Autonomic, AUTONOMIC, AutonomicEffects } from "../physics/autonomic";
 import { LiveHeart, LiveBeat } from "../physics/core/live";
 import { Iabp } from "../physics/core/devices/iabp";
+import { CoronaryCoupling, BeatSupply, supplyIndex } from "../physics/core/coronary";
+import { COUPLING } from "../config/coronary";
 import { ImpellaConsole } from "../physics/core/devices/impella";
 import { ImpellaRp } from "../physics/core/devices/impellaRp";
 import { Ecmo } from "../physics/core/devices/ecmo";
@@ -146,6 +148,8 @@ export class Simulation {
   coreNote = "";
   /** Per-beat aortic measurements of the diastole (valve closed) and the IABP console numbers, see `onDiastoleSample` / `handleLiveBeat`. */
   private dia = { t: NaN, aoT: 0, aoSum: 0, dT: 0, dSum: 0, peak: -Infinity, sys: -Infinity, closed: false, opened: false, balloon: 0, fill: 0 };
+  /** Coronary coupling of the core engine (E2): the per-beat driving pressures of the subendocardium and subepicardium from the aortic and LV pressure traces. */
+  private cor = new CoronaryCoupling();
   private dx = { rho: NaN, aug: 0, peak: 0, mean: 0, sys: 0, balloon: 0 };
   private exchange?: VolumeExchange;
   private bv0 = 4900;
@@ -413,8 +417,11 @@ export class Simulation {
     if (this.live) this.coreStep(h, minutes); else for (const b of this.stream.drain(this.t)) this.handleBeat(b);
     // Coronary perfusion follows the pressure the heart actually generates (plus any balloon augmentation),
     // and demand follows what drugs and devices do to it.
-    const aug = this.live ? this.dx.aug : this.support.iabp ? SUPPORT.iabpCoronaryAug : 0; // core: the augmentation measured on the aortic trace
-    this.perfusion += (this.map + aug - this.perfusion) * (1 - Math.exp(-(h * this.speed) / 2));
+    // core (E2): the aortic-equivalent pressure of the subendocardium from the beat's traces (diastolic pressure, diastolic time, LVEDP, intramyocardial
+    // pressure; a balloon's augmentation is in the aortic trace), in place of the mean pressure plus a measured augmentation
+    const cpp = this.live ? this.cor.last : null;
+    const drive = cpp ? cpp.endo + COUPLING.offset : this.live ? this.map + this.dx.aug : this.map + (this.support.iabp ? SUPPORT.iabpCoronaryAug : 0);
+    this.perfusion += (drive - this.perfusion) * (1 - Math.exp(-(h * this.speed) / COUPLING.smoothS));
     if ((this.mapClock += h) > 0.5) {
       this.mapClock = 0;
       if (Math.abs(this.perfusion - this.solvedPerfusion) > 2 || Math.abs(this.circ.demandFactor - this.solvedDemand) > 0.02) {
@@ -568,8 +575,9 @@ export class Simulation {
     this.rpConsole?.dispose(); this.rpConsole = this.rp ? new ImpellaConsole(live.engine, "impellaRp") : undefined;
     this.dia = { t: NaN, aoT: 0, aoSum: 0, dT: 0, dSum: 0, peak: -Infinity, sys: -Infinity, closed: false, opened: false, balloon: 0, fill: 0 };
     this.dx = { rho: NaN, aug: 0, peak: 0, mean: 0, sys: 0, balloon: 0 };
-    const aoIdx = live.engine.node("AO");
-    live.engine.onSample((smp) => this.onDiastoleSample(smp, aoIdx)); // before the warm-up: it also measures the unassisted diastolic ratio
+    const aoIdx = live.engine.node("AO"), lvIdx = live.engine.node("LV");
+    this.cor.reset();
+    live.engine.onSample((smp) => this.onDiastoleSample(smp, aoIdx, lvIdx)); // before the warm-up: it also measures the unassisted diastolic ratio
     this.pushDevices(true);
     this.pushInputs();
     // Breathing makes the beats non-periodic, which `periodic()` cannot settle (it would run to its beat limit, seconds): settle with the
@@ -585,6 +593,7 @@ export class Simulation {
     if (![w.map, w.systolic, w.strokeVolume, w.p.RA.mean, w.p.LA.mean].every(Number.isFinite)) throw new Error("the settled beat has no finite pressures");
     this.dx.rho = this.dia.dT > 0 && this.dia.aoT > 0 ? this.dia.dSum / this.dia.dT / (this.dia.aoSum / this.dia.aoT) : ACS_CORE.diastolicRatio;
     this.dia = { ...this.dia, t: NaN, aoT: 0, aoSum: 0, dT: 0, dSum: 0, peak: -Infinity, sys: -Infinity, closed: false, opened: false, balloon: 0, fill: 0 };
+    this.cor.reset();
     this.seedFromWarm(w);
     this.stepFluids(0);
     live.onRecord((b) => this.handleLiveBeat(b));
@@ -751,7 +760,7 @@ export class Simulation {
   }
 
   /** Sample hook: the aortic pressure with the aortic valve closed (after it opened) is the diastole; also the balloon's pressure and fill. */
-  private onDiastoleSample(smp: { t: number; P: Readonly<Float64Array>; q: Readonly<Record<string, number>>; taps: Readonly<Record<string, Record<string, number>>> }, ao: number) {
+  private onDiastoleSample(smp: { t: number; P: Readonly<Float64Array>; q: Readonly<Record<string, number>>; taps: Readonly<Record<string, Record<string, number>>> }, ao: number, lv: number) {
     const d = this.dia, h = Number.isFinite(d.t) ? Math.min(smp.t - d.t, 0.05) : 0, p = smp.P[ao], q = smp.q.AV ?? 0;
     d.t = smp.t;
     if (h > 0) { d.aoT += h; d.aoSum += p * h; }
@@ -760,6 +769,7 @@ export class Simulation {
     if (d.opened && !d.closed && p > d.sys) d.sys = p; // the ejection peak: before the valve closes
     const b = smp.taps.iabp;
     if (b) { if (b.augmentation > d.balloon) d.balloon = b.augmentation; if (b.fill > d.fill) d.fill = b.fill; }
+    this.cor.sample(h, p, smp.P[lv], d.closed);
   }
 
   /**
@@ -770,6 +780,7 @@ export class Simulation {
    */
   private diastolicBeat(lb: LiveBeat, k: number) {
     const d = this.dia, x = this.dx;
+    this.cor.endBeat();
     if (d.dT > 0.05 && d.aoT > 0) {
       const D = d.dSum / d.dT, mean = d.aoSum / d.aoT, assisted = d.fill > 0.5;
       if (assisted) x.aug += (Math.max(0, D - x.rho * mean) - x.aug) * k;
@@ -844,6 +855,24 @@ export class Simulation {
    */
   drugState(): { level: Record<DrugName, number>; effects: DrugEffects } | null {
     return this.engine === "core" ? { level: { ...this.pk.level }, effects: this.pk.effects() } : null;
+  }
+
+  /**
+   * Coronary supply of the last beat (E2), null with the legacy engine or before the first beat. `endo` / `epi` are the driving pressures of
+   * the subendocardial and subepicardial layer (mmHg, see `BeatSupply`), `endoIndex` / `epiIndex` those over the default patient's (1 = normal),
+   * `bed` the pressure the network is solved at for the layer (the aortic equivalent) and `beds` each bed's flow-to-demand ratio at the two layers
+   * (`endo`, `epi`; 1 = demand met) and its ischemia severity at the subendocardium. Solves the network twice, so it costs a few ms.
+   */
+  coronarySupply() {
+    const c = this.engine === "core" ? this.cor.last : null;
+    if (!c || !this.analysis) return null;
+    const solve = (p: number) => solveNetwork(this.tree, this.n.lesions, this.demand * this.solvedDemand, (p + COUPLING.offset) * MMHG, this.grafts);
+    const en = solve(c.endo), ep = solve(c.epi);
+    const beds = Object.fromEntries(en.terminals.map((t, i) => [t.key, { endo: +t.ratio.toFixed(3), epi: +ep.terminals[i].ratio.toFixed(3), severity: +t.severity.toFixed(3) }]));
+    return {
+      endo: c.endo, epi: c.epi, endoIndex: supplyIndex(c.endo, "endo"), epiIndex: supplyIndex(c.epi, "epi"), transmural: c.transmural,
+      dpti: c.dpti, tti: c.tti, viability: c.tti > 0 ? c.dpti / c.tti : 0, diastolicFraction: c.diastolicFraction, lvedp: c.lvedp, perfusion: this.perfusion, beds,
+    };
   }
 
   /** Myocardial oxygen demand relative to the patient's own: the drug effects on the ventricle (`DEMAND`), times the unloading of the devices (`SUPPORT`). */
