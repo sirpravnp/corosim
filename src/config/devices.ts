@@ -116,3 +116,19 @@ export const ECMO_SUCTION = { volumeTau: 0.6, vcMarginMl: 5, wV: 2, Pth: -6, wP:
  * linear in FiO₂ between air and pure oxygen. [assumed]
  */
 export const ECMO_OXYGENATOR = { sweepTau: 0.6, satAir: 0.96, satO2: 1.0 };
+
+// ---- Impella RP and venting (task D7) ---------------------------------------------------------------------------------------------
+/**
+ * Impella RP: a right-sided rotary pump, inflow in the inferior vena cava, outflow in the pulmonary artery. All [assumed]; the class
+ * flow (about 4 L/min at the top level) follows the order of magnitude of the manufacturer's public material, NOT verified here.
+ * Same HQ recipe as `IMPELLA` (split f = 0.4): shut-off head H0 = 70 mmHg at the top speed 33 krpm, free flow Qf = 91 ml/s, so that
+ * Q(P9, ΔP = 20 mmHg) is about 4 L/min (the right side works against a much smaller pressure difference than the Impella CP,
+ * hence the lower head). `speeds`: P-level 1..9 linear from 15 to 33 krpm (P0 = off). Cannula 15 cm x 6 mm.
+ * `suction`: the inflow is the IVC, so the law is relative to its unloaded volume V0 = Vu (R-D1): suction half developed at
+ * Vc = V0 + `vcMarginMl` (the IVC holds about 130 ml of stressed volume normally), pressure term at `Pth` mmHg, floor `floorMl` above V0.
+ */
+export const IMPELLA_RP = {
+  speeds: [0, 15, 17.25, 19.5, 21.75, 24, 26.25, 28.5, 30.75, 33] as readonly number[],
+  a: 0.06428, b: 0.009324, c: 0.005072, lengthCm: 15, diameterMm: 6, R0: 0.08, maxFlowLpm: 4, designDp: 20,
+  suction: { vcMarginMl: 25, wV: 6, Pth: -0.5, wP: 0.7, Rmax: 40, suctionAt: 0.5, floorMl: 3, floorTau: 0.05, limitTau: 0.005, limitBand: 2 },
+};
