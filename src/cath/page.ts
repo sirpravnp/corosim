@@ -1,6 +1,8 @@
 import "./cath.css";
 import "../customSelect";
 import { mountShell } from "../shell/shell";
+import { mountCrossLinks } from "../shell/crossLinkRow";
+import { joinPatient } from "../sim/crossLinks";
 import { Simulation } from "../sim/simulation";
 import { Scenario } from "../sim/scenario";
 import { decodePatient } from "../sim/llm";
@@ -31,13 +33,19 @@ let current: CathCase = CASES[0];
 let model!: AngioModel, report!: CathReport, wire!: WireModel;
 let artery = "LAD";
 let shared = false;
+/** The PatientSpec a #s= link opened, kept for its structural sections (the Simulation holds only the coronary scenario). */
+let sharedSpec: PatientSpec | undefined;
+/** "Open in…" links: the patient on screen, with whatever treatment has changed. */
+const links = mountCrossLinks($("xlinks"), "cath", "../", () => joinPatient(sim.scenario(), shared ? sharedSpec : undefined));
 
 /** Put a patient in the lab and read everything the panels show. */
 function load(c: CathCase, fromLink = false, spec?: PatientSpec) {
   current = c; shared = fromLink;
+  if (spec) sharedSpec = spec;
   sim.reset(c.scenario, { settled: true });
   sim.warmup(20);
-  newBridge(spec);
+  newBridge(shared ? sharedSpec : undefined);
+  links.refresh();
   $("treatResult").textContent = "";
   view.opts.rot = c.view.rot; view.opts.tilt = c.view.tilt; view.opts.injection = c.view.injection;
   $<HTMLInputElement>("rot").value = String(c.view.rot); $<HTMLInputElement>("tilt").value = String(c.view.tilt); $<HTMLSelectElement>("inj").value = c.view.injection;
