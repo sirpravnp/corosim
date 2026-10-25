@@ -66,7 +66,7 @@ describe("inflow too deep", () => {
 
 describe("RV infarct starving a left-sided Impella", () => {
   const RCA = { lesions: [{ artery: "RCA", occluded: true, position: 0.2 }] }, RCAdist = { lesions: [{ artery: "RCA", occluded: true, position: 0.95 }] };
-  const RV = { heart: { rvEes: 0.15, rvStiffness: 4 } };
+  const RV = { heart: { rvEes: 0.2, rvStiffness: 4 } };
   const rvf = run({ ...RCA, ...RV, bloodLoss: 0.2, ...imp(9) }), ref = run({ ...RCAdist, bloodLoss: 0.2, ...imp(9) });
   const fl = run({ ...RCA, ...RV, bloodLoss: 0.2, ...imp(9), support: { fluids: 1 } });
   const rp = run({ ...RCA, ...RV, bloodLoss: 0.2, devices: { impella: { level: 9 }, impellaRp: { level: 5 } } });
