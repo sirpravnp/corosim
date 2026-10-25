@@ -2,7 +2,7 @@
 
 export const BRIDGE = {
   /** Re-solve when an input moves by more than this since the last solve. [assumed] */
-  threshold: { hrBpm: 3, ischemia: 0.03, mapMmHg: 3, svrFrac: 0.05 },
+  threshold: { hrBpm: 3, ischemia: 0.03, mapMmHg: 3, svrFrac: 0.05, lungSat: 0.01 },
   /** Never re-solve more often than this, simulated seconds (a solve costs ~100 ms per analyze call). [assumed] */
   minSolveIntervalS: 3,
   /** Volume (ml, added to the circulation) the MAP calibration may use: stands in for venoconstriction and fluids. [assumed] */

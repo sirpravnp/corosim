@@ -68,6 +68,32 @@ export const FLUIDS = {
   /** The compartments read the engine's pressures smoothed over this many clinical minutes (the swing of one beat or one breath is not the capillary's mean pressure). [assumed] */
   pressureTauMin: 1,
 
+  // ---- lung water (task C3) ----------------------------------------------------------------------------------------
+  lung: {
+    /** Extravascular lung water at rest, ml per kg of body weight (PiCCO normal 3-7 ml/kg, Sakka 2000: 7 is the upper normal; above ~10 is edema). [lit] */
+    evlwMlPerKg: 7,
+    /** Pulmonary capillary pressure from the wedge (left atrial) and the mean pulmonary artery pressure: Pc = PCWP + share·(PAP − PCWP). The capillary sits 40 % of the way along the pressure drop of the lung's resistance (Gaar, Kuida and Brown 1967; Fung and Sobin). [lit] */
+    pcShare: 0.4,
+    /** Wedge and mean PA pressure of the resting adult on the core engine, mmHg: place the resting lung in balance (Jv = lymph), as `pcRest` does for the body. Measured with the normal adult of the core. [assumed] */
+    pcwpRest: 8.1, papRest: 13.3,
+    /** Reflection coefficient of the lung's capillary wall for plasma protein (0.5-0.8; Staub, Taylor). [lit] */
+    sigma: 0.7,
+    /** Lung lymph protein over plasma protein at rest (0.6-0.7 in sheep and in man; Staub 1974, Erdmann 1975): sets the interstitial oncotic pressure. It is held fixed: the washout of interstitial protein, which lowers it in prolonged edema and so makes the safety factor smaller, is not modelled. [lit] */
+    proteinRatio: 0.7,
+    /** Filtration coefficient of the lung, ml/min/mmHg per 70 kg (sheep: 0.3-0.5 ml/min/mmHg per kg of lung; Staub 1974). [lit-ish, tuned] */
+    kf: 0.6,
+    /** Lung lymph flow at rest, ml/min per 70 kg. [assumed] */
+    lymphRest: 0.5,
+    /** Lymph flow rises with the interstitial pressure, L = L0·exp(slope·(Pi − Pi0)), at most `lymphMax`·L0: lung lymph flow rises 5-10 fold with a rise of the filtration before edema accumulates (Erdmann, Vaughan and Staub 1975; Drake, Gabel and Hansen 1985; the lung's safety factor against edema, Guyton and Lindsey 1959). [lit-ish] */
+    lymphSlope: 0.35, lymphMax: 10,
+    /** Interstitial pressure from the water above rest x (ml per 70 kg; same form as the body's): a stiff first part (`ciLow`, over `stiffSpan` mmHg: the perivascular cuffs fill first) and a loose part beyond (`ciHigh`: once the interstitium is full the fluid floods the alveoli). [assumed] */
+    ciLow: 25, ciHigh: 120, stiffSpan: 3,
+    /** Gas exchange: the fall of the pulmonary venous saturation (a fraction) is `satDropMax`·h/(h + 1) with h = (excess/x50)^n for the lung water above rest, ml per kg. The interstitial fluid costs little; the alveolar flooding of the second stage costs a lot (shunt and V/Q mismatch; Staub 1974). [assumed, tuned to the task targets] */
+    satDropMax: 0.45, dropMlPerKg50: 7.5, dropHill: 2.5,
+    /** The excess of lung water (ml/kg) at which the core's `circ.congestion` is 1 (alveolar edema). [assumed] */
+    congestionMlPerKg: 5,
+  },
+
   // ---- numerics ----------------------------------------------------------------------------------------------------
   /** Largest step of the integration, clinical minutes (the slowest time scale is about 20 min). */
   maxStepMin: 0.5,

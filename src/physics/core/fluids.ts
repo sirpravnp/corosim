@@ -29,6 +29,11 @@ import { FLUIDS } from "../../config/fluids";
  *  - diuresis: urine = urineRest · volume term · pressure term · `diuretic` (a multiplier, 1 = none); water taken in at the same
  *    rate as the resting urine (`maintenance`) keeps the resting patient level.
  *  - capillary leak (0..1): Kf up, σ down, protein escape up (config/fluids.ts).
+ *  - lung water (C3): a fourth compartment Vl, the extravascular water of the lung, filled from the plasma by the same Starling law with the
+ *    lung's own constants (`FLUIDS.lung`): Pc = PCWP + 0.4·(PAP − PCWP) (Gaar), a lower Kf and σ, the interstitial oncotic pressure from the
+ *    lung lymph protein, a lymph flow that rises with the interstitial pressure (5-10 fold before edema accumulates) and clears the lung when
+ *    Pc falls. Its water comes from and returns to the plasma, so the total water balance still closes. The excess lung water lowers the
+ *    pulmonary venous saturation (`satDrop`).
  * Units: volumes ml, masses g, pressures mmHg, time clinical minutes, flows ml/min.
  */
 export type FluidKind = "crystalloid" | "colloid" | "albumin" | "blood";
@@ -91,10 +96,19 @@ export interface FluidReadout {
   /** Capillary leak factor (0..1) and hemorrhage rate (ml/min) in force. */
   leak: number;
   hemorrhage: number;
+  /** Lung water (C3): extravascular lung water ml, its excess over rest ml, the index (ml per kg of body weight), the pulmonary capillary pressure and the interstitial pressure of the lung (mmHg), lung filtration and lymph (ml/min), and the fall of the pulmonary venous saturation it causes (a fraction). */
+  lungWater: number;
+  lungWaterExcess: number;
+  lungWaterIndex: number;
+  lungCapillaryPressure: number;
+  lungInterstitialPressure: number;
+  lungFiltration: number;
+  lungLymph: number;
+  lungSatDrop: number;
 }
 
-const N = 10;
-const [VP, VR, VI, MP, MI, MC, GIVEN, LOST, URINE, MAINT] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+const N = 11;
+const [VP, VR, VI, MP, MI, MC, GIVEN, LOST, URINE, MAINT, VL] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 export class FluidCompartments {
   /** Capillary leak (0..1), hemorrhage rate (ml/min of whole blood), diuretic multiplier of the urine flow. Set between steps. */
@@ -103,12 +117,14 @@ export class FluidCompartments {
   time = 0;
   readonly doses: FluidDose[] = [];
   private y = new Float64Array(N);
-  private pa: number; private pv: number;
+  private pa: number; private pv: number; private pcwp: number; private pap: number;
   // resting values and scaled constants
   private readonly s: number; // weight / 70
   private readonly v0: { vp: number; vr: number; vi: number; blood: number };
   private readonly pi0: number; private readonly kE: number; private readonly kf: number; private readonly l0: number;
   private readonly ciLow: number; private readonly ciHigh: number; private readonly u0: number;
+  // the lung
+  private readonly vl0: number; private readonly piL0: number; private readonly kfL: number; private readonly lL0: number; private readonly ciLowL: number; private readonly ciHighL: number;
 
   constructor(patient: FluidPatient, pa = FLUIDS.mapRest, pv = 6) {
     const F = FLUIDS, s = (this.s = patient.weightKg / 70), hct = patient.hb / F.mchc;
@@ -121,11 +137,20 @@ export class FluidCompartments {
     // rest: Jv = L0 at the resting capillary pressure fixes the interstitial pressure Pi0; E = L0·ci0 fixes the protein escape rate
     this.pi0 = F.pcRest - F.sigma * (oncotic(F.plasmaProtein) - oncotic(F.interstitialProtein)) - this.l0 / this.kf;
     this.kE = (this.l0 * F.interstitialProtein / 100) / this.y[MP];
+    // the lung, in balance at the resting wedge and PA pressures
+    const Lg = F.lung;
+    this.pcwp = Lg.pcwpRest; this.pap = Lg.papRest;
+    this.vl0 = this.y[VL] = Lg.evlwMlPerKg * patient.weightKg;
+    this.kfL = Lg.kf * s; this.lL0 = Lg.lymphRest * s; this.ciLowL = Lg.ciLow * s; this.ciHighL = Lg.ciHigh * s;
+    this.piL0 = this.pcLungOf() - Lg.sigma * (oncotic(F.plasmaProtein) - this.piLungOncotic(F.plasmaProtein)) - this.lL0 / this.kfL;
   }
 
   // ---- inputs ---------------------------------------------------------------------------------------------------
   /** The engine's pressures, mmHg: mean aortic pressure `pa` and mean venous pressure `pv` (of SVC, IVC and the splanchnic reservoir). Non-finite values are ignored. */
   setPressures(pa: number, pv: number) { if (Number.isFinite(pa)) this.pa = pa; if (Number.isFinite(pv)) this.pv = pv; }
+
+  /** The engine's pressures in the lung, mmHg: mean left atrial (the wedge) and mean pulmonary artery pressure. Non-finite values are ignored. */
+  setLungPressures(pcwp: number, pap: number) { if (Number.isFinite(pcwp)) this.pcwp = pcwp; if (Number.isFinite(pap)) this.pap = pap; }
 
   /** Schedule a dose: `ml` of `kind` from clinical minute `start`, run in over `dur` minutes (0: the bolus time of the config). A dose that should have started already starts now. */
   schedule(kind: FluidKind, ml: number, start = 0, dur = 0): FluidDose {
@@ -181,6 +206,18 @@ export class FluidCompartments {
     const x = vi - this.v0.vi, span = FLUIDS.stiffSpan;
     return this.pi0 + x / this.ciHigh + (x > 0 ? span * Math.tanh(x / (span * this.ciLow)) : 0);
   }
+  private pcLungOf() { return Math.max(0, this.pcwp + FLUIDS.lung.pcShare * (this.pap - this.pcwp)); }
+  private piLungOncotic(cp: number) { return oncotic(FLUIDS.lung.proteinRatio * cp); }
+  private piLungOf(vl: number) {
+    const x = vl - this.vl0, span = FLUIDS.lung.stiffSpan;
+    return this.piL0 + x / this.ciHighL + (x > 0 ? span * Math.tanh(x / (span * this.ciLowL)) : 0);
+  }
+  /** Fall of the pulmonary venous saturation (a fraction) with the lung water `vl` (ml). */
+  private satDropOf(vl: number) {
+    const Lg = FLUIDS.lung, x = Math.max(0, vl - this.vl0) / (this.s * 70);
+    const h = Math.pow(x / Lg.dropMlPerKg50, Lg.dropHill);
+    return (Lg.satDropMax * h) / (1 + h);
+  }
   private urineOf(vb: number) {
     const F = FLUIDS;
     const p = Math.min(2.5, Math.max(0, (this.pa - F.mapAnuria) / (F.mapRest - F.mapAnuria)));
@@ -194,7 +231,10 @@ export class FluidCompartments {
     const jv = starling(kf, sigma, pc, pi, piP, piI);
     const lymph = Math.min(this.l0 * Math.exp(F.lymphSlope * (pi - this.pi0)), F.lymphMax * this.l0);
     const escape = this.kE * (1 + F.leak.proteinGain * L) * y[MP];
-    return { jv, lymph, escape, urine: this.urineOf(y[VP] + y[VR]), piP, piI, pi, pc, ci: y[MI] / vi };
+    const vl = Math.max(y[VL], 1), cp = (100 * (y[MP] + y[MC])) / vp, piL = this.piLungOf(vl), pcL = this.pcLungOf();
+    const jvL = starling(this.kfL, F.lung.sigma, pcL, piL, piP, this.piLungOncotic(cp));
+    const lymphL = Math.min(this.lL0 * Math.exp(F.lung.lymphSlope * (piL - this.piL0)), F.lung.lymphMax * this.lL0);
+    return { jv, lymph, escape, urine: this.urineOf(y[VP] + y[VR]), piP, piI, pi, pc, ci: y[MI] / vi, jvL, lymphL, piL, pcL };
   }
 
   /** d(state)/dt at `y` with the infusion rates `inf` (ml/min per kind), clinical minutes. */
@@ -202,9 +242,10 @@ export class FluidCompartments {
     const F = FLUIDS, f = this.flows(y), vb = Math.max(y[VP] + y[VR], 1), hemP = (this.hemorrhage * y[VP]) / vb, hemR = (this.hemorrhage * y[VR]) / vb;
     const bloodP = inf.blood * (1 - F.bloodHct), bloodR = inf.blood * F.bloodHct, vp = Math.max(y[VP], 1), m0 = this.u0;
     const give = inf.crystalloid + inf.colloid + inf.albumin + inf.blood;
-    out[VP] = inf.crystalloid + inf.colloid + inf.albumin + bloodP - f.jv + f.lymph - hemP - f.urine + m0;
+    out[VP] = inf.crystalloid + inf.colloid + inf.albumin + bloodP - f.jv + f.lymph - f.jvL + f.lymphL - hemP - f.urine + m0;
     out[VR] = bloodR - hemR;
     out[VI] = f.jv - f.lymph;
+    out[VL] = f.jvL - f.lymphL;
     out[MP] = (inf.albumin * F.albuminGdl) / 100 + (bloodP * F.bloodProteinGdl) / 100 - f.escape + f.lymph * f.ci - (y[MP] * hemP) / vp;
     out[MC] = (inf.colloid * F.colloidGdl) / 100 - (y[MC] * Math.LN2) / F.colloidHalfLifeMin - (y[MC] * hemP) / vp;
     out[MI] = f.escape - f.lymph * f.ci;
@@ -250,10 +291,13 @@ export class FluidCompartments {
   /** Blood volume at rest, ml. */
   get restBloodVolume(): number { return this.v0.blood; }
 
-  /** Total water error, ml: (Vp + Vr + Vi) − (W0 + given − lost − urine + maintenance). Zero up to rounding. */
+  /** Fall of the pulmonary venous saturation from the lung water now (a fraction, 0 at rest): what the oxygen solve takes off `satLung`. */
+  get satDrop(): number { return this.satDropOf(this.y[VL]); }
+
+  /** Total water error, ml: (Vp + Vr + Vi + Vl) − (W0 + given − lost − urine + maintenance). Zero up to rounding. */
   balance(): number {
     const y = this.y, v = this.v0;
-    return y[VP] + y[VR] + y[VI] - (v.vp + v.vr + v.vi + y[GIVEN] - y[LOST] - y[URINE] + y[MAINT]);
+    return y[VP] + y[VR] + y[VI] + y[VL] - (v.vp + v.vr + v.vi + this.vl0 + y[GIVEN] - y[LOST] - y[URINE] + y[MAINT]);
   }
 
   read(): FluidReadout {
@@ -265,6 +309,8 @@ export class FluidCompartments {
       capillaryPressure: f.pc, interstitialPressure: f.pi,
       filtration: f.jv, lymph: f.lymph, netTranscapillary: f.jv - f.lymph, urineRate: f.urine,
       given: y[GIVEN], lost: y[LOST], urine: y[URINE], maintenance: y[MAINT], leak: this.leak, hemorrhage: this.hemorrhage,
+      lungWater: y[VL], lungWaterExcess: y[VL] - this.vl0, lungWaterIndex: y[VL] / (this.s * 70), lungCapillaryPressure: f.pcL, lungInterstitialPressure: f.piL,
+      lungFiltration: f.jvL, lungLymph: f.lymphL, lungSatDrop: this.satDropOf(y[VL]),
     };
   }
 }

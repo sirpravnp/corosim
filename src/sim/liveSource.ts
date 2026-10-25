@@ -187,13 +187,13 @@ export class LiveSource implements HemoSource {
     const base = PATIENTS.adult;
     if (!live || !recs.length) return { node: NaNs(NODES), spo2: NaN, preductal: NaN, postductal: NaN, svo2: NaN, do2: NaN, vo2: NaN, lactate: NaN, bed: {}, bedSource: "ischemia-derived" };
     const ec = live.engine.elements.find((e) => e.name === "ecmo") as Ecmo | undefined;
-    const bed = bedOxygen(this.sim), k = `${key}|${ec?.sweep}|${ec?.fio2}`;
+    const drop = this.sim.lungSatDrop(), bed = bedOxygen(this.sim), k = `${key}|${ec?.sweep}|${ec?.fio2}|${drop.toFixed(3)}`;
     if (this.sat && this.satKey === k) return { ...this.sat, bed };
     const T = recs.reduce((s, r) => s + r.rr, 0);
     const fwd: Record<string, number> = {}, bwd: Record<string, number> = {};
     for (const r of recs) for (const [src, dst] of [[r.lb.flows.fwd, fwd], [r.lb.flows.bwd, bwd]] as const) for (const [n, v] of Object.entries(src)) dst[n] = (dst[n] ?? 0) + v;
     // The pumps are streams between their nodes: an Impella carries the LV's blood into the aorta without crossing the aortic valve, an RP the cava's into the PA.
-    const m: Model = { ...live.model, T, edges: [...live.model.edges] };
+    const m: Model = { ...live.model, T, edges: [...live.model.edges], patient: drop > 0 ? { ...live.model.patient, satLung: live.model.patient.satLung - drop } : live.model.patient }; // lung water (C3) lowers the saturation the lungs put out
     for (const name of ["impella", "impellaRp"]) {
       const p = live.engine.elements.find((e) => e.name === name) as RotaryPump | undefined;
       if (p && name in fwd && p.from !== p.to) m.edges.push({ name, from: p.from, to: p.to, type: "resistor" }); // an Impella left in the aorta moves blood from the aorta to itself
