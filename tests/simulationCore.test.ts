@@ -167,9 +167,10 @@ describe("A7b: first second, AF rate, class III", () => {
     expect(s.circ.ejectionFraction).toBeCloseTo(w.strokeVolume / w.edv.LV, 6);
   });
   it("circ.hr is the atrial fibrillation ventricular rate, not the sinus rate", () => {
-    const s = make({ rhythm: { type: "af" } } as Scenario, 5);
+    const s = make({ patient: { rhythm: "af" } }, 5);
     const rs = (s as unknown as { rstate: { rhythm: string; afRate: number; sinusRate: number } }).rstate;
-    if (rs.rhythm !== "af") return;
+    expect(rs.rhythm).toBe("af");
+    expect(Math.abs(rs.afRate - rs.sinusRate)).toBeGreaterThan(5);
     expect(s.circ.hr).toBeCloseTo(rs.afRate, 6);
   });
   it("a 30 % hemorrhage is class III: the pressure falls and the rate climbs, past a 15 % one", () => {
