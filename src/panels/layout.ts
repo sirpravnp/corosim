@@ -57,14 +57,30 @@ function defaultStorage(): KV | null {
   try { return typeof localStorage === "undefined" ? null : localStorage; } catch { return null; }
 }
 
+/** Saved layouts carry `v`. Absent means v1 (before P3b), when the monitor and ECG were fixed on the page, not panels. */
+export const LAYOUT_VERSION = 2;
+/** Panels that were always visible before they became panels: a v1 layout gets them, first, so nothing disappears. */
+export const V2_ADDED = ["monitor", "ecg"];
+
+/** Bring a saved blob up to the current version (then sanitize it). Older blobs gain the panels that used to be fixed. */
+export function migrateLayout(raw: unknown, defs: readonly PanelDef[]): LayoutState {
+  const r = raw as { on?: unknown; active?: unknown; v?: unknown } | null;
+  if (r && typeof r === "object" && Array.isArray(r.on) && !(typeof r.v === "number" && r.v >= LAYOUT_VERSION)) {
+    const on: unknown[] = r.on;
+    const added = V2_ADDED.filter(id => !on.includes(id));
+    return sanitizeLayout({ ...r, on: [...added, ...on] }, defs);
+  }
+  return sanitizeLayout(raw, defs);
+}
+
 export function loadLayout(defs: readonly PanelDef[], store: KV | null = defaultStorage()): LayoutState {
   try {
     const s = store?.getItem(LAYOUT_KEY);
-    if (s) return sanitizeLayout(JSON.parse(s), defs);
+    if (s) return migrateLayout(JSON.parse(s), defs);
   } catch { /* unavailable or corrupt: fall through */ }
   return defaultLayout(defs);
 }
 
 export function saveLayout(s: LayoutState, store: KV | null = defaultStorage()): void {
-  try { store?.setItem(LAYOUT_KEY, JSON.stringify(s)); } catch { /* private window, quota */ }
+  try { store?.setItem(LAYOUT_KEY, JSON.stringify({ ...s, v: LAYOUT_VERSION })); } catch { /* private window, quota */ }
 }

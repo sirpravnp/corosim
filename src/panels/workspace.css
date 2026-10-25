@@ -36,3 +36,7 @@ button.ws-x:hover { color: var(--ink); }
 .ws-tools button[aria-pressed="true"] { background: var(--stage-2); color: var(--ink); }
 .ws-tools select { font-size: 12px; padding: 4px 6px; }
 .ws-tools button:disabled, .ws-tools select:disabled { opacity: 0.5; cursor: default; }
+/* Page elements adopted by the Monitor and ECG panels (./adopt): the card supplies the frame and the title. */
+.ws-wide { grid-column: 1 / -1; }
+.ws-body > figure, .ws-body > section { padding: 0; background: none; border: 0; border-radius: 0; }
+.ws-body > section > h2 { display: none; }
