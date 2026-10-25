@@ -10,6 +10,7 @@ import { Thorax, type ThoraxParams } from "./thorax";
 import { InertialValve, inertance, OneWayValve, Orifice, Resistor } from "./valves";
 import { Impella, type ImpellaConfig } from "./devices/impella";
 import { Iabp, type IabpParams } from "./devices/iabp";
+import { ImpellaRp, type ImpellaRpConfig } from "./devices/impellaRp";
 import { Ecmo, type EcmoConfig } from "./devices/ecmo";
 import type { Element, Engine, ExternalGroup, NodeDef } from "./types";
 
@@ -39,6 +40,8 @@ export interface FromModelOptions {
   impella?: Omit<ImpellaConfig, "v0">;
   /** Add a VA-ECMO circuit (core/devices/ecmo.ts; element name "ecmo"): RA (or IVC) to DAO. Absent: no device, no change. */
   ecmo?: Omit<EcmoConfig, "v0">;
+  /** Add an Impella RP (core/devices/impellaRp.ts; element name "impellaRp"): IVC to PA. Absent: no device, no change. With `impella` this is BiPella. */
+  impellaRp?: Omit<ImpellaRpConfig, "v0">;
   /** Add an intra-aortic balloon pump (core/devices/iabp.ts; element name "iabp") in the descending aorta: `true` for 1:1, correct timing, 40 ml, or a partial parameter set. Absent/false: no balloon, no change. */
   iabp?: boolean | Partial<IabpParams>;
   /** Add the thorax (core/thorax.ts): pleural pressure on the "thoracic" and "pericardial" nodes, abdominal pressure on the "abdominal" ones. Absent: no thorax, no change. Not part of the volume calibration (`resolveCore`): the blood volume is calibrated at end-expiration. */
@@ -79,6 +82,7 @@ export function fromModel(m: Model, opts: FromModelOptions = {}): { nodes: NodeD
   }
   if (opts.impella) elements.push(Impella.forModel(m, opts.impella));
   if (opts.ecmo) elements.push(Ecmo.forModel(m, opts.ecmo));
+  if (opts.impellaRp) elements.push(ImpellaRp.forModel(m, opts.impellaRp));
   if (opts.iabp) elements.push(Iabp.forModel(m, opts.iabp === true ? {} : opts.iabp));
   if (opts.thorax) {
     const ids = (gs: ExternalGroup[]) => nodes.flatMap((n, i) => (gs.includes(n.group) ? [i] : []));

@@ -93,6 +93,13 @@ If a later task needs something this table cannot express, change `types.ts` in 
 - **Taps.** `vb`, `target`, `fill`, `phase` (0 deflated, 1 inflating, 2 inflated, 3 deflating), `assisted` (current beat starts a cycle), `augmentation` (Vb/C of the DAO, mmHg), `closure` (delay estimate, s), `beat`.
 - **Per-beat outputs.** `physics/iabpWaveform.ts` (pure): `iabpBeat(s)` (systolic, notch, peak diastolic, EDP, late minimum, augmentation onset, DPTI), `avClosureTime`, `augmentationSpan`, `summarizeIabp` (assisted vs unassisted).
 
+## Venting and right support (D7)
+
+`devices/impellaRp.ts`: `ImpellaRp` (element `impellaRp`) is a `RotaryPump` IVC → PA with `IMPELLA_RP` (`config/devices.ts`, all `[assumed]`: P1-P9 15-33 krpm, about 4 L/min at P9 against 20 mmHg). Suction and floor are relative to the IVC's unstressed volume (R-D1: half developed at V0 + 25 ml or IVC pressure below -0.5 mmHg). `fromModel(m, { impellaRp: { level } })`, or in `LiveHeart` `extra: [(m) => ImpellaRp.forModel(m, cfg)]`; `set({ level })` live. Same taps as `Impella`, so `new ImpellaConsole(engine, "impellaRp")` is its console. Inflow is the IVC only (no RA option).
+
+- **Combinations.** All devices coexist: ECPELLA `{ ecmo, impella }`, `{ ecmo, iabp }`, BiPella `{ impella, impellaRp }`, septostomy = the existing `ASD` edge (`spec.asd.diameterMm`, 5-15 mm; no new element). Tests in `tests/venting.test.ts`.
+- **Findings (volume-loaded shock 4 L/min and severe dysfunction 5 L/min on ECMO).** Ranking by LVEDP: septostomy 12 mm < 8 mm < Impella CP P8 < P5 < IABP 1:1 (loaded: IABP < P2); the septostomy shunts 4-8 L/min through the orifice law with the RA held low by the drainage, so it beats the CP in this model. Impella P2 leaks back in diastole against a high aortic pressure (reverse flow sees only R0) and does not vent the loaded case.
+
 ## PV-loop metrics and MVO2 (E1)
 
 `src/physics/loopMetrics.ts` (pure, no engine state, not yet wired into panels or the simulation; E7 and E2 consume it). Input: one beat of LV (or RV) pressure and volume samples in time order, plus the chamber's `v0` and optionally its `ees`. Collect them with `engine.onSample`, as `tests/impella.test.ts` and `tests/loopMetrics.test.ts` do. Constants in `config/energetics.ts`.
