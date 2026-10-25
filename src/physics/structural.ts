@@ -268,11 +268,15 @@ export function simulate(m: Model, opts: { waveform?: boolean; core?: FromModelO
  * beat (forward and backward through every edge), each stream carrying its donor node's content. The systemic beds take
  * oxygen out, the lungs put it back to `satLung`. Gauss–Seidel around the loop. A node nothing flows into has no content (NaN).
  */
-function solveOxygen(m: Model, h: Hemodynamics): { content: Float64Array; capacity: number; starved: boolean; converged: boolean } {
+/** A pump stream into the oxygen solve (VA-ECMO): `flow` ml/s net from node `from` to node `to`, its content set from the content drained by `oxygenate(cIn, capacity)`. */
+export interface O2Stream { from: number; to: number; flow: number; oxygenate: (cIn: number, capacity: number) => number }
+export function solveOxygen(m: Model, h: Hemodynamics, stream?: O2Stream): { content: Float64Array; capacity: number; starved: boolean; converged: boolean } {
   const cap = (O2_PER_G_HB * m.patient.hb) / 100, T = m.T, ne = m.edges.length;
   const c = new Float64Array(NN).fill(0.6 * cap);
   const inflow = new Float64Array(NN);
   for (let i = 0; i < ne; i++) { const e = m.edges[i]; inflow[e.to] += h.fwd[e.name] / T; inflow[e.from] += h.bwd[e.name] / T; }
+  const sf = stream && stream.flow > 1e-9 ? stream.flow : 0;
+  if (stream && sf) inflow[stream.to] += sf;
   let starved = false;
   const out = (i: number, from: number) => {
     const e = m.edges[i], f = (h.fwd[e.name] - h.bwd[e.name]) / T;
@@ -296,6 +300,7 @@ function solveOxygen(m: Model, h: Hemodynamics): { content: Float64Array; capaci
         if (e.to === n && f > 0) { num += f * out(i, e.from); den += f; }
         if (e.from === n && b > 0) { num += b * c[e.to]; den += b; }
       }
+      if (stream && sf && stream.to === n) { num += sf * stream.oxygenate(c[stream.from], cap); den += sf; }
       if (den > 1e-9) { const nc = num / den; change = Math.max(change, Math.abs(nc - c[n])); c[n] = nc; }
     }
     converged = change < 1e-10;

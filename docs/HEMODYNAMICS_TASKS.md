@@ -74,6 +74,7 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | P4 | done (live left/right traces; LAD occlusion: LA 10/4 → 20/11) |
 | P5 | done (PV loops with ghost; LAD: SV 68 → 40 ml, EF 62 → 31 %, EDP 6 → 19) |
 | P8 | done (severe AS Gorlin 0.70 vs model 0.73 cm²; mean gradients equal the engine's) |
+| Follow-ups for R-P2 (cont.) | (4) bridge CO disagrees with the monitor in the RV infarct (bridge 2.88 vs monitor 1.84 L/min; the bridge calibrates MAP only); a browser run showed SvO₂ 19 % (DO₂ 304) after 30 s of simulated time — reproduce and fix in the R-P2 review; (5) ECMO console readings key for return saturation is undefined (`returnSat` expected by P10; D6 taps don't provide it) |
 | Follow-ups for R-P2 | (1) bridge `trace()` can return samples whose time steps backwards after a reload or a rate change (P4 lifts the pen; fix at the source); (2) left-heart Hakki area shows nonsense at tiny gradients (6.6 cm² at 1 mmHg): show – below ~10 mmHg; (3) `tests/live.test.ts` restart test times out (5 s) when the machine is saturated; passes alone in 1.3 s |
 | A1 | done (max difference from `simulate()` 2e-4, from exact atrial event timing; core 164× real time vs 129×) |
 | A2 | done (structural tab on the core; old RK4 loop removed; reference frozen in `tests/fixtures/core-reference.json`) |
@@ -86,7 +87,13 @@ merge one at a time. A wave starts once its gate has passed. Status is kept here
 | B3 | done (normal pulsus 5.3, tamponade 10.7 mmHg; ventilated PPV 18 % hypovolemic vs 9 % volume-loaded; PEEP effects; Kussmaul only "fails to fall", true rise is a self-flagging gap; septum adds little to tamponade pulsus — for R-B) |
 | A7 | done (core engine behind `engine: "core"`; legacy default and fixtures unchanged; STEMI PCWP 19; RV infarct CVP 7.4, 11.5 after 1 L; baroreflex stable 10 min) |
 | R-A2 | passed: legacy stays the default until A7b; then flip to core together with P16 and re-check this table |
-| A7b | not started |
+| A7b | in progress |
+| D6 | done (flow within 2 % of target; shock MAP 63 → 96 at 4 L/min; AV opens less; drainage suction; differential hypoxemia 0.78 vs 0.94). LV distension weak (+0.6–0.8 mmHg): self-flagging gaps, task D6b, prerequisite for D7 |
+| E1 | done (SW, PVA, MVO₂, Ea/Ees, dP/dt, CPO; normal CPO 1.03 W, MVO₂ 8.8 ml/min/100 g, Ea/Ees 0.486 — strict 0.5 bound is a self-flagging gap). Follow-ups: verify Suga's `a`; move `src/panels/loopMath.ts` helpers into `src/physics` (physics must not import panels) |
+| P10 | done (Oxygen panel: saturations, DO₂/VO₂/extraction, ductal difference, cues, pleth from arterial pressure) |
+| P11 | done (structural props in the Simulator's heart behind a display toggle; built in a worker; follow-ups: P12 must call `propsView.setPatient` for non-link patient changes; vessels clutter the see-through view) |
+| P9 | done (O₂ sat 3D mode: vessels on the blood SaO₂ scale, myocardium on tissue O₂ relative to normal; two legend rows) |
+| D6b | not started (LV distension on VA-ECMO: bronchial/Thebesian return to the LV, and an LV that cannot open its valve against ECMO afterload; the two `it.fails` in `tests/ecmo.test.ts` must pass) |
 | D5 | done (1:2 augmentation +22 mmHg, assisted EDP lower, coronary integral +32 %; shock PVA down, CO up; three textbook criteria are self-flagging gaps: unloading ≥ 5 % (4.2 %), early-deflation dip-and-rise, late deflation not unloading) |
 | D2 | done (shock + CP P8: MAP 63 → 75, LVEDP 18.5 → 11.9, PP 8; PVA down; current tracks placement signal r 1.00; suction with LV floor; aortic malposition flat placement, no unloading). Note: merge commit faf21d9 was recorded with conflict markers in `fromModel.ts` and `scripts/bench-engine.ts`; 80c9897 removed them (both sides kept). Pushed history left as is. |
 | Physics follow-ups | (1) aortic peak instantaneous gradient 15.7 mmHg vs clinical 4–8 (peak aortic flow ~667 ml/s is high; Gorlin vs 4v²) — with E5; (2) RA waveform amplitudes: severe TR v wave ~9 mmHg vs clinical 15–20, and cannon a only ~1.4× the ordinary a wave (self-flagging test in `tests/liveHeart.test.ts`); (3) true Kussmaul rise (B3, self-flagging); (4) `volumeOffsetFor`'s cache key ignores the pericardium, so the first caller wins (found in B3) |

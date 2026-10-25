@@ -74,6 +74,15 @@ If a later task needs something this table cannot express, change `types.ts` in 
 - **Placement signal** is `P_out - P_in` (aortic minus LV pressure) over the beat: about 0 in systole and the full aortic-LV difference in diastole when correctly placed; flat at 0 in the aorta.
 - **Console.** Element taps (instantaneous): `flow`, `current`, `placement`, `level`, `suction`/`suctionAlarm`, `suctionLevel`. `ImpellaConsole(engine)` turns them into per-beat numbers (`last`: flow and current statistics, `pulsatility` of the current, placement mean/min/max/amplitude, `suctionFraction`, `suctionLevel`, `suctionAlarm` = highest suction level of the beat at or above 0.2).
 
+## VA-ECMO (D6)
+
+`devices/ecmo.ts`: `Ecmo` (element `ecmo`) is a `RotaryPump` from RA (or IVC, `drain: "IVC"`) to DAO with the oxygenator folded into the circuit resistance. Constants `ECMO_PUMP`, `ECMO_SUCTION`, `ECMO_OXYGENATOR` in `config/devices.ts` [assumed].
+
+- **Wiring.** `fromModel(m, { ecmo: { flowLpm, sweepLpm, fio2, drain } })`, or in `LiveHeart` `extra: [(m) => Ecmo.forModel(m, cfg)]`; `set({ flowLpm, sweepLpm, fio2 })` live.
+- **States.** Flow Q, rotor speed ω and the filtered drainage volume Vf. ω relaxes (0.5 s) to the closed-form inverse of the HQ curve at the present pressures and suction resistance, clamped to 0-5 krpm. Suction and the soft floor act on Vf (the RA empties to V0 at each atrial systole, so the instantaneous volume cannot be used), relative to the node's V0.
+- **Oxygen.** `solveOxygen(m, h, { from, to, flow, oxygenate })` (exported from `structural.ts`) takes the ECMO stream as an extra source into DAO; `Ecmo.returnSat(sIn)` is the oxygenator (`oxygenatorSat`). Without the argument the solve is unchanged.
+- **Taps.** `flow`, `speed`, `rpm`, `targetLpm`, `suctionAlarm`, `suctionLevel`, `membraneDp`.
+
 ## IABP (D5)
 
 `devices/iabp.ts`: `Iabp` (element `iabp`), `fromModel(m, { iabp: true | { ratio, inflateMs, deflateMs, volumeMl } })`, or in `LiveHeart` `extra: [(m) => Iabp.forModel(m, cfg)]`. Constants `IABP` in `config/devices.ts` [assumed].
@@ -82,3 +91,13 @@ If a later task needs something this table cannot express, change `types.ts` in 
 - **Trigger.** The k-th ventricular event starts a cycle when (k-1) mod ratio = 0. Inflation = event + closure delay + `inflateMs`; the closure delay is MEASURED from the AV flow of previous beats (R wave to the AV flow falling below 1 ml/s after exceeding 5 ml/s; a beat whose balloon was already inflating does not update it), scaled by sqrt(RR/RR_ref); fallback 0.12 + 0.2·RR. Deflation starts at event + RR_previous - 0.13 s + `deflateMs`; a premature beat cuts the window at its R wave (plus any late offset).
 - **Taps.** `vb`, `target`, `fill`, `phase` (0 deflated, 1 inflating, 2 inflated, 3 deflating), `assisted` (current beat starts a cycle), `augmentation` (Vb/C of the DAO, mmHg), `closure` (delay estimate, s), `beat`.
 - **Per-beat outputs.** `physics/iabpWaveform.ts` (pure): `iabpBeat(s)` (systolic, notch, peak diastolic, EDP, late minimum, augmentation onset, DPTI), `avClosureTime`, `augmentationSpan`, `summarizeIabp` (assisted vs unassisted).
+
+## PV-loop metrics and MVO2 (E1)
+
+`src/physics/loopMetrics.ts` (pure, no engine state, not yet wired into panels or the simulation; E7 and E2 consume it). Input: one beat of LV (or RV) pressure and volume samples in time order, plus the chamber's `v0` and optionally its `ees`. Collect them with `engine.onSample`, as `tests/impella.test.ts` and `tests/loopMetrics.test.ts` do. Constants in `config/energetics.ts`.
+
+- `loopMetrics(P, V, { v0, hr, ees?, t?, massG?, tauMs? })` returns EDV, ESV, SV, EF, the end-systolic point (`pes`, `ves`), stroke work (mmHg·ml and J), PE, PVA (mmHg·ml and J), efficiency SW/PVA, Ea, Ees, Ea/Ees, dP/dt max and min (mmHg/s, needs `t`: sample times or a step in s), `tauMs` (passthrough of `BeatRecord.tauMs.LV`) and `mvo2`.
+- Pieces: `strokeWork` (|∮P dV|, loop closed), `esPoint`, `potentialEnergy`, `pressureVolumeArea`, `mvo2(pva, ees, { hr, massG })`, `cardiacPowerOutput(MAP, CO)` (= MAP·CO/451 W; CO in L/min), `dPdt`, `toJoules`. The loop area, cleaning and EF helpers are shared with `panels/loopMath.ts`.
+- **End-systolic point** = the sample of maximum P/(V − V0), not valve closure. PE = ½·Pes·(Ves − V0). Ea = Pes/SV with SV = max V − min V of the loop (with an Impella this is the LV volume change, which includes what the pump removes). Ees = the model's value when given, else Pes/(Ves − V0); in the adult model the two agree to 3 digits.
+- **MVO2** (Suga) = a·PVA100 + b·Ees100 + c per 100 g, scaled by M/100, with PVA100 = PVA/(M/100) and Ees100 = Ees·(M/100). a = 1.8e-5 ml O2 per mmHg·ml per 100 g [lit, Suga 1979/1981 canine; about 37 % efficiency]; b = 3e-3 and c = 0.01 ml O2/beat/100 g [assumed]. Masses [assumed]: LV 170 g, RV 55 g (`massG` option). Returns ml O2 per beat, per minute, and per minute per 100 g.
+- Typical output of the adult model at 72/min (LV 170 g): SW 0.98 J, PVA 1.22 J, SW/PVA 0.80, Ea 1.47, Ees 3.03, Ea/Ees 0.49, CPO 1.03 W, MVO2 8.8 ml/min/100 g. Shock (lvEes 0.35, lvStiffness 1.6): Ea/Ees 1.44, CPO 0.50 W, PVA 0.74 J. Impella CP P8 in shock: PVA 0.67 J, MVO2 -7 % per beat.
