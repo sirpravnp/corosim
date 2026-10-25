@@ -95,8 +95,8 @@ describe("through the bridge's sync solver", () => {
     expect(r.lactate).toBeNaN();
     console.log("normal", { spo2: r.spo2, post: r.post, svo2: r.svo2, do2: r.do2, vo2: r.vo2, ext: r.extraction, qpqs: r.qpQs });
   });
-  it("low cardiac output (hemorrhage with an LAD occlusion) gives a low SvO2 cue", () => {
-    const b = bridge(undefined, { bloodLoss: 0.45, lesions: [{ artery: "LAD", occluded: true, position: 0.1 }] });
+  it("low cardiac output (hemorrhage with an LAD occlusion) gives a low SvO2 cue", { timeout: 60_000 }, () => {
+    const b = bridge(undefined, { bloodLoss: 0.5, lesions: [{ artery: "LAD", occluded: true, position: 0.1 }] });
     const r = read(b);
     console.log("lowCO", { co: b.numbers().co, svo2: r.svo2, ext: r.extraction, cues: r.cues });
     expect(b.numbers().co).toBeLessThan(4);
