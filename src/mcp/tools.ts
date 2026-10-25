@@ -83,6 +83,8 @@ const scenarioSchema = {
       properties: {
         fluids: { type: "number", minimum: 0, maximum: 3, description: "Litres of IV fluid given. Helps a right-ventricular infarct; congests the lungs of a failing left ventricle." },
         norepinephrine: { type: "number", minimum: 0, maximum: 1 }, dobutamine: { type: "number", minimum: 0, maximum: 1 }, nitroglycerin: { type: "number", minimum: 0, maximum: 1 },
+        epinephrine: { type: "number", minimum: 0, maximum: 1, description: "Core engine only." }, milrinone: { type: "number", minimum: 0, maximum: 1, description: "Core engine only." }, vasopressin: { type: "number", minimum: 0, maximum: 1, description: "Core engine only." },
+        nitroprusside: { type: "number", minimum: 0, maximum: 1, description: "Core engine only." }, furosemide: { type: "number", minimum: 0, maximum: 1, description: "Core engine only." },
         pacing: { type: "boolean" }, paceRate: { type: "number", minimum: 40, maximum: 120 },
         iabp: { type: "boolean", description: "Intra-aortic balloon pump." }, impella: { type: "boolean", description: "Microaxial left-ventricular pump." },
       },

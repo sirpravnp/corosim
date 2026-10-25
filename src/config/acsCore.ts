@@ -1,5 +1,5 @@
-// Constants of the ACS simulation on the core engine (src/sim/simulation.ts, engine "core"). Dose sizes that already exist in
-// config/management.ts (SUPPORT) are reused where they map; everything new is here. Every value is a teaching assumption
+// Constants of the ACS simulation on the core engine (src/sim/simulation.ts, engine "core"). Device dose sizes that already exist in
+// config/management.ts (SUPPORT) are reused where they map; drugs are in config/drugs.ts; everything new is here. Every value is a teaching assumption
 // [assumed] unless tagged [lit]. Task A7.
 
 export const ACS_CORE = {
@@ -18,15 +18,7 @@ export const ACS_CORE = {
    * (a hemorrhage over about 20 %) is taken out at no more than `maxVolumeRate` ml/s, so it also never changes faster than that. [assumed]
    */
   startVolumeMl: [-1000, 5000] as [number, number], maxVolumeRate: 120,
-  /** Norepinephrine (alpha-1) also constricts the veins: tone × (1 + k·dose). Resistance uses SUPPORT.norepiSvr. A7 used 0.3 which, with the stronger loop gain, over-recovered a bled patient (SV 83, HR 66 against the legacy 53, 83): 0.1 gives a partial recovery. [assumed] */
-  norepiVenousTone: 0.3,
-  /**
-   * Dobutamine: Ees × (1 + SUPPORT.dobContractility·dose) (beta-1), resistance × (1 − SUPPORT.dobSvr·dose) (beta-2).
-   * Nitroglycerin acts on the veins first, then the arteries: the venous effect develops over doses 0..`nitroVenousFull`
-   * (tone × (1 − nitroVenousTone·effect)), the arterial one (resistance × (1 − SUPPORT.nitroSvr·effect)) starts at dose
-   * `nitroArterialOnset` and is full at dose 1. [assumed]
-   */
-  nitroVenousTone: 0.4, nitroVenousFull: 0.4, nitroArterialOnset: 0.2,
+  /** Drugs (norepinephrine, dobutamine, nitroglycerin and the rest) are receptor-level since E4: `config/drugs.ts`. The old `SUPPORT` dose sizes for them are read by the legacy engine only. */
   /** Device flow shown in `circ.deviceFlow` is the Impella's flow smoothed over this time constant (s): it follows the cardiac cycle. */
   deviceFlowTau: 1.5,
   /** Fallback ratio of the mean aortic pressure with the valve closed to the mean aortic pressure, for a balloon pump that runs from the first beat. Normally learned in the warm-up and on unassisted beats (D3). [assumed] */

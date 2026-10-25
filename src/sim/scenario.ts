@@ -44,6 +44,8 @@ export interface LesionSpec {
 export interface SupportSpec {
   fluids?: number; // litres given, 0..3
   norepinephrine?: number; dobutamine?: number; nitroglycerin?: number; // 0..1 of a full dose
+  /** Receptor-level drugs of the core engine (0..1 of a full dose; the legacy engine ignores them). */
+  epinephrine?: number; milrinone?: number; vasopressin?: number; nitroprusside?: number; furosemide?: number;
   pacing?: boolean; paceRate?: number; // bpm, 40..120
   iabp?: boolean; impella?: boolean;
 }
@@ -147,6 +149,11 @@ export function normalizeScenario(input: Scenario = {}, base?: Normalized["scena
     support.norepi = level(sp.norepinephrine, "norepinephrine", 1) ?? support.norepi;
     support.dobutamine = level(sp.dobutamine, "dobutamine", 1) ?? support.dobutamine;
     support.nitro = level(sp.nitroglycerin, "nitroglycerin", 1) ?? support.nitro;
+    support.epi = level(sp.epinephrine, "epinephrine", 1) ?? support.epi;
+    support.milrinone = level(sp.milrinone, "milrinone", 1) ?? support.milrinone;
+    support.vasopressin = level(sp.vasopressin, "vasopressin", 1) ?? support.vasopressin;
+    support.nitroprusside = level(sp.nitroprusside, "nitroprusside", 1) ?? support.nitroprusside;
+    support.furosemide = level(sp.furosemide, "furosemide", 1) ?? support.furosemide;
     if (sp.pacing !== undefined) support.pacing = !!sp.pacing;
     if (sp.paceRate !== undefined) { const r = num(sp.paceRate) ? clamp(Math.round(sp.paceRate), SUPPORT.paceMin, SUPPORT.paceMax) : support.paceRate; if (r !== sp.paceRate) warnings.push(`support.paceRate set to ${r}`); support.paceRate = r; }
     if (sp.iabp !== undefined) support.iabp = !!sp.iabp;
@@ -180,5 +187,7 @@ export function toScenario(n: Normalized["scenario"]): Scenario {
 
 /** Scenario form of a Support (the model's own names are short). */
 export function supportSpec(s: Support): SupportSpec {
-  return { fluids: s.fluids, norepinephrine: s.norepi, dobutamine: s.dobutamine, nitroglycerin: s.nitro, pacing: s.pacing, paceRate: s.paceRate, iabp: s.iabp, impella: s.impella };
+  const out: SupportSpec = { fluids: s.fluids, norepinephrine: s.norepi, dobutamine: s.dobutamine, nitroglycerin: s.nitro, pacing: s.pacing, paceRate: s.paceRate, iabp: s.iabp, impella: s.impella };
+  for (const [k, v] of [["epinephrine", s.epi], ["milrinone", s.milrinone], ["vasopressin", s.vasopressin], ["nitroprusside", s.nitroprusside], ["furosemide", s.furosemide]] as const) if (v > 0) out[k] = v; // only when given: the plain spec stays as it was
+  return out;
 }
