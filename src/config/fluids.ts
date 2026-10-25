@@ -31,8 +31,8 @@ export const FLUIDS = {
   /**
    * Interstitial pressure from the volume above its resting value x: Pi = Pi0 + x/ciHigh + span·tanh(x/(span·ciLow)). The tissue is
    * stiff for the first ~100 ml (a gel held by the matrix: `span` mmHg over a compliance `ciLow`) and loose beyond it (`ciHigh`:
-   * once the matrix is saturated fluid collects freely, the "edema safety factor" of Guyton's tissue compliance curve); odd in x,
-   * so a dehydrated interstitium pulls back too. Compliances are ml/mmHg per 70 kg. The shape is [assumed]; the three numbers
+   * once the matrix is saturated fluid collects freely, the "edema safety factor" of Guyton's tissue compliance curve); the stiff
+   * term acts on gain only: a drained interstitium gives its fluid up on the loose slope, which is what lets the plasma refill after a hemorrhage. Compliances are ml/mmHg per 70 kg. The shape is [assumed]; the three numbers
    * were set with the other free constants (`postcapillaryShare`, `volumeGain`) so that 1 L of crystalloid is 20-30 % intravascular
    * at 30 min (Hahn; Rehm: about a quarter of an infused litre stays) and 500 ml of 5 % albumin more than 80 %.
    */

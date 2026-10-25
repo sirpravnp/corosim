@@ -13,7 +13,7 @@ import { FLUIDS } from "../../config/fluids";
  *   Pc  = Pv + f·(Pa − Pv)                              capillary hydrostatic pressure, mmHg
  *   Jv  = Kf·[(Pc − Pi) − σ·(πp − πi)]                  filtration out of the plasma, ml/min (negative: absorption)
  *   πx  = 2.1·c + 0.16·c² + 0.009·c³                    oncotic pressure of c g/dl (Landis and Pappenheimer); πp from (Mp + Mc)/Vp, πi from Mi/Vi
- *   Pi  = Pi0 + x/ciHigh + span·tanh(x/(span·ciLow))    interstitial pressure at the volume x = Vi − Vi0 above rest
+ *   Pi  = Pi0 + x/ciHigh + span·tanh(x/(span·ciLow))    interstitial pressure at the volume x = Vi − Vi0 above rest (x > 0; the stiff term is absent below rest)
  *   L   = L0·exp(lymphSlope·(Pi − Pi0))                 lymph flow back to the plasma, ml/min, at most lymphMax·L0
  *   E   = kE·Mp                                         escape of protein to the interstitium (returned by lymph at Mi/Vi)
  *
@@ -179,7 +179,7 @@ export class FluidCompartments {
   private pcOf() { return Math.max(0, this.pv + FLUIDS.postcapillaryShare * (this.pa - this.pv)); }
   private piOf(vi: number) {
     const x = vi - this.v0.vi, span = FLUIDS.stiffSpan;
-    return this.pi0 + x / this.ciHigh + span * Math.tanh(x / (span * this.ciLow));
+    return this.pi0 + x / this.ciHigh + (x > 0 ? span * Math.tanh(x / (span * this.ciLow)) : 0);
   }
   private urineOf(vb: number) {
     const F = FLUIDS;

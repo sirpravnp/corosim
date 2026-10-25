@@ -12,7 +12,7 @@ export const ACS_CORE = {
    * pressure 8 mmHg below normal and the RV-infarct fluid response (a high gain lets the loop undo the fluid by venodilating); the
    * smallest that lifts the RV infarct's CVP to 10. The structural venous compliances were not changed (see the A7b notes). [assumed]
    */
-  venousToneGain: 0.75,
+  venousToneGain: 0.73,
   /**
    * Blood given or lost at the start (ml) is built into the heart up to the range the structural spec accepts; anything beyond
    * (a hemorrhage over about 20 %) is taken out at no more than `maxVolumeRate` ml/s, so it also never changes faster than that. [assumed]

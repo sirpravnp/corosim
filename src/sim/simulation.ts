@@ -274,7 +274,7 @@ export class Simulation {
   private stepFluids(minutes: number) {
     const fm = this.fluidModel!, live = this.live!, b = live.last ?? live.warmBeat;
     if (b) {
-      const pa = b.map, pv = (b.p.SVC.mean + b.p.IVC.mean + b.p.SPL.mean) / 3, k = this.fluidP ? 1 - Math.exp(-minutes / FLUIDS.pressureTauMin) : 1;
+      const pa = b.map, pv = (b.p.SVC.mean + b.p.IVC.mean + b.p.SPL.mean) / 3, k = this.fluidP && minutes > 0 ? 1 - Math.exp(-minutes / FLUIDS.pressureTauMin) : 1; // a stopped clinical clock follows the engine as it is
       this.fluidP = this.fluidP ? { pa: this.fluidP.pa + (pa - this.fluidP.pa) * k, pv: this.fluidP.pv + (pv - this.fluidP.pv) * k } : { pa, pv }; // the beat-to-beat swing is not the capillary's pressure
       fm.setPressures(this.fluidP.pa, this.fluidP.pv);
     }
@@ -289,7 +289,7 @@ export class Simulation {
       if (ischemicBurden(this.sites, this.sev) > 0.005) this.ischemicMinutes += minutes;
     }
     this.slew(h);
-    if (this.fluidModel && minutes > 0) this.stepFluids(minutes);
+    if (this.fluidModel) this.stepFluids(minutes);
     this.updateCirculation();
     const ctl = this.autonomic.controls;
     ctl.betaBlock = this.drug.betaBlocker;
