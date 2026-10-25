@@ -40,6 +40,8 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEle
   return e;
 }
 const badge = (m: FieldGroupInfo["modelled"]) => h("span", { className: `pg-tag pg-${m}`, textContent: m === "yes" ? "modelled" : m === "legacy" ? "legacy model" : "stored only", title: m === "yes" ? "The page's engines read these fields" : m === "legacy" ? "Only the on/off switch drives the page's older device model" : "Kept in the spec and the share link; no engine on this page reads it yet" });
+/** The badge and note of a group for the patient kind on screen: an adult runs on the core engine, a neonate on the bridge, which reads less (`FieldGroupInfo.neonate`). */
+const modelledFor = (info: FieldGroupInfo, kind: "adult" | "neonate" | undefined) => (kind === "neonate" ? info.neonate ?? info.modelled : info.modelled);
 
 export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
   const syncs: ((st: PlaygroundState) => void)[] = [];
@@ -55,8 +57,12 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     const box = h("details", { className: `fold pg-group ${cls}`.trim() });
     box.open = open;
     const body = h("div", { className: "pg-body" });
-    box.append(h("summary", {}, h("h2", { textContent: title }), ...(info ? [badge(info.modelled)] : [])), body);
-    if (info && info.modelled !== "yes") body.append(h("p", { className: "note pg-note", textContent: info.note }));
+    const tag = h("span"), note = h("p", { className: "note pg-note" });
+    box.append(h("summary", {}, h("h2", { textContent: title }), ...(info ? [tag] : [])), body);
+    if (info) {
+      body.append(note);
+      syncs.push((s) => { const m = modelledFor(info, s.kind); const b = badge(m); tag.className = b.className; tag.textContent = b.textContent; tag.title = b.title; note.textContent = s.kind === "neonate" && info.neonateNote ? info.neonateNote : info.note; note.hidden = m === "yes"; });
+    }
     return { box, body };
   }
   function slider(body: HTMLElement, label: string, min: number, max: number, step: number, get: (s: PlaygroundState) => number | undefined, dflt: number, fmt: (v: number) => string, set: (s: PlaygroundState, v: number) => PlaygroundState) {
@@ -168,6 +174,7 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     const { box, body } = group("Pericardium", GROUP_INFO.pericardium);
     slider(body, "Effusion", R.effusionMl[0], R.effusionMl[1], 25, (s) => s.pericardium?.effusionMl, 0, (v) => `${v} ml`, (s, v) => patchSection(s, "pericardium", { effusionMl: v || undefined }));
     slider(body, "Stiffness", R.stiffness[0], R.stiffness[1], 0.1, (s) => s.pericardium?.stiffness, 1, (v) => `${v.toFixed(1)}× normal`, (s, v) => patchSection(s, "pericardium", { stiffness: v === 1 ? undefined : v }));
+    slider(body, "Accumulating", 0, 100, 5, (s) => s.pericardium?.effusionRateMlMin, 0, (v) => (v ? `${v} ml per clinical minute` : "stable"), (s, v) => patchSection(s, "pericardium", { effusionRateMlMin: v || undefined }));
     toggle(body, "Pericardium open (after surgery)", (s) => !!s.pericardium?.open, (s, on) => patchSection(s, "pericardium", { open: on || undefined }));
     el.append(box);
   }
@@ -187,13 +194,18 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     const { box, body } = group("Ventilation", GROUP_INFO.ventilation);
     choice(body, "Mode", [["spontaneous", "Spontaneous breathing"], ["positive", "Positive-pressure ventilation"]] as const, (s) => s.ventilation?.mode, "spontaneous", (s, m) => patchSection(s, "ventilation", { mode: m }));
     slider(body, "PEEP", R.peep[0], R.peep[1], 1, (s) => s.ventilation?.peep, 0, (v) => `${v} cmH₂O`, (s, v) => patchSection(s, "ventilation", { peep: v || undefined }));
+    slider(body, "Tidal volume", R.tidalMlKg[0], R.tidalMlKg[1], 1, (s) => s.ventilation?.tidalMlKg, 8, (v) => `${v} ml/kg`, (s, v) => patchSection(s, "ventilation", { tidalMlKg: v === 8 ? undefined : v }));
     el.append(box);
   }
 
   // ---- devices -------------------------------------------------------------------------------------------------------
   {
     const { box, body } = group("Mechanical support", null);
-    const sub = (title: string, info: FieldGroupInfo) => { body.append(h("p", { className: "glabel pg-sub" }, title, " ", badge(info.modelled)), h("p", { className: "note pg-note", textContent: info.note })); };
+    const sub = (title: string, info: FieldGroupInfo) => {
+      const tag = h("span"), note = h("p", { className: "note pg-note" });
+      body.append(h("p", { className: "glabel pg-sub" }, title, " ", tag), note);
+      syncs.push((s) => { const m = modelledFor(info, s.kind); tag.className = `pg-tag pg-${m}`; tag.textContent = badge(m).textContent; tag.title = badge(m).title; note.textContent = s.kind === "neonate" && info.neonateNote ? info.neonateNote : info.note; });
+    };
     sub("Impella", GROUP_INFO.impella);
     toggle(body, "Impella on", (s) => !!s.devices?.impella, (s, on) => withDevice(s, "impella", on));
     choice<ImpellaModel>(body, "Model", [["2.5", "Impella 2.5"], ["CP", "Impella CP"], ["5.5", "Impella 5.5"]], (s) => s.devices?.impella?.model, "CP", (s, m) => patchDevice(s, "impella", { model: m }));
@@ -202,6 +214,8 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     sub("Intra-aortic balloon pump", GROUP_INFO.iabp);
     toggle(body, "Balloon pump on", (s) => !!s.devices?.iabp, (s, on) => withDevice(s, "iabp", on));
     choice(body, "Ratio", [[1, "1:1"], [2, "1:2"], [3, "1:3"]] as const, (s) => s.devices?.iabp?.ratio, 1, (s, r) => patchDevice(s, "iabp", { ratio: r }));
+    slider(body, "Inflation timing", R.iabpOffsetMs[0], R.iabpOffsetMs[1], 10, (s) => s.devices?.iabp?.inflateMs, 0, (v) => (v === 0 ? "correct" : `${v > 0 ? "late" : "early"} ${Math.abs(v)} ms`), (s, v) => patchDevice(s, "iabp", { inflateMs: v }));
+    slider(body, "Deflation timing", R.iabpOffsetMs[0], R.iabpOffsetMs[1], 10, (s) => s.devices?.iabp?.deflateMs, 0, (v) => (v === 0 ? "correct" : `${v > 0 ? "late" : "early"} ${Math.abs(v)} ms`), (s, v) => patchDevice(s, "iabp", { deflateMs: v }));
     sub("ECMO (VA)", GROUP_INFO.ecmo);
     toggle(body, "ECMO on", (s) => !!s.devices?.ecmo, (s, on) => withDevice(s, "ecmo", on));
     slider(body, "Flow", R.ecmoFlowLpm[0], R.ecmoFlowLpm[1], 0.5, (s) => s.devices?.ecmo?.flowLpm, 3, (v) => `${v.toFixed(1)} L/min`, (s, v) => patchDevice(s, "ecmo", { flowLpm: v }));
