@@ -89,6 +89,8 @@ export class ElastanceChamber implements NodeModel, Tunable<ElastanceParams> {
     const { v0, ees, a, b } = this.params, x = volume - v0;
     return (1 - e) * a * (Math.exp(Math.min(b * x, 30)) - 1) + e * ees * this.eesGain * Math.max(x, 0);
   }
+  /** Volume (ml) at which the relaxed chamber (e = 0) holds pressure `p`: V0 + ln(1 + p/a)/b, the inverse of the passive curve (V0 at p = 0). */
+  restVolume(p: number): number { const { v0, a, b } = this.params; return v0 + Math.log(Math.max(1 + p / a, 1e-12)) / b; }
   /** dP/dV (mmHg/ml) at volume (ml) for activation e; zero slope of the passive part beyond the exponent clamp, as in `pressureAt`. */
   slopeAt(volume: number, e: number): number {
     const { v0, ees, a, b } = this.params, x = volume - v0;

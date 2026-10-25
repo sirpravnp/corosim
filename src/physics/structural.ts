@@ -238,7 +238,7 @@ export interface Hemodynamics {
 /** The last beat, sampled every couple of milliseconds: time (s), pressure at every node (mmHg), ventricular volumes (ml). */
 export interface Waveform { t: number[]; p: Record<NodeName, number[]>; vLV: number[]; vRV: number[]; vLA: number[]; vRA: number[]; q: Record<string, number[]> }
 /** Vessels that make up the systemic circulation for the filling pressure: the veins, including the splanchnic reservoir, and the two aortic segments. */
-const SYSTEMIC = ["SVC", "IVC", "SPL", "AO", "DAO"] as const;
+export const SYSTEMIC = ["SVC", "IVC", "SPL", "AO", "DAO"] as const;
 const WAVE_EDGES = ["TV", "PVL", "MV", "AV", "RVAO", "ASD", "VSD", "PDA", "BT"];
 
 /**
