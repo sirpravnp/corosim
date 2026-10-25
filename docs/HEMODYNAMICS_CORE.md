@@ -241,7 +241,7 @@ so UI work can start in parallel with Phase A:
   comes from the rhythm;
 - its waveform is replayed beat by beat, re-solved every few seconds or when something changes.
 
-Once `LiveHeart` (A6) lands, the source switches to it and the adapter is deleted.
+Once `LiveHeart` (A6) lands, the source switches to it and the adapter is deleted. (P16: done for adults. `LiveSource` reads the core-engine `Simulation`, which now builds the PatientSpec's structural heart, pericardium, ventilation (thorax), ECMO, Impella RP and Impella/IABP settings; the adapter stays only for neonates, patients the core cannot settle, the game and the MCP tools, see the P16 row of HEMODYNAMICS_TASKS.md for what blocks its deletion.)
 
 **Panels** (each one can be switched on or off, in a grid workspace on desktop and as tabs on phones):
 
