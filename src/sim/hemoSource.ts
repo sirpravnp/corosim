@@ -86,4 +86,12 @@ export interface HemoSource {
   onBeat(cb: (b: BeatSummary) => void): () => void;
   /** Whether the numbers come from a steady-state solve replayed (bridge) or a live beat-by-beat engine. */
   readonly kind: "bridge" | "live";
+  /**
+   * True when the numbers are the patient's own baseline solve and are NOT tied to the ACS monitor (a neonate, or any
+   * patient whose baseline is not the adult one the ACS model represents). On such a patient the monitor (ACS, adult) is not
+   * meaningful next to these numbers. Absent means false.
+   */
+  readonly standalone?: boolean;
+  /** Baseline physiology of the patient behind the numbers (valves are graded against its own normal areas). Absent means "adult". */
+  readonly patientKind?: "adult" | "neonate";
 }

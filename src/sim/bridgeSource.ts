@@ -5,7 +5,7 @@ import type { BeatRecord } from "./metrics";
 import { CATH_NODES as NODES } from "../physics/structural"; // the splanchnic reservoir is not a catheter site
 import type { StructuralReport, StructuralSpec, Waveform } from "../physics/structural";
 import { BASE_SVR } from "../physics/circulation";
-import { PATIENTS, O2_PER_G_HB } from "../config/structural";
+import { PATIENTS, O2_PER_G_HB, type PatientKind } from "../config/structural";
 import { SUPPORT } from "../config/management";
 import { BRIDGE } from "../config/bridge";
 import { ISCHEMIA } from "../config/ischemia";
@@ -112,6 +112,16 @@ interface Inputs { hr: number; lv: number; rv: number; map: number; svr: number;
  * flow `sim.circ.deviceFlow` (Impella) in `flowLpm`; otherwise empty. The structural engine does not see the device, so
  * the numbers do not include it.
  *
+ * Standalone patients (task P2e): the ACS model is an adult, so when the PatientSpec's kind is not "adult" (a neonate) the
+ * monitor's state is not mapped and the solve is not calibrated to it: mapping an adult MAP of 86 onto a newborn heart
+ * loaded volume until the pressures were absurd (LV 104/67, aorta 103/72, a normal mitral valve read as severe
+ * stenosis). `standalone` is then true: the structural engine is solved once on the patient's own baseline (its HR, MAP,
+ * volume) plus the PatientSpec's heart lesions, with no ischemia mapping, no svr/volume/Ees calibration (`volume`,
+ * `svrMul`, `eesMul` stay 0/1/1, `calibrationError` and `coError` NaN) and no re-solve when the monitor moves (only
+ * `refresh()`). The monitor (ACS, adult) is not meaningful for such a patient and pages should say so. Beats are replayed
+ * at the patient's own heart rate (the solved waveform's period), not the monitor's rhythm: on each ACS beat the beats
+ * that fit since the last one are emitted, with the P wave a fixed PR before each. Adult patients are unchanged.
+ *
  * Counters `analyzeCalls` and `solves` are public for tests and for the performance budget.
  */
 export class BridgeSource implements HemoSource {
@@ -119,6 +129,10 @@ export class BridgeSource implements HemoSource {
   /** analyze() calls made so far (a solve makes 1 to 1 + maxCalibrationIterations), and solves. */
   analyzeCalls = 0;
   solves = 0;
+  /** `kind` of the PatientSpec; see "Standalone patients" in the class comment. */
+  get patientKind(): PatientKind { return this.opts.patient?.kind ?? "adult"; }
+  /** Read live (a page may set `opts.patient` after construction); true for any kind other than "adult". */
+  get standalone(): boolean { return this.patientKind !== "adult"; }
   /** Structural mean aortic pressure minus the monitor's MAP at the last solve, mmHg. */
   calibrationError = NaN;
 
@@ -139,6 +153,7 @@ export class BridgeSource implements HemoSource {
   private prevHandler: Simulation["onBeat"];
   private hook: (b: BeatRecord) => void;
   private active = true;
+  private ownT = -Infinity; // standalone: end of the last beat emitted on the patient's own clock
   private pPhase = 0; // s, next P wave in third-degree block, on the simulation clock
   /** Largest simulation clock seen (reads and beats): a smaller one means the simulation was reloaded. */
   private clockSeen = 0;
@@ -181,7 +196,7 @@ export class BridgeSource implements HemoSource {
     if (t < this.clockSeen - 1e-6) {
       this.epoch++;
       this.ring = []; this.report = null; this.wave = null; this.blendFrom = null; this.lastInputs = null;
-      this.lastSolveT = -Infinity; this.queued = false; this.pPhase = 0; this.volume = 0; this.calibrationError = NaN; this.svrMul = 1; this.eesMul = 1; this.coError = NaN;
+      this.lastSolveT = -Infinity; this.queued = false; this.pPhase = 0; this.ownT = -Infinity; this.volume = 0; this.calibrationError = NaN; this.svrMul = 1; this.eesMul = 1; this.coError = NaN;
     }
     if (t > this.clockSeen || t < this.clockSeen) this.clockSeen = t;
   }
@@ -197,6 +212,7 @@ export class BridgeSource implements HemoSource {
   private maybeSolve() {
     if (this.inFlight) return; // the beat after it lands checks the thresholds against the new solve
     if (!this.report || !this.lastInputs) { if (this.sim.t - this.lastSolveT >= BRIDGE.minSolveIntervalS) this.solve(); return; }
+    if (this.standalone) return; // the monitor does not drive this patient
     if (this.sim.t - this.lastSolveT < BRIDGE.minSolveIntervalS) return;
     const a = this.inputs(), b = this.lastInputs, T = BRIDGE.threshold;
     if (Math.abs(a.hr - b.hr) > T.hrBpm || Math.abs(a.lv - b.lv) > T.ischemia || Math.abs(a.rv - b.rv) > T.ischemia || Math.abs(a.map - b.map) > T.mapMmHg || Math.abs(a.svr / b.svr - 1) > T.svrFrac || Math.abs(a.co / b.co - 1) > BRIDGE.coThresholdFrac) this.solve();
@@ -204,6 +220,7 @@ export class BridgeSource implements HemoSource {
 
   private spec(volumeMl: number): StructuralSpec {
     const h = this.opts.patient?.heart ?? {}, c = this.sim.circ;
+    if (this.standalone) return { ...h, patient: this.patientKind, hr: PATIENTS[this.patientKind].hr };
     return {
       ...h, patient: this.opts.patient?.kind ?? "adult", hr: c.hr,
       svrScale: (c.svr / BASE_SVR) * (h.svrScale ?? 1), volumeMl: (h.volumeMl ?? 0) + volumeMl,
@@ -216,7 +233,7 @@ export class BridgeSource implements HemoSource {
   /** Start a solve of the live inputs. With an asynchronous solver, one at a time; a call during a solve is queued. */
   private solve() {
     if (this.inFlight) { this.queued = true; return; }
-    const inputs = this.inputs(), req: SolveRequest = { base: this.spec(0), volume: this.volume, targetMap: inputs.map, targetCo: inputs.co, warm: this.report ? { svr: this.svrMul, ees: this.eesMul } : undefined };
+    const inputs = this.inputs(), req: SolveRequest = { base: this.spec(0), volume: this.volume, targetMap: inputs.map, targetCo: inputs.co, standalone: this.standalone, warm: this.report ? { svr: this.svrMul, ees: this.eesMul } : undefined };
     let out: SolveResult | Promise<SolveResult>;
     try { out = this.solver.solve(req); } catch (e) { this.failed(e); return; }
     if (!(out instanceof Promise)) { this.apply(out, inputs); return; }
@@ -261,7 +278,20 @@ export class BridgeSource implements HemoSource {
     this.sync(Math.min(this.sim.t, rec.t));
     this.maybeSolve();
     if (!this.wave || !this.report) return;
-    const b = this.makeBeat(rec);
+    if (this.standalone) { // the patient's own rate: every beat that fits in the interval the monitor just closed
+      const T0 = this.wave.t[this.wave.t.length - 1];
+      if (!(this.ownT > rec.t - rec.interval - T0)) this.ownT = rec.t - rec.interval;
+      while (this.ownT + T0 <= rec.t + 1e-9) {
+        const start = this.ownT;
+        this.ownT += T0;
+        this.emit(this.makeBeat(start, T0, false, Float32Array.from([Math.max(0, T0 - BRIDGE.standalonePrS)])));
+      }
+      return;
+    }
+    this.emit(this.makeBeat(rec.t - rec.interval, rec.interval, rec.pvc, this.atrialTimes(rec, Math.max(0.25, rec.interval))));
+  }
+
+  private emit(b: BeatSummary) {
     this.blendFrom = null;
     this.ring.push(b);
     const cutoff = this.sim.t - BRIDGE.ringSeconds;
@@ -295,8 +325,8 @@ export class BridgeSource implements HemoSource {
     return { at };
   }
 
-  private makeBeat(rec: BeatRecord): BeatSummary {
-    const w = this.wave!, rep = this.report!, rr = Math.max(0.25, rec.interval);
+  private makeBeat(start: number, interval: number, pvc: boolean, atrial: Float32Array): BeatSummary {
+    const w = this.wave!, rep = this.report!, rr = Math.max(0.25, interval);
     const n = Math.max(8, Math.round(rr / BRIDGE.sampleDt));
     const cur = this.resample(w, rr, n), old = this.blendFrom ? this.resample(this.blendFrom, rr, n) : null;
     const series = (pick: (x: Waveform) => number[]) => {
@@ -320,7 +350,7 @@ export class BridgeSource implements HemoSource {
     const vs = rep.valves, vz = { forwardMl: 0, regurgMl: 0, openMs: 0 };
     const val = (k: string) => (vs[k] ? { forwardMl: vs[k].forwardMl, regurgMl: vs[k].regurgMl, openMs: vs[k].openMs } : { ...vz });
     return {
-      t: rec.t - rec.interval, rr, pvc: rec.pvc, loops, pressure, time, atrial: this.atrialTimes(rec, rr),
+      t: start, rr, pvc, loops, pressure, time, atrial,
       edv, esv, strokeVolume: edv.LV - esv.LV, valves: { AV: val("AV"), MV: val("MV"), TV: val("TV"), PV: val("PVL") },
     };
   }
