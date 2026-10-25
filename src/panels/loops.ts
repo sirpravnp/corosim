@@ -7,7 +7,7 @@ import type { BeatSummary, Chamber, HemoSource } from "../sim/hemoSource";
 import type { Panel, PanelDef } from "./panel";
 import { snapshots } from "./snapshots";
 import { DASH, fmt } from "./numbers";
-import { cleanLoop, fitEDPVR, fitESPVR, loopStats, rescaleAxis, type Axis, type LoopStats, type Pt } from "./loopMath";
+import { cleanLoop, fitEDPVR, fitESPVR, loopStats, rescaleAxis, type Axis, type LoopStats, type Pt } from "../physics/loopMath";
 
 /** Beats drawn faintly behind the latest. */
 export const TRAIL_BEATS = 4;

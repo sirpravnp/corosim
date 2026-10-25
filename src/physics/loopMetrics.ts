@@ -13,7 +13,7 @@
  * or two; with an Impella unloading the LV there may be no valve closure at all and this point is still defined.
  */
 import { ENERGETICS } from "../config/energetics";
-import { cleanLoop, loopArea, type Pt } from "../panels/loopMath";
+import { cleanLoop, loopArea, type Pt } from "./loopMath";
 
 export interface EsPoint extends Pt { index: number }
 

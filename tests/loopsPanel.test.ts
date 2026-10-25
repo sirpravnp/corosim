@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   endDiastolicPoint, endSystolicPoint, fitAllowed, fitEDPVR, fitESPVR, loopArea, loopStats, rescaleAxis, type Pt,
-} from "../src/panels/loopMath";
+} from "../src/physics/loopMath";
 import { loopsPanel } from "../src/panels/loops";
 import { createStubSource } from "../src/sim/stubSource";
 
