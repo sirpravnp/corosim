@@ -21,8 +21,10 @@ import { Iabp } from "../physics/core/devices/iabp";
 import { ImpellaConsole } from "../physics/core/devices/impella";
 import { IABP } from "../config/devices";
 import { SwitchableImpella, DevicesReadout } from "./coreDevices";
-import { PatientSpec, DeviceSpec, normalizePatient, effectiveDevices, DEFAULT_IMPELLA, DEFAULT_IABP } from "./patient";
+import { PatientSpec, DeviceSpec, FluidSpec, normalizePatient, effectiveDevices, DEFAULT_IMPELLA, DEFAULT_IABP } from "./patient";
 import { VolumeExchange } from "../physics/core/volume";
+import { FluidCompartments, FluidReadout } from "../physics/core/fluids";
+import { FLUIDS } from "../config/fluids";
 import { Compliance } from "../physics/core/vessels";
 import { NODES } from "../physics/structuralGraph";
 import type { Model } from "../physics/structural";
@@ -120,6 +122,10 @@ export class Simulation {
   private bv0 = 4900;
   private volApplied = 0; // ml added (+) or removed (-) from the circulation so far, by fluids and hemorrhage
   private fluidGiven = 0; // litres of fluid, ramped
+  /** The fluid compartments of the core engine (C2); undefined with the legacy engine. They decide the blood volume the circulation holds. */
+  private fluidModel?: FluidCompartments;
+  private fluidSpec: FluidSpec = {};
+  private fluidP: { pa: number; pv: number } | null = null; // smoothed mean aortic and venous pressure the compartments read
   private delta = NaN; // s: live time = stream time + delta, set when the first beat is aligned
   private fed = new WeakSet<Beat>();
   private fx: AutonomicEffects = NEUTRAL_FX;
@@ -140,10 +146,10 @@ export class Simulation {
   /** Start over from a scenario. `settled` puts ischemia at its steady value instead of starting from a normal heart. */
   reset(input: PatientSpec = {}, opts: { settled?: boolean } = {}) {
     const { scenario, warnings } = normalizeScenario(input);
-    this.live = undefined; this.liveSeen = false;
+    this.live = undefined; this.fluidModel = undefined; this.liveSeen = false;
     this.n = scenario; this.warnings = warnings;
     this.support = { ...scenario.support }; this.patient = { ...scenario.patient }; this.grafts = [];
-    if (this.engine === "core") this.readDevices(input);
+    if (this.engine === "core") { this.readDevices(input); this.fluidSpec = normalizePatient(input).spec.fluids ?? {}; }
     this.t = 0; this.clinicalMinutes = 0; this.ischemicMinutes = 0; this.treated = untreated(); this.history = []; this.beatCount = 0;
     for (const k of Object.keys(this.sev)) delete this.sev[k];
     for (const k of Object.keys(this.scar)) delete this.scar[k];
@@ -190,6 +196,7 @@ export class Simulation {
     this.n = scenario;
     if (patch.support) this.support = { ...scenario.support, atropine: this.support.atropine };
     if (this.engine === "core" && patch.devices) this.patchDevices(patch);
+    if (this.fluidModel && patch.fluids !== undefined) this.patchFluids(patch);
     if (patch.patient) this.patient = { ...scenario.patient };
     this.autonomic.controls = { ...scenario.autonomic };
     if (anatomyChanged) { this.grafts = []; this.rebuildAnatomy(); } else this.resolveCoronaries(true);
@@ -254,8 +261,24 @@ export class Simulation {
   private slew(h: number) {
     const a = 1 - Math.exp(-(h * this.speed) / DRUG_TAU), v = 1 - Math.exp(-(h * this.speed) / VOLUME_TAU);
     for (const k of ["betaBlocker", "atropine", "vasopressor"] as const) this.drug[k] += (this.n.drugs[k] - this.drug[k]) * a;
+    const loss0 = this.bloodLoss, fluid0 = this.fluidGiven;
     this.bloodLoss += (this.n.bloodLoss - this.bloodLoss) * v;
     this.fluidGiven += (this.support.fluids - this.fluidGiven) * v; // only the core engine reads it
+    if (this.fluidModel) { // the core engine: what the dials add this step is blood lost and crystalloid given, then the compartments decide where it goes
+      this.fluidModel.bleed((this.bloodLoss - loss0) * this.bv0);
+      if (this.fluidGiven > fluid0) this.fluidModel.give("crystalloid", (this.fluidGiven - fluid0) * 1000); // fluid cannot be taken back out by turning the dial down
+    }
+  }
+
+  /** The compartments take the engine's pressures and advance `minutes` of clinical time (core engine). */
+  private stepFluids(minutes: number) {
+    const fm = this.fluidModel!, live = this.live!, b = live.last ?? live.warmBeat;
+    if (b) {
+      const pa = b.map, pv = (b.p.SVC.mean + b.p.IVC.mean + b.p.SPL.mean) / 3, k = this.fluidP ? 1 - Math.exp(-minutes / FLUIDS.pressureTauMin) : 1;
+      this.fluidP = this.fluidP ? { pa: this.fluidP.pa + (pa - this.fluidP.pa) * k, pv: this.fluidP.pv + (pv - this.fluidP.pv) * k } : { pa, pv }; // the beat-to-beat swing is not the capillary's pressure
+      fm.setPressures(this.fluidP.pa, this.fluidP.pv);
+    }
+    fm.advance(minutes);
   }
 
   private sub(h: number, minutes: number) {
@@ -266,11 +289,12 @@ export class Simulation {
       if (ischemicBurden(this.sites, this.sev) > 0.005) this.ischemicMinutes += minutes;
     }
     this.slew(h);
+    if (this.fluidModel && minutes > 0) this.stepFluids(minutes);
     this.updateCirculation();
     const ctl = this.autonomic.controls;
     ctl.betaBlock = this.drug.betaBlocker;
     ctl.vagalBlock = Math.max(this.drug.atropine, this.support.atropine ? 1 : 0);
-    ctl.volumeDeficit = Math.max(0, this.live ? this.bloodLoss - (this.fluidGiven * 1000 * ACS_CORE.fluidRetained) / this.bv0 : this.bloodLoss); // core: the net deficit, fluids refill it
+    ctl.volumeDeficit = Math.max(0, this.fluidModel ? 1 - this.fluidModel.bloodVolume / this.bv0 : this.bloodLoss); // core: the blood volume short of the patient's own, whatever its cause or refill
     this.autonomic.step(h);
     this.stream.extend(this.t, this.rstate, this.mod);
     this.stream.prune(this.t);
@@ -327,16 +351,16 @@ export class Simulation {
   //    (the volume reflex reaches the veins through the vascular tone: core autonomic calibration `AUTONOMIC_CORE`, config/acsCore.ts; deficit = fraction of blood volume lost net of fluids); rate arrives as beats;
   //  - support: norepinephrine resistance x (1 + 0.35 d) and venous tone x (1 + 0.3 d); dobutamine Ees x (1 + 0.45 d) and resistance
   //    x (1 - 0.12 d); nitroglycerin venous tone x (1 - 0.2 e_v) (e_v = min(1, d / 0.4)) then resistance x (1 - 0.22 e_a)
-  //    (e_a = max(0, (d - 0.2) / 0.8)); fluids add `fluidRetained` x litres of blood (ramped, like the hemorrhage that removes
-  //    blood); impella and IABP are PLACEHOLDERS (see PLACEHOLDER_WARNINGS);
+  //    (e_a = max(0, (d - 0.2) / 0.8)); fluids and blood loss go to the fluid compartments (C2: `FluidCompartments`, which decide how much of it stays in the
+  //    vessels, and the engine holds that volume through `VolumeExchange`; the spec's `fluids` section drives them); impella and IABP are PLACEHOLDERS (see PLACEHOLDER_WARNINGS);
   //  - outputs: `circ` is filled from the smoothed beats (see coreCirc).
   // ======================================================================================================================
 
   private feedFrom = 0; // stream time before which beats belong to a previous heart
   private warmHr = 72;
 
-  /** Blood (ml) the circulation should hold relative to the patient's own: fluids given less blood lost. */
-  private targetVolume(): number { return this.fluidGiven * 1000 * ACS_CORE.fluidRetained - this.bloodLoss * this.bv0; }
+  /** Blood (ml) the circulation should hold relative to the patient's own: what the fluid compartments keep in the vessels (C2). */
+  private targetVolume(): number { return this.fluidModel!.bloodVolume - this.bv0; }
 
   private initCore() {
     const p = PATIENTS.adult;
@@ -344,6 +368,11 @@ export class Simulation {
     this.fed = new WeakSet(); this.fxQueue = []; this.fx = NEUTRAL_FX; this.liveSeen = false; this.delta = NaN; this.feedFrom = this.t;
     this.bv0 = p.bloodMlPerKg * p.weightKg;
     this.fluidGiven = this.support.fluids;
+    this.fluidP = null;
+    const fm = (this.fluidModel = new FluidCompartments({ bloodMl: this.bv0, hb: p.hb, weightKg: p.weightKg }));
+    this.setFluidSpec(this.fluidSpec);
+    fm.bleed(this.bloodLoss * this.bv0); // the scenario starts after the loss and the fluid: both in at once, the compartments redistribute them from here
+    fm.give("crystalloid", this.fluidGiven * 1000);
     this.volApplied = Math.max(ACS_CORE.startVolumeMl[0], Math.min(ACS_CORE.startVolumeMl[1], this.targetVolume())); // what the structural spec accepts; the rest follows at the rate limit
     const veins = ["SVC", "IVC", "SPL"].map(NODE), vessels = ["SVC", "IVC", "SPL", "PA", "PV", "AO", "DAO"].map(NODE);
     const di = this.devSpec.impella ?? DEFAULT_IMPELLA, lvN = NODE("LV"), aoN = NODE("AO");
@@ -363,6 +392,7 @@ export class Simulation {
     this.dx.rho = this.dia.dT > 0 && this.dia.aoT > 0 ? this.dia.dSum / this.dia.dT / (this.dia.aoSum / this.dia.aoT) : ACS_CORE.diastolicRatio;
     this.dia = { ...this.dia, t: NaN, aoT: 0, aoSum: 0, dT: 0, dSum: 0, peak: -Infinity, sys: -Infinity, closed: false, opened: false, balloon: 0, fill: 0 };
     this.seedFromWarm(live.warmBeat!);
+    this.stepFluids(0);
     live.onRecord((b) => this.handleLiveBeat(b));
     this.sensor = { events: [], tStart: NaN, start: 0, peak: 0, armed: false, ao: live.engine.node("AO") };
     live.engine.onSample((smp) => this.senseTick(smp.t, smp.P[this.sensor.ao]));
@@ -604,6 +634,29 @@ export class Simulation {
    * Venous tone moves blood from the unstressed to the stressed volume and raises `msfp`; blood given or lost changes the total.
    */
   filling() { return this.live ? this.live.filling() : null; }
+
+  /**
+   * The fluid compartments of the core engine now (C2), null with the legacy engine (`FluidReadout`, core/fluids.ts): plasma, red cell,
+   * blood and interstitial volume (ml), hematocrit and Hb (g/dl), plasma protein and the oncotic pressures, capillary and interstitial
+   * pressure (mmHg), filtration, lymph and the net transcapillary flow out of the vessels (ml per clinical minute; negative while the
+   * interstitium refills the plasma), urine, and the cumulative fluid given, blood lost and urine (ml). `conservation` is the error of
+   * the total water balance, ml (zero up to rounding).
+   */
+  fluids(): (FluidReadout & { conservation: number }) | null {
+    return this.fluidModel ? { ...this.fluidModel.read(), conservation: this.fluidModel.balance() } : null;
+  }
+
+  /** Apply the `fluids` section of a spec to the compartments: doses (kept, added or stopped), the bleeding rate and the capillary leak. Absent fields are off. */
+  private setFluidSpec(f: FluidSpec) {
+    const fm = this.fluidModel!;
+    fm.setDoses(f.given ?? []);
+    fm.hemorrhage = f.hemorrhageMlMin ?? 0;
+    fm.leak = f.capillaryLeak ?? 0;
+  }
+  private patchFluids(patch: PatientSpec) {
+    this.fluidSpec = normalizePatient({ fluids: patch.fluids }).spec.fluids ?? {};
+    this.setFluidSpec(this.fluidSpec);
+  }
 
   /** Run for `seconds` of simulated time and return the beats that occurred. */
   run(seconds: number): BeatRecord[] {

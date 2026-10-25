@@ -31,13 +31,6 @@ export const ACS_CORE = {
   deviceFlowTau: 1.5,
   /** Fallback ratio of the mean aortic pressure with the valve closed to the mean aortic pressure, for a balloon pump that runs from the first beat. Normally learned in the warm-up and on unassisted beats (D3). [assumed] */
   diastolicRatio: 0.85,
-  /**
-   * Fluids: fraction of the litres given that stays in the circulation (blood added, ramped with the volume time constant).
-   * Crystalloid mostly leaves the vessels within the hour; this is the part that is there during the resuscitation: 20-30 % at
-   * 30 minutes [lit], the figure C2 is to reproduce. (A7 used 0.5, which with the strong venous reserve over-recovered a bled
-   * patient.) C2 replaces it with real compartments.
-   */
-  fluidRetained: 0.45,
   /** Congestion (0..1) from the pulmonary capillary wedge pressure, mmHg: 0 up to `pcwpOnset` (upper normal), 1 at `pcwpFull` (alveolar edema, ~25). [lit-ish] */
   pcwpOnset: 12, pcwpFull: 25,
   /** Baroreceptors read a beat's pressure this long after its ventricular event, s (systole is over; the peak is known). [assumed] */
