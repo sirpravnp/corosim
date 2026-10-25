@@ -30,6 +30,18 @@ export const PRESETS: Preset[] = [
     spec: { lesions: [{ artery: "LAD", occluded: true, position: 0.15 }], support: { dobutamine: 0.3, impella: true }, devices: { impella: { model: "CP", level: 6, position: "correct" } } },
   },
   {
+    id: "impella-aortic", label: "Impella inflow in the aorta", blurb: "Anterior infarct, Impella CP at P8 pulled back so the inlet sits in the aorta: the pump spins and recirculates aorta to aorta, nothing is unloaded (wedge pressure stays high), the placement signal turns into an aortic pulse and the console says position wrong.",
+    spec: { lesions: [{ artery: "LAD", occluded: true, position: 0.15 }], support: { dobutamine: 0.3, impella: true }, devices: { impella: { model: "CP", level: 8, position: "aortic" } } },
+  },
+  {
+    id: "impella-deep", label: "Impella inflow too deep", blurb: "Anterior infarct, Impella CP at P9 pushed in too far: the inlet meets the ventricular wall and papillary apparatus, so the flow collapses in each beat and suction alarms sound. Reposition or turn the P-level down.",
+    spec: { lesions: [{ artery: "LAD", occluded: true, position: 0.15 }], support: { dobutamine: 0.3, impella: true }, devices: { impella: { model: "CP", level: 9, position: "deep" } } },
+  },
+  {
+    id: "rv-infarct-impella", label: "RV infarct starving a left Impella", blurb: "Proximal RCA occlusion with a failed right ventricle in a preload-depleted patient, Impella CP at P9: the left ventricle gets too little blood, the flow falls and suction alarms sound. A fluid bolus, an Impella RP or a lower P-level restores the flow.",
+    spec: { lesions: [{ artery: "RCA", occluded: true, position: 0.2 }], heart: { rvEes: 0.2, rvStiffness: 4 }, bloodLoss: 0.2, devices: { impella: { model: "CP", level: 9, position: "correct" } } },
+  },
+  {
     id: "tamponade", label: "Cardiac tamponade", blurb: "A 180 ml effusion in a normal sac: falling pressure and output, a raised venous pressure and a fast pulse (Beck's triad), with the filling pressures drawing together.",
     spec: { pericardium: { effusionMl: 180, stiffness: 1 } },
   },

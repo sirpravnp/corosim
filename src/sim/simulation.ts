@@ -684,6 +684,9 @@ export class Simulation {
         motorCurrentMa: on ? c?.current.mean ?? ti.current : 0, currentPulsatilityMa: on ? c?.pulsatility ?? 0 : 0,
         placementMmHg: on ? c?.placement.mean ?? ti.placement : 0, placementAmplitudeMmHg: on ? c?.placement.amplitude ?? 0 : 0,
         suctionLevel: on ? c?.suctionLevel ?? ti.suctionLevel : 0, suctionFraction: on ? c?.suctionFraction ?? 0 : 0, suctionAlarm: on && !!c?.suctionAlarm,
+        inletMeanMmHg: on ? c?.inlet.mean ?? ti.pIn : 0, inletMinMmHg: on ? c?.inlet.min ?? ti.pIn : 0, inletMaxMmHg: on ? c?.inlet.max ?? ti.pIn : 0, inletAmplitudeMmHg: on ? c?.inlet.amplitude ?? 0 : 0,
+        positionAlarm: on && !!c?.positionAlarm,
+        alarms: on ? [...(c?.positionAlarm ? ["IMPELLA POSITION WRONG: the inflow is in the aorta"] : []), ...(c?.suctionAlarm ? ["SUCTION: the inflow is collapsing onto the ventricular wall"] : [])] : [],
       },
       iabp: {
         on: this.support.iabp, ratio: p.ratio, inflateMs: p.inflateMs, deflateMs: p.deflateMs, volumeMl: { ...DEFAULT_IABP, ...this.devSpec.iabp }.volumeMl,
@@ -721,7 +724,8 @@ export class Simulation {
   /** Flow the circulation gets from its pumps now, L/min: the Impella's (LV to aorta) and the ECMO circuit's (RA to descending aorta); the Impella RP is in series with the lungs and adds nothing. */
   private deviceFlowNow(): number {
     const taps = this.live!.engine.sample().taps;
-    return (taps["impella"]?.flow ?? 0) + (taps["ecmo"]?.flow ?? 0);
+    // an Impella with its inflow in the aorta only recirculates aorta to aorta: it adds nothing to the output
+    return (this.impella?.position === "aortic" ? 0 : taps["impella"]?.flow ?? 0) + (taps["ecmo"]?.flow ?? 0);
   }
 
   /**
