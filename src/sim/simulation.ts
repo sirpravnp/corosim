@@ -150,8 +150,9 @@ export class Simulation {
   private sm = { sv: 0, co: 0, ef: 0, pcwp: 0, cvp: 0, sbp: 0, dbp: 0, dev: 0 };
   private base!: Circulation; // circulation() of the legacy model: the fractions and demand the core circ borrows
 
-  constructor(input: Scenario = {}, opts: { engine?: EngineKind } = {}) {
+  constructor(input: Scenario = {}, opts: { engine?: EngineKind; deferCore?: boolean } = {}) {
     this.engine = opts.engine ?? "legacy";
+    this.defer = !!opts.deferCore;
     this.mod = {
       rate: (t) => (this.paced() ? 1 : this.autonomic.hrScaleAt(t)),
       jitter: () => (this.paced() ? 0 : this.autonomic.jitter()),
@@ -160,8 +161,9 @@ export class Simulation {
   }
 
   /** Start over from a scenario. `settled` puts ischemia at its steady value instead of starting from a normal heart. */
-  reset(input: PatientSpec = {}, opts: { settled?: boolean } = {}) {
+  reset(input: PatientSpec = {}, opts: { settled?: boolean; warmup?: number } = {}) {
     const { scenario, warnings } = normalizeScenario(input);
+    this.job = null; this.building = null; this.jobWarm = 0;
     this.live = undefined; this.liveSeen = false;
     this.n = scenario; this.warnings = warnings;
     this.support = { ...scenario.support }; this.patient = { ...scenario.patient }; this.grafts = [];
@@ -178,7 +180,7 @@ export class Simulation {
     this.rebuildAnatomy();
     this.updateCirculation();
     if (opts.settled) { Object.assign(this.sev, this.target); this.updateCirculation(); }
-    if (this.engine === "core") this.initCore();
+    if (this.engine === "core") this.initCore(opts.warmup ?? 0);
   }
 
   /**
@@ -316,6 +318,7 @@ export class Simulation {
    * Returns the clinical minutes that elapsed.
    */
   step(dt: number, opts: { minutes?: number } = {}): number {
+    if (this.job && !this.inJob) return 0; // the core engine is still being built: the clock holds
     const total = opts.minutes ?? dt * this.speed * this.minutesPerSecond;
     let left = dt;
     while (left > 1e-9) { const h = Math.min(left, Simulation.DT); this.sub(h, dt > 0 ? (total * h) / dt : 0); left -= h; }
@@ -414,19 +417,62 @@ export class Simulation {
    * go into the build (`buildCore`); if the core cannot settle that patient (it throws, or the settled beat has no finite pressure) it
    * runs a plain adult instead and `coreNote` says why, so a page can fall back to the bridge for the patient it cannot represent.
    */
-  private initCore() {
+  private initCore(warmup = 0) {
+    this.jobWarm = Math.max(this.jobWarm, warmup);
+    if (this.defer) this.queueCore(); else this.finishJob(this.initCoreSteps());
+  }
+
+  /** The build in chunks (see `settleStep`): the same steps as `initCore`, with a yield after each beat of the heart's warm-up and each quarter second of reflex warm-up. */
+  private *initCoreSteps(): Generator<void> {
     const sig = this.structureSig();
-    try { this.buildCore(); this.coreNote = ""; }
+    try { yield* this.buildCoreSteps(); this.coreNote = ""; }
     catch (e) {
       this.coreNote = `the core engine could not settle this patient (${e instanceof Error ? e.message : String(e)}); showing a plain adult`;
       this.heartSpec = {}; this.periSpec = undefined; this.ventSpec = undefined;
       this.devSpec = { ...this.devSpec, ecmo: undefined, impellaRp: undefined };
-      this.buildCore();
+      this.building = null;
+      yield* this.buildCoreSteps();
     }
     this.builtSig = sig; // the requested structure, so an identical request does not rebuild again
+    if (this.defer) this.pushPatient(); // edits made while it was being built
+    for (let left = this.jobWarm; left > 1e-9; left -= 0.25) { this.inJob = true; try { this.step(Math.min(0.25, left), { minutes: 0 }); } finally { this.inJob = false; } yield; } // the reflex loop settles with no clinical time passing
+    this.jobWarm = 0;
   }
 
-  private buildCore() {
+  // ---- building in chunks (a page keeps its thread: the heart's warm-up is ~0.5 s and the reflex warm-up ~0.6 s of work)
+  private defer = false;
+  private job: Generator<void> | null = null;
+  private jobWarm = 0;
+  private inJob = false;
+  private building: LiveHeart | null = null; // the heart being built: not `live` until it is settled
+  private runJob(it: Generator<void>) { this.job = it; }
+  private finishJob(it: Generator<void>) { while (!it.next().done); }
+  /** Queue the build (with `jobWarm` s of reflex warm-up after it; `warmup()` while it is pending adds to that). A build already queued is replaced, its warm-up kept. While it is pending the simulation does not advance (`step` does nothing) and `live` is undefined. */
+  private queueCore() {
+    this.live = undefined; this.liveSeen = false; this.building = null;
+    this.builtSig = this.structureSig(); // the request in hand, so an identical one does not queue another
+    this.job = this.initCoreSteps();
+  }
+  /** True while the core engine's heart is being built and settled in chunks (`deferCore`): the panels have no live heart yet and the simulation holds its clock. */
+  get settling(): boolean { return this.job !== null; }
+  /** Do chunks of the pending build for about `budgetMs` (at least one chunk); true when it is done. */
+  settleStep(budgetMs = 8): boolean {
+    const it = this.job;
+    if (!it) return true;
+    const t0 = performance.now();
+    do {
+      let r: IteratorResult<void>;
+      try { r = it.next(); } catch (e) { this.job = null; this.jobWarm = 0; throw e; }
+      if (r.done) { this.job = null; this.jobWarm = 0; return true; }
+    } while (performance.now() - t0 < budgetMs);
+    return false;
+  }
+  /** Finish a pending build now (a caller that needs the live heart at once: the AI tools, tests). */
+  settleNow() { while (!this.settleStep(1e9)); }
+
+  private buildCore() { this.finishJob(this.buildCoreSteps()); }
+
+  private *buildCoreSteps(): Generator<void> {
     const p = PATIENTS.adult, hv = this.heartSpec.volumeMl ?? 0;
     this.sm = { sv: 0, co: 0, ef: 0, pcwp: 0, cvp: 0, sbp: 0, dbp: 0, dev: 0 };
     this.fed = new WeakSet(); this.fxQueue = []; this.fx = NEUTRAL_FX; this.liveSeen = false; this.delta = NaN; this.feedFrom = this.t;
@@ -441,12 +487,13 @@ export class Simulation {
     const iabpEl = (m: Model) => (this.iabp = Iabp.forModel(m, { ...DEFAULT_IABP, ...this.devSpec.iabp, volumeMl: 0 })); // off during the warm-up
     const ecmoEl = (m: Model) => (this.ecmo = Ecmo.forModel(m, { ...this.devSpec.ecmo }));
     const rpEl = (m: Model) => (this.rp = ImpellaRp.forModel(m, { ...this.devSpec.impellaRp }));
-    this.exchange = new VolumeExchange("volumeExchange", veins, vessels, (n, v) => { const m = this.live!.engine.nodes[n].model; return m instanceof Compliance ? m.stressed(v) : v; });
+    this.exchange = new VolumeExchange("volumeExchange", veins, vessels, (n, v) => { const m = (this.building ?? this.live!).engine.nodes[n].model; return m instanceof Compliance ? m.stressed(v) : v; });
     const core: FromModelOptions = {}, pe = this.periSpec, ve = this.ventSpec;
     if (pe) core.pericardium = { effusionMl: pe.effusionMl ?? 0, stiffness: pe.stiffness ?? 1, open: pe.open ?? false };
     if (ve) core.thorax = { mode: ve.mode ?? "spontaneous", peep: ve.peep ?? 0, tidalMlKg: ve.tidalMlKg ?? THORAX.defaultTidalMlKg, rate: (ve.mode ?? "spontaneous") === "spontaneous" ? this.autonomic.controls.respRate : THORAX.defaultRate, depth: this.autonomic.controls.respDepth };
     this.appliedEffusion = pe?.effusionMl ?? 0; this.hasSac = !!pe; this.hasThorax = !!ve;
-    const live = (this.live = new LiveHeart({ ...this.heartSpec, volumeMl: hv + this.volApplied }, { core, extra: [impellaEl, iabpEl, this.exchange, ...(this.devSpec.ecmo ? [ecmoEl] : []), ...(this.devSpec.impellaRp ? [rpEl] : [])] }));
+    this.live = undefined;
+    const live = (this.building = new LiveHeart({ ...this.heartSpec, volumeMl: hv + this.volApplied }, { core, extra: [impellaEl, iabpEl, this.exchange, ...(this.devSpec.ecmo ? [ecmoEl] : []), ...(this.devSpec.impellaRp ? [rpEl] : [])] }));
     this.impConsole?.dispose(); this.impConsole = new ImpellaConsole(live.engine);
     this.rpConsole?.dispose(); this.rpConsole = this.rp ? new ImpellaConsole(live.engine, "impellaRp") : undefined;
     this.dia = { t: NaN, aoT: 0, aoSum: 0, dT: 0, dSum: 0, peak: -Infinity, sys: -Infinity, closed: false, opened: false, balloon: 0, fill: 0 };
@@ -461,8 +508,9 @@ export class Simulation {
     const breathing = th ? { ...th.params } : null;
     if (th && breathing) th.set({ mode: "off", offsetMmHg: Thorax.meanChest(breathing) });
     this.warmHr = Math.max(20, ventRate(this.rstate));
-    live.warm(this.warmHr);
+    yield* live.warmSteps(this.warmHr);
     if (th && breathing) th.set({ mode: breathing.mode, offsetMmHg: 0 });
+    this.live = live; this.building = null;
     const w = live.warmBeat!;
     if (![w.map, w.systolic, w.strokeVolume, w.p.RA.mean, w.p.LA.mean].every(Number.isFinite)) throw new Error("the settled beat has no finite pressures");
     this.dx.rho = this.dia.dT > 0 && this.dia.aoT > 0 ? this.dia.dSum / this.dia.dT / (this.dia.aoSum / this.dia.aoT) : ACS_CORE.diastolicRatio;
@@ -496,8 +544,8 @@ export class Simulation {
     }
     this.pushDevices();
   }
-  private sac(): Pericardium | null { try { return this.live?.engine.element<Pericardium>("pericardium") ?? null; } catch { return null; } }
-  private thorax(): Thorax | null { try { return this.live?.engine.element<Thorax>("thorax") ?? null; } catch { return null; } }
+  private sac(): Pericardium | null { try { return (this.building ?? this.live)?.engine.element<Pericardium>("pericardium") ?? null; } catch { return null; } }
+  private thorax(): Thorax | null { try { return (this.building ?? this.live)?.engine.element<Thorax>("thorax") ?? null; } catch { return null; } }
 
   /** The warm-up's steady state is the first smoothed beat: `circ` shows the core's numbers from the first instant, never the legacy ones (A7b). */
   private seedFromWarm(lb: LiveBeat) {
@@ -558,7 +606,7 @@ export class Simulation {
 
   /** Slow inputs of the heart from the ischemia, the autonomic state, the drugs and the devices (see the mapping above). */
   private pushInputs() {
-    const live = this.live!, K = ACS_CORE, S = SUPPORT, sup = this.support, fx = this.fx, rs = this.rstate, vaso = this.drug.vasopressor;
+    const live = (this.building ?? this.live)!, K = ACS_CORE, S = SUPPORT, sup = this.support, fx = this.fx, rs = this.rstate, vaso = this.drug.vasopressor;
     live.setVentricleFactors(ischemiaFactors(this.base.lvIschemia, this.base.rvIschemia));
     const nitroV = Math.min(1, sup.nitro / K.nitroVenousFull), nitroA = Math.max(0, (sup.nitro - K.nitroArterialOnset) / (1 - K.nitroArterialOnset));
     const resistance = fx.resistance * (vaso >= 0 ? 1 + 0.5 * vaso : 1 + 0.4 * vaso)
@@ -768,7 +816,7 @@ export class Simulation {
   }
 
   /** Let the reflex loop settle without returning beats. No clinical time passes, so no muscle is lost while settling. */
-  warmup(seconds: number) { this.step(seconds, { minutes: 0 }); }
+  warmup(seconds: number) { if (this.job) this.jobWarm = Math.max(this.jobWarm, seconds); else this.step(seconds, { minutes: 0 }); } // while the core engine is being built, the warm-up follows the build
 
   metrics(lastSeconds?: number): Metrics {
     const from = lastSeconds ? this.t - lastSeconds : 0;

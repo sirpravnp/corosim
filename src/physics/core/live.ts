@@ -170,9 +170,15 @@ export class LiveHeart {
    * first beat or step. Fills `warmBeat` with the last periodic beat.
    */
   warm(hr: number): { beats: number; converged: boolean } {
+    const it = this.warmSteps(hr);
+    for (;;) { const r = it.next(); if (r.done) return r.value; }
+  }
+
+  /** `warm()` one beat at a time (about 25 ms each): yields between beats so a page can give the thread back; returns what `warm()` returns. Run it to the end before the first beat or step. */
+  *warmSteps(hr: number): Generator<void, { beats: number; converged: boolean }> {
     if (this.attached) throw new Error("LiveHeart.warm() must come before the first beat or step");
     const T = 60 / hr, rec = new BeatRecorder(this.engine, T, this.valveNames);
-    const r = this.engine.periodic(hr);
+    const r = yield* this.engine.periodicSteps(hr);
     const beat = rec.beat(), fv = this.engine.flowVolumes(); // right after periodic() the recorder holds the last beat
     rec.dispose();
     this.warmBeat = {
