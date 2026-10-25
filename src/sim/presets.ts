@@ -42,7 +42,7 @@ export const PRESETS: Preset[] = [
     spec: { lesions: [{ artery: "RCA", occluded: true, position: 0.2 }], heart: { rvEes: 0.2, rvStiffness: 4 }, bloodLoss: 0.2, devices: { impella: { model: "CP", level: 9, position: "correct" } } },
   },
   {
-    id: "tamponade", label: "Cardiac tamponade", blurb: "A 270 ml effusion in a normal sac, breathing on his own: falling pressure and output, a raised venous pressure and a fast pulse (Beck's triad), the four diastolic pressures drawn together to the pressure of the sac, a blunted y descent, a pulsus paradoxus over 10 mmHg and, above 250 ml, electrical alternans (the EKG page opens its alternans preset). Pericardiocentesis (remove 50-100 ml) relieves it.",
+    id: "tamponade", label: "Cardiac tamponade", blurb: "A 270 ml effusion in a normal sac, breathing spontaneously: falling pressure and output, a raised venous pressure and a fast pulse (Beck's triad), the four diastolic pressures drawn together to the pressure of the sac, a blunted y descent, a pulsus paradoxus over 10 mmHg and, above 250 ml, electrical alternans (the EKG page opens its alternans preset). Pericardiocentesis (remove 50-100 ml) relieves it.",
     spec: { pericardium: { effusionMl: 270, stiffness: 1 }, septum: true, ventilation: { mode: "spontaneous" }, autonomic: { respDepth: 1.5 } },
   },
   {

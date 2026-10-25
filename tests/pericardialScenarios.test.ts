@@ -10,6 +10,9 @@ import { pulsusParadoxus, type RespBeat } from "../src/physics/respiratory";
 import { ALTERNANS, alternansAmplitude } from "../src/config/pericardium";
 import { PRESET_BY_ID as EKG_BY_ID } from "../src/ekg/presets";
 import { TOOLS } from "../src/mcp/tools";
+import { normalizePatient } from "../src/sim/patient";
+import { buildPlaygroundSpec, hasPlaygroundFields, stateOfSpec } from "../src/sim/playground";
+import { decodePatient, encodePatient } from "../src/sim/llm";
 import type { Thorax } from "../src/physics/core/thorax";
 import type { LiveBeat } from "../src/physics/core/live";
 
@@ -244,4 +247,27 @@ describe("pericardiocentesis", () => {
     const r2 = tool("corosim_adjust", { patch: { pericardium: { drainMl: 500 } }, runSeconds: 2 });
     expect(sim.pericardium()!.effusionMl).toBeCloseTo(0, 0); expect(r2.applied.pericardium).toEqual({ effusionMl: 0 });
   }, 60000);
+});
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+describe("the spec fields behind the scenarios", () => {
+  it("septum is a boolean the spec keeps, a share link carries and the playground state owns", () => {
+    const p: PatientSpec = { septum: true, pericardium: { effusionMl: 270 } };
+    expect(normalizePatient(p).spec.septum).toBe(true); expect(normalizePatient(p).warnings).toEqual([]);
+    expect(normalizePatient({ septum: "yes" } as unknown as PatientSpec).warnings.join()).toMatch(/septum/);
+    expect(normalizePatient({ septum: "yes" } as unknown as PatientSpec).spec.septum).toBeUndefined();
+    const built = buildPlaygroundSpec({}, stateOfSpec(p)).spec;
+    expect(built.septum).toBe(true); expect(decodePatient(encodePatient(built))).toEqual(built);
+    expect(hasPlaygroundFields({ septum: true })).toBe(true);
+    expect(buildPlaygroundSpec({}, stateOfSpec({})).spec.septum).toBeUndefined();
+  });
+  it("drainMl is clamped to 0-2000 ml like the other pericardium fields", () => {
+    expect(normalizePatient({ pericardium: { drainMl: 5000 } }).spec.pericardium!.drainMl).toBe(2000);
+    expect(normalizePatient({ pericardium: { drainMl: -5 } }).spec.pericardium!.drainMl).toBe(0);
+  });
+  it("the new presets normalise without warnings and carry what they teach", () => {
+    for (const id of ["tamponade", "constrictive-pericarditis", "rv-infarct-septal"]) { expect(PRESET_BY_ID[id], id).toBeDefined(); expect(normalizePatient(PRESET_BY_ID[id]!.spec).warnings, id).toEqual([]); expect(PRESET_BY_ID[id]!.spec.septum, id).toBe(true); }
+    expect(PRESET_BY_ID["tamponade"]!.spec.pericardium!.effusionMl).toBeGreaterThan(ALTERNANS.thresholdMl);
+    expect(PRESET_BY_ID["constrictive-pericarditis"]!.spec.pericardium!.effusionMl).toBeUndefined(); // a stiff sac and no fluid
+  });
 });
