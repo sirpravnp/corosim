@@ -31,7 +31,7 @@ claim parity.
 |---|---|---|
 | ACS / cath circulation | `src/physics/circulation.ts` | Algebraic: MAP = CO × SVR, stroke volume a product of tuned multipliers |
 | Beat pressure | `src/physics/beatHemo.ts` | 2-element Windkessel stepped per beat, Frank–Starling from the RR interval |
-| Support | `src/physics/support.ts`, `src/config/management.ts` | Drugs and devices as multipliers (Impella = 3.0 L/min constant) |
+| Support | `src/physics/support.ts`, `src/config/management.ts` | Drugs and devices as multipliers (Impella = 3.0 L/min constant); on the core engine the drugs are receptor-level (`src/physics/core/drugs.ts`, E4) |
 | Autonomic | `src/physics/autonomic.ts` | Real closed loop: baroreflex arms, Mayer waves, RSA, CNS ischemic and volume reflexes |
 | Structural | `src/physics/structural.ts` | Real closed loop: 10 nodes, four elastance chambers, Gorlin orifices, O₂ solve; solved to a periodic steady state; no reflexes, devices, pericardium or inertance |
 | Coronary lesion | `src/physics/hemodynamics.ts` | Steady lesion physics (Poiseuille + Young–Tsai), collaterals, autoregulation, FFR |

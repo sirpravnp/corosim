@@ -13,6 +13,8 @@ import { BedSite, bedSites, ischemicBurden, globalSeverity, injuryVector, transm
 import { rhythmState, RhythmState, SinusModulation, Patient } from "../physics/rhythm";
 import { circulation, Circulation, CIRC } from "../physics/circulation";
 import { Support, supportedRhythm } from "../physics/support";
+import { Drugs, DrugDoses, DrugEffects } from "../physics/core/drugs";
+import type { DrugName } from "../config/drugs";
 import { BeatStream } from "../physics/beatStream";
 import { BeatHemodynamics } from "../physics/beatHemo";
 import { Autonomic, AUTONOMIC, AutonomicEffects } from "../physics/autonomic";
@@ -105,6 +107,8 @@ export class Simulation {
   private beatCount = 0;
   // current (slewed) drug and volume levels
   private drug = { betaBlocker: 0, atropine: 0, vasopressor: 0 };
+  /** Receptor-level drugs of the core engine (E4): effect-site levels in clinical minutes. The legacy engine slews `drug` and reads `SUPPORT`. */
+  private pk = new Drugs();
   private bloodLoss = 0;
   private mod: SinusModulation;
   /** Called with each new ventricular beat (UI hooks, tests). */
@@ -182,6 +186,9 @@ export class Simulation {
     for (const k of Object.keys(this.scar)) delete this.scar[k];
     this.map = this.perfusion = this.solvedPerfusion = CIRC.baseMap; this.solvedDemand = 1; this.mapClock = 0;
     this.drug = { ...scenario.drugs }; this.bloodLoss = scenario.bloodLoss;
+    this.pk.set(this.drugDoses()); // a drug in the scenario is already running
+    if (this.engine === "legacy") for (const [k, v] of [["epinephrine", this.support.epi], ["milrinone", this.support.milrinone], ["vasopressin", this.support.vasopressin], ["nitroprusside", this.support.nitroprusside], ["furosemide", this.support.furosemide]] as const)
+      if (v > 0) this.warnings = [...this.warnings, `support.${k} is modelled on the core engine only; the legacy engine ignores it.`];
     this.stream = new BeatStream(scenario.seed, Simulation.LOOKAHEAD, 0.05);
     this.beatHemo = new BeatHemodynamics();
     this.autonomic = new Autonomic(scenario.seed, this.engine === "core" ? { ...AUTONOMIC, ...AUTONOMIC_CORE } : AUTONOMIC);
@@ -322,8 +329,10 @@ export class Simulation {
 
   private updateCirculation() {
     const g = globalSeverity(ischemicBurden(this.sites, this.sev)), sup = this.effSupport();
-    this.rstate = supportedRhythm(rhythmState(this.sites, this.sev, g, this.patient), sup);
-    const c = circulation(this.sites, this.sev, this.rstate, sup, this.scar, 1); // the baroreflex is dynamic here
+    // core: the drugs act through `pk` (receptor level), so what `circulation()` and the rhythm read from the old multipliers is switched off; devices stay
+    const fx = this.engine === "core" ? this.pk.effects() : null, csup = fx ? { ...sup, fluids: 0, norepi: 0, dobutamine: 0, nitro: 0 } : sup;
+    this.rstate = supportedRhythm(rhythmState(this.sites, this.sev, g, this.patient), csup, fx ?? undefined);
+    const c = circulation(this.sites, this.sev, this.rstate, csup, this.scar, 1); // the baroreflex is dynamic here
     this.base = c;
     this.circ = this.live && this.liveSeen ? this.coreCirc(c) : c;
   }
@@ -345,6 +354,16 @@ export class Simulation {
     let left = dt;
     while (left > 1e-9) { const h = Math.min(left, Simulation.DT); this.sub(h, dt > 0 ? (total * h) / dt : 0); left -= h; }
     return total;
+  }
+
+  /** The doses the receptor-level drugs are heading for (core engine): the support dials, the scenario's beta-blocker and its "vasopressor" dial (above 0 an alpha agonist, below 0 a nitroprusside-type vasodilator). */
+  private drugDoses(): DrugDoses {
+    const s = this.support, vaso = this.n.drugs.vasopressor;
+    return {
+      norepinephrine: s.norepi, epinephrine: s.epi, dobutamine: s.dobutamine, milrinone: s.milrinone, vasopressin: s.vasopressin,
+      phenylephrine: Math.max(0, vaso), nitroglycerin: s.nitro, nitroprusside: Math.min(1, s.nitroprusside + Math.max(0, -vaso)),
+      betaBlocker: this.n.drugs.betaBlocker, furosemide: s.furosemide,
+    };
   }
 
   private slew(h: number) {
@@ -392,10 +411,11 @@ export class Simulation {
       if (ischemicBurden(this.sites, this.sev) > 0.005) this.ischemicMinutes += minutes;
     }
     this.slew(h);
+    if (this.engine === "core") { this.pk.step(minutes, this.drugDoses()); if (this.fluidModel) this.fluidModel.diuretic = this.pk.effects().diuretic; }
     if (this.fluidModel) this.stepFluids(minutes);
     this.updateCirculation();
     const ctl = this.autonomic.controls;
-    ctl.betaBlock = this.drug.betaBlocker;
+    ctl.betaBlock = this.engine === "core" ? this.pk.effects().betaBlock : this.drug.betaBlocker;
     ctl.vagalBlock = Math.max(this.drug.atropine, this.support.atropine ? 1 : 0);
     ctl.volumeDeficit = Math.max(0, this.fluidModel ? 1 - this.fluidModel.bloodVolume / this.bv0 : this.bloodLoss); // core: the blood volume short of the patient's own, whatever its cause or refill
     this.autonomic.step(h);
@@ -453,9 +473,10 @@ export class Simulation {
   //  - autonomic -> engine: contractility x effects.contractility, resistance x effects.resistance (and the ischemic reflex terms
   //    circulation() has: x (1 + 0.2 sympathetic) x (1 - 0.12 vagal), and the vasopressor drug), venous tone 1 + 0.75 (vascular tone - rest)
   //    (the volume reflex reaches the veins through the vascular tone: core autonomic calibration `AUTONOMIC_CORE`, config/acsCore.ts; deficit = fraction of blood volume lost net of fluids); rate arrives as beats;
-  //  - support: norepinephrine resistance x (1 + 0.35 d) and venous tone x (1 + 0.3 d); dobutamine Ees x (1 + 0.45 d) and resistance
-  //    x (1 - 0.12 d); nitroglycerin venous tone x (1 - 0.2 e_v) (e_v = min(1, d / 0.4)) then resistance x (1 - 0.22 e_a)
-  //    (e_a = max(0, (d - 0.2) / 0.8)); fluids and blood loss go to the fluid compartments (C2: `FluidCompartments`, which decide how much of it stays in the
+  //  - drugs (E4, physics/core/drugs.ts, config/drugs.ts): norepinephrine, epinephrine, dobutamine, milrinone, vasopressin, nitroglycerin,
+  //    nitroprusside, the beta-blocker and furosemide go through receptor drives (alpha-1, beta-1, beta-2, V1, PDE3, NO) to arteriolar
+  //    resistance, venous tone, Ees, tau, sinus rate and the urine multiplier, with first-order onset and offset in clinical minutes; the
+  //    `SUPPORT` multipliers of the old dials are not read on this path; fluids and blood loss go to the fluid compartments (C2: `FluidCompartments`, which decide how much of it stays in the
   //    vessels, and the engine holds that volume through `VolumeExchange`; the spec's `fluids` section drives them); impella and IABP are PLACEHOLDERS (see PLACEHOLDER_WARNINGS);
   //  - outputs: `circ` is filled from the smoothed beats (see coreCirc).
   // ======================================================================================================================
@@ -669,14 +690,11 @@ export class Simulation {
 
   /** Slow inputs of the heart from the ischemia, the autonomic state, the drugs and the devices (see the mapping above). */
   private pushInputs() {
-    const live = (this.building ?? this.live)!, K = ACS_CORE, S = SUPPORT, sup = this.support, fx = this.fx, rs = this.rstate, vaso = this.drug.vasopressor;
+    const live = (this.building ?? this.live)!, K = ACS_CORE, fx = this.fx, rs = this.rstate, d = this.pk.effects();
     live.setVentricleFactors(ischemiaFactors(this.base.lvIschemia, this.base.rvIschemia));
-    const nitroV = Math.min(1, sup.nitro / K.nitroVenousFull), nitroA = Math.max(0, (sup.nitro - K.nitroArterialOnset) / (1 - K.nitroArterialOnset));
-    const resistance = fx.resistance * (vaso >= 0 ? 1 + 0.5 * vaso : 1 + 0.4 * vaso)
-      * (1 + CIRC.sympatheticSvr * rs.sympathetic) * (1 - CIRC.vagalSvr * rs.vagal)
-      * (1 + S.norepiSvr * sup.norepi) * (1 - S.dobSvr * sup.dobutamine) * (1 - S.nitroSvr * nitroA);
-    const venousTone = (1 + K.venousToneGain * (fx.vascular - AUTONOMIC.restSympathetic)) * (1 + K.norepiVenousTone * sup.norepi) * (1 - K.nitroVenousTone * nitroV);
-    live.setModifiers({ contractility: fx.contractility * (1 + S.dobContractility * sup.dobutamine), resistance, venousTone });
+    const resistance = fx.resistance * d.resistance * (1 + CIRC.sympatheticSvr * rs.sympathetic) * (1 - CIRC.vagalSvr * rs.vagal);
+    const venousTone = (1 + K.venousToneGain * (fx.vascular - AUTONOMIC.restSympathetic)) * d.venousTone;
+    live.setModifiers({ contractility: fx.contractility * d.contractility, resistance, venousTone, relax: d.relax });
   }
 
   /** One sub-step: hand over the new beats, set the slow inputs, move blood in or out, and advance the live heart to the simulation's clock. */
@@ -827,11 +845,26 @@ export class Simulation {
     const K = ACS_CORE, sm = this.sm, dev = sm.dev;
     const co = sm.co + dev;
     return {
-      ...c, hr: ventRate(this.rstate), strokeVolume: sm.sv, cardiacOutput: co, map: this.map, systolic: sm.sbp, diastolic: sm.dbp,
+      ...c, demandFactor: this.coreDemand(), hr: ventRate(this.rstate), strokeVolume: sm.sv, cardiacOutput: co, map: this.map, systolic: sm.sbp, diastolic: sm.dbp,
       svr: co > 0.1 ? this.map / co : c.svr, coronaryPressure: this.map + this.dx.aug, deviceFlow: dev,
       congestion: Math.min(1, Math.max(Math.max(0, (sm.pcwp - K.pcwpOnset) / (K.pcwpFull - K.pcwpOnset)), this.lungCongestion())), ejectionFraction: sm.ef,
       state: this.map < CIRC.shockMap ? "shock" : this.map < CIRC.hypotensionMap ? "hypotension" : "stable",
     };
+  }
+
+  /**
+   * The receptor-level drugs of the core engine now (E4), null with the legacy engine: `level` is each drug's effect-site level as a
+   * fraction of a full dose (it follows the dose with the first-order kinetics of `config/drugs.ts`, in clinical minutes), `effects`
+   * the factors on the design point they give (`DrugEffects`, core/drugs.ts).
+   */
+  drugState(): { level: Record<DrugName, number>; effects: DrugEffects } | null {
+    return this.engine === "core" ? { level: { ...this.pk.level }, effects: this.pk.effects() } : null;
+  }
+
+  /** Myocardial oxygen demand relative to the patient's own: the drug effects on the ventricle (`DEMAND`), times the unloading of the devices (`SUPPORT`). */
+  private coreDemand(): number {
+    const K = SUPPORT, s = this.support;
+    return Math.max(0.5, this.pk.effects().demand * (1 - K.impellaDemand * +s.impella - K.iabpDemand * +s.iabp));
   }
 
   /** Flow the circulation gets from its pumps now, L/min: the Impella's (LV to aorta) and the ECMO circuit's (RA to descending aorta); the Impella RP is in series with the lungs and adds nothing. */
