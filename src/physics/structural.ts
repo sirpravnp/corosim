@@ -273,7 +273,7 @@ export function simulate(m: Model, opts: { waveform?: boolean; core?: FromModelO
  */
 /** A pump stream into the oxygen solve (VA-ECMO): `flow` ml/s net from node `from` to node `to`, its content set from the content drained by `oxygenate(cIn, capacity)`. */
 export interface O2Stream { from: number; to: number; flow: number; oxygenate: (cIn: number, capacity: number) => number }
-export function solveOxygen(m: Model, h: Hemodynamics, stream?: O2Stream): { content: Float64Array; capacity: number; starved: boolean; converged: boolean } {
+export function solveOxygen(m: Model, h: Pick<Hemodynamics, "fwd" | "bwd">, stream?: O2Stream): { content: Float64Array; capacity: number; starved: boolean; converged: boolean } {
   const cap = (O2_PER_G_HB * m.patient.hb) / 100, T = m.T, ne = m.edges.length;
   const c = new Float64Array(NN).fill(0.6 * cap);
   const inflow = new Float64Array(NN);
@@ -402,7 +402,7 @@ export function volumeOffsetFor(spec: StructuralSpec, core?: FromModelOptions, b
   const kind = spec.patient ?? "adult", key = JSON.stringify([PATIENTS[kind], resolveCore(core), { zc: true, unstressed: true, splanchnic: true, bronchial: true, atrialEesScale: ACTIVATION.atrialEesScale, ...build }, VESSELS, ACTIVATION, SOLVER, ISTH_R, BRONCHIAL]), hit = offsets.get(key);
   if (hit !== undefined) return hit;
   const target = PATIENTS[kind].map;
-  const err = (off: number) => simulate(buildModel({ patient: kind }, off, build), { waveform: false, core: core?.thorax ? { ...core, thorax: undefined } : core }).p.AO.mean - target; // the blood volume is calibrated at the model's zero intrathoracic pressure: no breathing
+  const err = (off: number) => simulate(buildModel({ patient: kind }, off, build), { waveform: false, core: core && (core.thorax || core.pericardium) ? { ...core, thorax: undefined, pericardium: undefined } : core }).p.AO.mean - target; // the blood volume is calibrated at the model's zero intrathoracic pressure (no breathing) and with no effusion: the cache key ignores both, so the first caller must not decide it
   let x0 = 0, f0 = err(x0), x1 = 0.1 * target * PATIENTS[kind].weightKg, f1 = err(x1);
   for (let i = 0; i < 8 && Math.abs(f1) > 0.1; i++) {
     const x2 = x1 - (f1 * (x1 - x0)) / (f1 - f0 || 1e-9);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { analyzeJvp, jvpHeightCm, jvpWords } from "../src/physics/jvp";
 import { buildModel, volumeOffsetFor, type StructuralSpec } from "../src/physics/structural";
-import { fromModel } from "../src/physics/core/fromModel";
+import { fromModel, type FromModelOptions } from "../src/physics/core/fromModel";
 import { createEngine } from "../src/physics/core/engine";
 import { LESIONS, defaults } from "../src/sim/structural";
 import { bridgeAfNote, pressureAt } from "../src/panels/jvp";
@@ -79,8 +79,8 @@ describe("analyzeJvp on synthetic waveforms", () => {
 
 // ---- core engine ------------------------------------------------------------------------------------------------
 
-function coreEngine(spec: StructuralSpec = {}) {
-  const g = fromModel(buildModel(spec, volumeOffsetFor(spec)));
+function coreEngine(spec: StructuralSpec = {}, core: FromModelOptions = {}) {
+  const g = fromModel(buildModel(spec, volumeOffsetFor(spec, core)), core);
   return createEngine(g.nodes, g.elements, g.options);
 }
 /** RA pressure samples of the engine over `len` seconds from now (every 2 ms). */
@@ -92,8 +92,8 @@ function recordRA(e: ReturnType<typeof coreEngine>, len: number) {
   return { t, p, t0 };
 }
 /** The last periodic beat: schedule one more beat as periodic() does, and record it. */
-function periodicBeat(spec: StructuralSpec, hr: number, opts: { pr?: number } = {}) {
-  const e = coreEngine(spec);
+function periodicBeat(spec: StructuralSpec, hr: number, opts: { pr?: number; core?: FromModelOptions } = {}) {
+  const e = coreEngine(spec, opts.core);
   e.periodic(hr, opts.pr === undefined ? {} : { pr: opts.pr });
   const T = 60 / hr, t0 = e.t;
   const pr = opts.pr ?? (0.08 + 0.096 * T);
@@ -149,9 +149,25 @@ describe("analyzeJvp on the core engine", () => {
     expect(r.v!.p).toBeGreaterThan(normal.v!.p + 2);
     expect(normal.classes).not.toContain("giantV");
   });
-  // Tamponade and constriction need the pericardium (task B1).
-  it.todo("tamponade: raised, flat trace, blunted y (after B1: pericardium)");
-  it.todo("constriction: steep y, raised (after B1: pericardium)");
+  // The pericardium (task B1) is on the engine; these were pending until the page ran the core engine (P16).
+  it("tamponade (300 ml effusion): raised JVP and a blunted y descent", () => {
+    const normal = analyzeJvp(periodicBeat({}, 75)), r = analyzeJvp(periodicBeat({}, 75, { core: { pericardium: { effusionMl: 300 } } }));
+    console.log("tamponade 300:", JSON.stringify({ a: r.a, v: r.v, y: r.y, mean: r.meanRA, h: r.heightCm, classes: r.classes }));
+    expect(r.classes).toContain("raised"); expect(r.classes).toContain("bluntedY");
+    expect(r.meanRA).toBeGreaterThan(normal.meanRA + 5);
+    expect(r.y!.depth).toBeLessThan(normal.y!.depth); // the ventricle cannot fill in early diastole
+  });
+  // Constriction: a stiff sac and the volume retained with it (a normal-volume patient with a stiff sac is not raised: mean RA 4.6 mmHg at stiffness 6).
+  const constrictive = () => analyzeJvp(periodicBeat({ volumeMl: 1000 }, 75, { core: { pericardium: { stiffness: 6 } } }));
+  it("constriction (stiff sac, 1 L retained): raised JVP and a y descent steeper than normal", () => {
+    const normal = analyzeJvp(periodicBeat({}, 75)), r = constrictive();
+    console.log("constriction:", JSON.stringify({ a: r.a, v: r.v, y: r.y, mean: r.meanRA, h: r.heightCm, classes: r.classes }));
+    expect(r.classes).toContain("raised");
+    expect(r.y!.depth).toBeGreaterThan(1.5 * normal.y!.depth); expect(r.y!.slope).toBeGreaterThan(1.5 * normal.y!.slope);
+  });
+  // Known gap: the y descent reaches 8.6 mmHg deep (slope 151 mmHg/s) against the 10 mmHg depth the "steep y" class asks for; the RA waveform amplitude is
+  // the follow-up already noted for the cannon a wave (docs/HEMODYNAMICS_TASKS.md, physics follow-ups). Remove `.fails` when it holds.
+  it.fails("constriction is classed as a steep y descent", () => { expect(constrictive().classes).toContain("steepY"); });
 });
 
 describe("JVP panel helpers", () => {

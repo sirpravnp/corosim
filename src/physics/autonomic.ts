@@ -130,6 +130,8 @@ export class Autonomic {
   private afferent = 0;
   private sensed = NaN;
   private respPhase = 0;
+  /** Respiratory phase now, rad: 0 = start of inspiration (what `effects().respPhase` carries, without drawing noise). */
+  get phase(): number { return this.respPhase; }
   // filtered tone deviations from rest
   private dSym = 0; private dVag = 0; private dVasc = 0; private cns = 0;
 

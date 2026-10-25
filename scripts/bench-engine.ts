@@ -9,6 +9,8 @@ import { LESION_BY_ID, defaults } from "../src/sim/structural";
 import { SOLVER } from "../src/config/structural";
 import { Simulation } from "../src/sim/simulation";
 import type { Scenario } from "../src/sim/scenario";
+import type { PatientSpec } from "../src/sim/patient";
+import { LiveSource } from "../src/sim/liveSource";
 
 const RUNS = 5, SIM_SECONDS = 60;
 const json = process.argv.includes("--json");
@@ -42,6 +44,22 @@ const headless = (name: string, sc: Scenario): Row => {
   return { name: `Simulation: ${name} (${SIM_SECONDS} s)`, wallMs: ms, simSeconds: SIM_SECONDS, xRealTime: SIM_SECONDS / (ms / 1000) };
 };
 
+// The Simulator page (task P16): the core-engine Simulation stepped in 50 ms frames and read through a LiveSource (a BeatSummary per beat,
+// and every third frame numbers(), saturations() and a 6 s trace of four nodes, as the panels draw). Building and settling are not timed
+// (they take about a second: `setPatient` on a structural change); the median of RUNS runs of SIM_SECONDS is reported.
+const live = (name: string, sp: PatientSpec): Row => {
+  const ts: number[] = [];
+  for (let r = 0; r < RUNS + 1; r++) {
+    const s = new Simulation({}, { engine: "core" }), src = new LiveSource(s);
+    s.reset({ seed: 3, ...sp }, { settled: true }); s.warmup(5);
+    const t0 = performance.now();
+    for (let i = 0; i < SIM_SECONDS * 20; i++) { s.step(0.05); if (i % 3 === 0) { src.numbers(); src.saturations(); for (const n of ["AO", "LV", "RA", "PA"]) src.trace(n, 6, { maxPoints: 600 }); } }
+    if (r > 0) ts.push(performance.now() - t0); // the first run is the warm-up
+  }
+  const ms = median(ts);
+  return { name: `page (core + LiveSource): ${name} (${SIM_SECONDS} s)`, wallMs: ms, simSeconds: SIM_SECONDS, xRealTime: SIM_SECONDS / (ms / 1000) };
+};
+
 const lesion = (id: string) => { const l = LESION_BY_ID[id]!; return l.build(defaults(l)); };
 const rows: Row[] = [
   structural("adult normal heart", {}),
@@ -53,6 +71,10 @@ const rows: Row[] = [
   solveRow("core: adult shock + Impella CP P8 (fromModel + periodic)", { lvEes: 0.35, lvStiffness: 1.6 }, (m) => { const g = fromModel(m, { impella: { model: "CP", level: 8 } }); return createEngine(g.nodes, g.elements, g.options).periodic(m.hr); }),
   headless("normal patient", {}),
   headless("proximal LAD occlusion", { lesions: [{ artery: "LAD", occluded: true, position: 0.15 }] }),
+  live("normal adult", {}),
+  live("anterior STEMI + Impella CP P6", { lesions: [{ artery: "LAD", occluded: true, position: 0.15 }], devices: { impella: { model: "CP", level: 6 } } }),
+  live("tamponade 200 ml + ventilated PEEP 8", { pericardium: { effusionMl: 200 }, ventilation: { mode: "positive", peep: 8 } }),
+  live("VA-ECMO 4 L/min + IABP 1:2", { devices: { ecmo: { flowLpm: 4 }, iabp: { ratio: 2 } } }),
 ];
 
 if (json) console.log(JSON.stringify({ node: process.version, runs: RUNS, rows }, null, 2));

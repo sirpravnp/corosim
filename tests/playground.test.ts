@@ -73,10 +73,11 @@ describe("spec builder", () => {
     expect(spec.pericardium).toEqual({ effusionMl: 100 }); expect(spec.support?.iabp).toBe(true);
     expect(hasPlaygroundFields({ lesions: [] })).toBe(false); expect(hasPlaygroundFields({ kind: "adult" })).toBe(true);
   });
-  it("says which groups the engines do not read yet", () => {
-    for (const g of ["pericardium", "fluids", "ventilation", "ecmo"]) expect(GROUP_INFO[g].modelled).toBe("no");
-    for (const g of ["kind", "heart"]) expect(GROUP_INFO[g].modelled).toBe("yes");
-    for (const g of ["impella", "iabp"]) expect(GROUP_INFO[g].modelled).toBe("legacy");
+  it("says which groups the engines read (P16: an adult's core engine reads all but fluids; a neonate's bridge reads kind and heart)", () => {
+    expect(GROUP_INFO.fluids.modelled).toBe("no");
+    for (const g of ["kind", "heart", "pericardium", "ventilation", "impella", "iabp", "ecmo", "impellaRp"]) expect(GROUP_INFO[g].modelled).toBe("yes");
+    for (const g of ["pericardium", "ventilation", "impella", "iabp", "ecmo", "impellaRp"]) { expect(GROUP_INFO[g].neonate).toBe("no"); expect(GROUP_INFO[g].neonateNote).toBeTruthy(); }
+    for (const g of ["kind", "heart"]) expect(GROUP_INFO[g].neonate).toBeUndefined();
   });
 });
 

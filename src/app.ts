@@ -35,6 +35,8 @@ import { leftHeartCathPanel } from "./panels/leftHeartCath";
 import { jvpPanel } from "./panels/jvp";
 import { oxygenPanel } from "./panels/oxygen";
 import { BridgeSource } from "./sim/bridgeSource";
+import { LiveSource } from "./sim/liveSource";
+import type { Workspace } from "./panels/workspace";
 import { createWorkerSolver } from "./sim/bridgeWorkerSolver";
 import { decodePatient, encodePatient } from "./sim/llm";
 import { buildPlaygroundSpec, hasPlaygroundFields, stateOfSpec, withDevice } from "./sim/playground";
@@ -46,7 +48,7 @@ import { SimPropsView } from "./sim/propsView";
 import type { PatientSpec } from "./sim/patient";
 import type { BridgeSolver } from "./sim/bridgeSolver";
 import { o2Frame, o2Legend, myocardiumO2Color, vesselO2Color, type O2Frame } from "./sim/o2View";
-import type { Saturations } from "./sim/hemoSource";
+import type { HemoSource, Saturations } from "./sim/hemoSource";
 import { Case, MAX_SCORE, POINTS, Point, TREAT, TreatRecord, TreatScore, dailyCase, dayKey, dayNumber, explain, explainTreatment, fullFindings, judge, keyOfDay, muscleSaved, parseDay, rvInvolvement, score, streaks, treatScore } from "./game";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -66,7 +68,9 @@ const S = {
 };
 // The physics lives in the shared headless Simulation (the MCP server and the tests step the same object);
 // this file draws it, feeds it the controls, and runs the game and the management panel around it.
-const sim = new Simulation({ seed: 1 });
+// The simulator runs the beat-by-beat core engine (task P16: cannon a waves, PVC loops, AF, device waveforms, pericardium, ventilation, ECMO);
+// the game keeps the legacy engine, whose cases and scoring were tuned to it.
+const sim = new Simulation({ seed: 1 }, { engine: /\/game(\/(index\.html)?)?$/.test(location.pathname) ? "legacy" : "core" });
 let tree: Tree = sim.tree, A: Analysis = sim.analysis, sites: BedSite[] = sim.sites;
 const sev = sim.sev; // per-bed ischemia state (0..1), evolves in time; the simulation clears it in place
 let extraLesions: LesionSpec[] = []; // lesions from a loaded scenario beyond the one the controls edit
@@ -172,8 +176,8 @@ function prepareMyocardium() {
     for (let k = 0; k < NB; k++) bedW[i * NB + k] /= sum || 1;
   }
 }
-/** The O₂ sat mode's frame: the bridge's saturations (null before the panel workspace exists, i.e. in the game). */
-function o2Now(): O2Frame { return o2Frame(bridge ? bridge.saturations() : noSat()); }
+/** The O₂ sat mode's frame: the panels' source's saturations (none before the panel workspace exists, i.e. in the game). */
+function o2Now(): O2Frame { return o2Frame(panelSource ? panelSource.saturations() : noSat()); }
 const noSat = (): Saturations => ({ node: {} as Saturations["node"], spo2: NaN, preductal: NaN, postductal: NaN, svo2: NaN, do2: NaN, vo2: NaN, lactate: NaN, bed: {}, bedSource: "ischemia-derived" });
 function paintMyocardium() {
   const ca = heartGeo.attributes.color as THREE.BufferAttribute, c = new THREE.Color(), base = new THREE.Color();
@@ -1103,9 +1107,38 @@ $<HTMLInputElement>("ds").value = String(S.ds * 100);
 $<HTMLInputElement>("ex").value = String(S.exag);
 physUi(); sim.warmup(20); ecg.reset(sim.t); // start with the reflexes already settled
 resize(); setView("vAnt"); syncSelects(); rebuildAnatomy(); applyHeartView(); controlsUi(); liveUi(); applyMode();
-/** Read by the bridge at each solve: a shared link's structural fields (heart lesions), which the Simulation does not keep. */
+/** The whole PatientSpec on screen (the structural fields the Scenario does not carry): read by the bridge at each solve and handed to the core engine (`sim.setPatient`). */
 const bridgeOpts: { patient?: PatientSpec; solver?: BridgeSolver } = {};
+// ---------------------------------------------------------------- the panels' source (task P16)
+/**
+ * The panels read the live core engine (`LiveSource`: beat-by-beat) for an adult patient the core can run. The bridge (a steady-state
+ * solve of the structural engine replayed beat by beat, in a worker) stays for what the core does not represent yet: a neonate (the core
+ * is the adult ACS patient) and any patient the core could not settle (`sim.coreNote`), and for the game's legacy engine.
+ */
 let bridge: BridgeSource | null = null;
+let liveSrc: LiveSource | null = null;
+let workspace: Workspace | null = null;
+let panelSource: HemoSource | null = null;
+const wantsBridge = () => sim.engine !== "core" || !!sim.coreNote || (bridgeOpts.patient?.kind ?? "adult") === "neonate";
+function chooseSource(): HemoSource {
+  if (wantsBridge()) { if (!bridge) { bridgeOpts.solver ??= createWorkerSolver(); bridge = new BridgeSource(sim, bridgeOpts); } return bridge; }
+  return (liveSrc ??= new LiveSource(sim));
+}
+/** Point the panels at the right source; the one not in use is released (the bridge would otherwise keep solving for nothing). */
+function syncSource() {
+  const next = chooseSource();
+  if (next === panelSource) return;
+  panelSource = next;
+  workspace?.setSource(next);
+  if (next !== bridge && bridge) { bridge.dispose(); bridge = null; }
+}
+let patientTimer = 0;
+/** Hand the PatientSpec on screen to the core engine (a structural change rebuilds and settles the heart, about a second, so slider drags wait for a pause). */
+function pushPatient(now = false) {
+  clearTimeout(patientTimer);
+  const go = () => { sim.setPatient(bridgeOpts.patient ?? {}); syncSource(); };
+  if (now) go(); else patientTimer = window.setTimeout(go, 200);
+}
 // ---------------------------------------------------------------- playground mode (task P12)
 /**
  * One PatientSpec drives the page. The Scenario part lives in `sim` and its existing controls; the rest is `pg`, edited by the
@@ -1148,7 +1181,7 @@ function pgApply(refresh: boolean) {
   const built = buildPlaygroundSpec(sim.scenario(), pg), spec = built.spec;
   T.support.impella = !!spec.support?.impella; T.support.iabp = !!spec.support?.iabp; // the legacy device model follows the switches
   bridgeOpts.patient = spec; propsView.setPatient(spec);
-  if (refresh) { clearTimeout(pgRefreshTimer); pgRefreshTimer = window.setTimeout(() => bridge?.refresh(), 150); }
+  if (refresh) { clearTimeout(pgRefreshTimer); pgRefreshTimer = window.setTimeout(() => bridge?.refresh(), 150); pushPatient(); }
   try { window.history.replaceState(null, "", `${location.pathname}${location.search}#s=${encodePatient(spec)}`); } catch { /* sandboxed frame: the link field still shows it */ }
   pgSig = JSON.stringify([sim.scenario(), pg]);
   pgView();
@@ -1193,7 +1226,7 @@ function openShared() {
     const spec = decodePatient(shared[1]);
     if (pgOn || hasPlaygroundFields(spec)) { pgAdopt(spec); return; }
     bridgeOpts.patient = spec; bridge?.refresh(); propsView.setPatient(spec);
-    const w = loadScenario(spec); if (w.length) console.warn("CoroSim: the shared patient was adjusted:", w.join("; ")); pgView(); }
+    const w = loadScenario(spec); pushPatient(true); if (w.length) console.warn("CoroSim: the shared patient was adjusted:", w.join("; ")); pgView(); }
   catch (e) { console.warn("CoroSim: could not open the shared patient", e); }
 }
 on("pg_on", () => pgShow(true));
@@ -1202,19 +1235,20 @@ on("pg_adult", () => { pgShow(true); pgUi.setKind("adult"); });
 openShared();
 addEventListener("hashchange", openShared);
 cathLinkUi();
-// The panel workspace, below the main view; not in the game (inGame is set by cathLinkUi). Its source is the bridge over
-// this page's Simulation, solving in a worker so the 3D view and ECG keep running (task P2b).
+// The panel workspace, below the main view; not in the game (inGame is set by cathLinkUi). Its source is the live core engine of this
+// page's Simulation, or for a neonate the bridge, which solves in a worker so the 3D view and ECG keep running (tasks P2b, P16).
 if (!inGame) {
   const ws = $("workspace"); (ws.parentElement as HTMLElement).hidden = false;
-  bridgeOpts.solver = createWorkerSolver();
-  bridge = new BridgeSource(sim, bridgeOpts);
-  mountWorkspace(ws, [monitorPanel, ecgPanel, numbersPanel, tracesPanel, loopsPanel, rhcPanel, leftHeartCathPanel, jvpPanel, oxygenPanel], bridge, {
+  pushPatient(true); // a link that was opened before the workspace existed has its structure in the core engine already; this settles the source choice
+  panelSource = chooseSource();
+  workspace = mountWorkspace(ws, [monitorPanel, ecgPanel, numbersPanel, tracesPanel, loopsPanel, rhcPanel, leftHeartCathPanel, jvpPanel, oxygenPanel], panelSource, {
     clock: playClock, clinical: { scales: CLINICAL_SCALES, get: () => S.speed, set: (v) => { S.speed = v; controlsUi(); } }, // both clocks in the workspace bar
   });
   $("ts-l").style.display = $("ts-row").style.display = "none"; // the Lesion section's old time-scale buttons: now in the workspace bar
+  setInterval(syncSource, 500); // the core engine may give up on a patient (coreNote) or take one back
 }
 void shell.ai.start();
 /** Handle for scripts and browser-driving assistants: corosim.sim, corosim.load(scenario), corosim.live. */
-(window as unknown as { corosim: object }).corosim = { sim, load: loadScenario, playground: { bridge: () => bridge, state: () => pg, spec: () => bridgeOpts.patient, adopt: pgAdopt, show: pgShow }, clock: playClock, live: shell.ai.live, account: shell.ai.account, refresh: () => { controlsUi(); liveUi(); } };
+(window as unknown as { corosim: object }).corosim = { sim, load: loadScenario, playground: { bridge: () => bridge, source: () => panelSource, state: () => pg, spec: () => bridgeOpts.patient, adopt: pgAdopt, show: pgShow }, clock: playClock, live: shell.ai.live, account: shell.ai.account, refresh: () => { controlsUi(); liveUi(); } };
 requestAnimationFrame(frame);
 void LEADS;
