@@ -11,8 +11,20 @@
 .ws-menu[hidden] { display: none; }
 .ws-menu label { display: flex; justify-content: flex-start; margin: 0; color: var(--ink); text-transform: none; align-items: center; gap: 8px; padding: 7px 8px; font-size: 13px; cursor: pointer; border-radius: 6px; }
 .ws-menu label:hover { background: var(--sh-hover); }
-.ws-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; align-items: start; min-width: 0; }
+/* Desktop: a 12-column grid with fixed spans per panel, so the panels sit in tidy rows of equal height:
+   ECG (full) · Pressures (2/3) + PV loops (1/3) · Monitor + Hemodynamics + Oxygen · Right-heart cath + Left-heart cath + JVP.
+   A closed panel's neighbours close the gap (dense packing). Medium widths: two columns. Phones: tabs, one column. */
+.ws-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); grid-auto-flow: row dense; gap: 16px; align-items: stretch; min-width: 0; }
+.ws-grid > .ws-card { grid-column: span 4; display: flex; flex-direction: column; }
+.ws-grid > .ws-card[data-panel="traces"] { grid-column: span 8; }
+.ws-grid > .ws-card > .ws-body { flex: 1; }
+@media (max-width: 1180px) {
+  .ws-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ws-grid > .ws-card { grid-column: span 1; }
+  .ws-grid > .ws-card[data-panel="traces"] { grid-column: 1 / -1; }
+}
 .ws-phone .ws-grid { grid-template-columns: minmax(0, 1fr); }
+.ws-phone .ws-grid > .ws-card, .ws-phone .ws-grid > .ws-card[data-panel] { grid-column: 1 / -1; }
 .ws-card { min-width: 0; background: var(--panel); border: 1px solid var(--sh-line); border-radius: 8px; overflow: hidden; }
 .ws-card[hidden] { display: none; }
 .ws-card > header { display: flex; align-items: center; justify-content: space-between; padding: 8px 8px 8px 14px; border-bottom: 1px solid var(--rule-light); }
@@ -38,6 +50,10 @@ button.ws-x:hover { color: var(--ink); }
 .ws-tools select { font-size: 12px; padding: 4px 6px; }
 .ws-tools button:disabled, .ws-tools select:disabled { opacity: 0.5; cursor: default; }
 /* Page elements adopted by the Monitor and ECG panels (./adopt): the card supplies the frame and the title. */
-.ws-wide { grid-column: 1 / -1; }
+.ws-grid > .ws-card.ws-wide { grid-column: 1 / -1; }
 .ws-body > figure, .ws-body > section { padding: 0; background: none; border: 0; border-radius: 0; }
 .ws-body > section > h2 { display: none; }
+/* Styled dropdowns (customSelect) inside the toolbar and panels: compact, not full width. */
+.ws-tools .dd, .ws-body .dd { display: inline-block; min-width: 120px; max-width: 100%; vertical-align: middle; }
+.ws-tools button.dd-btn, .ws-body button.dd-btn { padding: 5px 9px; font-size: 12px; }
+.ws-tools .dd-list, .ws-body .dd-list { min-width: 160px; }

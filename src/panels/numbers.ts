@@ -57,7 +57,7 @@ export function deltaText(live: number, snap: number, digits: number, unit = "")
   return `${d > 0 ? "+" : "−"}${Math.abs(d).toFixed(digits)}${unit}`;
 }
 
-export function badgeText(kind: HemoSource["kind"]): string { return kind === "live" ? "live" : "bridge"; }
+export function badgeText(kind: HemoSource["kind"]): string { return kind === "live" ? "live" : "steady state"; }
 
 export const numbersPanel: PanelDef = {
   id: "numbers",

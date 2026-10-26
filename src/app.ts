@@ -1268,7 +1268,7 @@ function openShared() {
   if (!shared) return;
   try {
     const spec = decodePatient(shared[1]);
-    if (pgOn || hasPlaygroundFields(spec)) { pgAdopt(spec); return; }
+    if (pgOn || hasPlaygroundFields(spec) || !inGame) { pgAdopt(spec); return; }
     bridgeOpts.patient = spec; bridge?.refresh(); propsView.setPatient(spec);
     const w = loadScenario(spec); pushPatient(true); if (w.length) console.warn("CoroSim: the shared patient was adjusted:", w.join("; ")); pgView(); }
   catch (e) { console.warn("CoroSim: could not open the shared patient", e); }
@@ -1279,6 +1279,13 @@ on("pg_adult", () => { pgShow(true); pgUi.setKind("adult"); });
 openShared();
 addEventListener("hashchange", openShared);
 cathLinkUi();
+// One Simulator: every control is always there (the separate "Playground" mode is gone); the game keeps its own plain controls.
+$("pgentry").hidden = true;
+if (!inGame) {
+  pgShow(true);
+  // Impella and balloon pump have one place: Patient, Mechanical support (with model, level and timing). Hide Management's duplicate switches.
+  for (const id of ["m_iabp", "m_impella"]) { const b = $(id); for (const el of [b.previousElementSibling, b, b.nextElementSibling]) if (el) (el as HTMLElement).hidden = true; }
+}
 // The panel workspace, below the main view; not in the game (inGame is set by cathLinkUi). Its source is the live core engine of this
 // page's Simulation, or for a neonate the bridge, which solves in a worker so the 3D view and ECG keep running (tasks P2b, P16).
 if (!inGame) {
@@ -1286,7 +1293,7 @@ if (!inGame) {
   (ws.parentElement as HTMLElement).insertBefore(settlingNote, ws);
   pushPatient(true); // a link that was opened before the workspace existed has its structure in the core engine already; this settles the source choice
   panelSource = chooseSource();
-  workspace = mountWorkspace(ws, [monitorPanel, ecgPanel, numbersPanel, tracesPanel, loopsPanel, rhcPanel, leftHeartCathPanel, jvpPanel, oxygenPanel], panelSource, {
+  workspace = mountWorkspace(ws, [ecgPanel, tracesPanel, loopsPanel, monitorPanel, numbersPanel, oxygenPanel, rhcPanel, leftHeartCathPanel, jvpPanel], panelSource, {
     clock: playClock, clinical: { scales: CLINICAL_SCALES, get: () => S.speed, set: (v) => { S.speed = v; controlsUi(); } }, // both clocks in the workspace bar
   });
   $("ts-l").style.display = $("ts-row").style.display = "none"; // the Lesion section's old time-scale buttons: now in the workspace bar

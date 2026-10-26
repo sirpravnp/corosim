@@ -265,7 +265,8 @@ body.game #pgentry { display: none; }
 .pg-head h2 { margin: 0; }
 .pg label.pg-first, .pg .row.pg-first, .pg .note.pg-first { margin-top: 0; }
 .pg-link { display: flex; gap: 6px; min-width: 0; }
-.pg-link input { flex: 1; min-width: 0; font: 500 11.5px/1.4 var(--font-data); }
+.pg-link input { flex: 1; min-width: 0; padding: 7px 9px; font: 500 11.5px/1.4 var(--font-data); color: var(--ink); background: var(--panel); border: 1px solid var(--sh-line); border-radius: 8px; }
+.pg-dev[hidden] { display: none; }
 .pg-warns:empty { display: none; }
 .pg-warns > div { color: var(--warn); border-color: var(--warn); font-size: 12.5px; }
 .pg details.fold { background: transparent; border-radius: 8px; }
@@ -286,3 +287,4 @@ body.neonate .pg-coronary, body.neonate #anatomy, body.neonate #bedsfig, body.ne
 .pg-banner[hidden] { display: none; }
 .pg-banner button { padding: 4px 9px; font-size: 12px; }
 body.neonate table.readout { opacity: 0.55; }
+.ctl > [hidden] { display: none; }

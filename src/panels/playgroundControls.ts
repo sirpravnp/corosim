@@ -39,7 +39,8 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEle
   e.append(...kids);
   return e;
 }
-const badge = (m: FieldGroupInfo["modelled"]) => h("span", { className: `pg-tag pg-${m}`, textContent: m === "yes" ? "modelled" : m === "legacy" ? "legacy model" : "stored only", title: m === "yes" ? "The page's engines read these fields" : m === "legacy" ? "Only the on/off switch drives the page's older device model" : "Kept in the spec and the share link; no engine on this page reads it yet" });
+/** A group's tag: nothing when the group is simulated (the usual case), "not simulated" when it is only saved with the patient. */
+const badge = (m: FieldGroupInfo["modelled"]) => { const t = h("span", { className: `pg-tag pg-${m}`, textContent: m === "legacy" ? "on/off only" : "not simulated", title: m === "legacy" ? "Only the on/off switch changes this patient" : "Saved with the patient and in the share link, but it does not change the numbers yet" }); t.hidden = m === "yes"; return t; };
 /** The badge and note of a group for the patient kind on screen: an adult runs on the core engine, a neonate on the bridge, which reads less (`FieldGroupInfo.neonate`). */
 const modelledFor = (info: FieldGroupInfo, kind: "adult" | "neonate" | undefined) => (kind === "neonate" ? info.neonate ?? info.modelled : info.modelled);
 
@@ -61,7 +62,7 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     box.append(h("summary", {}, h("h2", { textContent: title }), ...(info ? [tag] : [])), body);
     if (info) {
       body.append(note);
-      syncs.push((s) => { const m = modelledFor(info, s.kind); const b = badge(m); tag.className = b.className; tag.textContent = b.textContent; tag.title = b.title; note.textContent = s.kind === "neonate" && info.neonateNote ? info.neonateNote : info.note; note.hidden = m === "yes"; });
+      syncs.push((s) => { const m = modelledFor(info, s.kind); const b = badge(m); tag.className = b.className; tag.textContent = b.textContent; tag.title = b.title; tag.hidden = b.hidden; note.textContent = s.kind === "neonate" && info.neonateNote ? info.neonateNote : info.note; note.hidden = m === "yes"; });
     }
     return { box, body };
   }
@@ -87,8 +88,6 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
   }
 
   // ---- header, presets, share link -----------------------------------------------------------------------------------
-  const exit = h("button", { type: "button", textContent: "Leave playground", title: "Back to the plain simulator; the patient stays" });
-  exit.addEventListener("click", () => host.exit());
   const preset = h("select", { id: "pg-preset", title: "Load a whole patient into every control and panel" });
   preset.append(h("option", { value: "", textContent: "Custom patient" }), ...PRESETS.map((p) => h("option", { value: p.id, textContent: p.label })));
   preset.addEventListener("change", () => { if (preset.value) host.loadPreset(preset.value); });
@@ -100,8 +99,8 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
   const warnings = h("div", { className: "warns pg-warns", id: "pg-warnings" });
   warnings.setAttribute("aria-live", "polite");
   el.append(
-    h("div", { className: "pg-head" }, h("h2", { textContent: "Playground" }), exit),
-    h("p", { className: "note pg-first", textContent: "One patient on every control and every panel. Presets load whole patients; the link below opens the one on screen." }),
+    h("div", { className: "pg-head" }, h("h2", { textContent: "Patient" })),
+    h("p", { className: "note pg-first", textContent: "Build the patient with the controls below, or start from a preset. Every panel shows this patient; the share link opens it." }),
     h("label", { htmlFor: "pg-preset", textContent: "Preset", className: "pg-first" }), preset, presetNote,
     h("label", { htmlFor: "pg-link", textContent: "Share link" }), h("div", { className: "pg-link" }, linkIn, copy),
     warnings,
@@ -209,23 +208,28 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     const sub = (title: string, info: FieldGroupInfo) => {
       const tag = h("span"), note = h("p", { className: "note pg-note" });
       body.append(h("p", { className: "glabel pg-sub" }, title, " ", tag), note);
-      syncs.push((s) => { const m = modelledFor(info, s.kind); tag.className = `pg-tag pg-${m}`; tag.textContent = badge(m).textContent; tag.title = badge(m).title; note.textContent = s.kind === "neonate" && info.neonateNote ? info.neonateNote : info.note; });
+      syncs.push((s) => { const m = modelledFor(info, s.kind); const b = badge(m); tag.className = b.className; tag.textContent = b.textContent; tag.title = b.title; tag.hidden = b.hidden; note.textContent = s.kind === "neonate" && info.neonateNote ? info.neonateNote : info.note; note.hidden = m === "yes"; });
     };
+    /** A device's settings, shown only while it is switched on. */
+    const settings = (on: (s: PlaygroundState) => boolean) => { const d = h("div", { className: "pg-dev" }); body.append(d); syncs.push((s) => { d.hidden = !on(s); }); return d; };
     sub("Impella", GROUP_INFO.impella);
     toggle(body, "Impella on", (s) => !!s.devices?.impella, (s, on) => withDevice(s, "impella", on));
-    choice<ImpellaModel>(body, "Model", [["2.5", "Impella 2.5"], ["CP", "Impella CP"], ["5.5", "Impella 5.5"]], (s) => s.devices?.impella?.model, "CP", (s, m) => patchDevice(s, "impella", { model: m }));
-    slider(body, "P-level", R.impellaLevel[0], R.impellaLevel[1], 1, (s) => s.devices?.impella?.level, 6, (v) => `P${v}`, (s, v) => patchDevice(s, "impella", { level: v }));
-    choice(body, "Position", [["correct", "Correct"], ["aortic", "Too far out (in the aorta)"], ["deep", "Too deep (in the ventricle)"]] as const, (s) => s.devices?.impella?.position, "correct", (s, p) => patchDevice(s, "impella", { position: p }));
+    const imp = settings((s) => !!s.devices?.impella);
+    choice<ImpellaModel>(imp, "Model", [["2.5", "Impella 2.5"], ["CP", "Impella CP"], ["5.5", "Impella 5.5"]], (s) => s.devices?.impella?.model, "CP", (s, m) => patchDevice(s, "impella", { model: m }));
+    slider(imp, "P-level", R.impellaLevel[0], R.impellaLevel[1], 1, (s) => s.devices?.impella?.level, 6, (v) => `P${v}`, (s, v) => patchDevice(s, "impella", { level: v }));
+    choice(imp, "Position", [["correct", "Correct"], ["aortic", "Too far out (in the aorta)"], ["deep", "Too deep (in the ventricle)"]] as const, (s) => s.devices?.impella?.position, "correct", (s, p) => patchDevice(s, "impella", { position: p }));
     sub("Intra-aortic balloon pump", GROUP_INFO.iabp);
     toggle(body, "Balloon pump on", (s) => !!s.devices?.iabp, (s, on) => withDevice(s, "iabp", on));
-    choice(body, "Ratio", [[1, "1:1"], [2, "1:2"], [3, "1:3"]] as const, (s) => s.devices?.iabp?.ratio, 1, (s, r) => patchDevice(s, "iabp", { ratio: r }));
-    slider(body, "Inflation timing", R.iabpOffsetMs[0], R.iabpOffsetMs[1], 10, (s) => s.devices?.iabp?.inflateMs, 0, (v) => (v === 0 ? "correct" : `${v > 0 ? "late" : "early"} ${Math.abs(v)} ms`), (s, v) => patchDevice(s, "iabp", { inflateMs: v }));
-    slider(body, "Deflation timing", R.iabpOffsetMs[0], R.iabpOffsetMs[1], 10, (s) => s.devices?.iabp?.deflateMs, 0, (v) => (v === 0 ? "correct" : `${v > 0 ? "late" : "early"} ${Math.abs(v)} ms`), (s, v) => patchDevice(s, "iabp", { deflateMs: v }));
+    const iabp = settings((s) => !!s.devices?.iabp);
+    choice(iabp, "Ratio", [[1, "1:1"], [2, "1:2"], [3, "1:3"]] as const, (s) => s.devices?.iabp?.ratio, 1, (s, r) => patchDevice(s, "iabp", { ratio: r }));
+    slider(iabp, "Inflation timing", R.iabpOffsetMs[0], R.iabpOffsetMs[1], 10, (s) => s.devices?.iabp?.inflateMs, 0, (v) => (v === 0 ? "correct" : `${v > 0 ? "late" : "early"} ${Math.abs(v)} ms`), (s, v) => patchDevice(s, "iabp", { inflateMs: v }));
+    slider(iabp, "Deflation timing", R.iabpOffsetMs[0], R.iabpOffsetMs[1], 10, (s) => s.devices?.iabp?.deflateMs, 0, (v) => (v === 0 ? "correct" : `${v > 0 ? "late" : "early"} ${Math.abs(v)} ms`), (s, v) => patchDevice(s, "iabp", { deflateMs: v }));
     sub("ECMO (VA)", GROUP_INFO.ecmo);
     toggle(body, "ECMO on", (s) => !!s.devices?.ecmo, (s, on) => withDevice(s, "ecmo", on));
-    slider(body, "Flow", R.ecmoFlowLpm[0], R.ecmoFlowLpm[1], 0.5, (s) => s.devices?.ecmo?.flowLpm, 3, (v) => `${v.toFixed(1)} L/min`, (s, v) => patchDevice(s, "ecmo", { flowLpm: v }));
-    slider(body, "Sweep gas", R.ecmoSweepLpm[0], R.ecmoSweepLpm[1], 0.5, (s) => s.devices?.ecmo?.sweepLpm, 2, (v) => `${v.toFixed(1)} L/min`, (s, v) => patchDevice(s, "ecmo", { sweepLpm: v }));
-    slider(body, "FiO₂", R.fio2[0], R.fio2[1], 0.01, (s) => s.devices?.ecmo?.fio2, 0.6, (v) => `${Math.round(v * 100)}%`, (s, v) => patchDevice(s, "ecmo", { fio2: v }));
+    const ecmo = settings((s) => !!s.devices?.ecmo);
+    slider(ecmo, "Flow", R.ecmoFlowLpm[0], R.ecmoFlowLpm[1], 0.5, (s) => s.devices?.ecmo?.flowLpm, 3, (v) => `${v.toFixed(1)} L/min`, (s, v) => patchDevice(s, "ecmo", { flowLpm: v }));
+    slider(ecmo, "Sweep gas", R.ecmoSweepLpm[0], R.ecmoSweepLpm[1], 0.5, (s) => s.devices?.ecmo?.sweepLpm, 2, (v) => `${v.toFixed(1)} L/min`, (s, v) => patchDevice(s, "ecmo", { sweepLpm: v }));
+    slider(ecmo, "FiO₂", R.fio2[0], R.fio2[1], 0.01, (s) => s.devices?.ecmo?.fio2, 0.6, (v) => `${Math.round(v * 100)}%`, (s, v) => patchDevice(s, "ecmo", { fio2: v }));
     el.append(box);
   }
 
@@ -245,7 +249,7 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
       for (const f of syncs) f(state);
       preset.value = info.presetId ?? "";
       const p = info.presetId ? PRESET_BY_ID[info.presetId] : undefined;
-      presetNote.textContent = p ? `${p.blurb}${p.stored ? ` Not modelled on this page yet: ${p.stored}.` : ""}` : "";
+      presetNote.textContent = p ? `${p.blurb}${p.stored ? ` Not simulated yet: ${p.stored}.` : ""}` : "";
       if (document.activeElement !== linkIn) linkIn.value = info.link;
       warnings.replaceChildren(...info.warnings.map((w) => h("div", { textContent: w })));
     },
