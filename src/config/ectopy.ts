@@ -34,7 +34,7 @@ export const ECTOPY = {
    * counts of tens to hundreds of PVCs an hour in the first day (Cercek 1987, PMID 2441585: median 44/h, range 1-1336/h after
    * reperfusion). [assumed level within those bounds]
    */
-  rateAtFullEffect: 0.06,
+  rateAtFullEffect: 0.07,
   /**
    * Time since onset (clinical minutes), the ischemic term's multiplier:
    * T(t) = (1 - e^(-t/rise)) x (hyper x e^(-t/hyperTau) + sub x e^(-t/subTau) + late).
@@ -65,7 +65,7 @@ export const ECTOPY = {
    *    near 1% of beats for a median patient.
    */
   deadband: 0.02,
-  burstRate: 0.1, burstTauMin: 20,
+  burstRate: 0.15, burstTauMin: 30,
   tailRate: 0.05, tailTauMin: 480,
   /**
    * W(d) = (1 - e^(-d/weightRiseMin)) x (weightLate + (1 - weightLate) x e^(-d/weightFallMin)): reperfusion after a minute of
@@ -108,7 +108,7 @@ export const ECTOPY = {
    * Target: median 4 couplets an hour against 44 PVCs an hour after reperfusion (Cercek 1987, PMID 2441585), about one couplet
    * per ten PVCs. Triplets and longer runs (non-sustained VT) are left to task B3b. [assumed form]
    */
-  coupletBase: 0.06, coupletPerRate: 0.6, coupletMax: 0.25,
+  coupletBase: 0.05, coupletPerRate: 0.3, coupletMax: 0.2,
   /** Saturation: p = cap x (1 - exp(-rate / cap)), so no patient has PVCs after more than 40% of beats (about 29% of all beats). [assumed] */
   cap: 0.4,
   /**
