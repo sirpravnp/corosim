@@ -18,7 +18,7 @@ import type { DrugName } from "../config/drugs";
 import { BeatStream } from "../physics/beatStream";
 import { BeatHemodynamics } from "../physics/beatHemo";
 import { Autonomic, AUTONOMIC, AutonomicEffects } from "../physics/autonomic";
-import { LiveHeart, LiveBeat } from "../physics/core/live";
+import { LiveHeart, LiveBeat, endDiastolicBeats } from "../physics/core/live";
 import { Iabp } from "../physics/core/devices/iabp";
 import { CoronaryCoupling, BeatSupply, supplyIndex } from "../physics/core/coronary";
 import { COUPLING } from "../config/coronary";
@@ -915,10 +915,11 @@ export class Simulation {
     const rs = live.records.filter((b) => b.t - this.delta > this.t - seconds);
     if (!rs.length) return null;
     const mean = (f: (b: LiveBeat) => number) => rs.reduce((s, b) => s + f(b), 0) / rs.length;
+    const ed = endDiastolicBeats(rs, (b) => b.pvc), meanEd = (f: (b: LiveBeat) => number) => ed.reduce((s, b) => s + f(b), 0) / ed.length; // not cut short by a premature beat
     return {
-      cvp: mean((b) => b.p.RA.mean), pcwp: mean((b) => b.p.LA.mean), lvedp: mean((b) => b.p.LV.end), rvedp: mean((b) => b.p.RV.end),
+      cvp: mean((b) => b.p.RA.mean), pcwp: mean((b) => b.p.LA.mean), lvedp: meanEd((b) => b.p.LV.end), rvedp: meanEd((b) => b.p.RV.end),
       pa: { systolic: mean((b) => b.p.PA.max), diastolic: mean((b) => b.p.PA.min), mean: mean((b) => b.p.PA.mean) },
-      lvEdv: mean((b) => b.edv.LV), lvEsv: mean((b) => b.esv.LV), beats: rs.length, filling: live.filling(),
+      lvEdv: meanEd((b) => b.edv.LV), lvEsv: meanEd((b) => b.esv.LV), beats: rs.length, filling: live.filling(),
     };
   }
 
