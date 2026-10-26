@@ -6,6 +6,7 @@ import { NODES as ALL_NODES, CATH_NODES as NODES, solveOxygen, type Model } from
 import { oxygenatorSat, type Ecmo } from "../physics/core/devices/ecmo";
 import type { RotaryPump } from "../physics/core/devices/pump";
 import type { LiveBeat, LiveHeart } from "../physics/core/live";
+import { endDiastolicBeats } from "../physics/core/live";
 import { PATIENTS, O2_PER_G_HB } from "../config/structural";
 import { LIVE_SOURCE as CFG } from "../config/liveSource";
 
@@ -172,11 +173,15 @@ export class LiveSource implements HemoSource {
     const net = (name: string) => recs.reduce((s, r) => s + (r.lb.flows.fwd[name] ?? 0) - (r.lb.flows.bwd[name] ?? 0), 0);
     const qs = ((net("BEDU") + net("BEDL")) / T) * 0.06, qp = (net("LUNG") / T) * 0.06; // L/min
     const map = w((r) => r.lb.p.AO.mean), cvp = w((r) => r.lb.p.RA.mean), pam = w((r) => r.lb.p.PA.mean), pcwp = w((r) => r.lb.p.LA.mean);
-    const ef = (c: "LV" | "RV") => w((r) => (r.lb.v[c].max > 0 ? (r.lb.edv[c] - r.lb.esv[c]) / r.lb.edv[c] : NaN));
+    // end-diastolic readings only from beats that end in a true end-diastole (not cut short by a premature beat)
+    const ed = endDiastolicBeats(recs, (r) => r.lb.pvc), Ted = ed.reduce((s, r) => s + r.rr, 0), wd = (f: (r: Pick<Rec, "lb" | "rr">) => number) => ed.reduce((s, r) => s + f(r) * r.rr, 0) / Ted;
+    // EF as an echo reads it: on normal beats (a premature beat ejects little), each ending in a true end-diastole
+    const sinus = ed.filter((r) => !r.lb.pvc), ec = sinus.length ? sinus : ed, Tec = ec.reduce((s, r) => s + r.rr, 0);
+    const ef = (c: "LV" | "RV") => ec.reduce((s, r) => s + (r.lb.v[c].max > 0 ? (r.lb.edv[c] - r.lb.esv[c]) / r.lb.edv[c] : NaN) * r.rr, 0) / Tec;
     return {
       hr: (60 * recs.length) / T, map, systolic: w((r) => r.lb.p.AO.max), diastolic: w((r) => r.lb.p.AO.min), cvp,
       pa: { systolic: w((r) => r.lb.p.PA.max), diastolic: w((r) => r.lb.p.PA.min), mean: pam }, pcwp,
-      lvedp: w((r) => r.lb.p.LV.end), rvedp: w((r) => r.lb.p.RV.end),
+      lvedp: wd((r) => r.lb.p.LV.end), rvedp: wd((r) => r.lb.p.RV.end),
       co: qs, ci: qs / PATIENTS.adult.bsa, svr: qs > 0 ? (map - cvp) / qs : NaN, pvr: qp > 0 ? (pam - pcwp) / qp : NaN,
       lvEf: ef("LV"), rvEf: ef("RV"), qpQs: qs > 0 ? qp / qs : NaN,
     };
