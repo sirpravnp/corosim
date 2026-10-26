@@ -27,7 +27,9 @@ the expected number of PVCs is
   0.28 (0.55), circumflex 0.21 (0.40), distal LAD 0.10 (0.11), first diagonal 0.08 (0.07).
 - **T(age)**, time since onset of the ischemic episode in clinical minutes:
   (1 - e^(-t/3)) x (0.85 e^(-t/120) + 0.12 e^(-t/720) + 0.03). Peak in the first hour; the first-hour mean is about 7 times the
-  value at 8 hours. An hour without ischemia ends the episode (a new occlusion starts a new hyperacute phase).
+  value at 8 hours. An hour without ischemia ends the episode (a new occlusion starts a new hyperacute phase). A patient loaded with
+  its ischemia already settled starts 40 clinical minutes into the episode (the 20 s the ischemia takes to develop), so a paused
+  clinical clock does not hold it at the zero of onset.
 - **Reperfusion**: each fall of b by at least 0.02 (the deadband keeps the perfusion-pressure swings of a steady lesion out) adds
   fall x W(age) to a burst store (time constant 30 clinical min) and a tail store (480 min).
   W(d) = (1 - e^(-d/12)) x (0.4 + 0.6 e^(-d/480)): nothing after a minute of ischemia, most after 15-60 min, less after many hours.
