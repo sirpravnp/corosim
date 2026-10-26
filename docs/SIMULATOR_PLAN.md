@@ -9,8 +9,8 @@ Waves run in order; an item is done when merged to main and live. Updated as wor
 | Item | State |
 |---|---|
 | A0 faster CI | in progress (wave 0) |
-| A1 split app.ts | in progress (wave 0) |
-| C1 Share button | in progress (wave 0) |
+| A1 split app.ts | done (15 modules in src/page, app.ts 43 lines); merging |
+| C1 Share button | done, merged (PR 25), deploying |
 | everything else | not started |
 
 ## 1. Where we start (from reading the code)
