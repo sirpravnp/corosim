@@ -1,3 +1,4 @@
+import { mountShare } from "./share";
 import { AiHandle, AiHooks, mountAi } from "./ai";
 
 export interface ShellPage { id: string; label: string; path: string; blurb: string }
@@ -36,6 +37,7 @@ export function mountShell(opts: { page: string; root: string; ai?: AiHooks }): 
         ${PAGES.map((p) => `<li role="none"><a role="menuitem" data-page="${p.id}" href="${root}${p.path}"><span class="shell-mi"><b>${p.label}</b><small>${p.blurb}</small></span>${CHECK}</a></li>`).join("")}
       </ul>
     </div>
+    <div class="shell-share"></div>
     <div class="shell-ai"></div>`;
   foot.className = "shell-foot";
   foot.innerHTML = `<p>${DISCLAIMER}</p><a href="${root}privacy.html">Privacy</a>`;
@@ -60,6 +62,7 @@ export function mountShell(opts: { page: string; root: string; ai?: AiHooks }): 
   }
   setPage(opts.page);
 
+  mountShare(head.querySelector<HTMLElement>(".shell-share")!);
   const ai = mountAi(head.querySelector<HTMLElement>(".shell-ai")!, root, opts.ai);
   return { ai, setPage, menuLink: (id) => menu.querySelector<HTMLAnchorElement>(`a[data-page="${id}"]`) };
 }

@@ -1,5 +1,5 @@
 /**
- * The Simulator's playground controls (task P12): presets, the share link, and one collapsible group per part of the
+ * The Simulator's playground controls (task P12): presets, and one collapsible group per part of the
  * `PatientSpec`. DOM only. The logic (state edits, the spec builder) is in src/sim/playground.ts; the page owns the state and
  * commits it. The groups for the coronary lesions, rhythm and conduction, and drugs are slots: the page moves its existing
  * controls into them while the mode is on, so there is one place for every control and the old controls keep working.
@@ -87,22 +87,17 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     return b;
   }
 
-  // ---- header, presets, share link -----------------------------------------------------------------------------------
+  // ---- header, presets -----------------------------------------------------------------------------------
   const preset = h("select", { id: "pg-preset", title: "Load a whole patient into every control and panel" });
   preset.append(h("option", { value: "", textContent: "Custom patient" }), ...PRESETS.map((p) => h("option", { value: p.id, textContent: p.label })));
   preset.addEventListener("change", () => { if (preset.value) host.loadPreset(preset.value); });
   const presetNote = h("p", { className: "note", id: "pg-presetnote" });
-  const linkIn = h("input", { id: "pg-link", type: "text", readOnly: true, title: "Share link: opens this exact patient" });
-  linkIn.setAttribute("aria-label", "Share link");
-  const copy = h("button", { type: "button", textContent: "Copy link" });
-  copy.addEventListener("click", () => { linkIn.select(); void navigator.clipboard?.writeText(linkIn.value).then(() => { copy.textContent = "Copied"; setTimeout(() => { copy.textContent = "Copy link"; }, 1500); }, () => { /* selected for a manual copy */ }); });
   const warnings = h("div", { className: "warns pg-warns", id: "pg-warnings" });
   warnings.setAttribute("aria-live", "polite");
   el.append(
     h("div", { className: "pg-head" }, h("h2", { textContent: "Patient" })),
-    h("p", { className: "note pg-first", textContent: "Build the patient with the controls below, or start from a preset. Every panel shows this patient; the share link opens it." }),
+    h("p", { className: "note pg-first", textContent: "Build the patient with the controls below, or start from a preset. Every panel shows this patient; the Share button at the top copies a link to it." }),
     h("label", { htmlFor: "pg-preset", textContent: "Preset", className: "pg-first" }), preset, presetNote,
-    h("label", { htmlFor: "pg-link", textContent: "Share link" }), h("div", { className: "pg-link" }, linkIn, copy),
     warnings,
   );
 
@@ -250,7 +245,6 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
       preset.value = info.presetId ?? "";
       const p = info.presetId ? PRESET_BY_ID[info.presetId] : undefined;
       presetNote.textContent = p ? `${p.blurb}${p.stored ? ` Not simulated yet: ${p.stored}.` : ""}` : "";
-      if (document.activeElement !== linkIn) linkIn.value = info.link;
       warnings.replaceChildren(...info.warnings.map((w) => h("div", { textContent: w })));
     },
   };
