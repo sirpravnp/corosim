@@ -16,7 +16,7 @@ import { Support, supportedRhythm } from "../physics/support";
 import { Drugs, DrugDoses, DrugEffects } from "../physics/core/drugs";
 import type { DrugName } from "../config/drugs";
 import { BeatStream } from "../physics/beatStream";
-import { Ectopy, weightedBurden } from "../physics/ectopy";
+import { Ectopy, weightedBurden, ectopyState } from "../physics/ectopy";
 import { BeatHemodynamics } from "../physics/beatHemo";
 import { Autonomic, AUTONOMIC, AutonomicEffects } from "../physics/autonomic";
 import { LiveHeart, LiveBeat, endDiastolicBeats } from "../physics/core/live";
@@ -1024,7 +1024,7 @@ export class Simulation {
       rolling10s: { hr: r0(roll.hr), sbp: r0(roll.sbp), dbp: r0(roll.dbp), map: r0(roll.map), sv: r0(roll.sv), cardiacOutput: Number.isFinite(roll.cardiacOutput) ? +roll.cardiacOutput.toFixed(1) : null },
       meanArterialPressure: Math.round(this.map),
       coronaryPerfusionPressure: Math.round(this.perfusion),
-      rhythm: { label, sinusRate: Math.round(rs.sinusRate), avBlock: rs.avDegree, pvcSeverity: +rs.pvcSeverity.toFixed(2), baseline: { ...this.patient } },
+      rhythm: { label, sinusRate: Math.round(rs.sinusRate), avBlock: rs.avDegree, pvcSeverity: +rs.pvcSeverity.toFixed(2), baseline: { ...this.patient }, ...ectopyState(this.stream.ectopy, this.t) },
       treatment: {
         ischemicMinutes: Math.round(this.ischemicMinutes),
         stent: this.treated.stent, lysis: this.treated.lysed, grafted: this.treated.grafts.length > 0,

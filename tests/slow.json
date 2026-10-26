@@ -4,6 +4,7 @@
   "tests/coronaryCoupling.test.ts",
   "tests/drugs.test.ts",
   "tests/ecmo.test.ts",
+  "tests/ectopySim.test.ts",
   "tests/endDiastolic.test.ts",
   "tests/filling.test.ts",
   "tests/fluids.test.ts",

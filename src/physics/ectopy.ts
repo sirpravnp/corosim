@@ -68,6 +68,16 @@ export function weightedBurden(sites: BedSite[], sev: Record<string, number>, tr
   return b;
 }
 
+/**
+ * The ectopy part of Simulation.state().rhythm (core engine; nothing for the legacy engine, whose `pvcSeverity` keeps its meaning):
+ * the phase, the expected PVCs per beat now, and what the last minute of beats actually held.
+ */
+export function ectopyState(e: Ectopy | undefined, t: number): { ectopy?: { phase: EctopyPhase; expectedPerBeat: number; lastMinute: { beats: number; pvcs: number } } } {
+  if (!e) return {};
+  const r = e.recent(t);
+  return { ectopy: { phase: e.phase(), expectedPerBeat: +e.rate().toFixed(4), lastMinute: { beats: r.beats, pvcs: r.pvcs } } };
+}
+
 export class Ectopy implements EctopySource {
   /** The patient's fixed susceptibility (from the seed). */
   readonly susceptibility: number;
