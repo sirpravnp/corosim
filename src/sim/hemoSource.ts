@@ -19,6 +19,11 @@ export interface BeatSummary {
   t: number; // s, start of the beat
   rr: number; // s
   pvc: boolean;
+  /**
+   * The next beat was premature (a PVC), so this beat ended early, mid-ejection or mid-relaxation. Its loop is a partial trajectory
+   * (it continues into the premature beat's), not a closed cycle, and its end-diastolic readings are not end-diastolic. Absent means false.
+   */
+  prematureNext?: boolean;
   /** Pressure–volume samples per chamber over the beat, for loops. */
   loops: Record<Chamber, { p: Float32Array; v: Float32Array }>;
   /** Pressure samples per node over the beat, for traces of a single beat (cath pullbacks, JVP). */

@@ -19,6 +19,21 @@ export function cleanLoop(p: ArrayLike<number>, v: ArrayLike<number>): Pt[] {
   return out;
 }
 
+/**
+ * How far a beat's last point is from its first, as a fraction of the loop's own volume and pressure ranges (0 for a closed cycle).
+ * A steady beat closes (about 0.05); a beat cut short by a premature beat, or the one after it (it starts short-filled and ends
+ * well-filled), does not, and joining its ends with a line would draw a chord that is not part of the cycle.
+ */
+export function loopGap(p: ArrayLike<number>, v: ArrayLike<number>): number {
+  const pts = cleanLoop(p, v);
+  if (pts.length < 3) return 0;
+  const vs = pts.map((q) => q.v), ps = pts.map((q) => q.p);
+  const rv = Math.max(...vs) - Math.min(...vs), rp = Math.max(...ps) - Math.min(...ps);
+  if (!(rv > 0) || !(rp > 0)) return 0;
+  const a = pts[0], z = pts[pts.length - 1];
+  return Math.hypot((z.v - a.v) / rv, (z.p - a.p) / rp);
+}
+
 /** Area enclosed by the loop, mmHg·ml (shoelace; the loop is closed). Counter-clockwise in (v, p) is positive: a ventricle's work. */
 export function loopArea(p: ArrayLike<number>, v: ArrayLike<number>): number {
   const pts = cleanLoop(p, v);

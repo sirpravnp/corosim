@@ -43,7 +43,7 @@ import { PATIENTS } from "../config/structural";
 import { ACS_CORE, AUTONOMIC_CORE } from "../config/acsCore";
 import { ischemiaFactors } from "../config/ischemia";
 import { Normalized, Scenario, normalizeScenario, toScenario, supportSpec } from "./scenario";
-import { BeatRecord, computeMetrics, Metrics } from "./metrics";
+import { BeatRecord, computeMetrics, meanRate, Metrics } from "./metrics";
 
 /** Drug and volume changes ramp in over seconds instead of stepping, so interventions play out as transients. */
 const DRUG_TAU = 8, VOLUME_TAU = 10;
@@ -998,7 +998,7 @@ export class Simulation {
   rolling(seconds = 10) {
     const recent = this.history.filter((b) => b.t > this.t - seconds);
     const avg = (f: (b: BeatRecord) => number) => (recent.length ? recent.reduce((s, b) => s + f(b), 0) / recent.length : NaN);
-    const hr = avg((b) => b.hr), sv = avg((b) => b.sv);
+    const hr = meanRate(recent), sv = avg((b) => b.sv);
     return { hr, sbp: avg((b) => b.sbp), dbp: avg((b) => b.dbp), map: avg((b) => b.map), sv, cardiacOutput: (hr * sv) / 1000 + this.circ.deviceFlow };
   }
 
