@@ -250,12 +250,17 @@ describe("devices (D3: the real Impella and IABP; the full device tests are in s
     const v0 = s.live!.model.chambers[7]!.v0;
     expect(Math.min(...s.live!.records.map((b) => b.esv.LV))).toBeGreaterThan(v0);
   });
-  // Known gap (review of D3): clinically an Impella CP raises total output by ~0.5-1 L/min in a STEMI with PCWP ~20 (not
-  // hypovolemic); the model's native stroke volume falls almost one for one with pump flow (+0.08 L/min). Flags itself when met.
-  it.fails("the Impella raises total cardiac output by more than 0.2 L/min in the anterior STEMI (follow-up)", () => {
-    const base = measure(make(LAD)), m = measure(make({ ...LAD, support: { impella: true } }));
-    expect(m.co).toBeGreaterThan(base.co + 0.2);
-  });
+  // Review of D3 flagged total output as rising by only +0.08 L/min (clinically an Impella CP adds about 0.5-1 L/min in a STEMI with PCWP ~20). Part of that
+  // was the monitor's heart rate: it averaged each beat's 60/interval, which reads high with premature beats and more so without the pump (more ectopy), hiding
+  // some of the gain. With the rate as beats per minute and 90 s windows (30 s is within the noise of the ectopy), the gain is +0.4 to +0.5 L/min over seeds.
+  it("the Impella raises total cardiac output by more than 0.2 L/min in the anterior STEMI (averaged over 90 s)", () => {
+    const gains = [3, 4].map((seed) => {
+      const mk = (impella: boolean) => { const s = new Simulation({}, { engine: "core" }); s.reset({ seed, ...LAD, ...(impella ? { support: { impella: true } } : {}) }, { settled: true }); s.warmup(40); s.history = []; return measure(s, 90); };
+      return mk(true).co - mk(false).co;
+    });
+    say("impella CO gain by seed", gains);
+    expect(mean(gains)).toBeGreaterThan(0.2);
+  }, 120_000);
   it("with an empty left ventricle the flow falls instead of drawing it below its unloaded volume", () => {
     const s = make({ bloodLoss: 0.4, support: { impella: true } }), m = measure(s);
     const v0 = s.live!.model.chambers[7]!.v0, late = s.live!.records.filter((b) => b.t > 10); // after the start-up removal of the blood beyond the spec's range

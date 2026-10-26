@@ -104,12 +104,22 @@ export function rsaPeakToTrough(beats: BeatRecord[]): number | null {
   return insp.length > 5 && exp.length > 5 ? r(mean(exp) - mean(insp)) : null;
 }
 
+/**
+ * Mean heart rate of a run of beats, bpm: beats per minute over the time they took (60 x n / total interval), not the mean of each
+ * beat's instantaneous 60/interval. With irregular intervals (a premature beat then its pause, atrial fibrillation) the mean of
+ * reciprocals reads high: intervals of 0.34 s and 0.81 s are 176 and 74 bpm, mean 125, but two beats in 1.15 s is 104 bpm.
+ */
+export function meanRate(beats: readonly { interval: number }[]): number {
+  const T = beats.reduce((s, b) => s + b.interval, 0);
+  return T > 0 ? (60 * beats.length) / T : NaN;
+}
+
 export function computeMetrics(beats: BeatRecord[], durationS: number): Metrics {
   const hrs = beats.map((b) => b.hr), sv = beats.map((b) => b.sv);
   const brs = sequenceBrs(beats);
   return {
     durationS: r(durationS) as number, beats: beats.length, pvcs: beats.filter((b) => b.pvc).length,
-    hr: { mean: r(mean(hrs)), min: r(Math.min(...hrs)), max: r(Math.max(...hrs)) },
+    hr: { mean: r(meanRate(beats)), min: r(Math.min(...hrs)), max: r(Math.max(...hrs)) },
     sbp: { mean: r(mean(beats.map((b) => b.sbp))), sd: r(sd(beats.map((b) => b.sbp))) },
     dbp: { mean: r(mean(beats.map((b) => b.dbp))) },
     map: { mean: r(mean(beats.map((b) => b.map))), sd: r(sd(beats.map((b) => b.map))) },

@@ -7,10 +7,12 @@ import type { BeatSummary, Chamber, HemoSource } from "../sim/hemoSource";
 import type { Panel, PanelDef } from "./panel";
 import { snapshots } from "./snapshots";
 import { DASH, fmt } from "./numbers";
-import { cleanLoop, fitEDPVR, fitESPVR, loopStats, rescaleAxis, type Axis, type LoopStats, type Pt } from "../physics/loopMath";
+import { cleanLoop, fitEDPVR, fitESPVR, loopGap, loopStats, rescaleAxis, type Axis, type LoopStats, type Pt } from "../physics/loopMath";
 
 /** Beats drawn faintly behind the latest. */
 export const TRAIL_BEATS = 4;
+/** A loop is closed with a line only when its ends are this close (fraction of its own ranges); see `loopGap`. */
+const CLOSED_GAP = 0.12;
 type Choice = Chamber | "BV";
 const OPTIONS: [Choice, string][] = [["LV", "LV"], ["RV", "RV"], ["LA", "LA"], ["RA", "RA"], ["BV", "Both ventricles"]];
 const COLOR: Record<Chamber, string> = { LV: "#f4f1ea", RV: "#ffb36a", LA: "#6aa7ff", RA: "#9ad0ff" };
@@ -31,6 +33,7 @@ export const loopsPanel: PanelDef = {
     let unsub: (() => void) | undefined;
     let dirty = true;
     let seen: BeatSummary | undefined;
+    let omitted = false; // the newest beat is a premature one (or was cut short by one) and is not drawn
     let choice: Choice = "LV";
     let ghost: BeatSummary | null = null; // the selected snapshot's beat (shared store, saved from the workspace bar)
     let unsubStore: (() => void) | undefined;
@@ -60,15 +63,27 @@ export const loopsPanel: PanelDef = {
         rows.push(tr);
       };
       for (const c of chs) add(chs.length > 1 ? `${c} live` : "Live", live, c, false);
+      // With a pump in the left ventricle, the loop's SV and EF count what the pump removed as well as what the aortic valve passed.
+      const imp = chs.includes("LV") ? src.devices().find((d) => d.id === "impella") : undefined, flow = imp?.readings.flowLpm;
+      if (flow !== undefined && flow > 0.2) {
+        const tr = document.createElement("tr"), td = document.createElement("td"), perBeat = (flow * 1000 / 60) * live.rr;
+        td.colSpan = 4; td.style.color = "var(--muted)"; td.style.fontSize = "12px";
+        td.textContent = `Per beat: ${fmt(live.valves.AV.forwardMl - live.valves.AV.regurgMl)} ml through the aortic valve, ${fmt(perBeat)} ml through the pump (${flow.toFixed(1)} L/min). SV and EF here include the pump's share.`;
+        tr.append(td); rows.push(tr);
+      }
       if (ghost) for (const c of chs) add(chs.length > 1 ? `${c} ghost` : "Ghost", ghost, c, true);
       table.replaceChildren(...rows);
     }
 
     function render(): void {
-      const beats = src.beats(TRAIL_BEATS + 1);
+      // A loop is a closed cycle only for a beat that is not premature and is not cut short by a premature one: those are left out
+      // (otherwise the panel joins their end to their start with a straight line across the loop).
+      const recent = src.beats(TRAIL_BEATS + 8), whole = recent.filter((b) => !b.pvc && !b.prematureNext);
+      const beats = (whole.length ? whole : recent).slice(-(TRAIL_BEATS + 1));
       ghost = snapshots.selected()?.beat ?? null;
       const live = beats[beats.length - 1];
-      seen = live;
+      seen = recent[recent.length - 1];
+      omitted = !!live && live !== seen;
       wait.hidden = !!live;
       canvas.hidden = !live;
       if (!live) { table.replaceChildren(); note.textContent = ""; return; }
@@ -109,7 +124,7 @@ export const loopsPanel: PanelDef = {
       const path = (b: BeatSummary, c: Chamber) => {
         g.beginPath();
         cleanLoop(b.loops[c].p, b.loops[c].v).forEach((q, i) => (i ? g.lineTo(x(q.v), y(q.p)) : g.moveTo(x(q.v), y(q.p))));
-        g.closePath();
+        if (loopGap(b.loops[c].p, b.loops[c].v) < CLOSED_GAP) g.closePath(); // an unclosed beat stays open: no chord across the loop
       };
       g.save();
       g.beginPath(); g.rect(L, T - 4, R - L + 2, B - T + 6); g.clip();
@@ -161,7 +176,7 @@ export const loopsPanel: PanelDef = {
         g.fillStyle = COLOR[c]; g.fillRect(lx, 8, 10, 3); g.fillText(c, lx + 14, 16);
       }
       if (ghost) { const t = `- - ${snapshots.selected()?.label ?? "snapshot"}`; g.fillStyle = "#8a8a80"; g.fillText(t, lx - g.measureText(t).width - 12, 16); }
-      if (live.pvc) { g.fillStyle = "#ff6b5b"; g.fillText("PVC", L + 90, 16); }
+      if (omitted) { g.fillStyle = "#ff6b5b"; g.fillText("premature beats not drawn", L + 90, 16); }
     }
 
     return {

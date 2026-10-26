@@ -96,7 +96,10 @@ export class LiveSource implements HemoSource {
   beats(count = 8): readonly BeatSummary[] {
     this.sync();
     const out: BeatSummary[] = [];
-    for (let i = this.ring.length - 1; i >= 0 && out.length < count; i--) { const s = this.ring[i].summary; if (s) out.unshift(s); }
+    for (let i = this.ring.length - 1; i >= 0 && out.length < count; i--) {
+      const s = this.ring[i].summary;
+      if (s) { s.prematureNext = !!this.ring[i + 1]?.lb.pvc; out.unshift(s); } // known once the next beat has arrived
+    }
     return out;
   }
 

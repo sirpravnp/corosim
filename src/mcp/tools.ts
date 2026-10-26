@@ -1,6 +1,6 @@
 import { Simulation } from "../sim/simulation";
 import { normalizeScenario } from "../sim/scenario";
-import { BeatRecord, computeMetrics } from "../sim/metrics";
+import { BeatRecord, computeMetrics, meanRate } from "../sim/metrics";
 import { explain } from "../sim/explain";
 import { SCENARIO_REFERENCE } from "../sim/llm";
 import type { PatientSpec } from "../sim/patient";
@@ -128,7 +128,7 @@ function trend(beats: BeatRecord[], from: number, to: number, buckets = 24) {
     const b = beats.filter((x) => x.t >= t && x.t < t + w);
     if (!b.length) continue;
     const avg = (f: (x: BeatRecord) => number) => b.reduce((s, x) => s + f(x), 0) / b.length;
-    out.push({ t: round(t - from + w / 2, 1), hr: round(avg((x) => x.hr), 0), sbp: round(avg((x) => x.sbp), 0), dbp: round(avg((x) => x.dbp), 0), map: round(avg((x) => x.map), 0), sv: round(avg((x) => x.sv), 0), pvcs: b.filter((x) => x.pvc).length });
+    out.push({ t: round(t - from + w / 2, 1), hr: round(meanRate(b), 0), sbp: round(avg((x) => x.sbp), 0), dbp: round(avg((x) => x.dbp), 0), map: round(avg((x) => x.map), 0), sv: round(avg((x) => x.sv), 0), pvcs: b.filter((x) => x.pvc).length });
   }
   return out;
 }
