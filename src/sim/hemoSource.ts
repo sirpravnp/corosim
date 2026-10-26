@@ -51,7 +51,7 @@ export interface HemoNumbers {
   lvEf: number; rvEf: number;
   qpQs: number;
   /**
-   * Premature beats and the beats the readouts above were taken from (hemoBeats.ts): `fraction` of the beats of the window that were
+   * Premature beats and the beats the beat-shape readouts above were taken from (hemoBeats.ts; MAP, CO, SVR, PVR and Qp:Qs average every beat instead): `fraction` of the beats of the window that were
    * premature, `beats` the number averaged, `used` which rule selected them ("steady": not premature, not cut short, not within 3 beats
    * after one; else the non-premature ones; else all). Absent when the source does not select beats (the steady-state bridge).
    */

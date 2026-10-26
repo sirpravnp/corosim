@@ -20,6 +20,7 @@ import { BeatHemodynamics } from "../physics/beatHemo";
 import { Autonomic, AUTONOMIC, AutonomicEffects } from "../physics/autonomic";
 import { LiveHeart, LiveBeat } from "../physics/core/live";
 import { windowedHemodynamicBeats } from "./hemoBeats";
+import { LIVE_SOURCE } from "../config/liveSource";
 import { Iabp } from "../physics/core/devices/iabp";
 import { CoronaryCoupling, BeatSupply, supplyIndex } from "../physics/core/coronary";
 import { COUPLING } from "../config/coronary";
@@ -1001,14 +1002,19 @@ export class Simulation {
   rolling(seconds = 10) {
     const hist = this.history, first = hist.findIndex((b) => b.t > this.t - seconds), recent = first < 0 ? [] : hist.slice(first);
     // core engine only: SV, SBP, DBP and MAP come from hemodynamic beats (hemoBeats.ts); the legacy engine keeps its plain mean (the game page and tests/fixtures/acs.json pin it)
-    let used = recent;
+    let used = recent, flow = recent;
     if (this.engine === "core" && recent.length) {
-      const lo = Math.max(0, first - 60); // the history is long: only the beats near the window matter
+      const lo = Math.max(0, first - 100); // the history is long: only the beats near the window matter
       used = windowedHemodynamicBeats(hist.slice(lo).map((b, k, a) => ({ b, pvc: b.pvc, prematureNext: !!a[k + 1]?.pvc })), first - lo).beats.map((x) => x.b);
+      // MAP and the output average EVERY beat, over the longer flow window when it holds a premature beat (they eject little and a pause follows: part of the minute's output)
+      const f2 = hist.findIndex((b) => b.t > this.t - Math.max(seconds, LIVE_SOURCE.flowWindowS)), wide = f2 < 0 ? [] : hist.slice(f2);
+      if (wide.some((b) => b.pvc)) flow = wide;
     }
     const avg = (f: (b: BeatRecord) => number) => (used.length ? used.reduce((s, b) => s + f(b), 0) / used.length : NaN);
+    const avgF = (f: (b: BeatRecord) => number) => (flow.length ? flow.reduce((s, b) => s + f(b), 0) / flow.length : NaN);
     const hr = meanRate(recent), sv = avg((b) => b.sv); // the rate counts every beat, premature ones included
-    return { hr, sbp: avg((b) => b.sbp), dbp: avg((b) => b.dbp), map: avg((b) => b.map), sv, cardiacOutput: (hr * sv) / 1000 + this.circ.deviceFlow };
+    const out = flow.reduce((s, b) => s + b.interval, 0) > 0 ? (flow.reduce((s, b) => s + b.sv, 0) / flow.reduce((s, b) => s + b.interval, 0)) * 0.06 : NaN; // L/min: volume per elapsed time over every beat
+    return { hr, sbp: avg((b) => b.sbp), dbp: avg((b) => b.dbp), map: avgF((b) => b.map), sv, cardiacOutput: (this.engine === "core" ? out : (hr * sv) / 1000) + this.circ.deviceFlow };
   }
 
   /** Where the patient is right now, in plain numbers. */

@@ -39,11 +39,12 @@ export function numberRows(n: HemoNumbers, s: Saturations): [string, string][] {
  * The "Ectopic beats" row (live source only): the share of premature beats, and, when the readouts above could not come from steady
  * beats, a muted note saying what they were taken from. Kept out of `numberRows` so the snapshot delta (one basis per row) is unchanged.
  */
-export function ectopyRow(n: HemoNumbers): { label: string; value: string; note: string } | null {
+export const ECTOPY_TIP = "CO and MAP average every beat, premature ones included (they eject little and a pause follows), over the last 30 s; the other numbers use steady beats (not premature, not cut short by one, not within 3 beats after one). So with ectopy CO is not heart rate x the typical stroke volume: a pulse deficit.";
+export function ectopyRow(n: HemoNumbers): { label: string; value: string; note: string; tip: string } | null {
   const e = n.ectopy;
   if (!e) return null;
   const note = e.used === "steady" ? "" : e.used === "non-premature" ? "no steady beats: premature beats left out" : "no steady beats: all beats shown";
-  return { label: "Ectopic beats", value: `${Math.round(e.fraction * 100)} % of beats`, note };
+  return { label: "Ectopic beats", value: `${Math.round(e.fraction * 100)} % of beats`, note, tip: ECTOPY_TIP };
 }
 
 /**
@@ -74,6 +75,7 @@ function ectopyRows(e: NonNullable<ReturnType<typeof ectopyRow>>, snap: boolean)
   const cell = (t: string) => { const td = document.createElement("td"); td.textContent = t; return td; };
   const tr = document.createElement("tr");
   tr.append(cell(e.label), cell(e.value));
+  tr.title = e.tip;
   if (snap) tr.append(cell(""), cell(""));
   const out = [tr];
   if (e.note) {

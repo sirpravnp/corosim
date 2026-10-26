@@ -161,54 +161,65 @@ export class LiveSource implements HemoSource {
    * The beats a monitor averages now: the window (`numbersWindowS` s, at least `minBeats`) passed through the hemodynamic-beats policy
    * (hemoBeats.ts), the ONE place it is applied for the numbers and the oxygen solve. `recs` are the selected beats, `all` every beat of
    * the window (the heart rate counts them all). With frequent ectopy the window holds few steady beats, so up to `minSteadyBeats` of
-   * the latest steady ones are used, borrowing from before the window (windowedHemodynamicBeats). Before any beat completes it is the settled beat the warm-up ended on (never NaN, never legacy).
+   * the latest steady ones are used, borrowing from before the window (windowedHemodynamicBeats). `flow` is every beat of the longer `flowWindowS` window when it holds a premature
+   * beat (else the plain window): MAP, CO, SVR, PVR, Qp:Qs, the oxygen solve and the pump flow means average all beats (see numbers()). Before any beat completes it is the settled beat the warm-up ended on (never NaN, never legacy).
    */
-  private window(): { recs: Pick<Rec, "lb" | "rr">[]; all: Pick<Rec, "lb" | "rr">[]; key: string; sel: HemoBeatSelection<unknown> | null } {
+  private window(): { recs: Pick<Rec, "lb" | "rr">[]; all: Pick<Rec, "lb" | "rr">[]; flow: Pick<Rec, "lb" | "rr">[]; key: string; sel: HemoBeatSelection<unknown> | null } {
     const live = this.sync();
-    if (!live) return { recs: [], all: [], key: "", sel: null };
+    if (!live) return { recs: [], all: [], flow: [], key: "", sel: null };
     const now = this.sim.t, ring = this.ring;
     let i = ring.length;
     while (i > 0 && (ring[i - 1].end > now - CFG.numbersWindowS || ring.length - i < CFG.minBeats)) i--;
     if (i >= ring.length) {
-      if (live.warmBeat) { const r = { lb: live.warmBeat, rr: live.warmBeat.interval }; return { recs: [r], all: [r], key: "warm", sel: null }; }
-      return { recs: [], all: [], key: "", sel: null };
+      if (live.warmBeat) { const r = { lb: live.warmBeat, rr: live.warmBeat.interval }; return { recs: [r], all: [r], flow: [r], key: "warm", sel: null }; }
+      return { recs: [], all: [], flow: [], key: "", sel: null };
     }
     const items = ring.map((r, k) => ({ rec: r, pvc: r.lb.pvc, prematureNext: !!ring[k + 1]?.lb.pvc })); // the ring before the window is history for "follows a premature beat" and lends steady beats when ectopy is frequent
     const sel = windowedHemodynamicBeats(items, i, CFG.minSteadyBeats), recs = sel.beats.map((b) => b.rec);
-    return { recs, all: ring.slice(i), key: `${recs.length}@${recs[recs.length - 1].end}|${sel.used}`, sel };
+    // Time-averaged flow and mean pressure are over EVERY beat of a longer window: a premature beat ejects little and is followed by a pause, and that
+    // cost is part of the minute's output (in bigeminy about half). Only with ectopy, so a regular rhythm keeps the short window and its numbers.
+    let j = ring.length;
+    while (j > 0 && (ring[j - 1].end > now - CFG.flowWindowS || ring.length - j < CFG.minBeats)) j--;
+    const flow = ring.slice(j).some((r) => r.lb.pvc) ? ring.slice(j) : ring.slice(i);
+    return { recs, all: ring.slice(i), flow, key: `${recs.length}@${recs[recs.length - 1].end}|${sel.used}|${flow.length}@${flow[flow.length - 1].end}`, sel };
   }
 
   numbers(): HemoNumbers {
-    const { recs, all, sel } = this.window();
+    const { recs, all, flow, sel } = this.window();
     if (!recs.length) return NO_NUMBERS;
     const Tall = all.reduce((s, r) => s + r.rr, 0);
     const T = recs.reduce((s, r) => s + r.rr, 0), w = (f: (r: Pick<Rec, "lb" | "rr">) => number) => recs.reduce((s, r) => s + f(r) * r.rr, 0) / T;
-    const net = (name: string) => recs.reduce((s, r) => s + (r.lb.flows.fwd[name] ?? 0) - (r.lb.flows.bwd[name] ?? 0), 0);
-    const qs = ((net("BEDU") + net("BEDL")) / T) * 0.06, qp = (net("LUNG") / T) * 0.06; // L/min
-    const map = w((r) => r.lb.p.AO.mean), cvp = w((r) => r.lb.p.RA.mean), pam = w((r) => r.lb.p.PA.mean), pcwp = w((r) => r.lb.p.LA.mean);
-    // every mean below is over the same hemodynamic beats (hemoBeats.ts): a premature beat, the beat it cuts short and the beats that follow it are not averaged
+    // Two kinds of readout. Beat-SHAPE values (end-diastolic pressures, EF, systolic/diastolic pressures, PCWP, CVP) are over the hemodynamic beats
+    // `recs` (hemoBeats.ts): a premature beat, the beat it cuts short and the three after it are not averaged. TIME-averaged values (MAP, the flows
+    // and what is computed from them) are over every beat of `flow`, premature ones included: they eject little and are followed by a pause, which is
+    // part of the minute's output and mean pressure (a pulse deficit), so CO is not HR x the typical stroke volume while there is ectopy.
+    const Tf = flow.reduce((s, r) => s + r.rr, 0), wf = (f: (r: Pick<Rec, "lb" | "rr">) => number) => flow.reduce((s, r) => s + f(r) * r.rr, 0) / Tf;
+    const net = (name: string) => flow.reduce((s, r) => s + (r.lb.flows.fwd[name] ?? 0) - (r.lb.flows.bwd[name] ?? 0), 0);
+    const qs = ((net("BEDU") + net("BEDL")) / Tf) * 0.06, qp = (net("LUNG") / Tf) * 0.06; // L/min
+    const map = wf((r) => r.lb.p.AO.mean), cvp = w((r) => r.lb.p.RA.mean), pam = w((r) => r.lb.p.PA.mean), pcwp = w((r) => r.lb.p.LA.mean);
+    const mapF = map, cvpF = wf((r) => r.lb.p.RA.mean), pamF = wf((r) => r.lb.p.PA.mean), pcwpF = wf((r) => r.lb.p.LA.mean); // resistances use pressures from the same beats as their flow
     const ef = (c: "LV" | "RV") => w((r) => (r.lb.v[c].max > 0 ? (r.lb.edv[c] - r.lb.esv[c]) / r.lb.edv[c] : NaN));
     return {
       hr: (60 * all.length) / Tall, // the rate counts every beat, premature ones included
       map, systolic: w((r) => r.lb.p.AO.max), diastolic: w((r) => r.lb.p.AO.min), cvp,
       pa: { systolic: w((r) => r.lb.p.PA.max), diastolic: w((r) => r.lb.p.PA.min), mean: pam }, pcwp,
       lvedp: w((r) => r.lb.p.LV.end), rvedp: w((r) => r.lb.p.RV.end),
-      co: qs, ci: qs / PATIENTS.adult.bsa, svr: qs > 0 ? (map - cvp) / qs : NaN, pvr: qp > 0 ? (pam - pcwp) / qp : NaN,
+      co: qs, ci: qs / PATIENTS.adult.bsa, svr: qs > 0 ? (mapF - cvpF) / qs : NaN, pvr: qp > 0 ? (pamF - pcwpF) / qp : NaN,
       lvEf: ef("LV"), rvEf: ef("RV"), qpQs: qs > 0 ? qp / qs : NaN,
       ...(sel ? { ectopy: { fraction: sel.fraction, beats: recs.length, used: sel.used } } : {}),
     };
   }
 
   saturations(): Saturations {
-    const live = this.sync(), { recs, key } = this.window();
+    const live = this.sync(), { recs, flow: fb, key } = this.window();
     const base = PATIENTS.adult;
     if (!live || !recs.length) return { node: NaNs(NODES), spo2: NaN, preductal: NaN, postductal: NaN, svo2: NaN, do2: NaN, vo2: NaN, lactate: NaN, bed: {}, bedSource: "ischemia-derived" };
     const ec = live.engine.elements.find((e) => e.name === "ecmo") as Ecmo | undefined;
     const drop = this.sim.lungSatDrop(), bed = bedOxygen(this.sim), k = `${key}|${ec?.sweep}|${ec?.fio2}|${drop.toFixed(3)}`;
     if (this.sat && this.satKey === k) return { ...this.sat, bed };
-    const T = recs.reduce((s, r) => s + r.rr, 0);
+    const T = fb.reduce((s, r) => s + r.rr, 0); // the oxygen solve takes its flows from every beat of the flow window
     const fwd: Record<string, number> = {}, bwd: Record<string, number> = {};
-    for (const r of recs) for (const [src, dst] of [[r.lb.flows.fwd, fwd], [r.lb.flows.bwd, bwd]] as const) for (const [n, v] of Object.entries(src)) dst[n] = (dst[n] ?? 0) + v;
+    for (const r of fb) for (const [src, dst] of [[r.lb.flows.fwd, fwd], [r.lb.flows.bwd, bwd]] as const) for (const [n, v] of Object.entries(src)) dst[n] = (dst[n] ?? 0) + v;
     // The pumps are streams between their nodes: an Impella carries the LV's blood into the aorta without crossing the aortic valve, an RP the cava's into the PA.
     const m: Model = { ...live.model, T, edges: [...live.model.edges], patient: drop > 0 ? { ...live.model.patient, satLung: live.model.patient.satLung - drop } : live.model.patient }; // lung water (C3) lowers the saturation the lungs put out
     for (const name of ["impella", "impellaRp"]) {
@@ -252,8 +263,8 @@ export class LiveSource implements HemoSource {
       }, () => ({ arterial: this.trace("AO", CFG.deviceTraceS) })));
     }
     if (d?.ecmo) {
-      const e = d.ecmo, rs = oxygenatorSat(this.saturations().node[e.drain], e.sweepLpm, e.fio2), { recs } = this.window();
-      const T = recs.reduce((s, r) => s + r.rr, 0), mean = T > 0 ? (recs.reduce((s, r) => s + (r.lb.flows.fwd.ecmo ?? 0) - (r.lb.flows.bwd.ecmo ?? 0), 0) / T) * 0.06 : e.flowLpm; // the pump's flow over the window, as a flow meter averages it
+      const e = d.ecmo, rs = oxygenatorSat(this.saturations().node[e.drain], e.sweepLpm, e.fio2), { flow } = this.window();
+      const T = flow.reduce((s, r) => s + r.rr, 0), mean = T > 0 ? (flow.reduce((s, r) => s + (r.lb.flows.fwd.ecmo ?? 0) - (r.lb.flows.bwd.ecmo ?? 0), 0) / T) * 0.06 : e.flowLpm; // the pump's flow over the window, as a flow meter averages it
       out.push({
         id: "ecmo", label: `VA-ECMO ${mean.toFixed(1)} L/min`, alarms: e.suctionAlarm ? ["Suction: the drainage cannula is starved (low venous volume)"] : [],
         readings: { flowLpm: mean, targetLpm: e.targetLpm, rpm: e.rpm, sweepLpm: e.sweepLpm, fio2: e.fio2, returnSat: rs, suctionLevel: e.suctionLevel, membraneDpMmHg: e.membraneDpMmHg, headMmHg: e.headMmHg },

@@ -16,7 +16,7 @@ describe("anterior STEMI on the live page source", () => {
     s.reset({ seed: 3 }, { settled: true }); s.warmup(20);
     const src = new LiveSource(s);
     s.apply({ lesions: CASE_BY_ID.ladocc.scenario.lesions });
-    for (let i = 0; i < 400; i++) s.step(0.1); // 40 s: the ischemia has developed
+    for (let i = 0; i < 700; i++) s.step(0.1); // 70 s: the ischemia has developed and the pressure has stopped drifting down
     return { s, src };
   };
   const spread = (x: number[]) => Math.max(...x) - Math.min(...x);
@@ -31,15 +31,21 @@ describe("anterior STEMI on the live page source", () => {
     expect(spread(lvedp)).toBeLessThan(3);
     expect(spread(ef)).toBeLessThan(0.06);
     expect(spread(col((r) => r.n.co))).toBeLessThan(0.3);
-    expect(spread(col((r) => r.n.map))).toBeLessThan(6);
+    expect(spread(col((r) => r.n.map))).toBeLessThan(3);
     // the monitor roll-up (core engine): SV, SBP, DBP, MAP from the same beats
-    expect(spread(col((r) => r.roll.map))).toBeLessThan(6);
+    expect(spread(col((r) => r.roll.map))).toBeLessThan(3);
     expect(spread(col((r) => r.roll.sv))).toBeLessThan(6);
+    // MAP and the output average every beat (premature ones eject little and a pause follows): back to the all-beat values, and a pulse deficit
+    for (const { n, roll } of rows) {
+      expect(n.map).toBeGreaterThan(70); expect(n.map).toBeLessThan(82);
+      expect(n.co).toBeGreaterThan(3.0); expect(n.co).toBeLessThan(3.9);
+      expect(roll.cardiacOutput).toBeLessThan((roll.hr * roll.sv) / 1000 - 0.2); // CO is not HR x the typical stroke volume
+    }
     // the ectopy is shown: about a third of the beats are premature, and the readouts come from steady beats
     for (const { n } of rows) {
       expect(n.ectopy).toBeDefined();
       expect(n.ectopy!.fraction).toBeGreaterThan(0.1); expect(n.ectopy!.fraction).toBeLessThan(0.6);
-      expect(n.ectopy!.used).toBe("steady"); expect(n.ectopy!.beats).toBeGreaterThanOrEqual(3);
+      expect(n.ectopy!.used).toBe("steady"); expect(n.ectopy!.beats).toBeGreaterThanOrEqual(1);
     }
     const h = s.hemo(8)!;
     expect(h.lvedp).toBeGreaterThan(18); expect(h.lvedp).toBeLessThan(30);

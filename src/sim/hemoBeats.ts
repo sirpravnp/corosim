@@ -12,7 +12,9 @@
  * is left out while any ectopy is present (a normal rhythm keeps it: nothing can cut it short, and the numbers stay what they were).
  * When no beat is steady (sustained AF, VT, a paced or blocked rhythm where every beat is "ectopic", or a very high PVC burden) the
  * readout falls back to the beats that are not premature themselves, and if there are none, to all beats; `used` says which.
- * The heart RATE is not a readout of this kind: it counts every beat (beats per minute over elapsed time) and does not use this.
+ * This is for beat-SHAPE readouts (end-diastolic pressures and volumes, EF, stroke volume, systolic/diastolic pressures, PCWP, CVP, the
+ * loops, JVP, cath pull-backs). TIME-averaged ones (MAP, CO and what follows from the flows) average EVERY beat over a longer window instead:
+ * a premature beat ejects little and a pause follows it, and that cost is part of the minute's output. The heart RATE counts every beat too.
  */
 
 /** Settling time after a premature beat, in beats (compensatory pause, potentiated beat, recovery). */
@@ -63,11 +65,11 @@ export const MIN_STEADY_BEATS = 5;
  * The same policy for a readout over a window: `beats[from..]` is the window (a monitor's last seconds), `beats[..from]` is history.
  * With frequent ectopy a window holds few steady beats (a premature beat takes its neighbour and the next three with it, so at
  * a 30 % burden an 8 s window often holds one or none) and the average of one or two beats is as unsteady as the raw one. So when the
- * window has fewer than `minSteady`, the most recent steady beats before it are added, up to `minSteady`, at most `maxBack` beats back.
+ * window has fewer than `minSteady`, the most recent steady beats before it are added, up to `minSteady`, at most `maxBack` (80) beats back.
  * Only the steady rule borrows, and only when the window holds a non-premature beat: a window of premature beats alone (VT, AF, pacing)
  * and the fall-backs stay on the window, so those follow a change as fast as before. `fraction` is that of the window alone. Normal rhythm: exactly the window's beats.
  */
-export function windowedHemodynamicBeats<T extends Beat>(beats: readonly T[], from: number, minSteady = MIN_STEADY_BEATS, maxBack = 40): HemoBeatSelection<T> {
+export function windowedHemodynamicBeats<T extends Beat>(beats: readonly T[], from: number, minSteady = MIN_STEADY_BEATS, maxBack = 80): HemoBeatSelection<T> {
   const mask = steadyMask(beats), win = beats.slice(from), fraction = win.length ? win.filter((b) => b.pvc).length / win.length : 0;
   const picked: number[] = [], borrow = win.some((b) => !b.pvc); // a window of premature beats only is a sustained rhythm (VT, AF, pacing): older sinus beats are not its readout
   for (let i = beats.length - 1, back = 0; i >= 0; i--) {

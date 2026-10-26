@@ -76,6 +76,7 @@ describe("anterior STEMI (proximal LAD occlusion)", () => {
     expect(m.cvp).toBeLessThan(8); // the right heart is not the problem
   });
   it("lowers the pressure, with reflex tachycardia, a poor ejection fraction and a congested lung", () => {
+    expect(m.map).toBeLessThan(normal.map - 7);
     expect(m.hr).toBeGreaterThan(normal.hr + 20);
     expect(m.circ.ejectionFraction).toBeLessThan(0.4);
     expect(m.circ.congestion).toBeGreaterThan(0.3);
@@ -84,11 +85,7 @@ describe("anterior STEMI (proximal LAD occlusion)", () => {
   // C2: the anterior STEMI's low pressure draws about 100 ml back from the interstitium (Starling), a thin 0.15 mmHg over the 8 mmHg bar below
   // (venousToneGain stays at 0.75 rather than being tuned to this bar). The bar stays.
   // C3: the same patient (wedge about 20) now also filters about 100 ml into the lung, which takes it back over the bar, unchanged.
-  // B1: the monitor's MAP is now taken over hemodynamic beats (hemoBeats.ts), and in the anterior STEMI those read about 86 mmHg against 91 for a normal heart
-  // (the premature beats and the cut-short and post-extrasystolic beats around them, which this bar was set on, pull the all-beat mean down to about 78).
-  // The bar is kept as it was and recorded as a known miss rather than loosened: the steady-beat drop is only about 5 mmHg.
-  it.fails("lowers the pressure by 7 mmHg on the monitor (steady beats; known miss, see B1 above)", () => { expect(m.map).toBeLessThan(normal.map - 7); });
-  it.fails("lowers the pressure by 8 mmHg (steady beats; known miss, see B1 above)", () => { expect(m.map).toBeLessThan(normal.map - 8); });
+  it("lowers the pressure by 8 mmHg", () => { expect(m.map).toBeLessThan(normal.map - 8); });
   it("reports the state as the pressure says it", () => {
     const want = (map: number) => (map < CIRC.shockMap ? "shock" : map < CIRC.hypotensionMap ? "hypotension" : "stable");
     const s = make(LAD);
@@ -247,16 +244,11 @@ describe("devices (D3: the real Impella and IABP; the full device tests are in s
     // pump's flow competes with the native ejection (the venous return limits the total), so the total rises by less (3.99 against 3.91 here)
     expect(m.co).toBeGreaterThan(base.co);
     expect(m.pcwp).toBeLessThan(base.pcwp - 3); // the left ventricle is unloaded
+    expect(m.map).toBeGreaterThan(base.map);
     expect(s.warnings.some((w) => /placeholder/i.test(w))).toBe(false);
     expect(s.live!.engine.sample().taps.impella).toBeDefined();
     const v0 = s.live!.model.chambers[7]!.v0;
     expect(Math.min(...s.live!.records.map((b) => b.esv.LV))).toBeGreaterThan(v0);
-  });
-  // B1: the monitor's MAP is over hemodynamic beats now; with the pump in, the steady-beat MAP reads the same as without it (85.5 against 85.6), so the
-  // bar "MAP rises" (set on the all-beat mean, where fewer premature beats raised it) is a known miss, kept as it was.
-  it.fails("the Impella raises the monitor MAP in the anterior STEMI (steady beats; known miss, see B1 above)", () => {
-    const base = measure(make(LAD)), m = measure(make({ ...LAD, support: { impella: true } }));
-    expect(m.map).toBeGreaterThan(base.map);
   });
   // Review of D3 flagged total output as rising by only +0.08 L/min (clinically an Impella CP adds about 0.5-1 L/min in a STEMI with PCWP ~20). Part of that
   // was the monitor's heart rate: it averaged each beat's 60/interval, which reads high with premature beats and more so without the pump (more ectopy), hiding
