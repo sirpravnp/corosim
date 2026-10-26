@@ -1,0 +1,107 @@
+import { NODES } from "../structuralGraph";
+import type { Model } from "../structural";
+import { Compliance, ElastanceChamber } from "./chamber";
+import { createEngine, type EngineOptions } from "./engine";
+import { ACTIVATION, INERTANCE, VESSELS } from "../../config/structural";
+import { SEPTUM } from "../../config/septum";
+import { Pericardium, type PericardiumParams } from "./pericardium";
+import { Septum, type SeptumParams } from "./septum";
+import { Thorax, type ThoraxParams } from "./thorax";
+import { InertialValve, inertance, OneWayValve, Orifice, Resistor } from "./valves";
+import { Impella, type ImpellaConfig } from "./devices/impella";
+import { Iabp, type IabpParams } from "./devices/iabp";
+import { ImpellaRp, type ImpellaRpConfig } from "./devices/impellaRp";
+import { Ecmo, type EcmoConfig } from "./devices/ecmo";
+import type { Element, Engine, ExternalGroup, NodeDef } from "./types";
+
+/**
+ * Convergence signature of `simulate()`: beat-mean pressure of AO, PA, RA, LA and beat-mean volume of IVC. With unstressed volume
+ * the venous volumes are mostly unstressed volume, so a relative tolerance on them says little about the pressure that is still
+ * drifting (the slow mode of the loop, venous refilling, has a time constant near 10 s); the signature then takes the pressures of
+ * the IVC and the splanchnic reservoir instead.
+ */
+const CONVERGE = { pressure: ["AO", "PA", "RA", "LA"], volume: ["IVC"] };
+const CONVERGE_VU = { pressure: ["AO", "PA", "RA", "LA", "IVC", "SPL"], volume: [] as string[] };
+
+export interface FromModelOptions {
+  /** Build the four cardiac valves (TV, PVL, MV, AV) as `InertialValve`s with their own flow state. Default true (Gate R-A1); false builds plain Gorlin valves. */
+  inertance?: boolean;
+  /** Falling-limb stretch of both ventricles (dimensionless; default `ACTIVATION.relaxScale`; 1 = the unmodified curve). */
+  relaxScale?: number;
+  /** Extra factor on the atrial elastance of the Model (default 1: `buildModel` already designs the atrial drive the engine runs; the frozen-reference pin builds with `atrialEesScale: 1` instead). */
+  atrialEesScale?: number;
+  /** PR (s from atrial event to ventricular event) at beat period T, for `periodic()` (default `defaultPr`). */
+  pr?: (T: number) => number;
+  /** Add the pericardial sac (core/pericardium.ts) with this starting effusion (ml) and parameters. Absent: no sac, no change. */
+  pericardium?: Partial<PericardiumParams> & { effusionMl?: number };
+  /** Add the septum (core/septum.ts): `true` for the default parameters or a partial parameter set. Absent/false: no septum, no change. */
+  septum?: boolean | Partial<SeptumParams>;
+  /** Add an Impella (core/devices/impella.ts; element name "impella"): LV to AO (or AO to AO for position "aortic"). Absent: no device, no change. */
+  impella?: Omit<ImpellaConfig, "v0">;
+  /** Add a VA-ECMO circuit (core/devices/ecmo.ts; element name "ecmo"): RA (or IVC) to DAO. Absent: no device, no change. */
+  ecmo?: Omit<EcmoConfig, "v0">;
+  /** Add an Impella RP (core/devices/impellaRp.ts; element name "impellaRp"): IVC to PA. Absent: no device, no change. With `impella` this is BiPella. */
+  impellaRp?: Omit<ImpellaRpConfig, "v0">;
+  /** Add an intra-aortic balloon pump (core/devices/iabp.ts; element name "iabp") in the descending aorta: `true` for 1:1, correct timing, 40 ml, or a partial parameter set. Absent/false: no balloon, no change. */
+  iabp?: boolean | Partial<IabpParams>;
+  /** Add the thorax (core/thorax.ts): pleural pressure on the "thoracic" and "pericardial" nodes, abdominal pressure on the "abdominal" ones. Absent: no thorax, no change. Not part of the volume calibration (`resolveCore`): the blood volume is calibrated at end-expiration. */
+  thorax?: Partial<ThoraxParams>;
+}
+
+/**
+ * External-pressure group of each node, for fields such as the pericardium and thorax. The four chambers are "pericardial"
+ * (they sit inside the sac). The great vessels inside the chest are "thoracic": SVC, PA, PV and the upper aorta (arch). The
+ * inferior vena cava and descending aorta carry the lower body's blood and are "abdominal". [assumed grouping]
+ */
+const GROUPS: Record<(typeof NODES)[number], ExternalGroup> = { SVC: "thoracic", IVC: "abdominal", RA: "pericardial", RV: "pericardial", PA: "thoracic", PV: "thoracic", LA: "pericardial", LV: "pericardial", AO: "thoracic", DAO: "abdominal", SPL: "abdominal" };
+const valveLength = (name: string): number | undefined => ({ TV: INERTANCE.lengthCm.tv, PVL: INERTANCE.lengthCm.pv, MV: INERTANCE.lengthCm.mv, AV: INERTANCE.lengthCm.av } as Record<string, number>)[name];
+
+/** Default PR for a steady rate (s from atrial event to ventricular event, beat period T): `ACTIVATION.prBase + prPerT·T`. [assumed] */
+export const defaultPr = (T: number): number => ACTIVATION.prBase + ACTIVATION.prPerT * T;
+
+/** The structural `Model` as core nodes and elements, named as in the structural engine (nodes SVC…DAO, elements TV, PVL, MV, AV, RVAO, ISTH, BEDU, …), in the same order. */
+export function fromModel(m: Model, opts: FromModelOptions = {}): { nodes: NodeDef[]; elements: Element[]; options: EngineOptions } {
+  const nodes: NodeDef[] = NODES.map((name, i) => {
+    const c0 = m.chambers[i], fw = SEPTUM.freeWall;
+    // septum on: the ventricle keeps its free-wall fraction of the lumped law (the rest is the septum's)
+    const c = c0 && opts.septum && (name === "LV" || name === "RV") ? { ...c0, ees: c0.ees * (name === "LV" ? fw.lvEes : fw.rvEes), a: c0.a * (name === "LV" ? fw.lvA : fw.rvA) } : c0;
+    const model = c ? new ElastanceChamber(name, c.atrial ? { ...c, ees: c.ees * (opts.atrialEesScale ?? 1) } : { ...c, relaxScale: opts.relaxScale ?? ACTIVATION.relaxScale }, c.atrial ? "atrial" : "ventricular", m.T) : new Compliance(name, m.comp[i], m.vu[i], m.vu[i] > 0 ? VESSELS.collapseMmHg : 0);
+    return { name, model, group: GROUPS[name], start: m.start[i] };
+  });
+  const elements: Element[] = m.edges.map((e) =>
+    e.type === "resistor" ? new Resistor(e.name, e.from, e.to, e.R!) : e.type === "orifice" ? new Orifice(e.name, e.from, e.to, e.area!)
+      : opts.inertance !== false && valveLength(e.name) ? new InertialValve(e.name, e.from, e.to, e.area!, e.reg!, inertance(valveLength(e.name)!, Math.max(e.area!, 0.05)), e.zc ?? 0)
+      : new OneWayValve(e.name, e.from, e.to, e.area!, e.reg!, e.zc ?? 0));
+  if (opts.pericardium) {
+    const { effusionMl, ...params } = opts.pericardium;
+    elements.push(new Pericardium(nodes.flatMap((n, i) => (n.group === "pericardial" ? [i] : [])), effusionMl ?? 0, params));
+  }
+  if (opts.septum) {
+    const lv = NODES.indexOf("LV"), rv = NODES.indexOf("RV");
+    elements.push(new Septum(nodes[lv].model as ElastanceChamber, nodes[rv].model as ElastanceChamber, lv, rv, opts.septum === true ? {} : opts.septum));
+  }
+  if (opts.impella) elements.push(Impella.forModel(m, opts.impella));
+  if (opts.ecmo) elements.push(Ecmo.forModel(m, opts.ecmo));
+  if (opts.impellaRp) elements.push(ImpellaRp.forModel(m, opts.impellaRp));
+  if (opts.iabp) elements.push(Iabp.forModel(m, opts.iabp === true ? {} : opts.iabp));
+  if (opts.thorax) {
+    const ids = (gs: ExternalGroup[]) => nodes.flatMap((n, i) => (gs.includes(n.group) ? [i] : []));
+    const sac = elements.find((e): e is Pericardium => e instanceof Pericardium) ?? null;
+    elements.push(new Thorax(ids(["thoracic"]).filter((i) => nodes[i].name !== "SVC"), ids(["abdominal"]), opts.thorax, [...ids(["pericardial"]), NODES.indexOf("SVC")], sac));
+  }
+  return { nodes, elements, options: { defaultPr: opts.pr ?? defaultPr, converge: m.vu.some((v) => v > 0) ? CONVERGE_VU : CONVERGE } };
+}
+
+/** The options as the engine will use them, every default filled in: what a calibration cache must be keyed on. */
+export function resolveCore(opts: FromModelOptions = {}) {
+  const pr = opts.pr ?? defaultPr;
+  return { inertance: opts.inertance !== false, relaxScale: opts.relaxScale ?? ACTIVATION.relaxScale, atrialEesScale: opts.atrialEesScale ?? 1, pr: [0.4, 0.83, 1.5].map((T) => pr(T)),
+    /** The septum changes the loop's pressures, so the volume calibration depends on it and on its constants. */
+    septum: opts.septum ? { ...SEPTUM, ...(opts.septum === true ? {} : opts.septum) } : false };
+}
+
+/** `fromModel` and `createEngine` in one step. */
+export function engineFromModel(m: Model, opts: FromModelOptions = {}): Engine {
+  const g = fromModel(m, opts);
+  return createEngine(g.nodes, g.elements, g.options);
+}

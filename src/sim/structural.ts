@@ -1,4 +1,5 @@
 import { analyze, StructuralReport, StructuralSpec } from "../physics/structural";
+import type { PatientSpec } from "./patient";
 import { GORLIN, GRADE, ORIFICE_EPS, PATIENTS, PatientKind } from "../config/structural";
 
 /**
@@ -130,7 +131,7 @@ export const gradeValves = (spec: StructuralSpec, report: StructuralReport): Val
 
 const NOTES = [
   "The arch has no inertance here: a duct feeding the lower body also pushes some blood into the arch, so the upper-body saturation in pulmonary hypertension of the newborn reads about 91% (clinically nearer 98%).",
-  "Instantaneous peak gradients across normal valves are about twice the clinical Doppler values (no inertance); grades use the mean gradient and the Gorlin area.",
+  "The four heart valves have inertance: mitral peak and mean gradients sit near clinical Doppler values, but the aortic peak instantaneous gradient of a normal valve still reads high (about 15 mmHg against 4 to 8) because ejection flow peaks sharply. Grades use the mean gradient and the Gorlin area.",
   "No reflexes: pressure does not defend itself, so shunts and regurgitation show their raw effect on systemic pressure.",
   "Grades use adult cut-offs scaled to each patient's own valve size; pediatric z-scores are not modelled.",
 ];
@@ -160,6 +161,15 @@ export function parseLesionHash(hash: string): { id: LesionId; values: Record<st
     if (Number.isFinite(x)) values[p.key] = Math.min(p.max, Math.max(p.min, Math.round((x - p.min) / p.step) * p.step + p.min));
   }
   return { id: d.id, values };
+}
+/**
+ * A structural-page `#lesion=...` hash as a PatientSpec: `kind` from the lesion's patient, `heart` from `def.build(values)` (slider
+ * values at their defaults unless the hash sets them) without the `patient` and `hr` fields, which the spec carries elsewhere.
+ */
+export function patientFromLesionHash(hash: string): PatientSpec {
+  const { id, values } = parseLesionHash(hash), d = LESION_BY_ID[id]!;
+  const { patient: _p, hr: _h, ...heart } = d.build({ ...defaults(d), ...values });
+  return { kind: d.patient, heart };
 }
 /** The hash that opens `id` with `values`, leaving out sliders at their defaults. */
 export function lesionHash(id: LesionId, values: Record<string, number>): string {

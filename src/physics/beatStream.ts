@@ -11,6 +11,9 @@ export class BeatStream {
   private horizon = 0;
   private conduction: Conduction;
   private delivered = new WeakSet<Beat>();
+  /** Electrical alternans: QRS amplitude of the conducted beats generated from now on alternates 1 + a, 1 - a (0 = none; a pericardial effusion sets it, B4). */
+  alternans = 0;
+  private altCount = 0;
 
   /**
    * `lookahead` is how far beats are generated ahead of the clock and `chunk` how much is added at a time.
@@ -23,7 +26,9 @@ export class BeatStream {
   extend(t: number, state: RhythmState, mod?: SinusModulation) {
     if (this.horizon < t + this.lookahead) {
       this.horizon = t + this.lookahead + this.chunk;
-      this.beats.push(...this.conduction.advance(this.horizon, state, mod));
+      const fresh = this.conduction.advance(this.horizon, state, mod);
+      if (this.alternans > 0) for (const b of fresh) if (!b.pOnly && !b.pvc) b.alt = this.altCount++ % 2 ? 1 - this.alternans : 1 + this.alternans;
+      this.beats.push(...fresh);
     }
   }
 

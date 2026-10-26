@@ -1,8 +1,11 @@
 import { Simulation } from "../sim/simulation";
-import { Scenario, normalizeScenario } from "../sim/scenario";
+import { normalizeScenario } from "../sim/scenario";
 import { BeatRecord, computeMetrics } from "../sim/metrics";
 import { explain } from "../sim/explain";
-import { SCENARIO_REFERENCE, encodeScenario } from "../sim/llm";
+import { SCENARIO_REFERENCE } from "../sim/llm";
+import type { PatientSpec } from "../sim/patient";
+import { encodePatient } from "../sim/llm";
+import { rememberPatient, patchPatient, currentPatient, heartCath, jvp, oxygen, loopMetricsReport } from "./hemo";
 import { buildTree } from "../anatomy/tree";
 import { CATEGORIES, PRESETS, EkgPreset, findPreset, resolveSpec } from "../ekg/presets";
 import { EkgSpec, measure } from "../ekg/engine";
@@ -80,11 +83,38 @@ const scenarioSchema = {
       properties: {
         fluids: { type: "number", minimum: 0, maximum: 3, description: "Litres of IV fluid given. Helps a right-ventricular infarct; congests the lungs of a failing left ventricle." },
         norepinephrine: { type: "number", minimum: 0, maximum: 1 }, dobutamine: { type: "number", minimum: 0, maximum: 1 }, nitroglycerin: { type: "number", minimum: 0, maximum: 1 },
+        epinephrine: { type: "number", minimum: 0, maximum: 1, description: "Core engine only." }, milrinone: { type: "number", minimum: 0, maximum: 1, description: "Core engine only." }, vasopressin: { type: "number", minimum: 0, maximum: 1, description: "Core engine only." },
+        nitroprusside: { type: "number", minimum: 0, maximum: 1, description: "Core engine only." }, furosemide: { type: "number", minimum: 0, maximum: 1, description: "Core engine only." },
         pacing: { type: "boolean" }, paceRate: { type: "number", minimum: 40, maximum: 120 },
         iabp: { type: "boolean", description: "Intra-aortic balloon pump." }, impella: { type: "boolean", description: "Microaxial left-ventricular pump." },
       },
     },
     seed: { type: "integer", description: "Random seed. The same scenario and seed reproduce the same beats." },
+  },
+} as const;
+
+const numP = (min: number, max: number, description?: string) => ({ type: "number", minimum: min, maximum: max, ...(description ? { description } : {}) });
+/** The Scenario schema plus the PatientSpec fields (src/sim/patient.ts). The core engine reads `devices` (Impella model, P-level and position; IABP ratio, timing offsets and volume); the legacy engine ignores it and keeps the on/off toggles. */
+const patientSchema = {
+  ...scenarioSchema,
+  description: "Patient and intervention description (a Scenario plus kind, heart, pericardium, septum, fluids, ventilation and devices). Every field optional; omitted fields keep the typical resting adult. The additional fields are accepted and validated. `kind` and `heart` shape the readings of corosim_heart_cath, corosim_jvp, corosim_oxygen and corosim_loop_metrics (the monitor, ECG and coronary physiology stay the adult ACS model); `devices` is read by the core engine only (P-level, IABP ratio and timing; the legacy engine ignores it).",
+  properties: {
+    ...scenarioSchema.properties,
+    kind: { enum: ["adult", "neonate"], description: "Baseline physiology. Neonates have no coronary view." },
+    heart: { type: "object", description: "Structural lesions as in the structural page: valves {av|mv|tv|pv: {open 0..1, reg 0..10}}, pda|asd|vsd|bt {diameterMm 0..40}, tof, pvri, svrScale, satLung, volumeMl, lvSize|laSize|rvSize|raSize, rvContractility. See the reference for ranges." },
+    pericardium: { type: "object", properties: { effusionMl: numP(0, 2000), effusionRateMlMin: numP(0, 100), stiffness: numP(0.2, 10, "1 normal, > 1 constrictive"), open: { type: "boolean", description: "Pericardium opened (post cardiac surgery)." }, drainMl: numP(0, 2000, "Pericardiocentesis, an action for corosim_adjust: ml of effusion to remove now (50-100 ml relieves a tamponade); it is subtracted from the effusion and never stored.") } },
+    septum: { type: "boolean", description: "Ventricular interdependence through the septum (core engine): a failing right ventricle bows the septum into the left. Switch it on for RV infarct and tamponade." },
+    fluids: { type: "object", properties: { given: { type: "array", maxItems: 20, items: { type: "object", required: ["kind", "ml"], properties: { kind: { enum: ["crystalloid", "colloid", "albumin", "blood"] }, ml: numP(0, 5000), atMin: numP(0, 1440), overMin: numP(0, 1440) } } }, hemorrhageMlMin: numP(0, 500), capillaryLeak: numP(0, 1), legRaise: { type: "boolean" } } },
+    ventilation: { type: "object", properties: { mode: { enum: ["spontaneous", "positive"] }, peep: numP(0, 25, "cmH2O"), tidalMlKg: numP(2, 15) } },
+    devices: {
+      type: "object", description: "Mechanical support with settings. support.iabp / support.impella (true) mean the defaults: IABP 1:1 at correct timing, 40 ml; Impella CP at P6, correct position.",
+      properties: {
+        impella: { type: "object", properties: { model: { enum: ["2.5", "CP", "5.5"] }, level: numP(0, 9, "P-level"), position: { enum: ["correct", "aortic", "deep"] } } },
+        impellaRp: { type: "object", properties: { level: numP(0, 9) } },
+        iabp: { type: "object", properties: { ratio: { enum: [1, 2, 3] }, inflateMs: numP(-100, 100), deflateMs: numP(-100, 100), volumeMl: numP(0, 50) } },
+        ecmo: { type: "object", properties: { flowLpm: numP(0, 7), sweepLpm: numP(0, 10), fio2: numP(0.21, 1) } },
+      },
+    },
   },
 } as const;
 
@@ -120,6 +150,7 @@ function bedside(sim: Simulation) {
     scenario: sim.scenario(), // also what the in-chat viewer replays
     state: sim.state(),
     ecg: sim.ecg(),
+    ...(sim.devices() ? { devices: sim.devices() } : {}), // core engine: Impella and IABP consoles (see sim/coreDevices.ts)
     assessment: { problems: a.issues.map((i) => i.text), harmful: a.warnings.map((w) => w.text), guidelineNextSteps: a.steps.map((x) => ({ step: x.text, why: x.why })) },
   };
 }
@@ -149,7 +180,7 @@ export const TOOLS: ToolDef[] = [
     inputSchema: { type: "object", properties: {} },
     run({ sim }) {
       return {
-        reference: SCENARIO_REFERENCE, schema: scenarioSchema,
+        reference: SCENARIO_REFERENCE, schema: patientSchema,
         ekg: "The patient makes only the rhythms its coronary physiology causes (ischemic ST change, PVCs, AV block, AF if given). To show or teach any other rhythm or 12-lead pattern (flutter, SVT, WPW, VT, polymorphic VT, torsades, VF, long QT, hyperkalemia, Brugada, pericarditis, de Winter, Wellens...), call corosim_ekg_show (a preset, or custom for anything else): it does not touch this patient.",
         arteriesInCurrentAnatomy: buildTree(sim.n.anatomy).segments.map((s) => ({ id: s.id, name: s.name, supplies: `${(s.subMass * 100).toFixed(0)}% of myocardium` })),
         referenceAdult: { hr: 72, strokeVolumeMl: 70, mapMmHg: 90, bp: "120/72" },
@@ -160,9 +191,12 @@ export const TOOLS: ToolDef[] = [
   {
     name: "corosim_set_scenario", title: "Build a patient", readOnly: false,
     description: `Replace the current patient with this scenario, then run a warm-up so the reflexes have settled. Returns the monitor, the 12-lead ECG, the guideline assessment and a grounded explanation, plus warnings listing anything that was clamped or dropped (read them: they tell you what actually ran). Use settled=false to watch an occlusion develop from a healthy start. The warm-up does not advance the infarct clock; corosim_run and corosim_adjust do (2 clinical minutes per simulated second), so a closed artery loses muscle as you run it. Not for showing a rhythm or EKG pattern (AF, flutter, SVT, blocks, VT, torsades, VF, STEMI mimics, electrolytes): use corosim_ekg_show, which draws any of them. ${NOT_CLINICAL}`,
-    inputSchema: { type: "object", properties: { scenario: scenarioSchema, settled: { type: "boolean", description: "Start with ischemia already at its steady value (default true). False = ischemia develops over ~20 s." }, warmupSeconds: { type: "number", minimum: 0, maximum: 300, description: "Simulated seconds to run before returning (default 45)." } } },
+    inputSchema: { type: "object", properties: { scenario: patientSchema, engine: { enum: ["legacy", "core"], description: "Hemodynamic engine for this patient. Omit to keep the current one (a new server starts on legacy). 'core' is the beat-by-beat engine and adds the Impella and IABP consoles (devices) to every report; slower." }, settled: { type: "boolean", description: "Start with ischemia already at its steady value (default true). False = ischemia develops over ~20 s." }, warmupSeconds: { type: "number", minimum: 0, maximum: 300, description: "Simulated seconds to run before returning (default 45)." } } },
     run({ sim }, a) {
-      sim.reset((a.scenario ?? {}) as Scenario, { settled: a.settled !== false });
+      if (a.engine !== undefined && a.engine !== "legacy" && a.engine !== "core") throw new Error("engine must be legacy or core.");
+      if (a.engine) sim.engine = a.engine as "legacy" | "core"; // takes effect at the reset below
+      sim.reset((a.scenario ?? {}) as PatientSpec, { settled: a.settled !== false });
+      rememberPatient(sim, (a.scenario ?? {}) as PatientSpec);
       sim.warmup(num(a.warmupSeconds, 45, 0, 300));
       return { warnings: sim.warnings, ...bedside(sim), explanation: explain(sim) };
     },
@@ -170,11 +204,12 @@ export const TOOLS: ToolDef[] = [
   {
     name: "corosim_adjust", title: "Change the patient while it runs", readOnly: false,
     description: `Apply a change to the running patient (give a drug, start a hemorrhage, occlude an artery) and optionally run on to watch the response. Fields you leave out are unchanged; drug and volume changes ramp in over ~10 s like a real bolus. Returns the response time course. ${NOT_CLINICAL}`,
-    inputSchema: { type: "object", required: ["patch"], properties: { patch: scenarioSchema, runSeconds: { type: "number", minimum: 0, maximum: 600, description: "Simulated seconds to run after the change (default 60)." } } },
+    inputSchema: { type: "object", required: ["patch"], properties: { patch: patientSchema, runSeconds: { type: "number", minimum: 0, maximum: 600, description: "Simulated seconds to run after the change (default 60)." } } },
     run(ctx, a) {
-      ctx.sim.apply((a.patch ?? {}) as Scenario);
+      ctx.sim.apply((a.patch ?? {}) as PatientSpec);
+      patchPatient(ctx.sim, (a.patch ?? {}) as PatientSpec);
       const rep = runReport(ctx, num(a.runSeconds, 60, 0, 600), "none", 0);
-      return { applied: ctx.sim.scenario(), ...rep };
+      return { applied: currentPatient(ctx.sim), ...rep };
     },
   },
   {
@@ -210,9 +245,9 @@ export const TOOLS: ToolDef[] = [
   {
     name: "corosim_compare", title: "Counterfactual comparison", readOnly: true,
     description: `Run several scenarios from the same seed in separate simulations (the current patient is not changed) and return their statistics side by side with differences from the first. Use for 'what if' teaching: with vs without baroreflex, with vs without a beta blocker, 15% vs 30% hemorrhage. ${NOT_CLINICAL}`,
-    inputSchema: { type: "object", required: ["scenarios"], properties: { scenarios: { type: "array", minItems: 2, maxItems: 5, items: { type: "object", required: ["label", "scenario"], properties: { label: { type: "string" }, scenario: scenarioSchema } }, description: "The first entry is the reference." }, seconds: { type: "number", minimum: 30, maximum: 600, description: "Measured seconds after warm-up (default 120)." }, warmupSeconds: { type: "number", minimum: 0, maximum: 300, description: "Default 60." } } },
+    inputSchema: { type: "object", required: ["scenarios"], properties: { scenarios: { type: "array", minItems: 2, maxItems: 5, items: { type: "object", required: ["label", "scenario"], properties: { label: { type: "string" }, scenario: patientSchema } }, description: "The first entry is the reference." }, seconds: { type: "number", minimum: 30, maximum: 600, description: "Measured seconds after warm-up (default 120)." }, warmupSeconds: { type: "number", minimum: 0, maximum: 300, description: "Default 60." } } },
     run(_ctx, a) {
-      const list = (a.scenarios as { label: string; scenario: Scenario }[]) ?? [];
+      const list = (a.scenarios as { label: string; scenario: PatientSpec }[]) ?? [];
       if (list.length < 2) throw new Error("Provide at least two scenarios to compare.");
       const sec = num(a.seconds, 120, 30, 600), warm = num(a.warmupSeconds, 60, 0, 300);
       const results = list.slice(0, 5).map((s) => {
@@ -235,8 +270,32 @@ export const TOOLS: ToolDef[] = [
     description: "Only when the user explicitly asks for a link or URL (to share, or to open the full website): return a corosim.com address for this patient. To show the patient in the chat, use corosim_show instead.",
     inputSchema: { type: "object", properties: {} },
     run({ sim, appUrl }) {
-      return { link: `${appUrl.replace(/\/$/, "")}/#s=${encodeScenario(sim.scenario())}` };
+      return { link: `${appUrl.replace(/\/$/, "")}/#s=${encodePatient(currentPatient(sim))}` };
     },
+  },
+  {
+    name: "corosim_heart_cath", title: "Right- and left-heart catheterization", readOnly: true,
+    description: `Cath-lab readings for the current patient (does not advance time or change the patient). RIGHT: RA (mean, a, v), RV (systolic, end-diastolic), PA and wedge pressures; the oximetry run (SVC, IVC, RA, RV, PA saturation) with step-ups by level (atrial >= 7, ventricular >= 5, great vessel >= 5 points); Fick and thermodilution output; Qp, Qs, Qp:Qs, PVR, SVR, TPG, DPG, PAPi, cardiac power output. LEFT: LV, aortic and wedge pressures, aortic peak-to-peak, mean and peak-instantaneous gradients, mitral gradient, Gorlin and Hakki valve areas and the grade (none/mild/moderate/severe), graded against the normal valve of the patient's kind (a neonate's 0.5 cm2 aortic valve is normal, not severe). Use side to get one half. Build the patient with corosim_set_scenario (heart lesions, shunts, kind: neonate); use for hemodynamic profiles, shock phenotypes (low PAPi and RA/PCWP >= 0.8 = RV failure), shunts and valve disease. Output format corosim.heart_cath/1. The first call after a patient change runs a structural solve (about 1 s); later calls are instant. ${NOT_CLINICAL}`,
+    inputSchema: { type: "object", properties: { side: { enum: ["both", "right", "left"], description: "Default both." } } },
+    run({ sim }, a) { return heartCath(sim, a.side === "right" || a.side === "left" ? a.side : "both"); },
+  },
+  {
+    name: "corosim_jvp", title: "Jugular venous pulse", readOnly: true,
+    description: `The jugular venous pulse of the current patient, from one beat of right-atrial pressure: height in cm above the sternal angle (45 degrees), which waves are present (a, c, x, v, y) with their times and heights, whether the a wave is absent or a cannon wave, and the classification in words (raised, giant v, steep or blunted y descent, cannon a, absent a). Use for AF (no a wave), complete heart block (cannon a), tricuspid regurgitation (giant v), tamponade (blunted y) and volume status. Does not advance time. Output format corosim.jvp/1. ${NOT_CLINICAL}`,
+    inputSchema: { type: "object", properties: {} },
+    run({ sim }) { return jvp(sim); },
+  },
+  {
+    name: "corosim_oxygen", title: "Oxygen saturations and delivery", readOnly: true,
+    description: `Oxygen status of the current patient: SpO2, pre- and post-ductal saturation (and the ductal difference), mixed venous (PA) saturation, saturation at every cath site, DO2, VO2 (assumed baseline), extraction ratio, Qp:Qs, lactate (when modelled), the ECMO return saturation when ECMO runs, and plain-language teaching cues (low delivery, high extraction, differential hypoxemia). Does not advance time. Output format corosim.oxygen/1. ${NOT_CLINICAL}`,
+    inputSchema: { type: "object", properties: {} },
+    run({ sim }) { return oxygen(sim); },
+  },
+  {
+    name: "corosim_loop_metrics", title: "LV pressure-volume loop metrics", readOnly: true,
+    description: `Energetics of the last left-ventricular beat: end-diastolic, end-systolic and stroke volume, EF, stroke work (mmHg.ml and J), pressure-volume area, potential energy, efficiency, arterial elastance Ea, end-systolic elastance Ees and Ea/Ees coupling, myocardial oxygen consumption (ml per beat, per minute, per 100 g), cardiac power output (W), peak dP/dt. Use for supply/demand questions (what does an Impella, a vasodilator or a higher afterload do to MVO2 and work). Does not advance time. Output format corosim.loop_metrics/1. ${NOT_CLINICAL}`,
+    inputSchema: { type: "object", properties: {} },
+    run({ sim }) { return loopMetricsReport(sim); },
   },
   {
     name: "corosim_ekg_list", title: "EKG library", readOnly: true, stateless: true,

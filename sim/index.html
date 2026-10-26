@@ -21,7 +21,7 @@
       <div id="view" class="viewport">
         <div id="tag"></div>
         <div id="pick"></div>
-        <div id="legend"><div id="bar"></div><div class="lg"><span id="l0"></span><span id="lmid"></span><span id="l1"></span></div></div>
+        <div id="legend"><div id="bar"></div><div class="lg"><span id="l0"></span><span id="lmid"></span><span id="l1"></span></div><div id="legend2" hidden><div id="bar2"></div><div class="lg"><span id="m0"></span><span id="mmid"></span><span id="m1"></span></div><div id="lnote"></div></div></div>
       </div>
       <div class="row views">
         <button id="vAnt" class="on">Anterior</button>
@@ -78,8 +78,22 @@
       <div class="row q-live"><button id="qquit">Leave the case</button></div>
     </section>
 
+    <section id="pgentry">
+      <h2>Mode</h2>
+      <div class="row" style="margin-top:0" role="group" aria-label="Page mode">
+        <button id="pg_off" class="on" aria-pressed="true">Simulator</button>
+        <button id="pg_on" aria-pressed="false" title="Edit one patient with every control: coronary and structural lesions, rhythm, pericardium, fluids, ventilation, devices, kind">Playground</button>
+      </div>
+      <p class="note">Playground edits one patient with every control and drives every panel from it; its share link opens the same patient.</p>
+    </section>
+    <div id="pgmount" hidden></div>
+
     <section>
       <h2>Monitor</h2>
+      <div id="pgbanner" class="pg-banner" role="note" hidden>
+        <span>The monitor, ECG and 3D heart show the adult coronary model. The panels below show this neonatal heart.</span>
+        <button id="pg_adult" type="button" title="Back to an adult patient: the coronary view and controls return">Switch to adult</button>
+      </div>
       <table class="readout">
         <tr class="q-hide"><td>Circulation</td><td id="circ"></td></tr>
         <tr><td>Blood pressure (MAP)</td><td id="bp"></td></tr>
@@ -115,7 +129,7 @@
           <button id="exert">Exertion (2×)</button>
         </div>
         <p class="glabel" id="ts-l">Time scale</p>
-        <div class="row" style="margin-top:0">
+        <div class="row" id="ts-row" style="margin-top:0">
           <button id="s1" class="on">1×</button>
           <button id="s3">3×</button>
           <button id="s6">6×</button>
@@ -155,6 +169,7 @@
           <button id="m_cancel">Cancel</button>
           <a id="openCath" class="askbtn" href="../cath/" title="See this patient's angiogram and pressure wire, before and after treatment">Open in cath lab<span aria-hidden="true">→</span></a>
         </div>
+        <div id="xlinks" hidden></div>
         <p class="note" id="mstatus"></p>
         <p class="note">Orders take clinical time to reach the artery (about 2 minutes pass per second at 1×), and muscle that stays ischemic dies as it waits. PCI stents the lesion; a fibrinolytic opens an occlusion in about half of patients and leaves a stenosis; a bypass feeds the vessel beyond the lesion and leaves the lesion itself.</p>
       </div>
@@ -225,6 +240,7 @@
         <button id="m_pressure">Pressure</button>
         <button id="m_velocity">Velocity</button>
         <button id="m_wss">Wall shear</button>
+        <button id="m_o2">O₂ sat</button>
       </div>
       <p class="glabel">Myocardium</p>
       <div class="row" style="margin-top:0">
@@ -236,11 +252,13 @@
       <input id="ex" type="range" min="1" max="5" step="0.5" value="2.5">
       <div class="row">
         <button id="flowbtn">Show blood flow</button>
+        <button id="propsbtn" title="Show the heart's valves, septal defects and jets inside it (from a shared link's structural lesions); makes a solid heart see-through">Valves and defects</button>
         <button id="postbtn">Posterior leads V7–V9</button>
       </div>
     </details>
   </aside>
 </main>
+<section class="ws-sec" hidden><h2>Workspace</h2><div id="workspace"></div></section>
 <!-- The game's front door: over the blurred page until a case starts -->
 <div id="qgate" hidden>
   <div class="q-card">

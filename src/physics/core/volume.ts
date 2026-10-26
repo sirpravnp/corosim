@@ -1,0 +1,35 @@
+import { OUTSIDE, type Ctx, type Element, type NodeId, type Rates, type Tunable } from "./types";
+
+export interface VolumeExchangeParams {
+  /** ml/s of blood given (+) or lost (−). */
+  rate: number;
+}
+
+/**
+ * Blood added to or removed from the circulation (fluid boluses, hemorrhage) at a rate the caller sets between steps. A bolus goes
+ * into the `into` nodes (the veins), a loss comes out of the `from` nodes, each in proportion to the node's current volume, so a
+ * node is never drained below zero by it. Total blood volume then changes by exactly the integral of `rate`. C2 (fluid
+ * compartments) replaces this with a real model of what stays in the vessels.
+ */
+export class VolumeExchange implements Element, Tunable<VolumeExchangeParams> {
+  readonly params: VolumeExchangeParams = { rate: 0 };
+  /**
+   * `lossWeight(node, volume)` (ml) is each `from` node's share of a loss; the default is its volume. A bleed drains the blood that
+   * is under pressure, not the unstressed volume of a vein, so the ACS simulation passes the stressed volume (A7b). A bolus always
+   * divides by the volume of the `into` nodes.
+   */
+  constructor(readonly name: string, private readonly into: readonly NodeId[], private readonly from: readonly NodeId[], private readonly lossWeight: (node: NodeId, volume: number) => number = (_n, v) => v) {}
+  set(patch: Partial<VolumeExchangeParams>) { Object.assign(this.params, patch); }
+  flow(ctx: Ctx, out: Rates) {
+    const q = this.params.rate;
+    if (q === 0) return;
+    const nodes = q > 0 ? this.into : this.from;
+    let tot = 0;
+    const weight = (n: NodeId) => Math.max(q > 0 ? ctx.V[n] : this.lossWeight(n, ctx.V[n]), 0);
+    for (const n of nodes) tot += weight(n);
+    for (const n of nodes) {
+      const w = tot > 1e-9 ? weight(n) / tot : 1 / nodes.length;
+      if (q > 0) out.flow(OUTSIDE, n, q * w); else out.flow(n, OUTSIDE, -q * w);
+    }
+  }
+}

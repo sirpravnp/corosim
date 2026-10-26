@@ -1,9 +1,17 @@
 import "./cath.css";
 import "../customSelect";
 import { mountShell } from "../shell/shell";
+import { mountCrossLinks } from "../shell/crossLinkRow";
+import { joinPatient } from "../sim/crossLinks";
 import { Simulation } from "../sim/simulation";
 import { Scenario } from "../sim/scenario";
-import { decodeScenario } from "../sim/llm";
+import { decodePatient } from "../sim/llm";
+import type { PatientSpec } from "../sim/patient";
+import { BridgeSource } from "../sim/bridgeSource";
+import { createWorkerSolver } from "../sim/bridgeWorkerSolver";
+import { openHeartBridge } from "./heart";
+import { rhcPanel } from "../panels/rightHeartCath";
+import { leftHeartCathPanel } from "../panels/leftHeartCath";
 import { Procedure } from "../config/management";
 import { angioModel, cathReport, ffrCall, timi, wireModel, AngioModel, WireModel, CathReport } from "../sim/cath";
 import { WIRE } from "../config/cath";
@@ -25,12 +33,19 @@ let current: CathCase = CASES[0];
 let model!: AngioModel, report!: CathReport, wire!: WireModel;
 let artery = "LAD";
 let shared = false;
+/** The PatientSpec a #s= link opened, kept for its structural sections (the Simulation holds only the coronary scenario). */
+let sharedSpec: PatientSpec | undefined;
+/** "Open in…" links: the patient on screen, with whatever treatment has changed. */
+const links = mountCrossLinks($("xlinks"), "cath", "../", () => joinPatient(sim.scenario(), shared ? sharedSpec : undefined));
 
 /** Put a patient in the lab and read everything the panels show. */
-function load(c: CathCase, fromLink = false) {
+function load(c: CathCase, fromLink = false, spec?: PatientSpec) {
   current = c; shared = fromLink;
+  if (spec) sharedSpec = spec;
   sim.reset(c.scenario, { settled: true });
   sim.warmup(20);
+  newBridge(shared ? sharedSpec : undefined);
+  links.refresh();
   $("treatResult").textContent = "";
   view.opts.rot = c.view.rot; view.opts.tilt = c.view.tilt; view.opts.injection = c.view.injection;
   $<HTMLInputElement>("rot").value = String(c.view.rot); $<HTMLInputElement>("tilt").value = String(c.view.tilt); $<HTMLSelectElement>("inj").value = c.view.injection;
@@ -96,6 +111,50 @@ function wireUi() {
   $("wirestat").innerHTML = tiles.join("");
 }
 
+// ---------------------------------------------------------------- right- and left-heart cath tabs
+/**
+ * The Simulator's two cath panels, mounted on a bridge over this page's own Simulation. A new patient gets a new bridge (an
+ * old one would apply a late solve of the previous patient); until its first solve lands the panels say they are waiting.
+ * The simulation is stepped (no ischemia clock) only while a heart tab is on screen, so the bridge has beats to replay.
+ */
+const solver = createWorkerSolver();
+let bridge: BridgeSource | null = null;
+const TABS = [
+  { tab: $("tab-rhc"), body: $("tabpanel-rhc"), panel: rhcPanel.create() },
+  { tab: $("tab-lhc"), body: $("tabpanel-lhc"), panel: leftHeartCathPanel.create() },
+];
+let activeTab = 0, mounted = false;
+function newBridge(spec?: PatientSpec) {
+  bridge?.dispose();
+  bridge = openHeartBridge(sim, spec, solver);
+  if (!mounted) { TABS.forEach((t) => t.panel.mount(t.body, bridge!)); mounted = true; }
+  else TABS.forEach((t) => t.panel.setSource?.(bridge!));
+}
+function selectTab(i: number, focus = false) {
+  activeTab = i;
+  TABS.forEach((t, k) => {
+    t.tab.setAttribute("aria-selected", String(k === i)); t.tab.tabIndex = k === i ? 0 : -1; t.body.hidden = k !== i;
+  });
+  if (focus) TABS[i].tab.focus();
+  requestAnimationFrame(() => TABS[i].panel.resize?.());
+}
+TABS.forEach((t, i) => {
+  t.tab.addEventListener("click", () => selectTab(i));
+  t.tab.addEventListener("keydown", (e) => {
+    const k = (e as KeyboardEvent).key, n = TABS.length;
+    const to = k === "ArrowRight" ? (i + 1) % n : k === "ArrowLeft" ? (i + n - 1) % n : k === "Home" ? 0 : k === "End" ? n - 1 : -1;
+    if (to >= 0) { e.preventDefault(); selectTab(to, true); }
+  });
+});
+window.addEventListener("resize", () => TABS[activeTab].panel.resize?.());
+let lastFrame = 0;
+function heartFrame(now: number) {
+  const dt = Math.min(0.1, Math.max(0, (now - lastFrame) / 1000));
+  lastFrame = now;
+  if (dt > 0) sim.step(dt, { minutes: 0 });
+  TABS[activeTab].panel.draw(sim.t);
+}
+
 // ---------------------------------------------------------------- patient library and loading
 function renderList() {
   const lib = CASES.map((c) => `<a data-id="${c.id}" class="${!shared && c.id === current.id ? "on" : ""}" href="#case=${c.id}">${esc(c.title)}<small>${esc(c.blurb)}</small></a>`);
@@ -119,7 +178,7 @@ function caseFromScenario(sc: Scenario): CathCase {
 /** #case=id opens a library patient, #s=… the patient from a simulator link; anything else, the first case. */
 function fromHash() {
   const h = location.hash, s = h.match(/^#s=([\w-]+)/)?.[1], id = h.match(/case=([\w-]+)/)?.[1];
-  if (s) { try { return load(caseFromScenario(decodeScenario(s)), true); } catch { /* a damaged link: fall through to the library */ } }
+  if (s) { try { const spec = decodePatient(s); return load(caseFromScenario(spec), true, spec); } catch { /* a damaged link: fall through to the library */ } }
   load((id && CASE_BY_ID[id]) || CASES[0]);
 }
 
@@ -149,6 +208,6 @@ window.addEventListener("hashchange", fromHash);
 
 angleText();
 fromHash();
-const frame = (now: number) => { view.draw(now); requestAnimationFrame(frame); };
+const frame = (now: number) => { view.draw(now); heartFrame(now); requestAnimationFrame(frame); };
 requestAnimationFrame(frame);
-(window as unknown as { corosimCath: object }).corosimCath = { sim, load: (id: string) => { if (CASE_BY_ID[id]) load(CASE_BY_ID[id]); }, model: () => model, report: () => report };
+(window as unknown as { corosimCath: object }).corosimCath = { sim, load: (id: string) => { if (CASE_BY_ID[id]) load(CASE_BY_ID[id]); }, model: () => model, report: () => report, bridge: () => bridge };
