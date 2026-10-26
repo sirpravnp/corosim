@@ -62,7 +62,22 @@ reperfusion burst is 15 s; burstiness (N, M, couplets) runs on heartbeat time be
 
 ## Measured (seed 1-20, core engine)
 
-See the B3a report for the before/after table of the full Simulation; the rig (40 seeds, rest tone) gives a proximal LAD occlusion a
+PVC share of all ventricular beats over the first 90 s (3 clinical hours) after the lesion is put in, full Simulation on the core
+engine, seeds 1-20 (mean, min-max, %). "Before" is the old rule on the same engine.
+
+| Lesion | Before | After |
+|---|---|---|
+| Proximal LAD occlusion | 23.0 (17.6-26.4) | 3.6 (0.0-15.9) |
+| Mid LAD occlusion | 17.1 (13.1-21.4) | 2.0 (0.0-11.5) |
+| Distal LAD occlusion | 0.0 (0.0-0.0) | 0.4 (0.0-4.0) |
+| Proximal RCA occlusion (complete heart block) | 1.3 (0.0-2.9) | 4.1 (0.0-17.6) |
+| Circumflex occlusion | 6.0 (3.1-9.5) | 2.3 (0.0-13.5) |
+| 90% proximal LAD stenosis | 23.0 (17.6-26.4) | 2.7 (0.0-15.2) |
+
+The RCA rises because the old rule made PVCs only after sinus-conducted beats, so complete heart block silenced it; ectopy now
+follows any ventricular beat. Seeds 1-20 happen to have a lowish median susceptibility (0.57); over 400 seeds it is 1.
+
+The rig (40 seeds, rest tone) gives a proximal LAD occlusion a
 mean PVC share over the first 3 clinical hours of about 4% (median 1.4%, range 0-16%), distal LAD 0.6% (max 3%), first diagonal 0.3%,
 and after reperfusion at 2 hours a burst to a mean of about 11% in the first 40 clinical minutes, decaying to about 2% after 6 hours.
 
