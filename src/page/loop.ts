@@ -4,7 +4,7 @@ import { TREAT } from "../game";
 import { A, sites, S, sim, takeAnalysis, sev, T, G, ecg, playClock, rstate, takeRC } from "./state";
 import { renderer, scene, camera, controls } from "./scene";
 import { pumpMyocardium, o2Now, paintMyocardium } from "./heart3d";
-import { built, blockedFlags, shapeVessels, stepParticles } from "./vessels3d";
+import { built, blockedFlags, shapeVessels, stepParticles, updateBranchLod } from "./vessels3d";
 import { updateMarkers } from "./markers";
 import { manageStep } from "./manage";
 import { liveUi } from "./readouts";
@@ -45,6 +45,6 @@ export function frame(now: number) {
   if ((paintClock += dt) > 0.1) { paintClock = 0; paintMyocardium(); }
   if (S.mode === "o2" && (o2Clock += dt) > 0.5) { o2Clock = 0; const f = o2Now(), k = `${f.ready}|${f.arterial.toFixed(3)}`; if (k !== o2Key) { o2Key = k; shapeVessels(); } }
   if ((uiClock += dt) > 0.25) { uiClock = 0; liveUi(); }
-  controls.update(); camera.updateMatrixWorld(); updateMarkers(dt); renderer.render(scene, camera);
+  controls.update(); updateBranchLod(); camera.updateMatrixWorld(); updateMarkers(dt); renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }

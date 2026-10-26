@@ -6,7 +6,7 @@ import { untreated } from "../physics/revasc";
 import { tree, A, $, MMHG, Mode, HeartView, V, S, T, scheduleAnatomy, scheduleLesion, on, sel, range, G } from "./state";
 import { renderer, camera, controls, VIEWS, setView, propsView, ray } from "./scene";
 import { hPart, heartMesh, applyHeartView } from "./heart3d";
-import { built, vesselGroup, shapeVessels, points, buildGrafts } from "./vessels3d";
+import { built, vesselGroup, shapeVessels, points, buildGrafts, branchMesh, segIdOfHit } from "./vessels3d";
 import { callUi } from "./gameUi";
 import { controlsUi, liveUi } from "./readouts";
 import { syncSelects } from "./model";
@@ -58,8 +58,8 @@ export function wirePicking() {
     const rc = renderer.domElement.getBoundingClientRect();
     mouse.set(((e.clientX - rc.left) / rc.width) * 2 - 1, -((e.clientY - rc.top) / rc.height) * 2 + 1);
     ray.setFromCamera(mouse, camera);
-    const hit = ray.intersectObjects([...built.map((b) => b.mesh), heartMesh])[0];
-    S.selected = hit && hit.object !== heartMesh ? (hit.object.userData.segId as string) : "";
+    const hit = ray.intersectObjects([...built.map((b) => b.mesh), ...(branchMesh() ? [branchMesh()!] : []), heartMesh])[0];
+    S.selected = hit && hit.object !== heartMesh ? segIdOfHit(hit) : "";
     const box = $("pick");
     if (hit && hit.object === heartMesh && hit.face) {
       box.style.display = "block";
