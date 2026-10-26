@@ -8,9 +8,12 @@ Waves run in order; an item is done when merged to main and live. Updated as wor
 
 | Item | State |
 |---|---|
-| A0 faster CI | done (fast gate 46 files, 45 s locally; slow suite in 4 shards); merging |
+| A0 faster CI | done, merged (PR 27); slow checks passed on the PR in 4.5 min |
 | A1 split app.ts | done, merged (PR 26) |
 | C1 Share button | done, merged (PR 25), live |
+| B1 hemodynamic beats | in progress (wave 1) |
+| C6 coronary depiction | in progress (wave 1, part a: side branches and taper) |
+| A2 neonate/bridge removal | waits for B1 (same files) |
 | everything else | not started |
 
 ## 1. Where we start (from reading the code)
