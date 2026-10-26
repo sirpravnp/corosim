@@ -2,6 +2,17 @@
 
 Plan for the request list of 2026-10-26. Written before any of it is built. Sizes: **S** under one agent session, **M** one or two, **L** two to four, **XL** more. Each item names the files it touches so parallel work does not collide.
 
+## 0. Status
+
+Waves run in order; an item is done when merged to main and live. Updated as work lands.
+
+| Item | State |
+|---|---|
+| A0 faster CI | in progress (wave 0) |
+| A1 split app.ts | in progress (wave 0) |
+| C1 Share button | in progress (wave 0) |
+| everything else | not started |
+
 ## 1. Where we start (from reading the code)
 
 - **Two rhythm engines.** The EKG page has its own generator (`src/ekg/engine.ts`: `RhythmSpec` with sinus, AF, flutter, SVT, MAT, junctional, ventricular, torsades, VF, asystole, AV-block patterns, PVC patterns; 58 presets in 9 categories). The Simulator has a smaller one (`src/physics/rhythm.ts`: sinus or AF, AV block degree, bundle branch block, PVCs from ischemic burden). Both produce beats of the same shape (`EBeat` / `Beat`), but only the Simulator's reach the hemodynamic engine as activation events. So "all rhythms in the Simulator" means feeding the EKG generator's events into `LiveHeart`, not drawing more waveforms.
