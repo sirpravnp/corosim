@@ -264,8 +264,6 @@ body.game #pgentry { display: none; }
 .pg-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .pg-head h2 { margin: 0; }
 .pg label.pg-first, .pg .row.pg-first, .pg .note.pg-first { margin-top: 0; }
-.pg-link { display: flex; gap: 6px; min-width: 0; }
-.pg-link input { flex: 1; min-width: 0; padding: 7px 9px; font: 500 11.5px/1.4 var(--font-data); color: var(--ink); background: var(--panel); border: 1px solid var(--sh-line); border-radius: 8px; }
 .pg-dev[hidden] { display: none; }
 .pg-warns:empty { display: none; }
 .pg-warns > div { color: var(--warn); border-color: var(--warn); font-size: 12.5px; }
