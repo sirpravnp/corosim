@@ -8,9 +8,9 @@ Waves run in order; an item is done when merged to main and live. Updated as wor
 
 | Item | State |
 |---|---|
-| A0 faster CI | in progress (wave 0) |
-| A1 split app.ts | done (15 modules in src/page, app.ts 43 lines); merging |
-| C1 Share button | done, merged (PR 25), deploying |
+| A0 faster CI | done (fast gate 46 files, 45 s locally; slow suite in 4 shards); merging |
+| A1 split app.ts | done, merged (PR 26) |
+| C1 Share button | done, merged (PR 25), live |
 | everything else | not started |
 
 ## 1. Where we start (from reading the code)
@@ -86,6 +86,8 @@ At most two or three agents at once: more than that overloaded the machine and t
 | 3 | B3 · C3 · C4 · C7 | arrhythmia model matches the literature ranges; pickers work |
 | 4 | B4 · C8 · D1 · D3 | a full resuscitation runs on the page and from chat |
 | 5 | D2 · D4 · polish · full review | parity test green; live MCP server updated |
+
+Since A0 the deploy gates on the fast tests only, so **a pull request waits for the `Slow tests` checks (about 4 minutes) before it is merged**; when an item deletes or renames a test file it must update `tests/slow.json` (a guard test fails otherwise).
 
 Rules carried over: implementers commit work-in-progress at each step (usage limits cut agents off); never loosen a test bar (missed targets become `it.fails` with a reason); fixtures are regenerated only by script with a stated reason; one reviewer pass per item (diff, tests, a real-page check) and a gate review per wave, with an Opus reviewer for the clinical content of B3 and B4; a PR and deploy per wave (and for the quick wins C1 and A0 straight away).
 
