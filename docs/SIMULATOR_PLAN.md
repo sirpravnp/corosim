@@ -13,7 +13,7 @@ Waves run in order; an item is done when merged to main and live. Updated as wor
 | C1 Share button | done, merged (PR 25), live |
 | B1 hemodynamic beats | in progress (wave 1) |
 | B3a graded ischemic PVC model | in progress (pulled forward; the PVC half of B3, no dependency on B2; B3b = VT/VF initiation after B2) |
-| C6 coronary depiction | in progress (wave 1, part a: side branches and taper) |
+| C6 coronary depiction | part a done (side branches, perforators, flare, LOD); merging. Next parts: plaque and thrombus; myocardial blush; flow cues on branches; veins |
 | A2 neonate/bridge removal | waits for B1 (same files) |
 | everything else | not started |
 
