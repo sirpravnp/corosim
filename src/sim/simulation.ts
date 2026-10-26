@@ -201,7 +201,7 @@ export class Simulation {
     this.autonomic.controls = { ...scenario.autonomic };
     this.rebuildAnatomy();
     this.updateCirculation();
-    if (opts.settled) { Object.assign(this.sev, this.target); this.updateCirculation(); }
+    if (opts.settled) { Object.assign(this.sev, this.target); this.updateCirculation(); this.stream.ectopy?.settle(weightedBurden(this.sites, this.sev, this.transmural)); }
     if (this.engine === "core") this.initCore(opts.warmup ?? 0);
   }
 

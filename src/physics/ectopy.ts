@@ -127,6 +127,12 @@ export class Ectopy implements EctopySource {
     this.burden = burden;
   }
 
+  /**
+   * A patient whose ischemia starts out settled (`Simulation.reset(..., { settled: true })`): the episode is as old as the time the
+   * ischemia takes to develop, so a paused clinical clock still shows the ectopy of that moment instead of the zero of onset.
+   */
+  settle(burden: number) { this.update(E.settledAgeMin, burden); }
+
   /** Multiplier from the patient, the tone and the drugs and electrolytes (everything but the ischemia itself). */
   private gain(): number {
     const t = this.tone, s = t.sympathetic * (1 - t.betaBlock);

@@ -49,6 +49,11 @@ export const ECTOPY = {
   hyper: 0.85, hyperTauMin: 120,
   sub: 0.12, subTauMin: 720,
   late: 0.03,
+  /**
+   * Age (clinical minutes) of an episode that starts out settled: the 20 s the ischemia takes to develop (ISCHEMIA.riseSeconds)
+   * at 2 clinical minutes per second. [assumed: follows from those two model constants]
+   */
+  settledAgeMin: 40,
   /** A burden-free spell this long (clinical minutes) ends the episode: a new occlusion starts a new hyperacute phase. [assumed] */
   episodeResetMin: 60,
   /**
