@@ -3,6 +3,7 @@
   "tests/cathHeart.test.ts",
   "tests/coronaryCoupling.test.ts",
   "tests/drugs.test.ts",
+  "tests/ecmo.test.ts",
   "tests/endDiastolic.test.ts",
   "tests/filling.test.ts",
   "tests/fluids.test.ts",
@@ -12,6 +13,8 @@
   "tests/liveHeart.test.ts",
   "tests/liveSource.test.ts",
   "tests/lungWater.test.ts",
+  "tests/mcpHemo.test.ts",
+  "tests/pericardialScenarios.test.ts",
   "tests/playground.test.ts",
   "tests/septum.test.ts",
   "tests/simulation.test.ts",
@@ -20,5 +23,6 @@
   "tests/simulationPatient.test.ts",
   "tests/structuralHeart.test.ts",
   "tests/structuralLesions.test.ts",
+  "tests/structuralProps.test.ts",
   "tests/thorax.test.ts"
 ]
