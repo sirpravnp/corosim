@@ -12,7 +12,7 @@ const FONT = "11px ui-monospace, Menlo, monospace";
 const SVG_NS = "http://www.w3.org/2000/svg";
 /** Neck drawing: cm above the sternal angle that fit, and pixels per cm in the 120x220 viewBox. */
 const CM_TOP = 16, PX_PER_CM = 8, Y_ANGLE = 150;
-const AF_NOTE = "Atrial fibrillation on the live page: the bridge does not remove the waveform's atrial kick, so an a wave is still drawn; the classification follows the beat's atrial events. The core engine, which drives the page for an adult, has no atrial kick in AF.";
+const AF_NOTE = "Atrial fibrillation in the newborn view: this waveform comes from a steady-state solve, so an a wave is still drawn; the description follows the rhythm (no a wave).";
 
 /** The bridge keeps the atrial kick in AF: when the source is the bridge and recent beats have no atrial activation (not PVCs), say so. */
 export function bridgeAfNote(kind: HemoSource["kind"], beats: readonly BeatSummary[]): string | null {

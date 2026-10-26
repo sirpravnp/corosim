@@ -38,7 +38,7 @@ export const PLAYGROUND_FIELDS = ["kind", "heart", "pericardium", "septum", "flu
  */
 export type Modelled = "yes" | "legacy" | "no";
 export interface FieldGroupInfo { id: string; label: string; modelled: Modelled; note: string; neonate?: Modelled; neonateNote?: string }
-const NEONATE_BRIDGE = "A neonate runs on the bridge, which has no pericardium, thorax or devices: stored in the spec and shared.";
+const NEONATE_BRIDGE = "Not simulated for newborns yet: the setting is saved with the patient and in the share link, but it does not change a newborn's numbers.";
 export const GROUP_INFO: Record<string, FieldGroupInfo> = {
   kind: { id: "kind", label: "Patient kind", modelled: "yes", note: "An adult runs on the live core engine (beat by beat). A neonate runs on the bridge: the structural engine solved on the newborn's own baseline and replayed. The ACS monitor and ECG are adult models either way." },
   heart: { id: "heart", label: "Structural heart", modelled: "yes", note: "Adult: the core engine builds every field (Gorlin valves, shunts, chamber sizes, per-ventricle elastance and stiffness) and the monitor, traces, loops and JVP all see it. Neonate: the bridge's structural engine reads it." },

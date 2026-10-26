@@ -13,7 +13,7 @@ import type { Panel, PanelDef } from "./panel";
 const FONT = "11px ui-monospace, Menlo, monospace";
 const WAITING = "waiting for first solve";
 const FOOTNOTE = "The pleth is derived from the aortic pressure trace, normalised; it is not a modelled optical signal.";
-const LACTATE_PENDING = "available with oxygen-in-time (E6)";
+const LACTATE_PENDING = "not simulated yet";
 
 const pct = (x: number): string => (Number.isFinite(x) ? `${Math.round(x * 100)}%` : DASH);
 

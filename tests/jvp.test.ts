@@ -179,7 +179,7 @@ describe("JVP panel helpers", () => {
   it("AF footnote only for the bridge with no atrial events on consecutive beats", () => {
     const beat = createStubSource().beats(1)[0];
     const noA = { ...beat, atrial: new Float32Array(0), pvc: false };
-    expect(bridgeAfNote("bridge", [noA, noA, noA])).toMatch(/atrial kick/);
+    expect(bridgeAfNote("bridge", [noA, noA, noA])).toMatch(/steady-state solve/);
     expect(bridgeAfNote("live", [noA, noA, noA])).toBeNull();
     expect(bridgeAfNote("bridge", [noA])).toBeNull();
     expect(bridgeAfNote("bridge", [beat, beat, beat])).toBeNull();

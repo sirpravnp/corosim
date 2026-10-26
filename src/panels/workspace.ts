@@ -94,6 +94,7 @@ export class Workspace {
       const panel = def.create();
       const card = document.createElement("section");
       card.className = def.wide ? "ws-card ws-wide" : "ws-card";
+      card.dataset.panel = id; // the grid sizes each panel by its id (workspace.css)
       const head = document.createElement("header");
       const h = document.createElement("h2");
       h.textContent = def.title;
@@ -114,8 +115,8 @@ export class Workspace {
       this.live.set(id, { panel, card, tab });
       panel.mount(body, this.source);
     }
-    // order follows the layout
-    for (const id of this.layout.on) { const l = this.live.get(id)!; this.grid.append(l.card); this.tabs.append(l.tab); }
+    // cards follow the page's panel order (not the order they were opened in), so the grid keeps its rows; tabs likewise
+    for (const id of this.defs.map(d => d.id).filter(x => this.layout.on.includes(x))) { const l = this.live.get(id)!; this.grid.append(l.card); this.tabs.append(l.tab); }
     const vis = new Set(visibleIds(this.layout, this.phone));
     for (const [id, l] of this.live) {
       l.card.hidden = !vis.has(id);

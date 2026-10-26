@@ -100,7 +100,7 @@ describe("numbers panel rows", () => {
     expect(r2["PA s/d (mean)"]).toBe(DASH);
   });
   it("badge names the source kind", () => {
-    expect(badgeText("bridge")).toBe("bridge");
+    expect(badgeText("bridge")).toBe("steady state");
     expect(badgeText("live")).toBe("live");
   });
 });

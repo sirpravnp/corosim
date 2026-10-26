@@ -20,7 +20,7 @@ export function cathRows(c: LeftHeartCath): [string, string][] {
     ["Aortic area, Gorlin", `${a(c.area.aorticGorlin)} · ${label(c.severity.aortic)}`],
     ["Aortic area, Hakki", a(c.area.aorticHakki)],
     ["Mitral area, Gorlin (37.7)", a(c.area.mitralGorlin)],
-    ["Mitral area, engine (44.3)", `${a(c.area.mitralEngine)} · ${label(c.severity.mitral)}`],
+    ["Mitral area, model", `${a(c.area.mitralEngine)} · ${label(c.severity.mitral)}`],
     ["Mitral area, Hakki", a(c.area.mitralHakki)],
   ];
 }
@@ -86,7 +86,7 @@ export const leftHeartCathPanel: PanelDef = {
         c1 = document.createElement("canvas"); c2 = document.createElement("canvas");
         for (const c of [c1, c2]) { c.style.width = "100%"; c.style.display = "block"; c.style.marginTop = "8px"; }
         const note = document.createElement("p"); note.className = "note";
-        note.textContent = "Shaded: LV above aorta in ejection; wedge above LV in filling. Gorlin uses total forward flow; the clinical mitral constant 37.7 reads 18% above the engine's 44.3 area. Valve inertance is on: mean gradients and mitral peaks sit near clinical values, but a normal aortic peak instantaneous gradient still reads high (about 18 mmHg, clinically 4 to 8) because ejection flow peaks sharply.";
+        note.textContent = "Shaded: LV above the aorta during ejection; wedge above the LV during filling. Valve areas by the Gorlin and Hakki formulas. In a normal heart the simulated peak instantaneous aortic gradient reads a little high (about 18 mmHg; clinically 4 to 8).";
         body.append(table, c1, c2, note);
         el.append(wait, body);
       },

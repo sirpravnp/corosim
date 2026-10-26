@@ -66,7 +66,7 @@ describe("pure derivations", () => {
   it("rows: lactate pending note, ductal row only when significant, ECMO row only with a console", () => {
     const st = createStubSource();
     const rows = oxygenRows(oxygenReadout(st.saturations(), st.numbers(), []));
-    expect(rows.find(r => r.label === "Lactate")).toMatchObject({ value: "–", note: "available with oxygen-in-time (E6)" });
+    expect(rows.find(r => r.label === "Lactate")).toMatchObject({ value: "–", note: "not simulated yet" });
     expect(rows.some(r => r.label === "Pre − post" || r.label.startsWith("ECMO"))).toBe(false);
     const e = [{ id: "ecmo", label: "", readings: { returnSat: 0.99 }, alarms: [] }];
     const sat = { ...st.saturations(), postductal: 0.9, lactate: 2.1 };
