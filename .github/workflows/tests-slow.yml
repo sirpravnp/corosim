@@ -1,0 +1,46 @@
+name: Slow tests
+
+# The deploy workflows gate on the fast tests only (npm run test:fast). The slow simulation files and the
+# wall-clock benchmark run here, on every push to main and on pull requests, so a failure shows red on the
+# commit without holding a deploy back. Which files are slow: tests/slow.json.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-slow-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  slow:
+    name: slow (shard ${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:slow -- --shard=${{ matrix.shard }}/4
+
+  # The benchmark compares wall-clock speed, so it gets a runner to itself.
+  perf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:perf

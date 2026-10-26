@@ -3,7 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "vitest run --exclude 'tests/perf/**' && vitest run tests/perf",
+    "test": "npm run test:fast && npm run test:slow && npm run test:perf",
+    "test:fast": "node scripts/test-group.mjs fast",
+    "test:slow": "node scripts/test-group.mjs slow",
+    "test:perf": "node scripts/test-group.mjs perf",
     "typecheck": "tsc --noEmit",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
