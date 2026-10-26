@@ -90,6 +90,7 @@ const scenarioSchema = {
       },
     },
     seed: { type: "integer", description: "Random seed. The same scenario and seed reproduce the same beats." },
+    ectopyTendency: { type: "number", minimum: 0, maximum: 3, description: "Teaching override of the patient's tendency to ischemic PVCs (core engine): a multiplier on the susceptibility the seed gives. 0 = never any PVC, 1 = as the seed has it (default), 3 = very ectopy-prone." },
   },
 } as const;
 

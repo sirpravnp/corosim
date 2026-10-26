@@ -2,6 +2,8 @@ import { AF, Bbb, Rhythm, Vec3 } from "../config/ecg";
 import { RHYTHM } from "../config/ecg";
 import { BedSite } from "./ecgLink";
 import { Beat, mulberry32 } from "./ecg";
+import { ECTOPY } from "../config/ectopy";
+import type { EctopySource } from "./ectopy";
 
 /**
  * Rate and conduction from where the ischemia is, not only how much.
@@ -82,6 +84,12 @@ export class Conduction {
   private wenckPr = CONDUCTION.wenckebachStartPr;
   private lastR = -Infinity;
   private nextAf: number;
+  /**
+   * The core engine's ectopy model (physics/ectopy.ts). When set it decides every PVC, after any ventricular beat it may follow
+   * (sinus-conducted, AF or escape), from its own random stream; when unset (the legacy engine) the old rule below runs untouched,
+   * draw for draw, so the legacy beats and fixtures do not move.
+   */
+  ectopy?: EctopySource;
   constructor(seed = 1, t0 = 0.4) { this.rng = mulberry32(seed); this.nextP = t0 - CONDUCTION.basePr; this.nextEscape = t0; this.nextAf = t0; }
 
   /**
@@ -104,6 +112,13 @@ export class Conduction {
         const mean = 60 / (state.afRate * (mod ? mod.rate(this.nextAf) : 1));
         const rr = mean * (1 + AF.irregularity * (2 * this.rng() - 1));
         const tR = this.nextAf;
+        if (this.ectopy) {
+          out.push({ t: tR, rr, pvc: false, noP: true, bbb });
+          const pv = this.ectopy.decide(tR, rr);
+          for (const tv of pv) out.push({ t: tv, rr, pvc: true });
+          this.lastR = pv.length ? pv[pv.length - 1] : tR; this.nextAf = pv.length ? this.lastR + rr * 1.3 : tR + rr;
+          continue;
+        }
         if (this.rng() < RHYTHM.pvcMaxProbability * ectopy) { out.push({ t: tR, rr, pvc: true }); this.lastR = tR; this.nextAf = tR + rr * 1.3; continue; }
         out.push({ t: tR, rr, pvc: false, noP: true, bbb });
         this.lastR = tR; this.nextAf = tR + rr;
@@ -117,7 +132,13 @@ export class Conduction {
         const tP = this.nextP, tE = this.nextEscape;
         if (Math.min(tP, tE) > until) break;
         if (tP <= tE) { if (!af) out.push({ t: tP + C.basePr, rr: 60 / state.escapeRate, pvc: false, pr: C.basePr, pOnly: true }); this.nextP = tP + pp(tP); }
-        else { const rr = 60 / state.escapeRate; out.push({ t: tE, rr, pvc: false, noP: true, bbb }); this.lastR = tE; this.nextEscape = tE + rr * (1 + 0.01 * (2 * this.rng() - 1)); this.nextAf = tE; }
+        else {
+          const rr = 60 / state.escapeRate; out.push({ t: tE, rr, pvc: false, noP: true, bbb }); this.lastR = tE; this.nextEscape = tE + rr * (1 + 0.01 * (2 * this.rng() - 1)); this.nextAf = tE;
+          // core: the ischemic myocardium fires whatever drives the ventricles; a PVC resets the junctional pacemaker
+          const pv = this.ectopy ? this.ectopy.decide(tE, rr) : [];
+          for (const tv of pv) out.push({ t: tv, rr, pvc: true });
+          if (pv.length) { this.lastR = pv[pv.length - 1]; this.nextEscape = this.lastR + rr; }
+        }
         continue;
       }
       this.nextAf = Math.max(this.nextAf, this.nextP);
@@ -134,7 +155,17 @@ export class Conduction {
       const tR = tP + pr;
       out.push({ t: tR, rr: interval, pvc: false, pr, bbb });
       this.lastR = tR;
-      if (this.rng() < RHYTHM.pvcMaxProbability * ectopy) {
+      if (this.ectopy) {
+        const pv = this.ectopy.decide(tR, interval);
+        if (pv.length) {
+          for (const tv of pv) out.push({ t: tv, rr: interval, pvc: true });
+          this.lastR = pv[pv.length - 1];
+          // The next sinus P fires but cannot conduct (compensatory pause), nor can any whose QRS would fall inside the PVCs'
+          // refractory period (after a couplet, sometimes two).
+          do { out.push({ t: this.nextP + C.basePr, rr: interval, pvc: false, pr: C.basePr, pOnly: true }); this.nextP += pp(this.nextP); }
+          while (this.nextP + C.basePr < this.lastR + ECTOPY.refractoryS);
+        }
+      } else if (this.rng() < RHYTHM.pvcMaxProbability * ectopy) {
         const tv = tR + interval * RHYTHM.pvcCoupling;
         out.push({ t: tv, rr: interval, pvc: true });
         this.lastR = tv;

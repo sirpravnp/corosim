@@ -1,5 +1,6 @@
 import { Beat } from "./ecg";
 import { Conduction, RhythmState, SinusModulation } from "./rhythm";
+import type { Ectopy } from "./ectopy";
 
 /**
  * The single source of beats. The ECG strip draws them and the hemodynamics consume them, so a PVC,
@@ -21,6 +22,10 @@ export class BeatStream {
    * sinus interval is set from tone that is only a few tens of milliseconds old.
    */
   constructor(seed = 1, private lookahead = 0.6, private chunk = 0.4) { this.conduction = new Conduction(seed); }
+
+  /** The core engine's ectopy model (physics/ectopy.ts); unset, the legacy PVC rule of `Conduction` runs. */
+  get ectopy(): Ectopy | undefined { return this.conduction.ectopy as Ectopy | undefined; }
+  set ectopy(e: Ectopy | undefined) { this.conduction.ectopy = e; }
 
   /** Make sure beats exist through `t + lookahead` s, generated from the current rhythm state. */
   extend(t: number, state: RhythmState, mod?: SinusModulation) {
