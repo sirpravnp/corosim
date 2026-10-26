@@ -1,5 +1,5 @@
 /**
- * The Simulator's playground controls (task P12): presets, the share link, and one collapsible group per part of the
+ * The Simulator's playground controls (task P12): presets, and one collapsible group per part of the
  * `PatientSpec`. DOM only. The logic (state edits, the spec builder) is in src/sim/playground.ts; the page owns the state and
  * commits it. The groups for the coronary lesions, rhythm and conduction, and drugs are slots: the page moves its existing
  * controls into them while the mode is on, so there is one place for every control and the old controls keep working.
