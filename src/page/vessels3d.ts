@@ -17,7 +17,7 @@ const VIRIDIS = ["#440154", "#3b528b", "#21908d", "#5dc863", "#fde725"], MAGMA =
 const ramp = (stops: string[], t: number) => { t = Math.min(1, Math.max(0, t)) * (stops.length - 1); const k = Math.min(stops.length - 2, Math.floor(t)); return new THREE.Color(stops[k]).lerp(new THREE.Color(stops[k + 1]), t - k); };
 const lg = (v: number, lo: number, hi: number) => (Math.log10(Math.max(v, lo)) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo));
 const GROUP_COLOR: Record<string, number> = { LAD: 0x1f5fa8, LCx: 0x2e7d4f, RCA: 0xc77c00 };
-const ARTERY = new THREE.Color(0xc2392f), ARTERY_DEEP = new THREE.Color(0x8a221d), GRAY = new THREE.Color(0x9a9a9a);
+const ARTERY = new THREE.Color(0xc2392f), ARTERY_DEEP = new THREE.Color(0x8a221d), ARTERY_EMPTY = new THREE.Color(0x3d2530), GRAY = new THREE.Color(0x9a9a9a);
 
 // ---------------------------------------------------------------- vessels
 export interface Built { seg: Segment; mesh: THREE.Mesh; ctr: THREE.Vector3[]; out: THREE.Vector3[]; nrm: THREE.Vector3[]; bin: THREE.Vector3[]; rad: number[]; d: number[]; blocked: boolean[] }
@@ -107,7 +107,7 @@ export function shapeVessels() {
       const lift = R * 0.6; // arteries sit in the epicardial fat, mostly above the muscle
       const cx = b.ctr[i].x + b.out[i].x * lift, cy = b.ctr[i].y + b.out[i].y * lift, cz = b.ctr[i].z + b.out[i].z * lift;
       const blocked = b.blocked[i] && !S.hide;
-      if (S.mode === "real") c.copy(ARTERY).lerp(ARTERY_DEEP, 0.35 * (1 - b.d[i] / dMax) + (blocked ? 0.45 : 0));
+      if (S.mode === "real") { c.copy(ARTERY).lerp(ARTERY_DEEP, 0.35 * (1 - b.d[i] / dMax)); if (blocked) c.lerp(ARTERY_EMPTY, 0.75); } // beyond an occlusion the vessel is empty: dark, not just a deeper red
       else if (S.mode === "anat") c.setHex(GROUP_COLOR[b.seg.group]);
       else if (S.mode === "o2") vesselO2Color(o2f!, c);
       else if (blocked) c.copy(GRAY);
