@@ -1,6 +1,7 @@
 /** The "Left-heart cath" panel: numbers table plus two overlay plots (LV with aorta, wedge with LV in diastole). Draws only; the maths is in sim/leftHeartCath.ts. */
 import { leftHeartCath, type LeftHeartCath } from "../sim/leftHeartCath";
 import type { HemoSource } from "../sim/hemoSource";
+import { recentHemodynamicBeats, SETTLE_BEATS } from "../sim/hemoBeats";
 import type { Panel, PanelDef } from "./panel";
 import { DASH, fmt } from "./numbers";
 
@@ -93,7 +94,7 @@ export const leftHeartCathPanel: PanelDef = {
       setSource(s) { src = s; lastBeat = null; lastKey = ""; },
       resize() { lastKey = ""; },
       draw() {
-        const n = src.numbers(), beat = src.beats(1)[0];
+        const n = src.numbers(), hb = recentHemodynamicBeats(src.beats(4 + SETTLE_BEATS)).beats, beat = hb[hb.length - 1]; // pull-back and gradients from the latest steady beat
         if (beat !== lastBeat) { lastBeat = beat; cur = leftHeartCath(n, beat, src.patientKind ?? "adult"); lastKey = ""; }
         const key = `${cur ? 1 : 0}|${n.co}|${c1.clientWidth}`;
         if (key === lastKey) return;

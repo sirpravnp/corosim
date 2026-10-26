@@ -35,6 +35,7 @@
  * AF); v = the peak RA pressure outside that window. (The bridge replays a solved waveform, so its a wave persists in AF.)
  */
 import type { BeatSummary, HemoNumbers, HemoSource, Saturations } from "./hemoSource";
+import { recentHemodynamicBeats, SETTLE_BEATS } from "./hemoBeats";
 import { O2_PER_G_HB } from "../config/structural";
 
 export const WEDGE_DELAY_S = 0.04;
@@ -124,9 +125,10 @@ function peak(x: Float32Array, from: number, to: number): number {
   return m;
 }
 
+/** The latest hemodynamic beat (hemoBeats.ts: not premature, not cut short, settled), else the latest of the fall-back set. */
 function representative(beats: readonly BeatSummary[]): BeatSummary | null {
-  for (let i = beats.length - 1; i >= 0; i--) if (!beats[i].pvc) return beats[i];
-  return beats.length ? beats[beats.length - 1] : null;
+  const sel = recentHemodynamicBeats(beats).beats;
+  return sel.length ? sel[sel.length - 1] : null;
 }
 
 export function pullback(beats: readonly BeatSummary[], n: HemoNumbers): Pullback | null {
@@ -174,5 +176,5 @@ export function rightHeartCath(src: RhcSnapshot, opts: { hb?: number } = {}): Ri
   const n = src.numbers(), s = src.saturations();
   if (!fin(n.map) || !fin(n.co) || !fin(s.node.PA)) return null;
   const out = cardiacOutput(n, s, opts);
-  return { pullback: pullback(src.beats(4), n), oximetry: oximetry(s), output: out, derived: derive(n, out), numbers: n };
+  return { pullback: pullback(src.beats(4 + SETTLE_BEATS), n), oximetry: oximetry(s), output: out, derived: derive(n, out), numbers: n };
 }

@@ -4,6 +4,7 @@
  * source.onBeat() only. Look follows the structural page's loop (src/structural/traces.ts drawLoop).
  */
 import type { BeatSummary, Chamber, HemoSource } from "../sim/hemoSource";
+import { recentHemodynamicBeats, SETTLE_BEATS } from "../sim/hemoBeats";
 import type { Panel, PanelDef } from "./panel";
 import { snapshots } from "./snapshots";
 import { DASH, fmt } from "./numbers";
@@ -76,10 +77,9 @@ export const loopsPanel: PanelDef = {
     }
 
     function render(): void {
-      // A loop is a closed cycle only for a beat that is not premature and is not cut short by a premature one: those are left out
-      // (otherwise the panel joins their end to their start with a straight line across the loop).
-      const recent = src.beats(TRAIL_BEATS + 8), whole = recent.filter((b) => !b.pvc && !b.prematureNext);
-      const beats = (whole.length ? whole : recent).slice(-(TRAIL_BEATS + 1));
+      // A loop is a closed cycle only for a hemodynamic beat (hemoBeats.ts: not premature, not cut short by a premature one, settled);
+      // the others are left out (otherwise the panel joins their end to their start with a straight line across the loop).
+      const recent = src.beats(TRAIL_BEATS + 8 + SETTLE_BEATS), beats = recentHemodynamicBeats(recent).beats.slice(-(TRAIL_BEATS + 1));
       ghost = snapshots.selected()?.beat ?? null;
       const live = beats[beats.length - 1];
       seen = recent[recent.length - 1];

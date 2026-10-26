@@ -18,7 +18,8 @@ import type { DrugName } from "../config/drugs";
 import { BeatStream } from "../physics/beatStream";
 import { BeatHemodynamics } from "../physics/beatHemo";
 import { Autonomic, AUTONOMIC, AutonomicEffects } from "../physics/autonomic";
-import { LiveHeart, LiveBeat, endDiastolicBeats } from "../physics/core/live";
+import { LiveHeart, LiveBeat } from "../physics/core/live";
+import { windowedHemodynamicBeats } from "./hemoBeats";
 import { Iabp } from "../physics/core/devices/iabp";
 import { CoronaryCoupling, BeatSupply, supplyIndex } from "../physics/core/coronary";
 import { COUPLING } from "../config/coronary";
@@ -912,14 +913,16 @@ export class Simulation {
   hemo(seconds = 10) {
     const live = this.live;
     if (!live) return null;
-    const rs = live.records.filter((b) => b.t - this.delta > this.t - seconds);
-    if (!rs.length) return null;
-    const mean = (f: (b: LiveBeat) => number) => rs.reduce((s, b) => s + f(b), 0) / rs.length;
-    const ed = endDiastolicBeats(rs, (b) => b.pvc), meanEd = (f: (b: LiveBeat) => number) => ed.reduce((s, b) => s + f(b), 0) / ed.length; // not cut short by a premature beat
+    const all = live.records, first = all.findIndex((b) => b.t - this.delta > this.t - seconds);
+    if (first < 0) return null;
+    // the hemodynamic beats (hemoBeats.ts), the same policy as the page's numbers; the beats before the window are context for "follows a premature beat"
+    const sel = windowedHemodynamicBeats(all.map((b, k) => ({ b, pvc: b.pvc, prematureNext: !!all[k + 1]?.pvc })), first);
+    const rs = sel.beats.map((x) => x.b), mean = (f: (b: LiveBeat) => number) => rs.reduce((s, b) => s + f(b), 0) / rs.length, meanEd = mean;
     return {
       cvp: mean((b) => b.p.RA.mean), pcwp: mean((b) => b.p.LA.mean), lvedp: meanEd((b) => b.p.LV.end), rvedp: meanEd((b) => b.p.RV.end),
       pa: { systolic: mean((b) => b.p.PA.max), diastolic: mean((b) => b.p.PA.min), mean: mean((b) => b.p.PA.mean) },
-      lvEdv: meanEd((b) => b.edv.LV), lvEsv: meanEd((b) => b.esv.LV), beats: rs.length, filling: live.filling(),
+      lvEdv: meanEd((b) => b.edv.LV), lvEsv: meanEd((b) => b.esv.LV), beats: all.length - first, filling: live.filling(),
+      ectopy: { fraction: sel.fraction, beats: rs.length, used: sel.used },
     };
   }
 
@@ -996,9 +999,15 @@ export class Simulation {
 
   /** Mean of the last `seconds` of beats: what a monitor shows. Device flow is added to cardiac output. */
   rolling(seconds = 10) {
-    const recent = this.history.filter((b) => b.t > this.t - seconds);
-    const avg = (f: (b: BeatRecord) => number) => (recent.length ? recent.reduce((s, b) => s + f(b), 0) / recent.length : NaN);
-    const hr = meanRate(recent), sv = avg((b) => b.sv);
+    const hist = this.history, first = hist.findIndex((b) => b.t > this.t - seconds), recent = first < 0 ? [] : hist.slice(first);
+    // core engine only: SV, SBP, DBP and MAP come from hemodynamic beats (hemoBeats.ts); the legacy engine keeps its plain mean (the game page and tests/fixtures/acs.json pin it)
+    let used = recent;
+    if (this.engine === "core" && recent.length) {
+      const lo = Math.max(0, first - 60); // the history is long: only the beats near the window matter
+      used = windowedHemodynamicBeats(hist.slice(lo).map((b, k, a) => ({ b, pvc: b.pvc, prematureNext: !!a[k + 1]?.pvc })), first - lo).beats.map((x) => x.b);
+    }
+    const avg = (f: (b: BeatRecord) => number) => (used.length ? used.reduce((s, b) => s + f(b), 0) / used.length : NaN);
+    const hr = meanRate(recent), sv = avg((b) => b.sv); // the rate counts every beat, premature ones included
     return { hr, sbp: avg((b) => b.sbp), dbp: avg((b) => b.dbp), map: avg((b) => b.map), sv, cardiacOutput: (hr * sv) / 1000 + this.circ.deviceFlow };
   }
 

@@ -5,6 +5,8 @@ export const LIVE_SOURCE = {
   numbersWindowS: 8,
   /** ... but never fewer than this many beats, so a slow heart (complete heart block at 40/min) still averages. [assumed] */
   minBeats: 3,
+  /** Readouts are averaged over at least this many steady beats (hemoBeats.ts): with frequent ectopy the window holds fewer, so older steady beats are borrowed. [assumed] */
+  minSteadyBeats: 5,
   /** Completed beats are kept for this long (s) and at most this many: the panels draw the last few and `beats()` serves a cath pullback. [assumed] */
   ringSeconds: 30, maxBeats: 120,
   /** Device consoles are rebuilt at most this often (s of simulation time); a panel may ask every frame. [assumed] */

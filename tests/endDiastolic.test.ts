@@ -1,41 +1,77 @@
 /**
  * End-diastolic readings with ectopy. A beat's "end" is the moment the next beat starts; when that next beat is a premature one
  * (common after an occlusion) the ventricle is still relaxing or ejecting then, so its LVEDP read 70-90 mmHg and the panel's
- * LVEDP and EF jumped around. Those beats are left out of the end-diastolic averages.
+ * LVEDP and EF jumped around. Those beats are left out of the averages (hemoBeats.ts; its unit tests are in hemoBeats.test.ts).
  */
 import { describe, it, expect } from "vitest";
-import { endDiastolicBeats } from "../src/physics/core/live";
 import { loopGap } from "../src/physics/loopMath";
 import { Simulation } from "../src/sim/simulation";
+import { meanRate } from "../src/sim/metrics";
 import { LiveSource } from "../src/sim/liveSource";
 import { CASE_BY_ID } from "../src/cath/cases";
 
-describe("endDiastolicBeats", () => {
-  const b = (pvc: boolean, id: number) => ({ pvc, id });
-  it("drops the beat before a premature beat and the newest beat", () => {
-    const beats = [b(false, 1), b(false, 2), b(true, 3), b(false, 4), b(false, 5)];
-    expect(endDiastolicBeats(beats, (x) => x.pvc).map((x) => x.id)).toEqual([1, 3, 4]);
-  });
-  it("falls back to every beat when none qualifies", () => {
-    expect(endDiastolicBeats([b(false, 1)], (x) => x.pvc).map((x) => x.id)).toEqual([1]);
-  });
-});
-
 describe("anterior STEMI on the live page source", () => {
-  it("LVEDP rises into the 18-30 mmHg range and stays there; EF stays in the ischemic range (no jumps from premature beats)", () => {
+  const stemi = () => {
     const s = new Simulation({}, { engine: "core" });
     s.reset({ seed: 3 }, { settled: true }); s.warmup(20);
     const src = new LiveSource(s);
     s.apply({ lesions: CASE_BY_ID.ladocc.scenario.lesions });
     for (let i = 0; i < 400; i++) s.step(0.1); // 40 s: the ischemia has developed
-    const lvedp: number[] = [], ef: number[] = [];
-    for (let k = 0; k < 8; k++) { for (let i = 0; i < 50; i++) s.step(0.1); const n = src.numbers(); lvedp.push(n.lvedp); ef.push(n.lvEf); }
+    return { s, src };
+  };
+  const spread = (x: number[]) => Math.max(...x) - Math.min(...x);
+  it("every readout is steady between consecutive windows, and the ectopy is reported instead (hemoBeats.ts)", () => {
+    const { s, src } = stemi();
+    const rows: { n: ReturnType<LiveSource["numbers"]>; roll: ReturnType<Simulation["rolling"]> }[] = [];
+    for (let k = 0; k < 8; k++) { s.step(8); rows.push({ n: src.numbers(), roll: s.rolling(8) }); }
+    const col = (f: (r: (typeof rows)[number]) => number) => rows.map(f);
+    const lvedp = col((r) => r.n.lvedp), ef = col((r) => r.n.lvEf);
     for (const p of lvedp) { expect(p).toBeGreaterThan(18); expect(p).toBeLessThan(30); }
-    expect(Math.max(...lvedp) - Math.min(...lvedp)).toBeLessThan(6);
     for (const e of ef) { expect(e).toBeGreaterThan(0.2); expect(e).toBeLessThan(0.5); }
+    expect(spread(lvedp)).toBeLessThan(3);
+    expect(spread(ef)).toBeLessThan(0.06);
+    expect(spread(col((r) => r.n.co))).toBeLessThan(0.3);
+    expect(spread(col((r) => r.n.map))).toBeLessThan(6);
+    // the monitor roll-up (core engine): SV, SBP, DBP, MAP from the same beats
+    expect(spread(col((r) => r.roll.map))).toBeLessThan(6);
+    expect(spread(col((r) => r.roll.sv))).toBeLessThan(6);
+    // the ectopy is shown: about a third of the beats are premature, and the readouts come from steady beats
+    for (const { n } of rows) {
+      expect(n.ectopy).toBeDefined();
+      expect(n.ectopy!.fraction).toBeGreaterThan(0.1); expect(n.ectopy!.fraction).toBeLessThan(0.6);
+      expect(n.ectopy!.used).toBe("steady"); expect(n.ectopy!.beats).toBeGreaterThanOrEqual(3);
+    }
     const h = s.hemo(8)!;
     expect(h.lvedp).toBeGreaterThan(18); expect(h.lvedp).toBeLessThan(30);
+    expect(h.ectopy.fraction).toBeGreaterThan(0.1); expect(h.ectopy.used).toBe("steady");
   }, 120_000);
+  it("the heart rate still counts every beat, premature ones included", () => {
+    const { s, src } = stemi();
+    for (let k = 0; k < 3; k++) {
+      s.step(8);
+      const win = s.history.filter((b) => b.t > s.t - 8), roll = s.rolling(8);
+      expect(roll.hr).toBeCloseTo(meanRate(win), 10); // beats per minute over elapsed time
+      expect(win.some((b) => b.pvc)).toBe(true);
+      expect(Math.abs(src.numbers().hr - roll.hr) / roll.hr).toBeLessThan(0.1); // the page's rate is over (nearly) the same beats
+    }
+  }, 120_000);
+});
+
+describe("a normal heart is unchanged by the policy", () => {
+  it("no ectopy: the means are those of every beat of the window (values from before the policy, seed 3, 10 s)", () => {
+    const s = new Simulation({}, { engine: "core" });
+    s.reset({ seed: 3 }, { settled: true }); s.warmup(20);
+    const src = new LiveSource(s);
+    for (let i = 0; i < 100; i++) s.step(0.1);
+    const n = src.numbers(), r = s.rolling(10);
+    const exact: Record<string, number> = { hr: 71.15253274870228, map: 90.84097031672768, systolic: 110.6877111990569, diastolic: 65.62974701062505, pcwp: 7.7940070544547195, cvp: 3.403958126901737, co: 5.070446912707977, svr: 17.24443894101011, pvr: 1.03274146068917, qpQs: 1.0131040604617243 };
+    for (const [k, v] of Object.entries(exact)) expect(Math.abs((n as unknown as Record<string, number>)[k] - v), k).toBeLessThan(1e-6);
+    // the end-diastolic readings used to leave out the newest beat (its successor was unknown) even with none premature; now they do not
+    expect(n.lvedp).toBeCloseTo(8.19, 1); expect(n.rvedp).toBeCloseTo(3.26, 1); expect(n.lvEf).toBeCloseTo(0.62, 2); expect(n.rvEf).toBeCloseTo(0.62, 2);
+    expect(n.ectopy).toEqual({ fraction: 0, beats: expect.any(Number), used: "steady" });
+    expect(Math.abs(r.hr - 70.20903143449816)).toBeLessThan(1e-6); expect(Math.abs(r.map - 90.79393296614508)).toBeLessThan(1e-6);
+    expect(Math.abs(r.sv - 72.86177565306208)).toBeLessThan(1e-6); expect(Math.abs(r.sbp - 110.60266277341856)).toBeLessThan(1e-6);
+  }, 60_000);
 });
 
 describe("pressure-volume loops with premature beats (anterior STEMI, with and without an Impella)", () => {

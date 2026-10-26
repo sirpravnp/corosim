@@ -50,6 +50,12 @@ export interface HemoNumbers {
   svr: number; pvr: number; // Wood units
   lvEf: number; rvEf: number;
   qpQs: number;
+  /**
+   * Premature beats and the beats the readouts above were taken from (hemoBeats.ts): `fraction` of the beats of the window that were
+   * premature, `beats` the number averaged, `used` which rule selected them ("steady": not premature, not cut short, not within 3 beats
+   * after one; else the non-premature ones; else all). Absent when the source does not select beats (the steady-state bridge).
+   */
+  ectopy?: { fraction: number; beats: number; used: "steady" | "non-premature" | "all" };
 }
 
 export interface Saturations {

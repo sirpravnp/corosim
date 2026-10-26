@@ -6,7 +6,7 @@ import { NODES as ALL_NODES, CATH_NODES as NODES, solveOxygen, type Model } from
 import { oxygenatorSat, type Ecmo } from "../physics/core/devices/ecmo";
 import type { RotaryPump } from "../physics/core/devices/pump";
 import type { LiveBeat, LiveHeart } from "../physics/core/live";
-import { endDiastolicBeats } from "../physics/core/live";
+import { windowedHemodynamicBeats, type HemoBeatSelection } from "./hemoBeats";
 import { PATIENTS, O2_PER_G_HB } from "../config/structural";
 import { LIVE_SOURCE as CFG } from "../config/liveSource";
 
@@ -157,36 +157,45 @@ export class LiveSource implements HemoSource {
 
   // ---- numbers ----------------------------------------------------------------------------------------------------
 
-  /** The beats a monitor averages now: the window, at least `minBeats`; the settled warm-up beat before any completes. */
-  private window(): { recs: Pick<Rec, "lb" | "rr">[]; key: string } {
+  /**
+   * The beats a monitor averages now: the window (`numbersWindowS` s, at least `minBeats`) passed through the hemodynamic-beats policy
+   * (hemoBeats.ts), the ONE place it is applied for the numbers and the oxygen solve. `recs` are the selected beats, `all` every beat of
+   * the window (the heart rate counts them all). With frequent ectopy the window holds few steady beats, so up to `minSteadyBeats` of
+   * the latest steady ones are used, borrowing from before the window (windowedHemodynamicBeats). Before any beat completes it is the settled beat the warm-up ended on (never NaN, never legacy).
+   */
+  private window(): { recs: Pick<Rec, "lb" | "rr">[]; all: Pick<Rec, "lb" | "rr">[]; key: string; sel: HemoBeatSelection<unknown> | null } {
     const live = this.sync();
-    if (!live) return { recs: [], key: "" };
+    if (!live) return { recs: [], all: [], key: "", sel: null };
     const now = this.sim.t, ring = this.ring;
     let i = ring.length;
     while (i > 0 && (ring[i - 1].end > now - CFG.numbersWindowS || ring.length - i < CFG.minBeats)) i--;
-    const recs = ring.slice(i);
-    if (!recs.length && live.warmBeat) return { recs: [{ lb: live.warmBeat, rr: live.warmBeat.interval }], key: "warm" };
-    return { recs, key: recs.length ? `${recs.length}@${recs[recs.length - 1].end}` : "" };
+    if (i >= ring.length) {
+      if (live.warmBeat) { const r = { lb: live.warmBeat, rr: live.warmBeat.interval }; return { recs: [r], all: [r], key: "warm", sel: null }; }
+      return { recs: [], all: [], key: "", sel: null };
+    }
+    const items = ring.map((r, k) => ({ rec: r, pvc: r.lb.pvc, prematureNext: !!ring[k + 1]?.lb.pvc })); // the ring before the window is history for "follows a premature beat" and lends steady beats when ectopy is frequent
+    const sel = windowedHemodynamicBeats(items, i, CFG.minSteadyBeats), recs = sel.beats.map((b) => b.rec);
+    return { recs, all: ring.slice(i), key: `${recs.length}@${recs[recs.length - 1].end}|${sel.used}`, sel };
   }
 
   numbers(): HemoNumbers {
-    const { recs } = this.window();
+    const { recs, all, sel } = this.window();
     if (!recs.length) return NO_NUMBERS;
+    const Tall = all.reduce((s, r) => s + r.rr, 0);
     const T = recs.reduce((s, r) => s + r.rr, 0), w = (f: (r: Pick<Rec, "lb" | "rr">) => number) => recs.reduce((s, r) => s + f(r) * r.rr, 0) / T;
     const net = (name: string) => recs.reduce((s, r) => s + (r.lb.flows.fwd[name] ?? 0) - (r.lb.flows.bwd[name] ?? 0), 0);
     const qs = ((net("BEDU") + net("BEDL")) / T) * 0.06, qp = (net("LUNG") / T) * 0.06; // L/min
     const map = w((r) => r.lb.p.AO.mean), cvp = w((r) => r.lb.p.RA.mean), pam = w((r) => r.lb.p.PA.mean), pcwp = w((r) => r.lb.p.LA.mean);
-    // end-diastolic readings only from beats that end in a true end-diastole (not cut short by a premature beat)
-    const ed = endDiastolicBeats(recs, (r) => r.lb.pvc), Ted = ed.reduce((s, r) => s + r.rr, 0), wd = (f: (r: Pick<Rec, "lb" | "rr">) => number) => ed.reduce((s, r) => s + f(r) * r.rr, 0) / Ted;
-    // EF as an echo reads it: on normal beats (a premature beat ejects little), each ending in a true end-diastole
-    const sinus = ed.filter((r) => !r.lb.pvc), ec = sinus.length ? sinus : ed, Tec = ec.reduce((s, r) => s + r.rr, 0);
-    const ef = (c: "LV" | "RV") => ec.reduce((s, r) => s + (r.lb.v[c].max > 0 ? (r.lb.edv[c] - r.lb.esv[c]) / r.lb.edv[c] : NaN) * r.rr, 0) / Tec;
+    // every mean below is over the same hemodynamic beats (hemoBeats.ts): a premature beat, the beat it cuts short and the beats that follow it are not averaged
+    const ef = (c: "LV" | "RV") => w((r) => (r.lb.v[c].max > 0 ? (r.lb.edv[c] - r.lb.esv[c]) / r.lb.edv[c] : NaN));
     return {
-      hr: (60 * recs.length) / T, map, systolic: w((r) => r.lb.p.AO.max), diastolic: w((r) => r.lb.p.AO.min), cvp,
+      hr: (60 * all.length) / Tall, // the rate counts every beat, premature ones included
+      map, systolic: w((r) => r.lb.p.AO.max), diastolic: w((r) => r.lb.p.AO.min), cvp,
       pa: { systolic: w((r) => r.lb.p.PA.max), diastolic: w((r) => r.lb.p.PA.min), mean: pam }, pcwp,
-      lvedp: wd((r) => r.lb.p.LV.end), rvedp: wd((r) => r.lb.p.RV.end),
+      lvedp: w((r) => r.lb.p.LV.end), rvedp: w((r) => r.lb.p.RV.end),
       co: qs, ci: qs / PATIENTS.adult.bsa, svr: qs > 0 ? (map - cvp) / qs : NaN, pvr: qp > 0 ? (pam - pcwp) / qp : NaN,
       lvEf: ef("LV"), rvEf: ef("RV"), qpQs: qs > 0 ? qp / qs : NaN,
+      ...(sel ? { ectopy: { fraction: sel.fraction, beats: recs.length, used: sel.used } } : {}),
     };
   }
 

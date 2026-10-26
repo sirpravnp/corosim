@@ -36,6 +36,17 @@ export function numberRows(n: HemoNumbers, s: Saturations): [string, string][] {
 }
 
 /**
+ * The "Ectopic beats" row (live source only): the share of premature beats, and, when the readouts above could not come from steady
+ * beats, a muted note saying what they were taken from. Kept out of `numberRows` so the snapshot delta (one basis per row) is unchanged.
+ */
+export function ectopyRow(n: HemoNumbers): { label: string; value: string; note: string } | null {
+  const e = n.ectopy;
+  if (!e) return null;
+  const note = e.used === "steady" ? "" : e.used === "non-premature" ? "no steady beats: premature beats left out" : "no steady beats: all beats shown";
+  return { label: "Ectopic beats", value: `${Math.round(e.fraction * 100)} % of beats`, note };
+}
+
+/**
  * The one value per row of `numberRows` that a delta compares (BP: the mean; PA: the mean; CO / CI: CO), in the same
  * order, with the decimals the row shows. Fractions (EF, saturation) are in percentage points.
  */
@@ -58,6 +69,20 @@ export function deltaText(live: number, snap: number, digits: number, unit = "")
 }
 
 export function badgeText(kind: HemoSource["kind"]): string { return kind === "live" ? "live" : "steady state"; }
+
+function ectopyRows(e: NonNullable<ReturnType<typeof ectopyRow>>, snap: boolean): HTMLElement[] {
+  const cell = (t: string) => { const td = document.createElement("td"); td.textContent = t; return td; };
+  const tr = document.createElement("tr");
+  tr.append(cell(e.label), cell(e.value));
+  if (snap) tr.append(cell(""), cell(""));
+  const out = [tr];
+  if (e.note) {
+    const nr = document.createElement("tr"), td = cell(e.note);
+    td.colSpan = snap ? 4 : 2; td.style.color = "var(--muted)"; td.style.fontSize = "12px";
+    nr.append(td); out.push(nr);
+  }
+  return out;
+}
 
 export const numbersPanel: PanelDef = {
   id: "numbers",
@@ -91,7 +116,8 @@ export const numbersPanel: PanelDef = {
         const n = src.numbers(), sat = src.saturations(), snap = snapshots.selected();
         const rows = numberRows(n, sat);
         const snapRows = snap ? numberRows(snap.numbers, snap.saturations) : null;
-        const key = badgeText(src.kind) + (snap ? `#${snap.id}` : "") + rows.map(r => r[1]).join("|");
+        const ect = ectopyRow(n);
+        const key = badgeText(src.kind) + (snap ? `#${snap.id}` : "") + rows.map(r => r[1]).join("|") + (ect ? `|${ect.value}|${ect.note}` : "");
         if (key === last) return; // numbers change at beat rate; skip identical frames
         last = key;
         badge.textContent = badgeText(src.kind);
@@ -114,7 +140,7 @@ export const numbersPanel: PanelDef = {
             tr.append(td);
           });
           return tr;
-        }));
+        }), ...(ect ? ectopyRows(ect, !!snap) : []));
       },
       dispose() { unsub?.(); unsub = undefined; body?.replaceChildren(); },
     };
