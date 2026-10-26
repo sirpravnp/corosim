@@ -350,11 +350,4 @@ describe("a PVC on the live strip", () => {
   }, 120_000);
 });
 
-describe("speed", () => {
-  it("runs at least 20x real time with the whole ACS model on the core engine", () => {
-    const s = make({}, 5);
-    const t0 = performance.now(); s.step(60); const wall = (performance.now() - t0) / 1000;
-    say("60 s of core mode took", wall, "s =", 60 / wall, "x real time");
-    expect(60 / wall).toBeGreaterThan(20);
-  }, 60_000);
-});
+// The speed benchmark is in tests/perf/coreSpeed.test.ts (run on its own, after the suite).
