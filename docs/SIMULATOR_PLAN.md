@@ -15,6 +15,7 @@ Waves run in order; an item is done when merged to main and live. Updated as wor
 | B3a graded ischemic PVC model | done (PR 29): PVC share 3.6 % proximal LAD (0-16 % across seeds), burst after reperfusion, cited in docs/ECTOPY.md; B3b = VT/VF initiation after B2 |
 | C6 coronary depiction | part a done (side branches, perforators, flare, LOD); merging. Next parts: plaque and thrombus; myocardial blush; flow cues on branches; veins |
 | A2 neonate/bridge removal | done (PR pending); adult VSD/TOF/PDA presets left to D1 |
+| B5 valves in the engine | done (PR pending): prosthetic valves, several lesions at once, TAVR, balloon, MitraClip, replacement; docs/VALVES.md |
 | everything else | not started |
 
 ## 1. Where we start (from reading the code)

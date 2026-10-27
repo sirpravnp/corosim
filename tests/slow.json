@@ -24,5 +24,7 @@
   "tests/structuralHeart.test.ts",
   "tests/structuralLesions.test.ts",
   "tests/structuralProps.test.ts",
-  "tests/thorax.test.ts"
+  "tests/thorax.test.ts",
+  "tests/valves.test.ts",
+  "tests/valvesSim.test.ts"
 ]
