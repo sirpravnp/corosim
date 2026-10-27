@@ -245,13 +245,13 @@ describe("LiveHeart", () => {
     expect((Math.max(...last) - Math.min(...last)) / mean(last)).toBeLessThan(0.015);
   }, 120_000);
 
-  it("the trace ring buffer holds at most 30 s at 2 ms with strictly increasing time", () => {
+  it("the trace ring buffer holds at most LIVE.traceSeconds (60 s since C7, as long as the beat ring) at 2 ms with strictly increasing time", () => {
     const h = warmed();
-    drive(h, sinus(72, 0, 60), 40);
+    drive(h, sinus(72, 0, 90), 70);
     const tr = h.trace();
     expect(tr.t.length).toBeLessThanOrEqual(Math.ceil(LIVE.traceSeconds / LIVE.traceEvery) + 2);
-    expect(tr.t[tr.t.length - 1] - tr.t[0]).toBeGreaterThan(29);
-    expect(tr.t[tr.t.length - 1] - tr.t[0]).toBeLessThan(30.1);
+    expect(tr.t[tr.t.length - 1] - tr.t[0]).toBeGreaterThan(LIVE.traceSeconds - 1);
+    expect(tr.t[tr.t.length - 1] - tr.t[0]).toBeLessThan(LIVE.traceSeconds + 0.1);
     for (let i = 1; i < tr.t.length; i++) expect(tr.t[i]).toBeGreaterThan(tr.t[i - 1]);
     expect(Object.keys(tr.p)).toContain("SPL");
     expect(tr.v.LV.length).toBe(tr.t.length);
