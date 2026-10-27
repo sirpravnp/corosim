@@ -87,6 +87,7 @@ describe("parity: every tool that changes the patient returns a narrative", () =
     corosim_run: { seconds: 3 },
     corosim_treat: { procedure: "pci", runSecondsAfter: 1 },
     corosim_valve: { type: "balloon", valve: "av", runSeconds: 1 },
+    corosim_arrest: { action: "restart", runSeconds: 1 },
   };
   it("the list of patient-changing tools is the list this test calls", () => {
     expect(TOOLS.filter((t) => !t.readOnly).map((t) => t.name).sort()).toEqual(Object.keys(CALLS).sort());

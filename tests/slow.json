@@ -18,6 +18,7 @@
   "tests/liveHeart.test.ts",
   "tests/liveSource.test.ts",
   "tests/lungWater.test.ts",
+  "tests/mcpArrest.test.ts",
   "tests/mcpHemo.test.ts",
   "tests/mcpNarrative.test.ts",
   "tests/mcpValve.test.ts",

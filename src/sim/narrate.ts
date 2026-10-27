@@ -364,3 +364,9 @@ export function narrateValve(done: boolean, changes: string[], warnings: string[
   const moved = vitalsChange(vb, va);
   return `${cap(joinList(changes))}. Now: ${vitalsNow(va).replace(/^now /, "")}${moved ? ` (${moved})` : ""}.`;
 }
+
+/** An arrest action (`corosim_arrest`): what was done, whether it worked, and where the arrest stands (the ACLS sentence) afterwards. */
+export function narrateArrest(did: string, ok: boolean, note: string | undefined, va: Vitals): string {
+  if (!ok) return `${cap(did)} was not done${note ? `: ${note.replace(/\.$/, "")}` : ""}. The patient is ${vitalsNow(va)}.`;
+  return `${cap(did)}. ${va.arrest ? arrestSentence(va.arrest) : `The patient is ${vitalsNow(va)}.`}`;
+}
