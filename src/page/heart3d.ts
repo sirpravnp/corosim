@@ -7,7 +7,8 @@ import { o2Frame, myocardiumO2Color } from "../sim/o2View";
 import type { SurfaceMesh } from "../anatomy/heartSurface";
 import type { O2Frame } from "../sim/o2View";
 import type { Saturations } from "../sim/hemoSource";
-import { tree, sites, $, S, sev, nec, panelSource } from "./state";
+import { blushLevel } from "../anatomy/lesionCues";
+import { tree, sites, $, S, sev, nec, panelSource, A } from "./state";
 import { heartGroup } from "./scene";
 
 const heartGeo = new THREE.BufferGeometry();
@@ -55,6 +56,7 @@ const PART_COLOR: Record<Part, THREE.Color> = {
 const HEAT = [0x3b4252, 0x51127c, 0xb73779, 0xfc8961, 0xfcfdbf].map((h) => new THREE.Color(h)); // ischemia heat map: perfused -> infarcted
 const heat = (t: number, out: THREE.Color) => { t = Math.min(1, Math.max(0, t)) * (HEAT.length - 1); const k = Math.min(HEAT.length - 2, Math.floor(t)); return out.copy(HEAT[k]).lerp(HEAT[k + 1], t - k); };
 const FAT = new THREE.Color(0xc9a564), DUSKY = new THREE.Color(0x3f3150);
+const BLUSH = new THREE.Color(0xe8665a), SCAR = new THREE.Color(0x6f6670); // myocardial blush where the muscle is perfused; pale, dull scar over an infarct
 let fatK = new Float32Array(0), grain = new Float32Array(0);
 let bedIdx: Int16Array = new Int16Array(0), bedW = new Float32Array(0), cover = new Float32Array(0);
 const NB = 4;
@@ -105,6 +107,8 @@ const noSat = (): Saturations => ({ node: {} as Saturations["node"], spo2: NaN, 
 export function paintMyocardium() {
   if (!myoReady) return;
   const ca = heartGeo.attributes.color as THREE.BufferAttribute, c = new THREE.Color(), base = new THREE.Color();
+  const ratio: Record<string, number> = {}; // delivered flow over demand per bed, from the coronary analysis
+  for (const t of A.cond.terminals) ratio[t.key] = t.blocked ? 0 : t.ratio;
   const o2 = S.mode === "o2" ? o2Now() : null, bk: string[] = ["", "", "", ""], bw = [0, 0, 0, 0];
   for (let i = 0; i < hRef.length; i++) {
     c.copy(PART_COLOR[hPart[i] as Part]).multiplyScalar(grain[i]);
@@ -116,10 +120,17 @@ export function paintMyocardium() {
       if (!S.hideIsch) for (let k = 0; k < NB; k++) { const key = sites[bedIdx[i * NB + k]].key; isch += bedW[i * NB + k] * (sev[key] ?? 0); dead += bedW[i * NB + k] * (nec[key] ?? 0); }
       heat(Math.min(1, (isch + dead) * cover[i]), c);
     } else if (isVentricle(i)) {
-      let isch = 0;
-      if (!S.hideIsch) for (let k = 0; k < NB; k++) isch += bedW[i * NB + k] * (sev[sites[bedIdx[i * NB + k]].key] ?? 0);
-      isch *= cover[i];
+      let isch = 0, dead = 0, blush = 0;
+      if (S.hideIsch) blush = 1;
+      else for (let k = 0; k < NB; k++) {
+        const key = sites[bedIdx[i * NB + k]].key, w = bedW[i * NB + k], sv = sev[key] ?? 0, nc = nec[key] ?? 0;
+        isch += w * sv; dead += w * nc; blush += w * blushLevel(ratio[key] ?? 1, sv, nc);
+      }
+      isch *= cover[i]; dead *= cover[i];
+      // angiographic-style blush: the muscle glows where it is perfused, loses it as the bed starves, and over an infarct goes pale and dull
+      c.lerp(BLUSH, 0.3 * blush * cover[i] * (1 - 0.7 * fatK[i]));
       c.lerp(DUSKY, 0.75 * isch);
+      c.lerp(SCAR, 0.6 * dead);
       c.lerp(FAT, fatK[i] * (1 - 0.4 * isch));
     }
     ca.setXYZ(i, c.r, c.g, c.b);
