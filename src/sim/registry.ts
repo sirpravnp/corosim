@@ -68,18 +68,18 @@ add("bloodLoss", "support", num(-0.3, 0.6, "Fraction of blood volume lost (0.15 
 add("drugs.betaBlocker", "support", num(0, 1, "Fraction of beta-adrenergic effect blocked."), ["bb"]);
 add("drugs.atropine", "support", num(0, 1, "Fraction of vagal effect on the sinus node blocked."), ["m_atropine"]);
 add("drugs.vasopressor", "support", num(-1, 1, "-1 strong vasodilator, +1 strong alpha-agonist (phenylephrine-like)."));
-add("autonomic.baroreflexGain", "patient", num(0, 4, "0 = denervated, 1 = normal, ≥2 = enough loop gain for a sustained ~0.1 Hz (Mayer-wave) oscillation."));
-add("autonomic.respRate", "patient", num(4, 40, "Breaths per minute (drives respiratory sinus arrhythmia)."));
-add("autonomic.respDepth", "patient", num(0, 2));
-add("autonomic.setPointShift", "patient", num(-30, 60, "mmHg added to the baroreceptor set point (chronic hypertension resets it upward)."));
-add("autonomic.noise", "patient", num(0, 3, "Scale of physiological noise. 0 = deterministic loop; 1 = normal."));
+add("autonomic.baroreflexGain", "patient", num(0, 4, "0 = denervated, 1 = normal, ≥2 = enough loop gain for a sustained ~0.1 Hz (Mayer-wave) oscillation."), ["pg:autonomic.baroreflexGain"]);
+add("autonomic.respRate", "patient", num(4, 40, "Breaths per minute (drives respiratory sinus arrhythmia)."), ["pg:autonomic.respRate"]);
+add("autonomic.respDepth", "patient", num(0, 2, "Breath depth (drives the size of respiratory sinus arrhythmia); 0 = none, 2 = deep breathing."), ["pg:autonomic.respDepth"]);
+add("autonomic.setPointShift", "patient", num(-30, 60, "mmHg added to the baroreceptor set point (chronic hypertension resets it upward)."), ["pg:autonomic.setPointShift"]);
+add("autonomic.noise", "patient", num(0, 3, "Scale of physiological noise. 0 = deterministic loop; 1 = normal."), ["pg:autonomic.noise"]);
 add("patient.rhythm", "rhythm", en([...new Set(["sinus", "af", ...SIM_RHYTHMS.map((p) => p.id)])], "Baseline rhythm. sinus and af (atrial fibrillation: no P waves, irregular, no atrial kick) are the coronary model's own; any other id is a rhythm of the EKG library (corosim_ekg_list lists them; \"nsr\" also means sinus): flutter, SVT, junctional, AV blocks, VT, torsades, VF, asystole, paced and so on. Library rhythms run on the core engine (VF and asystole give no flow)."), ["rhythmq", "rhythmsel"]);
 add("patient.bbb", "rhythm", en(["none", "rbbb", "lbbb"], "Pre-existing bundle branch block."), ["c_none", "c_rbbb", "c_lbbb"]);
-add("seed", "patient", { type: "integer", description: "Random seed. The same scenario and seed reproduce the same beats." });
-add("ectopyTendency", "patient", num(0, 3, "Teaching override of the patient's tendency to ischemic PVCs (core engine): a multiplier on the susceptibility the seed gives. 0 = never any PVC, 1 = as the seed has it (default), 3 = very ectopy-prone."));
-add("arrhythmiaTendency", "patient", num(0, 3, "Teaching override of the patient's tendency to ventricular tachycardia, ventricular fibrillation and reperfusion AIVR (core engine): a multiplier on the susceptibility the seed gives. 0 = never any (and ends one that is running), 1 = as the seed has it (default)."));
-add("electrolytes.potassium", "patient", num(2, 7.5, "Serum potassium in mmol/l (core engine); hypo- and hyperkalaemia raise the VT/VF hazard and the PVCs. Default 4.2."));
-add("electrolytes.magnesium", "patient", num(0.2, 3, "Serum magnesium in mmol/l (core engine); hypomagnesaemia raises the VT/VF hazard and the PVCs. Default 0.9."));
+add("seed", "patient", { type: "integer", description: "Random seed. The same scenario and seed reproduce the same beats." }, ["pg:seed"]);
+add("ectopyTendency", "patient", num(0, 3, "Teaching override of the patient's tendency to ischemic PVCs (core engine): a multiplier on the susceptibility the seed gives. 0 = never any PVC, 1 = as the seed has it (default), 3 = very ectopy-prone."), ["pg:ectopyTendency"]);
+add("arrhythmiaTendency", "patient", num(0, 3, "Teaching override of the patient's tendency to ventricular tachycardia, ventricular fibrillation and reperfusion AIVR (core engine): a multiplier on the susceptibility the seed gives. 0 = never any (and ends one that is running), 1 = as the seed has it (default)."), ["pg:arrhythmiaTendency"]);
+add("electrolytes.potassium", "patient", num(2, 7.5, "Serum potassium in mmol/l (core engine); hypo- and hyperkalaemia raise the VT/VF hazard and the PVCs. Default 4.2."), ["pg:electrolytes.potassium"]);
+add("electrolytes.magnesium", "patient", num(0.2, 3, "Serum magnesium in mmol/l (core engine); hypomagnesaemia raises the VT/VF hazard and the PVCs. Default 0.9."), ["pg:electrolytes.magnesium"]);
 
 // ---- support (the management panel) --------------------------------------------------------------------------------------
 add("support.fluids", "support", num(0, 3, "Litres of IV fluid given (the legacy dial; the page's IV bolus is fluids.given). Helps a right-ventricular infarct; congests the lungs of a failing left ventricle."));

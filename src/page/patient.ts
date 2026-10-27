@@ -32,7 +32,7 @@ function pgApply(refresh: boolean) {
   if (refresh) pushPatient();
   try { window.history.replaceState(null, "", `${location.pathname}${location.search}#s=${encodePatient(spec)}`); } catch { /* sandboxed frame: the link field still shows it */ }
   pgSig = JSON.stringify([sim.scenario(), pg]);
-  pgUi.sync(pg, { warnings: [...new Set([...pgSticky, ...built.warnings])], link: location.href, presetId: pgPreset });
+  pgUi.sync(pg, { warnings: [...new Set([...pgSticky, ...built.warnings])], link: location.href, presetId: pgPreset, scenario: sim.scenario() });
 }
 /** Turn the patient editing on or off (the dock's controls are always in place; this starts and stops following the state into the link). */
 export function pgShow(on: boolean) {
@@ -74,6 +74,10 @@ export function initPatient() {
     loadPreset(id) { const p = PRESET_BY_ID[id]; if (p) pgAdopt(p.spec, id); },
     exit: () => pgShow(false),
     legacy: () => inGame,
+    scenario: () => sim.scenario(),
+    // the Advanced group's fields live in the Scenario: the Simulation takes the change, then the spec and the link follow
+    patch(p) { sim.apply(p); pgApply(false); },
+    reseed(seed) { pgAdopt({ ...buildPlaygroundSpec(sim.scenario(), pg).spec, seed }, null); },
   });
   mountDock(pgUi.mounts);
   // The Support tab's one switch per device edits `devices.*`; the legacy `support.iabp` / `support.impella` follow in pgApply.

@@ -13,6 +13,9 @@ import { PRESETS, PRESET_BY_ID } from "../sim/presets";
 import { LESIONS, LESION_BY_ID, defaults } from "../sim/structural";
 import type { LesionId } from "../sim/structural";
 import { buildValves } from "./valvesPanel";
+import { buildAdvanced } from "./advancedControls";
+import type { Scenario } from "../sim/scenario";
+import type { PatientSpec } from "../sim/patient";
 
 export interface PlaygroundHost {
   getState(): PlaygroundState;
@@ -22,8 +25,12 @@ export interface PlaygroundHost {
   exit(): void;
   /** True when the page runs the legacy engine (the game): the per-valve controls are disabled. */
   legacy?(): boolean;
+  /** The live Scenario (autonomic, electrolytes, tendencies, seed: the fields the Advanced group edits), a change to it, and a new seed (starts the patient over). */
+  scenario?(): Scenario;
+  patch?(p: PatientSpec): void;
+  reseed?(seed: number): void;
 }
-export interface PlaygroundInfo { warnings: readonly string[]; link: string; presetId: string | null }
+export interface PlaygroundInfo { warnings: readonly string[]; link: string; presetId: string | null; scenario?: Scenario }
 export type MountId = "patient" | "valves" | "pericardium" | "volume" | "ventilation" | "iabp" | "impella" | "ecmo";
 export interface PlaygroundUi {
   /** The containers for the settings dock's tabs. */
@@ -236,10 +243,15 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
   }
   layout = "stack";
 
+  // ---- Patient tab, last: the Advanced group (fields that were chat-only), collapsed ----------------------------------------
+  const scenarioSyncs: ((sc: Scenario) => void)[] = [];
+  mounts.patient.append(buildAdvanced({ h, ctlId, fields, scenarioSyncs, scenario: () => host.scenario?.() ?? {}, patch: (p) => host.patch?.(p), reseed: (n) => host.reseed?.(n), legacy: host.legacy }));
+
   return {
     mounts, fields,
     sync(state, info) {
       for (const f of syncs) f(state);
+      for (const f of scenarioSyncs) f(info.scenario ?? {});
       preset.value = info.presetId ?? "";
       const p = info.presetId ? PRESET_BY_ID[info.presetId] : undefined;
       presetNote.textContent = p ? `${p.blurb}${p.stored ? ` Not simulated yet: ${p.stored}.` : ""}` : "";
