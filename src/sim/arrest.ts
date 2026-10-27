@@ -31,13 +31,16 @@ export interface ArrestState {
   cprDuty: number;
   /** Smoothed recent CPR quality 0..1 (used for shock odds and the VF clock). */
   cprRecent: number;
+  /** 0..1: how much of the measured flow the coronary perfusion pressure lets count (smoothed). */
+  cppFactor: number;
   roscTimerS: number;
   rearrestTimerS: number;
   /** Seconds since the arrest began (or since last restart). */
   arrestS: number;
 }
 
-export interface StepInput { output: number; rhythmClass?: RhythmClass; tachyarrhythmia?: boolean }
+/** `cpp` (mmHg) is given when a circulation is measured; without it the machine credits CPR from its own technique figure (the stand-alone machine). */
+export interface StepInput { output: number; rhythmClass?: RhythmClass; tachyarrhythmia?: boolean; cpp?: number }
 export interface ShockResult {
   success: boolean;
   newRhythmClass: RhythmClass;
@@ -66,7 +69,7 @@ export function createArrest(rhythmClass: RhythmClass = "vf"): ArrestState {
     tS: 0, rhythmClass, tachyarrhythmia: false, noFlowS: 0,
     cpr: { on: false, rate: 110, depthCm: 5.5, quality: 1 },
     lastShock: null, injury: 0, status: "arrest", drugs: [],
-    vfUntreatedS: 0, cprDuty: 0, cprRecent: 0, roscTimerS: 0, rearrestTimerS: 0, arrestS: 0,
+    vfUntreatedS: 0, cprDuty: 0, cprRecent: 0, cppFactor: 1, roscTimerS: 0, rearrestTimerS: 0, arrestS: 0,
   };
 }
 
@@ -130,14 +133,20 @@ export function step(s: ArrestState, dtS: number, input: StepInput, rng?: Rng): 
   const instQ = s.cpr.on ? cprTechnique(s.cpr) : 0;
   s.cprRecent += (instQ - s.cprRecent) * (1 - Math.exp(-dtS / C.cpr.recentTauS));
 
-  const out = Math.max(clamp(input.output, 0, 1.5), perfusion(s));
+  // With a measured circulation (cpp given) the flow it shows, CPR's included, is what counts; without one, the nominal CPR output is the floor.
+  const measured = input.cpp !== undefined;
+  const out = measured ? clamp(input.output, 0, 1.5) : Math.max(clamp(input.output, 0, 1.5), perfusion(s));
+  if (measured) {
+    const target = clamp((input.cpp! - C.cpp.min) / (C.cpp.full - C.cpp.min), 0, 1);
+    s.cppFactor += (target - s.cppFactor) * (1 - Math.exp(-dtS / C.cpp.tauS));
+  }
   const perfusing = s.rhythmClass === "perfusing";
 
   // No-flow clock with CPR credit.
   if (out >= C.noFlowRecoverOutput && perfusing) {
     s.noFlowS = Math.max(0, s.noFlowS - C.noFlowRecoverRate * dtS);
   } else {
-    s.noFlowS += Math.max(C.noFlowMinRate, 1 - out / C.noFlowCreditRef) * dtS;
+    s.noFlowS += Math.max(C.noFlowMinRate, 1 - (measured ? out * s.cppFactor : out) / C.noFlowCreditRef) * dtS;
   }
 
   // Irreversible injury: onset at injuryOnsetNoFlowS, reaches 1 at deathAfterNoFlowS (smoothstep), never recovers.
@@ -190,7 +199,7 @@ export function defibSuccessProbability(s: ArrestState, joules: number): number 
   const ef = joules >= k.energyHigh ? 1
     : joules >= k.energyLow ? k.energyFactorAtLow + (1 - k.energyFactorAtLow) * (joules - k.energyLow) / (k.energyHigh - k.energyLow)
     : k.energyFactorAtLow * Math.max(0, joules) / k.energyLow;
-  const p = k.baseSuccess * ef - k.declinePerMin * (s.vfUntreatedS / 60) + k.cprBonus * s.cprRecent + drugShockBonus(s);
+  const p = k.baseSuccess * ef - k.declinePerMin * (s.vfUntreatedS / 60) + k.cprBonus * s.cprRecent * s.cppFactor + drugShockBonus(s);
   return clamp(p, k.minSuccess, k.maxSuccess);
 }
 
@@ -254,4 +263,11 @@ export function give(s: ArrestState, drug: ArrestDrug, dose?: number): { ok: boo
   }
   s.drugs.push({ drug, dose: d, tS: s.tS });
   return { ok: true };
+}
+
+/** Refractory shock in a perfusing patient: the seconds of pressure below the line, counting up while it is low and back down while it is not. Dead once the count reaches `seconds`. */
+export function shockDeathStep(acc: number, map: number, dtS: number): { acc: number; dead: boolean } {
+  const K = C.shockDeath;
+  const next = map < K.map ? acc + dtS : Math.max(0, acc - K.recoverRate * dtS);
+  return { acc: next, dead: next >= K.seconds };
 }

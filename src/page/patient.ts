@@ -1,11 +1,11 @@
 // ---------------------------------------------------------------- playground mode (task P12)
 import { createPlaygroundUi } from "../panels/playgroundControls";
 import { decodePatient, encodePatient } from "../sim/llm";
-import { buildPlaygroundSpec, hasPlaygroundFields, stateOfSpec, withDevice } from "../sim/playground";
+import { buildPlaygroundSpec, hasPlaygroundFields, patchDevice, stateOfSpec, withDevice } from "../sim/playground";
 import { PRESET_BY_ID } from "../sim/presets";
 import type { PlaygroundState } from "../sim/playground";
 import type { PatientSpec } from "../sim/patient";
-import { $, sim, T, on, inGame, patientOpts } from "./state";
+import { $, sim, T, on, inCases, patientOpts } from "./state";
 import { propsView } from "./scene";
 import { loadScenario } from "./model";
 import { pushPatient } from "./workspace";
@@ -29,7 +29,7 @@ function pgApply(refresh: boolean) {
   T.support.impella = !!spec.support?.impella; T.support.iabp = !!spec.support?.iabp; // the legacy device model follows the switches
   patientOpts.patient = spec; propsView.setPatient(spec);
   if (refresh) pushPatient();
-  try { window.history.replaceState(null, "", `${location.pathname}${location.search}#s=${encodePatient(spec)}`); } catch { /* sandboxed frame: the link field still shows it */ }
+  if (!inCases) try { window.history.replaceState(null, "", `${location.pathname}${location.search}#s=${encodePatient(spec)}`); } catch { /* sandboxed frame: the link field still shows it */ } // a case keeps its patient out of the address bar
   pgSig = JSON.stringify([sim.scenario(), pg]);
   pgUi.sync(pg, { warnings: [...new Set([...pgSticky, ...built.warnings])], link: location.href, presetId: pgPreset });
 }
@@ -51,13 +51,23 @@ export function pgAdopt(spec: PatientSpec, presetId: string | null = null) {
   const w = loadScenario(built.spec); if (w.length) console.warn("CoroSim: the patient was adjusted:", w.join("; "));
   pgApply(true);
 }
+/** Change the patient on screen mid-run (a case's complication or device): devices go through the playground state, which owns them and would put the old values back; the rest goes to the simulation. */
+export function pgPatch(patch: PatientSpec) {
+  let st = pg;
+  for (const id of ["impella", "iabp", "ecmo", "impellaRp"] as const) if (patch.devices?.[id]) st = patchDevice(st, id, patch.devices[id] as never);
+  pg = st;
+  const { devices: _devices, ...rest } = patch;
+  if (Object.keys(rest).length) sim.apply(rest);
+  if (rest.support) T.support = { ...sim.support }; // the frame loop hands T.support to the simulation: it must hold what the case just gave (fluids, pacing, a drip)
+  pgApply(true);
+}
 /** A #s= link opens that patient, on load and when a link is pasted into an open tab. A link with playground fields opens in playground mode. */
 export function openShared() {
-  const shared = !inGame && location.hash.match(/^#s=([\w-]+)/);
+  const shared = !inCases && location.hash.match(/^#s=([\w-]+)/);
   if (!shared) return;
   try {
     const spec = decodePatient(shared[1]);
-    if (pgOn || hasPlaygroundFields(spec) || !inGame) { pgAdopt(spec); return; }
+    if (pgOn || hasPlaygroundFields(spec) || !inCases) { pgAdopt(spec); return; }
     patientOpts.patient = spec; propsView.setPatient(spec);
     const w = loadScenario(spec); pushPatient(true); if (w.length) console.warn("CoroSim: the shared patient was adjusted:", w.join("; ")); }
   catch (e) { console.warn("CoroSim: could not open the shared patient", e); }
@@ -72,12 +82,12 @@ export function initPatient() {
     },
     loadPreset(id) { const p = PRESET_BY_ID[id]; if (p) pgAdopt(p.spec, id); },
     exit: () => pgShow(false),
-    legacy: () => inGame,
+    legacy: () => false,
   });
   mountDock(pgUi.mounts);
   // The existing controls (lesions, rhythm, drugs, support) change the Scenario inside the Simulation: pick that up for the link.
   setInterval(() => {
-    if (!pgOn || inGame) return;
+    if (!pgOn || inCases) return;
     for (const id of ["impella", "iabp"] as const) if (!!T.support[id] !== !!pg.devices?.[id]) pg = withDevice(pg, id, !!T.support[id]); // the Management switches and the playground's are one
     if (JSON.stringify([sim.scenario(), pg]) !== pgSig) pgApply(false);
   }, 300);

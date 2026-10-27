@@ -4,11 +4,10 @@ import { PART_NAMES } from "../anatomy/heartSurface";
 import { Bbb } from "../config/ecg";
 import { wireRhythmPicker } from "./rhythmPicker";
 import { untreated } from "../physics/revasc";
-import { tree, A, $, MMHG, Mode, HeartView, V, S, T, scheduleAnatomy, scheduleLesion, on, sel, range, G } from "./state";
+import { tree, A, $, MMHG, Mode, HeartView, V, S, T, scheduleAnatomy, scheduleLesion, on, sel, range } from "./state";
 import { renderer, camera, controls, VIEWS, setView, propsView, ray } from "./scene";
 import { hPart, heartMesh, applyHeartView } from "./heart3d";
 import { built, vesselGroup, shapeVessels, points, buildGrafts, branchMesh, segIdOfHit } from "./vessels3d";
-import { callUi } from "./gameUi";
 import { controlsUi, liveUi } from "./readouts";
 import { syncSelects } from "./model";
 
@@ -74,14 +73,7 @@ export function wirePicking() {
       box.style.display = "block";
       box.innerHTML = `<b>${PART_NAMES[hPart[hit.face.a]]}</b>`;
     } else if (!S.selected) box.style.display = "none";
-    else if (G.phase === "play") {
-      // in a case the click is the call: the spot on the vessel nearest the hit
-      const b = built.find((x) => x.seg.id === S.selected)!, r = A.cond.seg[b.seg.id], q = vesselGroup.worldToLocal(hit.point.clone());
-      let i = 0, best = Infinity;
-      b.ctr.forEach((c, k) => { const d2 = q.distanceToSquared(c); if (d2 < best) { best = d2; i = k; } });
-      G.call = { segId: b.seg.id, pos: r.s[i] / b.seg.length };
-      box.style.display = "none"; callUi();
-    } else {
+    else {
       const sg = tree.byId[S.selected], r2 = A.cond.seg[S.selected], n = r2.s.length;
       box.style.display = "block";
       box.innerHTML = `<b>${sg.name}</b><br>length ${sg.length.toFixed(0)} mm · Ø ${(Math.min(...r2.d) * 1e3).toFixed(1)}–${(Math.max(...r2.d) * 1e3).toFixed(1)} mm<br>inflow ${(r2.Q[0] * 6e7).toFixed(0)} ml/min<br>pressure ${(r2.P[0] / MMHG).toFixed(0)} → ${(r2.P[n - 1] / MMHG).toFixed(0)} mmHg<br>supplies ${(sg.subMass * 100).toFixed(0)}% of myocardium`;

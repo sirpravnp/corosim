@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------- markers: the lesion, and the player's call
 import * as THREE from "three";
-import { A, S, G } from "./state";
+import { A, S } from "./state";
 import { view, camera, ray } from "./scene";
 import { heartMesh } from "./heart3d";
 import { Built, built, vesselGroup } from "./vessels3d";
@@ -14,7 +14,7 @@ function makeMarker(id: string): Marker {
   view.append(el);
   return { el, tag: el.querySelector(".lz-tag") as HTMLElement, text: "", back: false, point: new THREE.Vector3() };
 }
-export const lesionMarker = makeMarker("lesion"), callMarker = makeMarker("call");
+export const lesionMarker = makeMarker("lesion");
 const lzDir = new THREE.Vector3();
 let lzClock = 0;
 /** `margin` keeps the anchor off the vessel's ends (the physics holds a lesion half a window in); `probe` re-tests occlusion by the heart. */
@@ -47,8 +47,6 @@ export function updateMarkers(dt: number) {
   if (probe) lzClock = 0;
   const lb = (S.ds > 0 || S.occ) && !S.hide ? built.find((x) => x.seg.id === S.lesionSeg) : undefined;
   placeMarker(lesionMarker, lb, S.pos, `${S.occ ? "Occluded" : Math.round(S.ds * 100) + "% stenosis"} · ${lb?.seg.name ?? ""}`, 7, probe);
-  const cb = G.call && G.phase !== "idle" ? built.find((x) => x.seg.id === G.call!.segId) : undefined;
-  placeMarker(callMarker, cb, G.call?.pos ?? 0, "Your call", 0, probe);
   updateLabels(probe);
 }
 

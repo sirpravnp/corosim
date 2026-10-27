@@ -6,7 +6,7 @@ import { PROCEDURE, SUPPORT, Procedure } from "../config/management";
 import { lvInfarctSize, clinicalTime } from "../physics/infarct";
 import { order, applyProcedure } from "../physics/revasc";
 import { assess, Situation } from "../physics/advice";
-import { tree, A, sites, circ, $, S, sim, sev, T, nec, clearTreatment, scheduleLesion, on, range, G, ecg, rstate, pageVitals } from "./state";
+import { tree, A, sites, circ, $, S, sim, sev, T, nec, clearTreatment, scheduleLesion, on, range, ecg, rstate, pageVitals } from "./state";
 import { buildGrafts } from "./vessels3d";
 
 export const PROC_LABEL: Record<Procedure, string> = { pci: PROCEDURE.pci.label, lysis: PROCEDURE.lysis.label, cabg: PROCEDURE.cabg.label };
@@ -31,14 +31,12 @@ function land(kind: Procedure) {
   else if (r.lysed === undefined) T.lastResult = "Fibrinolytic: no clot to lyse in a stenosis.";
   else if (r.lysed) { S.occ = false; S.ds = r.lesion!.ds; T.treated.lysed = true; T.lastResult = `Fibrinolytic: the clot lysed; a ${Math.round(S.ds * 100)}% stenosis is left behind. Consider angiography.`; }
   else { T.treated.lysed = false; T.lastResult = "Fibrinolytic: the artery stayed closed. Rescue PCI."; }
-  if (G.treat && reperfused() && G.treat.reperfusedBy === null) G.treat.reperfusedBy = PROC_LABEL[kind];
   scheduleLesion(); buildGrafts();
 }
-function orderProcedure(kind: Procedure) {
+export function orderProcedure(kind: Procedure) {
   if (T.pending) { T.lastResult = `${PROC_LABEL[T.pending.kind]} is already on its way.`; return; }
   if (!currentLesion()) { T.lastResult = "There is no lesion to treat."; return; }
   T.pending = order(kind); T.lastResult = "";
-  if (G.treat && G.treat.orderedAt === null) G.treat.orderedAt = G.treat.minutes;
 }
 
 /** The facts the advisor reads, from the live state. */
@@ -63,7 +61,6 @@ export function setTab(t: string) {
   for (const b of document.querySelectorAll<HTMLButtonElement>("#manage .tab")) b.classList.toggle("on", b.dataset.tab === t);
 }
 export function manageUi() {
-  const live = G.phase !== "play";
   const inf = lvInfarctSize(sites, nec);
   const set = (id: string, v: string, bad = false) => { const e = $(id); e.textContent = v; e.classList.toggle("bad", bad); };
   set("m_time", T.ischemicMin > 0 ? clinicalTime(T.ischemicMin) : "—");
@@ -83,14 +80,14 @@ export function manageUi() {
   $("fluidnote").textContent = circ && circ.congestion > 0.2 ? `Lungs congesting (${Math.round(circ.congestion * 100)}%).` : "";
   for (const k of ["pci", "lysis", "cabg"] as const) {
     const b = $("m_" + k) as HTMLButtonElement;
-    b.classList.toggle("on", T.pending?.kind === k); b.disabled = !live || (!!T.pending && T.pending.kind !== k);
+    b.classList.toggle("on", T.pending?.kind === k); b.disabled = (!!T.pending && T.pending.kind !== k);
   }
   ($("m_cancel") as HTMLButtonElement).disabled = !T.pending;
   $("mstatus").textContent = T.pending
     ? `${PROC_LABEL[T.pending.kind]} in ${clinicalTime(Math.max(0, T.pending.remaining))}.`
     : T.lastResult || `Nothing on order. PCI takes about ${PROCEDURE.pci.delayMin} min to reach the artery, a fibrinolytic ${PROCEDURE.lysis.delayMin}, CABG ${PROCEDURE.cabg.delayMin / 60} h.`;
 
-  const sit = live ? situation() : null;
+  const sit = situation();
   if (!sit) return;
   const a = assess(sit);
   const esc = (x: string) => x.replace(/&/g, "&amp;").replace(/</g, "&lt;");
