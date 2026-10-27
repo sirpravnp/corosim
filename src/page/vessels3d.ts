@@ -19,7 +19,7 @@ const ramp = (stops: string[], t: number) => { t = Math.min(1, Math.max(0, t)) *
 const lg = (v: number, lo: number, hi: number) => (Math.log10(Math.max(v, lo)) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo));
 const GROUP_COLOR: Record<string, number> = { LAD: 0x1f5fa8, LCx: 0x2e7d4f, RCA: 0xc77c00 };
 const ARTERY = new THREE.Color(0xc2392f), ARTERY_DEEP = new THREE.Color(0x8a221d), ARTERY_EMPTY = new THREE.Color(0x3d2530), GRAY = new THREE.Color(0x9a9a9a);
-const PLAQUE = new THREE.Color(0xe3cd8c), CALCIUM = new THREE.Color(0xf4f1e6), CLOT = new THREE.Color(0x5c0c14); // lesion cues: lipid plaque, calcium fleck, fresh thrombus
+const PLAQUE = new THREE.Color(0xe3cd8c), CALCIUM = new THREE.Color(0xf4f1e6), CLOT = new THREE.Color(0x7d0d18); // lesion cues: lipid plaque, calcium fleck, fresh thrombus
 
 // ---------------------------------------------------------------- vessels
 export interface Built { seg: Segment; mesh: THREE.Mesh; ctr: THREE.Vector3[]; out: THREE.Vector3[]; nrm: THREE.Vector3[]; bin: THREE.Vector3[]; rad: number[]; d: number[]; dh: number[]; blocked: boolean[] }

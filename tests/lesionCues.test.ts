@@ -30,8 +30,8 @@ describe("lesion cues", () => {
     expect(thrombusAt(10, null)).toBe(0);
     expect(thrombusAt(20, 50)).toBe(0);
     expect(thrombusAt(50, 50)).toBeCloseTo(1, 9);
-    expect(thrombusAt(47.5, 50)).toBeGreaterThan(0.3);
-    expect(thrombusAt(47.5, 50)).toBeLessThan(0.7);
+    expect(thrombusAt(47, 50)).toBeGreaterThan(0.3);
+    expect(thrombusAt(47, 50)).toBeLessThan(0.7);
     expect(thrombusAt(60, 50)).toBe(0);
     expect(muralThrombus(0.7)).toBe(0); expect(muralThrombus(0.95)).toBeCloseTo(0.5, 9); expect(muralThrombus(0.9)).toBeGreaterThan(0);
   });

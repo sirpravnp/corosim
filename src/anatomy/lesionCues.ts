@@ -36,7 +36,7 @@ export function calcification(s: number, theta: number, narrowFrac: number): num
  * Thrombus along a vessel at station `s` (mm): a clot cap on the proximal side of an occlusion that is built up over about `reach` mm and
  * a few mm of tail past the occlusion station. 0 where nothing is occluded (`blockedFrom` is null).
  */
-export function thrombusAt(s: number, blockedFrom: number | null, reach = 5, tail = 1.5): number {
+export function thrombusAt(s: number, blockedFrom: number | null, reach = 6, tail = 1.5): number {
   if (blockedFrom === null) return 0;
   return smooth((s - (blockedFrom - reach)) / reach) * (1 - smooth((s - blockedFrom) / tail));
 }
