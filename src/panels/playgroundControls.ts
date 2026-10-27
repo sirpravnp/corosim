@@ -20,7 +20,7 @@ export interface PlaygroundHost {
   exit(): void;
 }
 export interface PlaygroundInfo { warnings: readonly string[]; link: string; presetId: string | null }
-export type MountId = "patient" | "valves" | "support";
+export type MountId = "patient" | "valves" | "pericardium" | "support";
 export interface PlaygroundUi {
   /** The containers for the settings dock's tabs. */
   mounts: Record<MountId, HTMLElement>;
@@ -41,7 +41,7 @@ const badge = (m: FieldGroupInfo["modelled"]) => { const t = h("span", { classNa
 
 export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
   const syncs: ((st: PlaygroundState) => void)[] = [];
-  const mounts = { patient: h("div", { className: "pg" }), valves: h("div", { className: "pg" }), support: h("div", { className: "pg" }) } as Record<MountId, HTMLElement>;
+  const mounts = { patient: h("div", { className: "pg" }), valves: h("div", { className: "pg" }), pericardium: h("div", { className: "pg" }), support: h("div", { className: "pg" }) } as Record<MountId, HTMLElement>;
   let el = mounts.patient; // the container the groups below are added to
 
   // ---- building blocks -----------------------------------------------------------------------------------------------
@@ -136,8 +136,8 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     el.append(box);
   }
 
-  // ---- pericardium (Patient tab) --------------------------------------------------------------------------------------
-  el = mounts.patient;
+  // ---- pericardium (its own tab) --------------------------------------------------------------------------------------
+  el = mounts.pericardium;
   {
     const { box, body } = group("Pericardium", GROUP_INFO.pericardium, true);
     slider(body, "Effusion", R.effusionMl[0], R.effusionMl[1], 25, (s) => s.pericardium?.effusionMl, 0, (v) => `${v} ml`, (s, v) => patchSection(s, "pericardium", { effusionMl: v || undefined }));

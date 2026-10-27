@@ -18,6 +18,7 @@ Waves run in order; an item is done when merged to main and live. Updated as wor
 | B5 valves in the engine | done (wave 2 PR): prosthetic valves, several lesions at once, TAVR, balloon, MitraClip, replacement; docs/VALVES.md |
 | B2 rhythm unification | done (wave 2 PR): `patient.rhythm` takes any D4 library id (core engine); the EKG generator drives strip and engine (physics/rhythmSource.ts, config/rhythms.ts); VF/asystole give no flow; tests rhythmSource (fast), rhythmUnification (slow). MCP schema still lists sinus/af only (D3) |
 | C2 settings dock, C5 display in 3D view | done (wave 2 PR); the ischemia table is a panel but has no 3D colour mode of its own (the Ischemia heat map covers it) |
+| C3 rhythm picker | done: grouped, searchable picker of every D4 rhythm in the Rhythm tab (src/page/rhythmPicker.ts); ECG-overlay options (STEMI mimics) and valve pickers not done |
 | everything else | not started |
 
 ## 1. Where we start (from reading the code)

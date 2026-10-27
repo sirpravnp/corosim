@@ -1,7 +1,8 @@
 import * as THREE from "three";
 import { Variant, TYPICAL } from "../anatomy/tree";
 import { PART_NAMES } from "../anatomy/heartSurface";
-import { Bbb, Rhythm } from "../config/ecg";
+import { Bbb } from "../config/ecg";
+import { wireRhythmPicker } from "./rhythmPicker";
 import { untreated } from "../physics/revasc";
 import { tree, A, $, MMHG, Mode, HeartView, V, S, T, scheduleAnatomy, scheduleLesion, on, sel, range, G } from "./state";
 import { renderer, camera, controls, VIEWS, setView, propsView, ray } from "./scene";
@@ -43,7 +44,7 @@ export function wireControls() {
   on("occ", () => { S.occ = !S.occ; scheduleLesion(); });
   on("exert", () => { S.exert = !S.exert; scheduleLesion(); });
   for (const s of [1, 3, 6]) on("s" + s, () => { S.speed = s; controlsUi(); });
-  for (const r of ["sinus", "af"] as Rhythm[]) on("r_" + r, () => { S.rhythm = r; controlsUi(); });
+  wireRhythmPicker(() => controlsUi());
   for (const b of ["none", "rbbb", "lbbb"] as Bbb[]) on("c_" + b, () => { S.bbb = b; controlsUi(); });
   on("postbtn", () => { S.posterior = !S.posterior; controlsUi(); liveUi(); });
   (["real", "isch", "anat", "pressure", "velocity", "wss", "o2"] as Mode[]).forEach((m) => on("m_" + m, () => { S.mode = m; shapeVessels(); controlsUi(); }));

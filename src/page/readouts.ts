@@ -6,6 +6,7 @@ import { EcgStrip } from "../ecgStrip";
 import { RhythmState } from "../physics/rhythm";
 import { libraryRhythm } from "../physics/rhythmSource";
 import { tree, A, sites, circ, $, V, S, sim, sev, PHYS, ecg, rstate } from "./state";
+import { rhythmPickerUi } from "./rhythmPicker";
 import { manageUi } from "./manage";
 import { dockUi } from "./dock";
 import { gameUi } from "./gameUi";
@@ -21,7 +22,7 @@ export function controlsUi() {
   $("propsbtn").classList.toggle("on", S.props);
   for (const m of ["real", "isch", "anat", "pressure", "velocity", "wss", "o2"]) $("m_" + m).classList.toggle("on", S.mode === m);
   for (const s of [1, 3, 6]) $("s" + s).classList.toggle("on", S.speed === s);
-  for (const r of ["sinus", "af"]) $("r_" + r).classList.toggle("on", S.rhythm === r);
+  rhythmPickerUi();
   for (const b of ["none", "rbbb", "lbbb"]) $("c_" + b).classList.toggle("on", S.bbb === b);
   $("postbtn").classList.toggle("on", S.posterior); $("stmap").classList.toggle("wide", S.posterior); ecg.posterior = S.posterior;
   const risk = A.cond.atRisk * 100;
