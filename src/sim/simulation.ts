@@ -30,6 +30,7 @@ import { COUPLING } from "../config/coronary";
 import { ImpellaConsole } from "../physics/core/devices/impella";
 import { ImpellaRp } from "../physics/core/devices/impellaRp";
 import { Ecmo } from "../physics/core/devices/ecmo";
+import { CprCompression } from "../physics/core/devices/cpr";
 import type { Pericardium } from "../physics/core/pericardium";
 import { Thorax } from "../physics/core/thorax";
 import type { FromModelOptions } from "../physics/core/fromModel";
@@ -139,6 +140,8 @@ export class Simulation {
   private rp?: ImpellaRp;
   private rpConsole?: ImpellaConsole;
   private ecmo?: Ecmo;
+  /** Chest compressions on the ventricles (B4b); built with every core heart, idle (no pressure) unless CPR is running. */
+  cprPump?: CprCompression;
   /** Devices the patient has (core engine): settings of the real Impella and IABP, ECMO and Impella RP, from the spec (booleans mean the defaults). */
   private devSpec: DeviceSpec = {};
   // ---- the PatientSpec fields the core engine builds (task P16), see `setPatient`
@@ -605,6 +608,7 @@ export class Simulation {
     const iabpEl = (m: Model) => (this.iabp = Iabp.forModel(m, { ...DEFAULT_IABP, ...this.devSpec.iabp, volumeMl: 0 })); // off during the warm-up
     const ecmoEl = (m: Model) => (this.ecmo = Ecmo.forModel(m, { ...this.devSpec.ecmo }));
     const rpEl = (m: Model) => (this.rp = ImpellaRp.forModel(m, { ...this.devSpec.impellaRp }));
+    this.cprPump = new CprCompression("cpr", [NODE("LV"), NODE("RV")]);
     this.exchange = new VolumeExchange("volumeExchange", veins, vessels, (n, v) => { const m = (this.building ?? this.live!).engine.nodes[n].model; return m instanceof Compliance ? m.stressed(v) : v; });
     const core: FromModelOptions = {}, pe = this.periSpec, ve = this.ventSpec;
     if (pe) core.pericardium = { effusionMl: pe.effusionMl ?? 0, stiffness: pe.stiffness ?? 1, open: pe.open ?? false };
@@ -612,7 +616,7 @@ export class Simulation {
     if (this.septumSpec) core.septum = true;
     this.appliedEffusion = pe?.effusionMl ?? 0; this.hasSac = !!pe; this.hasThorax = !!ve; this.hasSeptum = this.septumSpec;
     this.live = undefined;
-    const live = (this.building = new LiveHeart({ ...this.heartSpec, volumeMl: hv + this.volApplied }, { core, extra: [impellaEl, iabpEl, this.exchange, ...(this.devSpec.ecmo ? [ecmoEl] : []), ...(this.devSpec.impellaRp ? [rpEl] : [])] }));
+    const live = (this.building = new LiveHeart({ ...this.heartSpec, volumeMl: hv + this.volApplied }, { core, extra: [impellaEl, iabpEl, this.exchange, this.cprPump, ...(this.devSpec.ecmo ? [ecmoEl] : []), ...(this.devSpec.impellaRp ? [rpEl] : [])] }));
     this.impConsole?.dispose(); this.impConsole = new ImpellaConsole(live.engine);
     this.rpConsole?.dispose(); this.rpConsole = this.rp ? new ImpellaConsole(live.engine, "impellaRp") : undefined;
     this.dia = { t: NaN, aoT: 0, aoSum: 0, dT: 0, dSum: 0, peak: -Infinity, sys: -Infinity, closed: false, opened: false, balloon: 0, fill: 0 };
