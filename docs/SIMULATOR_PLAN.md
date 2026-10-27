@@ -14,7 +14,7 @@ Waves run in order; an item is done when merged to main and live. Updated as wor
 | B1 hemodynamic beats | done (merged with B3a); beat-shape readouts use steady beats, flows and MAP use all beats over 30 s |
 | B3a graded ischemic PVC model | done (PR 29): PVC share 3.6 % proximal LAD (0-16 % across seeds), burst after reperfusion, cited in docs/ECTOPY.md; B3b = VT/VF initiation after B2 |
 | C6 coronary depiction | part a done (side branches, perforators, flare, LOD); merging. Next parts: plaque and thrombus; myocardial blush; flow cues on branches; veins |
-| A2 neonate/bridge removal | ready to start |
+| A2 neonate/bridge removal | done (PR pending); adult VSD/TOF/PDA presets left to D1 |
 | everything else | not started |
 
 ## 1. Where we start (from reading the code)
