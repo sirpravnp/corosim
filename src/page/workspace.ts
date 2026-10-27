@@ -8,6 +8,7 @@ import { loopsPanel } from "../panels/loops";
 import { rhcPanel } from "../panels/rightHeartCath";
 import { leftHeartCathPanel } from "../panels/leftHeartCath";
 import { jvpPanel } from "../panels/jvp";
+import { ischemiaPanel } from "./ischemiaPanel";
 import { oxygenPanel } from "../panels/oxygen";
 import { LiveSource } from "../sim/liveSource";
 import type { Workspace } from "../panels/workspace";
@@ -47,8 +48,9 @@ export function mountPanels() {
   (ws.parentElement as HTMLElement).insertBefore(settlingNote, ws);
   pushPatient(true); // a link that was opened before the workspace existed has its structure in the core engine already; this settles the source choice
   const first = chooseSource(); setPanelSource(first);
-  workspace = mountWorkspace(ws, [ecgPanel, tracesPanel, loopsPanel, monitorPanel, numbersPanel, oxygenPanel, rhcPanel, leftHeartCathPanel, jvpPanel], first, {
+  workspace = mountWorkspace(ws, [ecgPanel, tracesPanel, loopsPanel, monitorPanel, numbersPanel, ischemiaPanel, oxygenPanel, rhcPanel, leftHeartCathPanel, jvpPanel], first, {
     clock: playClock, clinical: { scales: CLINICAL_SCALES, get: () => S.speed, set: (v) => { S.speed = v; controlsUi(); } }, // both clocks in the workspace bar
   });
+  $("bedsfig").hidden = true; // its table now lives in the Ischemia panel (the game keeps the figure)
   $("ts-l").style.display = $("ts-row").style.display = "none"; // the Lesion section's old time-scale buttons: now in the workspace bar
 }

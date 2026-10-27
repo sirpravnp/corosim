@@ -1,8 +1,8 @@
 /**
  * The Simulator's playground controls (task P12): presets, and one collapsible group per part of the
  * `PatientSpec`. DOM only. The logic (state edits, the spec builder) is in src/sim/playground.ts; the page owns the state and
- * commits it. The groups for the coronary lesions, rhythm and conduction, and drugs are slots: the page moves its existing
- * controls into them while the mode is on, so there is one place for every control and the old controls keep working.
+ * commits it. The groups come in three containers (`mounts`: Patient, Valves, Support) that the page's settings dock puts in
+ * its tabs; the dock's other tabs (Rhythm, Coronary, Display) hold the page's own controls, so there is one place for every control.
  */
 import { GROUP_INFO, patchDevice, patchSection, withBolus, withDevice } from "../sim/playground";
 import type { FieldGroupInfo, PlaygroundState } from "../sim/playground";
@@ -20,11 +20,10 @@ export interface PlaygroundHost {
   exit(): void;
 }
 export interface PlaygroundInfo { warnings: readonly string[]; link: string; presetId: string | null }
-export type SlotId = "coronary" | "rhythm" | "drugs";
+export type MountId = "patient" | "valves" | "support";
 export interface PlaygroundUi {
-  el: HTMLElement;
-  /** The body of a group whose controls the page supplies. */
-  slot(id: SlotId): HTMLElement;
+  /** The containers for the settings dock's tabs. */
+  mounts: Record<MountId, HTMLElement>;
   /** Show the state: every control takes its value from it. */
   sync(state: PlaygroundState, info: PlaygroundInfo): void;
 }
@@ -42,9 +41,8 @@ const badge = (m: FieldGroupInfo["modelled"]) => { const t = h("span", { classNa
 
 export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
   const syncs: ((st: PlaygroundState) => void)[] = [];
-  const slots = {} as Record<SlotId, HTMLElement>;
-  const el = h("section", { id: "playground", className: "pg" });
-  el.hidden = true;
+  const mounts = { patient: h("div", { className: "pg" }), valves: h("div", { className: "pg" }), support: h("div", { className: "pg" }) } as Record<MountId, HTMLElement>;
+  let el = mounts.patient; // the container the groups below are added to
 
   // ---- building blocks -----------------------------------------------------------------------------------------------
   const ctlId = (() => { let n = 0; return () => `pg-c${++n}`; })();
@@ -91,21 +89,15 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
   const warnings = h("div", { className: "warns pg-warns", id: "pg-warnings" });
   warnings.setAttribute("aria-live", "polite");
   el.append(
-    h("div", { className: "pg-head" }, h("h2", { textContent: "Patient" })),
-    h("p", { className: "note pg-first", textContent: "Build the patient with the controls below, or start from a preset. Every panel shows this patient; the Share button at the top copies a link to it." }),
+    h("p", { className: "note pg-first", textContent: "Build the patient with the controls in these tabs, or start from a preset. Every panel shows this patient; the Share button at the top copies a link to it." }),
     h("label", { htmlFor: "pg-preset", textContent: "Preset", className: "pg-first" }), preset, presetNote,
     warnings,
   );
 
-  // ---- slots for the page's existing controls ------------------------------------------------------------------------
-  for (const [id, title, cls, open] of [["coronary", "Coronary lesions", "pg-coronary", true], ["rhythm", "Rhythm and conduction", "", false]] as const) {
-    const { box, body } = group(title, null, open, cls);
-    slots[id] = body; el.append(box);
-  }
-
-  // ---- structural heart ----------------------------------------------------------------------------------------------
+  // ---- structural heart (Valves tab) ---------------------------------------------------------------------------------
+  el = mounts.valves;
   {
-    const { box, body } = group("Structural heart", GROUP_INFO.heart, false);
+    const { box, body } = group("Structural heart", GROUP_INFO.heart, true);
     const sel = h("select", { id: "pg-lesion", "aria-label": "Structural lesion" } as Partial<HTMLSelectElement>);
     const customOpt = h("option", { value: CUSTOM, textContent: "Custom heart (from a preset or link)" });
     customOpt.hidden = true;
@@ -144,9 +136,10 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     el.append(box);
   }
 
-  // ---- pericardium ---------------------------------------------------------------------------------------------------
+  // ---- pericardium (Patient tab) --------------------------------------------------------------------------------------
+  el = mounts.patient;
   {
-    const { box, body } = group("Pericardium", GROUP_INFO.pericardium);
+    const { box, body } = group("Pericardium", GROUP_INFO.pericardium, true);
     slider(body, "Effusion", R.effusionMl[0], R.effusionMl[1], 25, (s) => s.pericardium?.effusionMl, 0, (v) => `${v} ml`, (s, v) => patchSection(s, "pericardium", { effusionMl: v || undefined }));
     slider(body, "Stiffness", R.stiffness[0], R.stiffness[1], 0.1, (s) => s.pericardium?.stiffness, 1, (v) => `${v.toFixed(1)}× normal`, (s, v) => patchSection(s, "pericardium", { stiffness: v === 1 ? undefined : v }));
     slider(body, "Accumulating", 0, 100, 5, (s) => s.pericardium?.effusionRateMlMin, 0, (v) => (v ? `${v} ml per clinical minute` : "stable"), (s, v) => patchSection(s, "pericardium", { effusionRateMlMin: v || undefined }));
@@ -159,7 +152,8 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     el.append(box);
   }
 
-  // ---- fluids --------------------------------------------------------------------------------------------------------
+  // ---- fluids, ventilation, devices (Support tab) ---------------------------------------------------------------------
+  el = mounts.support;
   {
     const { box, body } = group("Fluids and hemorrhage", GROUP_INFO.fluids);
     const KINDS: readonly (readonly [FluidKind, string])[] = [["crystalloid", "Crystalloid"], ["colloid", "Colloid"], ["albumin", "Albumin"], ["blood", "Blood"]];
@@ -209,17 +203,8 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     el.append(box);
   }
 
-  // ---- drugs and support (the page's controls) -----------------------------------------------------------------------
-  {
-    const { box, body } = group("Drugs and volume", null);
-    slots.drugs = body;
-    body.after(h("p", { className: "note pg-after", textContent: "Pressors, inotropes, nitroglycerin, atropine, pacing and IV fluid are in Management, Support." }));
-    el.append(box);
-  }
-
   return {
-    el,
-    slot: (id) => slots[id],
+    mounts,
     sync(state, info) {
       for (const f of syncs) f(state);
       preset.value = info.presetId ?? "";

@@ -66,7 +66,7 @@
         <div class="q-call"><span>Clinical time</span><b id="qclin"></b></div>
         <div class="q-call"><span>Artery</span><b id="qartery"></b></div>
         <div class="row" style="margin-top:0"><button id="qhand" class="primary">Hand over</button></div>
-        <p class="note">Now treat the patient. The lesion is shown; the Management panel below is live. Muscle dies while the artery stays closed, and orders take clinical minutes to arrive (2 a second). 40 points for muscle saved, against immediate PCI; 20 for the share of the time the pressure is held out of shock, less the share spent doing harm. The phase ends 20 min after reperfusion, at 150 min, or when you hand over.</p>
+        <p class="note">Now treat the patient. The lesion is shown; the Support tab of the settings below is live. Muscle dies while the artery stays closed, and orders take clinical minutes to arrive (2 a second). 40 points for muscle saved, against immediate PCI; 20 for the share of the time the pressure is held out of shock, less the share spent doing harm. The phase ends 20 min after reperfusion, at 150 min, or when you hand over.</p>
       </div>
       <div class="q-reveal">
         <p class="q-result" id="qresult"></p>
@@ -86,7 +86,6 @@
       </div>
       <p class="note">Playground edits one patient with every control and drives every panel from it; its share link opens the same patient.</p>
     </section>
-    <div id="pgmount" hidden></div>
 
     <section>
       <h2>Monitor</h2>
@@ -111,147 +110,159 @@
       <p class="note q-hidden-note">Rate, output and pressure only while a case is running: the rest reads the tracing for you.</p>
     </section>
 
-    <section id="lesionsec">
-      <h2>Lesion</h2>
-      <div id="lesionctl">
-        <label for="lseg" style="margin-top:0">Vessel</label>
-        <select id="lseg"></select>
-        <label for="pos">Position along the vessel <span class="val" id="posv"></span></label>
-        <input id="pos" type="range" min="5" max="95" value="15">
-        <label for="ds">Diameter stenosis <span class="val" id="dsv"></span></label>
-        <input id="ds" type="range" min="0" max="95" value="0">
-        <div class="row">
-          <button id="occ" class="primary">Occlude</button>
-          <button id="exert">Exertion (2×)</button>
-        </div>
-        <p class="glabel" id="ts-l">Time scale</p>
-        <div class="row" id="ts-row" style="margin-top:0">
-          <button id="s1" class="on">1×</button>
-          <button id="s3">3×</button>
-          <button id="s6">6×</button>
-        </div>
+    <section id="dock" data-tab="patient" aria-label="Settings">
+      <div class="tabs dock-tabs" role="tablist" aria-label="Settings">
+        <h2>Settings</h2>
+        <button class="tab dtab on" data-tab="patient" role="tab" aria-selected="true">Patient</button>
+        <button class="tab dtab" data-tab="rhythm" role="tab" aria-selected="false">Rhythm</button>
+        <button class="tab dtab" data-tab="coronary" role="tab" aria-selected="false">Coronary</button>
+        <button class="tab dtab" data-tab="valves" role="tab" aria-selected="false">Valves</button>
+        <button class="tab dtab" data-tab="support" role="tab" aria-selected="false">Support</button>
+        <button class="tab dtab" data-tab="display" role="tab" aria-selected="false">Display</button>
       </div>
-      <p class="note q-hidden-note">The lesion is hidden while a case is running.</p>
-      <p class="note">Ischemia develops over about 20 s after occlusion and resolves with a time constant of about 8 s after reperfusion. Rate and AV conduction follow the territory; lost contraction and slow rates lower blood pressure, and lower pressure perfuses every coronary bed less.</p>
-    </section>
-
-    <section id="manage" data-tab="support">
-      <div class="tabs" role="tablist">
-        <h2>Management</h2>
-        <button class="tab on" data-tab="support" role="tab">Support</button>
-        <button class="tab" data-tab="revasc" role="tab">Reperfuse</button>
-        <button class="tab" data-tab="assess" role="tab">Assessment</button>
-      </div>
-      <div class="pane" data-pane="support">
-        <div class="ctl">
-          <label for="nor">Norepinephrine</label><input id="nor" type="range" min="0" max="100" value="0"><span class="val" id="norv"></span>
-          <label for="dob">Dobutamine</label><input id="dob" type="range" min="0" max="100" value="0"><span class="val" id="dobv"></span>
-          <span>IV fluid</span><button id="m_fluid">+500 ml</button><span class="val" id="fluidv"></span>
-          <span>Nitroglycerin</span><button id="m_nitro">Off</button><span class="val"></span>
-          <span>Atropine</span><button id="m_atropine">Off</button><span class="val"></span>
-          <span>Pacing</span><button id="m_pace">Off</button><span class="val" id="pacev"></span>
-          <label for="pacerate" class="pace-only">at rate</label><input id="pacerate" class="pace-only" type="range" min="40" max="120" value="70"><span class="val pace-only"></span>
-          <span>Balloon pump</span><button id="m_iabp">Off</button><span class="val"></span>
-          <span>Impella</span><button id="m_impella">Off</button><span class="val"></span>
-        </div>
-        <p class="note" id="fluidnote"></p>
-        <p class="note">Support changes what the patient can tolerate and how much oxygen the heart asks for; it does not open the artery. Each choice also has a cost: pressors add afterload, inotropes add demand and ectopy, volume congests a failing left ventricle, nitrates drop the preload a right ventricle depends on.</p>
-      </div>
-      <div class="pane" data-pane="revasc">
+      <div class="dpane" data-pane="patient" id="dpane-patient"></div>
+      <div class="dpane" data-pane="rhythm">
+        <div id="patient">
+        <p class="glabel" style="margin-top:0">Rhythm</p>
         <div class="row" style="margin-top:0">
-          <button id="m_pci">Primary PCI</button>
-          <button id="m_lysis">Fibrinolytic</button>
-          <button id="m_cabg">CABG</button>
-          <button id="m_cancel">Cancel</button>
-          <a id="openCath" class="askbtn" href="../cath/" title="See this patient's angiogram and pressure wire, before and after treatment">Open in cath lab<span aria-hidden="true">→</span></a>
+          <button id="r_sinus" class="on">Sinus</button>
+          <button id="r_af">Atrial fibrillation</button>
         </div>
-        <div id="xlinks" hidden></div>
-        <p class="note" id="mstatus"></p>
-        <p class="note">Orders take clinical time to reach the artery (about 2 minutes pass per second at 1×), and muscle that stays ischemic dies as it waits. PCI stents the lesion; a fibrinolytic opens an occlusion in about half of patients and leaves a stenosis; a bypass feeds the vessel beyond the lesion and leaves the lesion itself.</p>
+        <p class="glabel">Conduction</p>
+        <div class="row" style="margin-top:0">
+          <button id="c_none" class="on">Normal</button>
+          <button id="c_rbbb">RBBB</button>
+          <button id="c_lbbb">LBBB</button>
+        </div>
+        <p class="note">What the patient brought with them. Fibrillation takes away the P waves, so the AV node shows only as a slowing of the irregular response. A left bundle branch block pushes every ST segment away from its QRS before any lesion does, so read it for change: concordant ST, or discordant elevation out of proportion to the S wave.</p>
+        </div>
       </div>
-      <div class="pane" data-pane="assess">
-        <div id="issues" class="issues"></div>
-        <div id="warns" class="warns"></div>
-        <div class="row"><button id="m_hint">What would the guidelines do?</button><button id="m_reset">Reset treatment</button></div>
-        <div id="steps" class="steps" hidden></div>
+      <div class="dpane" data-pane="coronary">
+        <div id="lesionsec">
+        <div id="lesionctl">
+          <label for="lseg" style="margin-top:0">Vessel</label>
+          <select id="lseg"></select>
+          <label for="pos">Position along the vessel <span class="val" id="posv"></span></label>
+          <input id="pos" type="range" min="5" max="95" value="15">
+          <label for="ds">Diameter stenosis <span class="val" id="dsv"></span></label>
+          <input id="ds" type="range" min="0" max="95" value="0">
+          <div class="row">
+            <button id="occ" class="primary">Occlude</button>
+            <button id="exert">Exertion (2×)</button>
+          </div>
+          <p class="glabel" id="ts-l">Time scale</p>
+          <div class="row" id="ts-row" style="margin-top:0">
+            <button id="s1" class="on">1×</button>
+            <button id="s3">3×</button>
+            <button id="s6">6×</button>
+          </div>
+        </div>
+        <p class="note q-hidden-note">The lesion is hidden while a case is running.</p>
+        <p class="note">Ischemia develops over about 20 s after occlusion and resolves with a time constant of about 8 s after reperfusion. Rate and AV conduction follow the territory; lost contraction and slow rates lower blood pressure, and lower pressure perfuses every coronary bed less.</p>
+        </div>
+        <div id="anatomy">
+          <p class="glabel">Anatomy</p>
+        <div class="row" style="margin-top:0">
+          <button id="p_typ">Typical</button>
+          <button id="p_left">Left-dominant</button>
+          <button id="p_ramus">Ramus</button>
+          <button id="p_abs">Absent left main</button>
+        </div>
+        <label for="dom">Dominance</label>
+        <select id="dom"><option value="right">Right-dominant</option><option value="co">Co-dominant</option><option value="left">Left-dominant</option></select>
+        <label for="lm">Left main pattern</label>
+        <select id="lm"><option value="bifurcation">Bifurcation (LAD and circumflex)</option><option value="trifurcation">Trifurcation (with ramus intermedius)</option><option value="absent">Absent left main (separate ostia)</option></select>
+        <label for="lad">LAD course</label>
+        <select id="lad"><option value="normal">Reaches the apex</option><option value="short">Short, ends before the apex</option><option value="wrap">Wraps around to the inferior wall</option></select>
+        <label for="san">Sinoatrial node artery</label>
+        <select id="san"><option value="RCA">From the RCA</option><option value="LCx">From the circumflex</option></select>
+        <label for="conus">Conus branch</label>
+        <select id="conus"><option value="shared">From the RCA</option><option value="separate">Separate ostium</option></select>
+        </div>
+      </div>
+      <div class="dpane" data-pane="valves" id="dpane-valves"></div>
+      <div class="dpane" data-pane="support">
+      <div id="manage" data-tab="support">
+        <div class="tabs" role="tablist">
+          <button class="tab on" data-tab="support" role="tab">Support</button>
+          <button class="tab" data-tab="revasc" role="tab">Reperfuse</button>
+          <button class="tab" data-tab="assess" role="tab">Assessment</button>
+        </div>
+        <div class="pane" data-pane="support">
+          <div class="ctl">
+            <label for="nor">Norepinephrine</label><input id="nor" type="range" min="0" max="100" value="0"><span class="val" id="norv"></span>
+            <label for="dob">Dobutamine</label><input id="dob" type="range" min="0" max="100" value="0"><span class="val" id="dobv"></span>
+            <span>IV fluid</span><button id="m_fluid">+500 ml</button><span class="val" id="fluidv"></span>
+            <span>Nitroglycerin</span><button id="m_nitro">Off</button><span class="val"></span>
+            <span>Atropine</span><button id="m_atropine">Off</button><span class="val"></span>
+            <span>Pacing</span><button id="m_pace">Off</button><span class="val" id="pacev"></span>
+            <label for="pacerate" class="pace-only">at rate</label><input id="pacerate" class="pace-only" type="range" min="40" max="120" value="70"><span class="val pace-only"></span>
+            <span>Balloon pump</span><button id="m_iabp">Off</button><span class="val"></span>
+            <span>Impella</span><button id="m_impella">Off</button><span class="val"></span>
+          </div>
+          <p class="note" id="fluidnote"></p>
+          <p class="note">Support changes what the patient can tolerate and how much oxygen the heart asks for; it does not open the artery. Each choice also has a cost: pressors add afterload, inotropes add demand and ectopy, volume congests a failing left ventricle, nitrates drop the preload a right ventricle depends on.</p>
+        </div>
+        <div class="pane" data-pane="revasc">
+          <div class="row" style="margin-top:0">
+            <button id="m_pci">Primary PCI</button>
+            <button id="m_lysis">Fibrinolytic</button>
+            <button id="m_cabg">CABG</button>
+            <button id="m_cancel">Cancel</button>
+            <a id="openCath" class="askbtn" href="../cath/" title="See this patient's angiogram and pressure wire, before and after treatment">Open in cath lab<span aria-hidden="true">→</span></a>
+          </div>
+          <div id="xlinks" hidden></div>
+          <p class="note" id="mstatus"></p>
+          <p class="note">Orders take clinical time to reach the artery (about 2 minutes pass per second at 1×), and muscle that stays ischemic dies as it waits. PCI stents the lesion; a fibrinolytic opens an occlusion in about half of patients and leaves a stenosis; a bypass feeds the vessel beyond the lesion and leaves the lesion itself.</p>
+        </div>
+        <div class="pane" data-pane="assess">
+          <div id="issues" class="issues"></div>
+          <div id="warns" class="warns"></div>
+          <div class="row"><button id="m_hint">What would the guidelines do?</button><button id="m_reset">Reset treatment</button></div>
+          <div id="steps" class="steps" hidden></div>
+        </div>
+      </div>
+
+        <div id="volume">
+          <p class="glabel">Volume and drugs</p>
+        <label for="bl" style="margin-top:0">Blood loss <span class="val" id="blv"></span></label>
+        <input id="bl" type="range" min="-20" max="50" value="0">
+        <label for="bb">Beta blocker <span class="val" id="bbv"></span></label>
+        <input id="bb" type="range" min="0" max="100" value="0">
+        <div class="row">
+          <button id="x_bleed">Bleed 20%</button>
+          <button id="x_reset">Reset</button>
+        </div>
+        <p class="note">Both ramp in over about 10 s. What follows is the patient's own response: watch the rate, the pressure and the pulse pressure.</p>
+        </div>
+        <div id="dpane-support"></div>
+      </div>
+      <!-- C5 (Display inside the 3D view) removes this tab: its button above and this pane -->
+      <div class="dpane" data-pane="display" id="display">
+  <p class="glabel" style="margin-top:0">Color the vessels by</p>
+        <div class="row" style="margin-top:0">
+          <button id="m_real" class="on">Anatomic</button>
+          <button id="m_anat">Territory</button>
+          <button id="m_pressure">Pressure</button>
+          <button id="m_velocity">Velocity</button>
+          <button id="m_wss">Wall shear</button>
+          <button id="m_o2">O₂ sat</button>
+        </div>
+        <p class="glabel">Myocardium</p>
+        <div class="row" style="margin-top:0">
+          <button id="h_solid" class="on">Solid</button>
+          <button id="h_ghost">See-through</button>
+          <button id="h_none">Hidden</button>
+        </div>
+        <label for="ex">Vessel radius exaggeration <span class="val"><span id="exv"></span>×</span></label>
+        <input id="ex" type="range" min="1" max="5" step="0.5" value="2.5">
+        <div class="row">
+          <button id="flowbtn">Show blood flow</button>
+          <button id="propsbtn" title="Show the heart's valves, septal defects and jets inside it (from a shared link's structural lesions); makes a solid heart see-through">Valves and defects</button>
+          <button id="postbtn">Posterior leads V7–V9</button>
+        </div>
       </div>
     </section>
-
-    <details class="fold" id="patient">
-      <summary><h2>Patient</h2><span class="sum" id="patientsum"></span></summary>
-      <p class="glabel" style="margin-top:0">Rhythm</p>
-      <div class="row" style="margin-top:0">
-        <button id="r_sinus" class="on">Sinus</button>
-        <button id="r_af">Atrial fibrillation</button>
-      </div>
-      <p class="glabel">Conduction</p>
-      <div class="row" style="margin-top:0">
-        <button id="c_none" class="on">Normal</button>
-        <button id="c_rbbb">RBBB</button>
-        <button id="c_lbbb">LBBB</button>
-      </div>
-      <p class="note">What the patient brought with them. Fibrillation takes away the P waves, so the AV node shows only as a slowing of the irregular response. A left bundle branch block pushes every ST segment away from its QRS before any lesion does, so read it for change: concordant ST, or discordant elevation out of proportion to the S wave.</p>
-    </details>
-
-    <details class="fold" id="volume">
-      <summary><h2>Volume and drugs</h2><span class="sum" id="volumesum"></span></summary>
-      <label for="bl" style="margin-top:0">Blood loss <span class="val" id="blv"></span></label>
-      <input id="bl" type="range" min="-20" max="50" value="0">
-      <label for="bb">Beta blocker <span class="val" id="bbv"></span></label>
-      <input id="bb" type="range" min="0" max="100" value="0">
-      <div class="row">
-        <button id="x_bleed">Bleed 20%</button>
-        <button id="x_reset">Reset</button>
-      </div>
-      <p class="note">Both ramp in over about 10 s. What follows is the patient's own response: watch the rate, the pressure and the pulse pressure.</p>
-    </details>
-
-
-    <details class="fold" id="anatomy">
-      <summary><h2>Anatomy</h2><span class="sum" id="anatomysum"></span></summary>
-      <div class="row" style="margin-top:0">
-        <button id="p_typ">Typical</button>
-        <button id="p_left">Left-dominant</button>
-        <button id="p_ramus">Ramus</button>
-        <button id="p_abs">Absent left main</button>
-      </div>
-      <label for="dom">Dominance</label>
-      <select id="dom"><option value="right">Right-dominant</option><option value="co">Co-dominant</option><option value="left">Left-dominant</option></select>
-      <label for="lm">Left main pattern</label>
-      <select id="lm"><option value="bifurcation">Bifurcation (LAD and circumflex)</option><option value="trifurcation">Trifurcation (with ramus intermedius)</option><option value="absent">Absent left main (separate ostia)</option></select>
-      <label for="lad">LAD course</label>
-      <select id="lad"><option value="normal">Reaches the apex</option><option value="short">Short, ends before the apex</option><option value="wrap">Wraps around to the inferior wall</option></select>
-      <label for="san">Sinoatrial node artery</label>
-      <select id="san"><option value="RCA">From the RCA</option><option value="LCx">From the circumflex</option></select>
-      <label for="conus">Conus branch</label>
-      <select id="conus"><option value="shared">From the RCA</option><option value="separate">Separate ostium</option></select>
-    </details>
-
-    <details class="fold" id="display">
-      <summary><h2>Display</h2><span class="sum" id="displaysum"></span></summary>
-      <p class="glabel" style="margin-top:0">Color the vessels by</p>
-      <div class="row" style="margin-top:0">
-        <button id="m_real" class="on">Anatomic</button>
-        <button id="m_anat">Territory</button>
-        <button id="m_pressure">Pressure</button>
-        <button id="m_velocity">Velocity</button>
-        <button id="m_wss">Wall shear</button>
-        <button id="m_o2">O₂ sat</button>
-      </div>
-      <p class="glabel">Myocardium</p>
-      <div class="row" style="margin-top:0">
-        <button id="h_solid" class="on">Solid</button>
-        <button id="h_ghost">See-through</button>
-        <button id="h_none">Hidden</button>
-      </div>
-      <label for="ex">Vessel radius exaggeration <span class="val"><span id="exv"></span>×</span></label>
-      <input id="ex" type="range" min="1" max="5" step="0.5" value="2.5">
-      <div class="row">
-        <button id="flowbtn">Show blood flow</button>
-        <button id="propsbtn" title="Show the heart's valves, septal defects and jets inside it (from a shared link's structural lesions); makes a solid heart see-through">Valves and defects</button>
-        <button id="postbtn">Posterior leads V7–V9</button>
-      </div>
-    </details>
   </aside>
 </main>
 <section class="ws-sec" hidden><h2>Live hemodynamics</h2><div id="workspace"></div></section>

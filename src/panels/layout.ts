@@ -58,17 +58,21 @@ function defaultStorage(): KV | null {
 }
 
 /** Saved layouts carry `v`. Absent means v1 (before P3b), when the monitor and ECG were fixed on the page, not panels. */
-export const LAYOUT_VERSION = 2;
+export const LAYOUT_VERSION = 3;
 /** Panels that were always visible before they became panels: a v1 layout gets them, first, so nothing disappears. */
 export const V2_ADDED = ["monitor", "ecg"];
+/** The ischemia table (Table 1 under the 3D view) became a panel in v3: older layouts get it, last, so it does not vanish. */
+export const V3_ADDED = ["ischemia"];
 
 /** Bring a saved blob up to the current version (then sanitize it). Older blobs gain the panels that used to be fixed. */
 export function migrateLayout(raw: unknown, defs: readonly PanelDef[]): LayoutState {
   const r = raw as { on?: unknown; active?: unknown; v?: unknown } | null;
   if (r && typeof r === "object" && Array.isArray(r.on) && !(typeof r.v === "number" && r.v >= LAYOUT_VERSION)) {
-    const on: unknown[] = r.on;
-    const added = V2_ADDED.filter(id => !on.includes(id));
-    return sanitizeLayout({ ...r, on: [...added, ...on] }, defs);
+    const v = typeof r.v === "number" ? r.v : 1;
+    let on: unknown[] = r.on;
+    if (v < 2) on = [...V2_ADDED.filter(id => !on.includes(id)), ...on];
+    if (v < 3) on = [...on, ...V3_ADDED.filter(id => !on.includes(id))];
+    return sanitizeLayout({ ...r, on }, defs);
   }
   return sanitizeLayout(raw, defs);
 }
