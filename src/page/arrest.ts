@@ -6,6 +6,7 @@ import type { ArrestDrug, RhythmClass } from "../sim/arrest";
 import { $, S, sim, inGame, on, range, sel } from "./state";
 import { setDockTab } from "./dock";
 import { adoptSimState } from "./model";
+import { rhythmPickerUi } from "./rhythmPicker";
 
 const CLASS_LABEL: Record<RhythmClass, string> = { vf: "Ventricular fibrillation", pulselessVt: "Pulseless ventricular tachycardia", asystole: "Asystole", pea: "Pulseless electrical activity", perfusing: "Perfusing rhythm" };
 const SHOCKABLE: Record<RhythmClass, string> = { vf: "Shockable: defibrillate", pulselessVt: "Shockable: defibrillate", asystole: "Not shockable: CPR and epinephrine", pea: "Not shockable: CPR, epinephrine, treat the cause", perfusing: "Pulse present" };
@@ -24,7 +25,7 @@ const num = (id: string) => +$<HTMLInputElement>(id).value;
 let seenRhythm: string = sim.patient?.rhythm ?? "sinus";
 export function arrestSync() {
   const r = sim.patient?.rhythm;
-  if (r !== undefined && r !== seenRhythm) { seenRhythm = r; S.rhythm = r; }
+  if (r !== undefined && r !== seenRhythm) { seenRhythm = r; S.rhythm = r; rhythmPickerUi(); }
 }
 
 const cprPatch = () => ({ rate: num("a_rate"), depthCm: num("a_depth"), quality: num("a_quality") / 100 });
@@ -85,7 +86,7 @@ export function arrestUi() {
   $("a_last").textContent = ls ? `${ls.joules} J${ls.sync ? " sync" : ""}, ${clock(a.tS - ls.tS)} ago: ${ls.success ? "converted" : "no conversion"}` : "none yet";
   for (const d of DRUGS) {
     const s = since(d), n = a.drugs.filter((x) => x.drug === d).length, el = $("a_t_" + d);
-    el.textContent = s === null ? "not given" : `${n}x, last ${clock(s)} ago`;
+    el.textContent = s === null ? "not given" : `${n}x · ${clock(s)} ago`;
     el.style.color = d === "epinephrine" && s !== null && s >= ARREST.drugs.epinephrine.minIntervalS ? "var(--warn)" : "var(--muted)";
   }
   $("a_amio").textContent = a.drugs.some((x) => x.drug === "amiodarone") ? "Amiodarone 150 mg" : "Amiodarone 300 mg";

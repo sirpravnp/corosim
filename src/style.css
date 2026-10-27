@@ -334,3 +334,5 @@ body.game #volume, body.game #dpane-support { display: none; }
 .arrest-dead-card p { margin: 0 0 10px; font-size: 13px; }
 .arrest-dead-card button { padding: 10px 18px; font-size: 13px; }
 body.dead #hr, body.dead #rhythm { opacity: 0.6; }
+.acls .ctl { grid-template-columns: minmax(0, 1fr) 104px 84px; }
+.acls .ctl .val { white-space: nowrap; font-size: 11px; }
