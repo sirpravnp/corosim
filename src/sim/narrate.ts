@@ -300,8 +300,9 @@ export function vitalsNow(v: Vitals): string {
   const rate = v.hr !== null && !v.noOutput ? ` at ${v.hr}/min` : "";
   const parts: string[] = [`now in ${v.rhythm}${rate}${v.rhythmWhy ? ` (${v.rhythmWhy})` : ""}`];
   if (v.arrest?.status === "dead") return "the patient has died (no flow for too long)";
-  if (v.noOutput || v.arrest?.status === "arrest") parts.push(v.arrest?.status === "arrest" ? (v.arrest.cprOn ? "in cardiac arrest with CPR under way" : "in cardiac arrest with no CPR") : "with no cardiac output (an arrest rhythm)");
-  else if (v.map !== null) parts.push(`BP ${v.sbp}/${v.dbp} (MAP ${v.map})`);
+  if (v.noOutput) parts.push("with no cardiac output (an arrest rhythm)");
+  if (v.arrest?.status === "arrest") parts.push(v.arrest.cprOn ? "in cardiac arrest with CPR under way" : "in cardiac arrest with no CPR");
+  if (!v.noOutput && v.arrest?.status !== "arrest" && v.map !== null) parts.push(`BP ${v.sbp}/${v.dbp} (MAP ${v.map})`);
   if (!v.noOutput && v.circulation !== "stable") parts.push(v.circulation === "shock" ? "in shock" : "hypotensive");
   const heart: string[] = [];
   if (v.ischemicMass >= 0.02) heart.push(`about ${pct(v.ischemicMass)} of the myocardium ischemic`);
