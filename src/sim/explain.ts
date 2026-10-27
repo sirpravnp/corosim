@@ -37,7 +37,7 @@ export function ectopyStatement(e: Ectopy, t: number): string | null {
   return `Occasional premature ventricular beats: ${per}${why ? `; ${why}` : ""}; ${pause}.`;
 }
 
-const CAUSE_WHY: Record<RunCause, string> = {
+export const CAUSE_WHY: Record<RunCause, string> = {
   ischemia: "a premature beat on the vulnerable phase of acutely ischemic myocardium started it",
   reperfusion: "it came with reperfusion of the ischemic muscle",
   scar: "a re-entry circuit around healed infarct scar runs it",
