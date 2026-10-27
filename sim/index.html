@@ -20,6 +20,15 @@
     <figure>
       <div id="view" class="viewport">
         <div id="tag"></div>
+        <div id="arrestRosc" class="arrest-banner" role="status" hidden><span>Return of spontaneous circulation. Keep supporting the patient: the rhythm can fail again.</span><button id="arrestRoscClose" aria-label="Dismiss">Dismiss</button></div>
+        <div id="arrestDead" class="arrest-dead" role="alertdialog" aria-labelledby="a_deadTitle" hidden>
+          <div class="arrest-dead-card">
+            <h2 id="a_deadTitle">Patient declared dead</h2>
+            <p id="a_deadAt"></p>
+            <p class="note" id="a_deadMsg"></p>
+            <button id="arrestRestart" class="primary">Restart patient</button>
+          </div>
+        </div>
         <div id="vc" class="vc">
           <div class="vc-bar" role="tablist" aria-label="3D view display">
             <button class="vc-tab" data-vc="view" role="tab" aria-expanded="false">View</button>
@@ -221,6 +230,33 @@
       <div class="dpane" data-pane="valves" id="dpane-valves"></div>
       <div class="dpane" data-pane="pericardium" id="dpane-pericardium"></div>
       <div class="dpane" data-pane="support">
+      <div id="arrest" class="acls" hidden>
+        <p class="glabel acls-state"><span id="a_state"></span> <span class="val" id="a_rhythm"></span></p>
+        <p class="note" id="a_shockable" style="margin-top:0"></p>
+        <div class="acls-times">
+          <span>Arrest time</span><b id="a_arrestS">0:00</b>
+          <span>No-flow time</span><b id="a_noflow">0:00</b>
+          <span>Irreversible injury</span><b id="a_injury">0%</b>
+        </div>
+        <div class="ctl">
+          <span>Compressions</span><button id="a_cpr">Start CPR</button><span class="val" id="a_output"></span>
+          <label for="a_rate">Rate</label><input id="a_rate" type="range" min="80" max="140" step="1" value="110"><span class="val" id="a_ratev"></span>
+          <label for="a_depth">Depth</label><input id="a_depth" type="range" min="3" max="8" step="0.5" value="5.5"><span class="val" id="a_depthv"></span>
+          <label for="a_quality">Quality</label><input id="a_quality" type="range" min="0" max="100" step="5" value="100"><span class="val" id="a_qualityv"></span>
+        </div>
+        <div class="ctl">
+          <label for="a_joules">Energy</label><select id="a_joules" aria-label="Shock energy"><option value="120">120 J</option><option value="150">150 J</option><option value="200" selected>200 J</option></select><span class="val"></span>
+          <span>Synchronized</span><button id="a_sync">Off</button><span class="val"></span>
+          <span>Defibrillator</span><button id="a_shock" class="primary">Shock</button><span class="val"></span>
+        </div>
+        <div class="ctl">
+          <span>Epinephrine 1 mg</span><button id="a_epi">Give</button><span class="val" id="a_t_epinephrine"></span>
+          <span>Amiodarone</span><button id="a_amio">Amiodarone 300 mg</button><span class="val" id="a_t_amiodarone"></span>
+          <span>Lidocaine 100 mg</span><button id="a_lido">Give</button><span class="val" id="a_t_lidocaine"></span>
+        </div>
+        <p class="note">Shocks given <b id="a_shocks">0</b> · last shock: <span id="a_last">none yet</span></p>
+        <p class="note" id="a_note"></p>
+      </div>
       <div id="manage" data-tab="support">
         <div class="tabs" role="tablist">
           <button class="tab on" data-tab="support" role="tab">Drugs</button>
