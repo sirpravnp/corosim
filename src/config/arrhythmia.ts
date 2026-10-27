@@ -21,7 +21,7 @@ export const ARRHYTHMIA = {
   /**
    * Hazard of an initiating event from ongoing ischemia, per clinical minute, for a patient of susceptibility 1 at full substrate and
    * the peak of the time course. An initiating event is a premature beat that finds the ventricle vulnerable and starts a run: a
-   * non-sustained VT, a sustained monomorphic VT, a polymorphic VT or VF (`mix.ischemia`). Calibrated on the rig (tests/arrhythmia.test.ts,
+   * non-sustained VT, a sustained monomorphic VT, a polymorphic VT or VF (`mix.ischemia`). Calibrated on the rig (tests/arrhythmiaRates.test.ts,
    * 400 seeds) so that a proximal LAD occlusion gives VF within the first clinical hour in about one patient in ten: VF before primary
    * PCI in 11.6% of first STEMIs presenting within 12 h (Jabbari 2015, PMID 25559012), 12% (Glinge 2020, PMID 32101559), 9.5% (Ravn
    * Jacobsen 2020, PMID 32067598), anterior infarcts about twice the others; primary VF 4.4% of patients admitted within 24 h (El-Sherif
@@ -36,7 +36,7 @@ export const ARRHYTHMIA = {
    * first half hour (Naito 1982, PMID 6174040). With these constants the first 4 hours hold about 60 times the hourly hazard of hours
    * 4-48, and three quarters of the first 4 hours' events fall in the first hour. The burden itself builds up over the first ~40
    * clinical minutes (the ischemia kinetics run in heartbeat time), so the hazard the patient feels peaks around 20-40 minutes and the
-   * first hour holds about 2.3 times the VF of the second (rig: tests/arrhythmiaRates.test.ts). [time constants assumed]
+   * first hour holds about twice the VF of the second (rig: tests/arrhythmiaRates.test.ts). [time constants assumed]
    */
   riseMin: 2, tauMin: 30, sub: 0.04, subTauMin: 240, late: 0.001,
   /**
