@@ -68,8 +68,7 @@ export function manageUi() {
   const set = (id: string, v: string, bad = false) => { const e = $(id); e.textContent = v; e.classList.toggle("bad", bad); };
   set("m_time", T.ischemicMin > 0 ? clinicalTime(T.ischemicMin) : "—");
   set("m_inf", inf > 0.005 ? Math.round(inf * 100) + "%" : "none", inf > 0.15);
-  const vit = pageVitals(), ef = vit && Number.isFinite(vit.lvEf) ? vit.lvEf : circ?.ejectionFraction; // the Hemodynamics table's LVEF where there is a live source
-  set("m_ef", ef !== undefined ? Math.round(ef * 100) + "%" : "—", ef !== undefined && ef < 0.4);
+  if (!pageVitals()) set("m_ef", circ ? Math.round(circ.ejectionFraction * 100) + "%" : "—", !!circ && circ.ejectionFraction < 0.4); // with a live source vitalsUi sets it (the Hemodynamics table's LVEF)
   set("m_cpp", circ ? Math.round(sim.perfusion) + " mmHg" : "—");
   const sp = T.support, onOff = (id: string, on: boolean) => { $(id).classList.toggle("on", on); $(id).textContent = on ? "On" : "Off"; };
   $("norv").textContent = sp.norepi ? Math.round(sp.norepi * 100) + "%" : "off";

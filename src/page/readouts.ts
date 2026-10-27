@@ -7,6 +7,7 @@ import { RhythmState } from "../physics/rhythm";
 import { libraryRhythm } from "../physics/rhythmSource";
 import { tree, A, sites, circ, $, V, S, sim, sev, PHYS, ecg, rstate, pageVitals } from "./state";
 import { monitorText } from "../sim/vitals";
+import { monitorHooks } from "../panels/monitor";
 import { rhythmPickerUi } from "./rhythmPicker";
 import { manageUi } from "./manage";
 import { dockUi } from "./dock";
@@ -46,22 +47,18 @@ export const rhythmLabel = (r: ReturnType<EcgStrip["rhythm"]>, rs: RhythmState |
 };
 
 const leadOrder = () => (S.posterior ? ALL_LEADS : LEADS);
-export function liveUi() {
-  const r = ecg.rhythm(), st = ecg.st();
-  const vit = pageVitals(); // one snapshot for the whole frame: the Monitor shows what the Hemodynamics table shows
+/**
+ * The Monitor's vital signs (rate, pressure, output, circulation status, LVEF). On the live source they are the page's one vitals snapshot,
+ * the same numbers the Hemodynamics table and the cath panels show; the Monitor panel redraws them in the same frame as those panels
+ * (workspace.ts hooks it), so the labels agree frame by frame. Without a live source (the game) they keep the legacy readouts.
+ */
+export function vitalsUi() {
+  const vit = pageVitals();
   const mt = vit ? monitorText(vit, CIRC.shockMap, CIRC.hypotensionMap) : null;
-  const hr = vit && Math.round(vit.hr) > 0 ? Math.round(vit.hr) : Math.round(r.hr), deg = rstate?.avDegree ?? 0;
+  const hr = vit && Math.round(vit.hr) > 0 ? Math.round(vit.hr) : Math.round(ecg.rhythm().hr);
   $("hr").textContent = hr ? hr + " bpm" : "…";
   $("hr").style.color = hr && (hr < 50 || hr > 110) ? "var(--bad)" : hr && (hr < 60 || hr > 100) ? "var(--warn)" : "var(--ink)";
-  const af = rstate?.rhythm === "af";
-  $("arate").textContent = af ? "fibrillating" : r.atrial ? Math.round(r.atrial) + " bpm" : "…";
-  $("pr").textContent = af ? "—" : deg === 3 ? "dissociated" : r.pr === null ? "…" : Math.round(r.pr * 1000) + " ms" + (deg === 2 ? " (lengthening)" : "");
-  $("pr").style.color = deg >= 1 && !af ? "var(--bad)" : "var(--ink)";
-  $("rhythm").textContent = rhythmLabel(r, rstate);
-  $("rhythm").style.color = deg >= 2 ? "var(--bad)" : af || deg === 1 || r.atrial < 60 || r.atrial > 100 ? "var(--warn)" : "var(--ink)";
-  const up = leadOrder().filter((l) => st[l] >= 1), down = leadOrder().filter((l) => st[l] <= -1);
-  $("stup").textContent = up.length ? up.join(", ") : "none"; $("stup").style.color = up.length ? "var(--bad)" : "var(--ink)";
-  $("stdown").textContent = down.length ? down.join(", ") : "none";
+  if (vit && mt) { const ef = $("m_ef"); ef.textContent = mt.ef; ef.classList.toggle("bad", Number.isFinite(vit.lvEf) && vit.lvEf < 0.4); }
   if (circ) {
     const mapSm = vit ? vit.map : sim.map, lb = sim.history[sim.history.length - 1], roll = sim.rolling(10); // legacy (the game): this beat's own pressure; output over 10 s
     $("bp").textContent = mt ? mt.bp : lb ? `${Math.round(lb.sbp)}/${Math.round(lb.dbp)} (${Math.round(mapSm)})` : `— (${Math.round(mapSm)})`;
@@ -72,6 +69,21 @@ export function liveUi() {
     $("circ").textContent = st8 + (st8 !== "Stable" && why ? `, ${why}` : "");
     $("circ").style.color = $("bp").style.color;
   }
+}
+
+export function liveUi() {
+  const r = ecg.rhythm(), st = ecg.st();
+  if (!monitorHooks.draw) vitalsUi(); // on the Simulator page the Monitor panel draws them with the other panels (one frame, one snapshot); the game has no panels
+  const deg = rstate?.avDegree ?? 0;
+  const af = rstate?.rhythm === "af";
+  $("arate").textContent = af ? "fibrillating" : r.atrial ? Math.round(r.atrial) + " bpm" : "…";
+  $("pr").textContent = af ? "—" : deg === 3 ? "dissociated" : r.pr === null ? "…" : Math.round(r.pr * 1000) + " ms" + (deg === 2 ? " (lengthening)" : "");
+  $("pr").style.color = deg >= 1 && !af ? "var(--bad)" : "var(--ink)";
+  $("rhythm").textContent = rhythmLabel(r, rstate);
+  $("rhythm").style.color = deg >= 2 ? "var(--bad)" : af || deg === 1 || r.atrial < 60 || r.atrial > 100 ? "var(--warn)" : "var(--ink)";
+  const up = leadOrder().filter((l) => st[l] >= 1), down = leadOrder().filter((l) => st[l] <= -1);
+  $("stup").textContent = up.length ? up.join(", ") : "none"; $("stup").style.color = up.length ? "var(--bad)" : "var(--ink)";
+  $("stdown").textContent = down.length ? down.join(", ") : "none";
   const burden = ischemicBurden(sites, sev) * 100;
   $("burden").textContent = S.hide ? "—" : burden.toFixed(0) + "%"; $("burden").style.color = S.hide ? "var(--muted)" : burden > 10 ? "var(--bad)" : burden > 1 ? "var(--warn)" : "var(--ink)";
   $("stmap").innerHTML = leadOrder().map((l) => {
