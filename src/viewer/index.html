@@ -37,6 +37,18 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
 .ecgwrap { background: #fffaf8; border: 1px solid #e3b3ad; }
 #ecg { display: block; width: 100%; }
 .bad { color: var(--bad); } .warn { color: var(--warn); }
+.lbls { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.lbl { position: absolute; left: 0; top: 0; font-size: 10px; font-weight: 700; padding: 1px 4px; background: rgba(5,6,10,0.6); color: #f0eee8; border-radius: 2px; white-space: nowrap; }
+.lbl.ch { background: rgba(184,55,46,0.7); }
+.banner { position: absolute; left: 50%; top: 6px; transform: translateX(-50%); max-width: 70%; padding: 5px 10px; font: 700 11px/1.3 -apple-system, Arial, sans-serif; letter-spacing: 0.06em; text-transform: uppercase; text-align: center; color: #fff; background: var(--bad); border: 1px solid #fff3; }
+.banner.rosc { background: var(--ok); } .banner.note { background: var(--panel); color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; top: auto; bottom: 34px; border-color: var(--rule); }
+.dead { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; background: rgba(5,6,10,0.72); color: #f0eee8; text-align: center; }
+.dead b { font: 700 22px/1 -apple-system, Arial, sans-serif; letter-spacing: 0.2em; text-transform: uppercase; color: var(--bad); }
+[hidden] { display: none !important; }
+.case { margin: 0 0 6px; color: var(--muted); }
+.chip { display: inline-block; padding: 0 5px; margin-left: 4px; border: 1px solid var(--rule); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+.chip.moderate { border-color: var(--warn); color: var(--warn); } .chip.severe, .chip.atretic { border-color: var(--bad); color: var(--bad); }
+.lines div { margin: 3px 0; }
 @media (max-width: 560px) { .top { grid-template-columns: 1fr; grid-template-rows: 260px auto; } .root { height: auto; } }
 </style>
 </head>
@@ -49,22 +61,31 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
   </header>
   <div class="top">
     <div class="stage" id="stage">
-      <div class="legend"><i style="background:#7c2a24"></i>muscle<i style="background:#3f3150"></i>ischemic<i style="background:#2a2230"></i>infarct<i style="background:#f2c14e"></i>narrowing</div>
+      <div class="lbls" id="lbls"></div>
+      <div class="banner" id="banner" hidden></div>
+      <div class="banner note" id="mapnote" hidden></div>
+      <div class="dead" id="dead" hidden><b>Dead</b><span id="deadwhy"></span></div>
+      <div class="legend" id="legend"><i style="background:#7c2a24"></i>muscle<i style="background:#3f3150"></i>ischemic<i style="background:#2a2230"></i>infarct<i style="background:#f2c14e"></i>narrowing</div>
+      <div class="legend" id="mapkey" hidden></div>
       <div class="views">
         <button data-view="anterior" class="on">Anterior</button><button data-view="left">Left</button><button data-view="posterior">Posterior</button><button data-view="inferior">Inferior</button><button data-view="right">Right</button>
       </div>
     </div>
     <div class="monitor">
+      <p class="case" id="narrative" hidden></p>
       <table>
         <tr><td>Rhythm</td><td id="rhythm">…</td></tr>
-        <tr><td>Heart rate</td><td id="hr">…</td></tr>
+        <tr><td>Rate</td><td id="hr">…</td></tr>
         <tr><td>Blood pressure</td><td id="bp">…</td></tr>
         <tr><td>Output</td><td id="co">…</td></tr>
+        <tr id="valverow" hidden><td>Valves</td><td id="valves"></td></tr>
         <tr><td>ST elevation</td><td id="stup">…</td></tr>
         <tr><td>ST depression</td><td id="stdown">…</td></tr>
         <tr><td>Ischemia</td><td id="isch">…</td></tr>
         <tr><td>LV infarct</td><td id="inf">…</td></tr>
       </table>
+      <div id="valvebox" hidden><h2>Valves</h2><div class="lines" id="valvelist"></div></div>
+      <div id="arrestbox" hidden><h2>Cardiac arrest</h2><div class="lines" id="arrestlist"></div></div>
       <h2>Problems</h2><div class="problems" id="problems"></div>
       <h2>Guidelines next</h2><div class="steps" id="steps"></div>
     </div>
