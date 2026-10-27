@@ -1,19 +1,25 @@
 /** The "Left-heart cath" panel: numbers table plus two overlay plots (LV with aorta, wedge with LV in diastole). Draws only; the maths is in sim/leftHeartCath.ts. */
 import { leftHeartCath, type LeftHeartCath } from "../sim/leftHeartCath";
 import type { HemoSource } from "../sim/hemoSource";
+import type { Vitals } from "../sim/vitals";
 import { recentHemodynamicBeats, SETTLE_BEATS } from "../sim/hemoBeats";
 import type { Panel, PanelDef } from "./panel";
 import { DASH, fmt } from "./numbers";
 
 const COLORS = { lv: "#f4f1ea", ao: "#ff6b5b", la: "#6aa7ff", gap: "rgba(255,179,106,0.35)" };
 
-export function cathRows(c: LeftHeartCath): [string, string][] {
+/**
+ * Table rows. With `v` (the page's vitals snapshot) the aorta row and LVEDP are the Hemodynamics table's numbers, so the same label never
+ * reads two values; the pull-back plots and the gradients stay on the latest steady beat they are drawn from.
+ */
+export function cathRows(c: LeftHeartCath, v?: Vitals): [string, string][] {
+  const ao = v ? { systolic: v.sbp, diastolic: v.dbp, mean: v.map } : c.ao, lvedp = v ? v.lvedp : c.lv.lvedp;
   const a = (x: number) => (Number.isFinite(x) ? `${x.toFixed(2)} cm²` : DASH);
   const mmHg = (x: number) => `${fmt(x)} mmHg`;
   const label = (s: string) => (s === "none" ? "no stenosis" : `${s} stenosis`);
   return [
-    ["LV systolic / LVEDP", `${fmt(c.lv.systolic)} / ${fmt(c.lv.lvedp)}`],
-    ["Aorta s/d (mean)", `${fmt(c.ao.systolic)}/${fmt(c.ao.diastolic)} (${fmt(c.ao.mean)})`],
+    ["LV systolic / LVEDP", `${fmt(c.lv.systolic)} / ${fmt(lvedp)}`],
+    ["Aorta s/d (mean)", `${fmt(ao.systolic)}/${fmt(ao.diastolic)} (${fmt(ao.mean)})`],
     ["Peak-to-peak gradient", mmHg(c.gradient.peakToPeak)],
     ["Mean gradient (ejection)", mmHg(c.gradient.mean)],
     ["Peak instantaneous", mmHg(c.gradient.peakInstant)],
@@ -94,14 +100,14 @@ export const leftHeartCathPanel: PanelDef = {
       setSource(s) { src = s; lastBeat = null; lastKey = ""; },
       resize() { lastKey = ""; },
       draw() {
-        const n = src.numbers(), hb = recentHemodynamicBeats(src.beats(4 + SETTLE_BEATS)).beats, beat = hb[hb.length - 1]; // pull-back and gradients from the latest steady beat
+        const n = src.numbers(), vit = src.vitals(), hb = recentHemodynamicBeats(src.beats(4 + SETTLE_BEATS)).beats, beat = hb[hb.length - 1]; // pull-back and gradients from the latest steady beat
         if (beat !== lastBeat) { lastBeat = beat; cur = leftHeartCath(n, beat, "adult"); lastKey = ""; }
-        const key = `${cur ? 1 : 0}|${n.co}|${c1.clientWidth}`;
+        const key = `${cur ? 1 : 0}|${n.co}|${vit.sbp}|${vit.dbp}|${vit.map}|${vit.lvedp}|${c1.clientWidth}`;
         if (key === lastKey) return;
         lastKey = key;
         wait.hidden = !!cur; body.hidden = !cur;
         if (!cur) return;
-        tbody.replaceChildren(...cathRows(cur).map(([k, v]) => {
+        tbody.replaceChildren(...cathRows(cur, vit).map(([k, v]) => {
           const tr = document.createElement("tr"), a = document.createElement("td"), b = document.createElement("td");
           a.textContent = k; b.textContent = v; if (v === DASH) b.style.color = "var(--muted)";
           tr.append(a, b); return tr;
