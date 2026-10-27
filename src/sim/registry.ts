@@ -174,6 +174,10 @@ export const ACTIONS: Record<string, { tool: string | null; why: string }> = {
   m_pci: { tool: "corosim_treat", why: "primary PCI" }, m_lysis: { tool: "corosim_treat", why: "fibrinolytic" }, m_cabg: { tool: "corosim_treat", why: "CABG" },
   m_cancel: { tool: null, why: "cancels an order not yet carried out (the chat orders and waits)" },
   m_hint: { tool: "corosim_get_state", why: "guideline next steps are in the assessment" }, m_reset: { tool: "corosim_set_scenario", why: "reset treatment: a new patient" },
+  a_cpr: { tool: null, why: "chest compressions on or off (page-only until the arrest MCP tool)" }, a_rate: { tool: null, why: "CPR rate, 80-140 per min (page-only)" },
+  a_depth: { tool: null, why: "CPR depth, 3-8 cm (page-only)" }, a_quality: { tool: null, why: "CPR quality 0-100 % (page-only)" },
+  a_joules: { tool: null, why: "shock energy 120/150/200 J (page-only)" }, a_sync: { tool: null, why: "synchronized (cardioversion) or unsynchronized shock (page-only)" }, a_shock: { tool: null, why: "deliver the shock (page-only)" },
+  a_epi: { tool: null, why: "epinephrine 1 mg (page-only)" }, a_amio: { tool: null, why: "amiodarone 300 then 150 mg (page-only)" }, a_lido: { tool: null, why: "lidocaine 100 mg (page-only)" },
   x_reset: { tool: "corosim_set_scenario", why: "reset the volume and drug sliders" }, openCath: { tool: "corosim_heart_cath", why: "the cath lab readings" },
 };
 

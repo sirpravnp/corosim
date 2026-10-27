@@ -11,6 +11,7 @@ import { liveUi } from "./readouts";
 import { flush } from "./model";
 import { treatStep } from "./game";
 import { settlingUi } from "./workspace";
+import { arrestSync, arrestUi } from "./arrest";
 
 let last = performance.now(), uiClock = 0, paintClock = 0;
 let wasSettling = false, settleDrawn = -Infinity;
@@ -32,19 +33,20 @@ export function frame(now: number) {
   if (inCase) G.clock += dt * S.speed;
   // The clinical clock: the simulator's runs at its time scale; a case's at the game's fixed rate; none once a case is over.
   const minutes = G.phase === "idle" ? dt * S.speed * INFARCT.minutesPerSecond : inCase ? dt * TREAT.minutesPerSecond : 0;
+  arrestSync(); // a rhythm the arrest machine changed (shock, ROSC) becomes the page's own
   sim.speed = S.speed; sim.patient = { rhythm: S.rhythm, bbb: S.bbb }; sim.support = T.support; sim.treated = T.treated; // shared: an AI's treatment and the panel's are one record
   sim.step(dt, { minutes });
   if (minutes > 0) manageStep(minutes, ischemicBurden(sites, sev));
   if (sim.analysis !== A) { takeAnalysis(); for (const b of built) b.blocked = blockedFlags(b.seg); shapeVessels(); } // perfusion pressure or demand moved
   takeRC();
   const fx = sim.ecgInputs();
-  ecg.step(dt, fx.injury, fx.tBoost, rstate!.rhythm);
+  if (!sim.dead) ecg.step(dt, fx.injury, fx.tBoost, rstate!.rhythm); // death freezes the strip
   ecg.draw();
   if (G.phase === "treat") treatStep(dt, minutes);
   if (S.flow) stepParticles(dt);
   if ((paintClock += dt) > 0.1) { paintClock = 0; paintMyocardium(); }
   if (S.mode === "o2" && (o2Clock += dt) > 0.5) { o2Clock = 0; const f = o2Now(), k = `${f.ready}|${f.arterial.toFixed(3)}`; if (k !== o2Key) { o2Key = k; shapeVessels(); } }
-  if ((uiClock += dt) > 0.25) { uiClock = 0; liveUi(); }
+  if ((uiClock += dt) > 0.25) { uiClock = 0; liveUi(); arrestUi(); }
   controls.update(); updateBranchLod(); camera.updateMatrixWorld(); updateMarkers(dt); renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }

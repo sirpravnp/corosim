@@ -15,15 +15,16 @@ import { shell, cathLinkUi, applyMode, initShell } from "./page/connect";
 import { mountPanels } from "./page/workspace";
 import { pgShow, pgAdopt, openShared, initPatient, pgState } from "./page/patient";
 import { frame } from "./page/loop";
+import { wireArrest, arrestUi } from "./page/arrest";
 
-wireManage(); wireControls(); wirePicking(); wireGame(); initShell(); wireVolume();
+wireManage(); wireControls(); wireArrest(); wirePicking(); wireGame(); initShell(); wireVolume();
 
 // Browsers restore form values on reload; force every control to match the model's starting state.
 $<HTMLInputElement>("pos").value = String(S.pos * 100);
 $<HTMLInputElement>("ds").value = String(S.ds * 100);
 $<HTMLInputElement>("ex").value = String(S.exag);
 physUi(); sim.warmup(20); ecg.reset(sim.t); // start with the reflexes already settled
-resize(); setView("vAnt"); syncSelects(); rebuildAnatomy(); applyHeartView(); controlsUi(); liveUi(); applyMode();
+resize(); setView("vAnt"); syncSelects(); rebuildAnatomy(); applyHeartView(); controlsUi(); liveUi(); arrestUi(); applyMode();
 initPatient();
 openShared();
 addEventListener("hashchange", openShared);
