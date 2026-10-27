@@ -51,11 +51,11 @@ export const DEFAULT_PROSTHESIS_SIZE: Record<ProsthesisKind, Record<ValveKey, nu
 
 /**
  * Regurgitant orifice area (cm²) a working prosthesis has with nothing wrong: the closing volume and washing jets of a mechanical
- * valve are physiological (ASE 2009: about 5 to 10 % of stroke volume for a bileaflet valve; 0.02 cm² gives about 6 % at the aortic
+ * valve are physiological (ASE 2009: about 5 to 10 % of stroke volume for a bileaflet valve; 0.03 cm² gives about 7 % at the aortic
  * closing pressure). A bioprosthesis has none; a transcatheter valve carries the trace paravalvular leak most have (PARTNER 3: none
  * or trace in about 65 %, mild in 30 %; 0.02 cm² is trace to mild). [lit, rounded]
  */
-export const PROSTHESIS_CLOSING_LEAK: Record<ProsthesisKind, number> = { bioprosthetic: 0, mechanical: 0.02, transcatheter: 0.02 };
+export const PROSTHESIS_CLOSING_LEAK: Record<ProsthesisKind, number> = { bioprosthetic: 0, mechanical: 0.03, transcatheter: 0.02 };
 /** Valve-in-valve: a transcatheter valve inside a failed surgical bioprosthesis keeps only this share of its tabulated EOA (the surgical frame is a fixed, smaller ring). [lit, rounded] from the VIVID registry: mean gradient 15 to 16 mmHg. */
 export const VALVE_IN_VALVE_EOA = 0.8;
 
