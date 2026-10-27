@@ -1,6 +1,6 @@
 import { mountWorkspace } from "../panels/workspace";
 import { CLINICAL_SCALES } from "../panels/timeControl";
-import { monitorPanel } from "../panels/monitor";
+import { monitorPanel, monitorHooks } from "../panels/monitor";
 import { ecgPanel } from "../panels/ecg";
 import { numbersPanel } from "../panels/numbers";
 import { tracesPanel } from "../panels/traces";
@@ -14,7 +14,7 @@ import { LiveSource } from "../sim/liveSource";
 import type { Workspace } from "../panels/workspace";
 import type { HemoSource } from "../sim/hemoSource";
 import { $, S, sim, patientOpts, playClock, panelSource, setPanelSource } from "./state";
-import { controlsUi } from "./readouts";
+import { controlsUi, vitalsUi } from "./readouts";
 
 /** The workspace's "settling" note, shown while the core engine builds and warms up (panels have no beats yet). */
 const settlingNote = document.createElement("div");
@@ -47,6 +47,7 @@ export function mountPanels() {
   const ws = $("workspace"); (ws.parentElement as HTMLElement).hidden = false;
   (ws.parentElement as HTMLElement).insertBefore(settlingNote, ws);
   pushPatient(true); // a link that was opened before the workspace existed has its structure in the core engine already; this settles the source choice
+  monitorHooks.draw = vitalsUi;
   const first = chooseSource(); setPanelSource(first);
   workspace = mountWorkspace(ws, [ecgPanel, tracesPanel, loopsPanel, monitorPanel, numbersPanel, ischemiaPanel, oxygenPanel, rhcPanel, leftHeartCathPanel, jvpPanel], first, {
     clock: playClock, clinical: { scales: CLINICAL_SCALES, get: () => S.speed, set: (v) => { S.speed = v; controlsUi(); } }, // both clocks in the workspace bar
