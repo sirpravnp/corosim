@@ -32,6 +32,11 @@ export interface Scenario {
   support?: SupportSpec;
   /** Seed for every random process; the same scenario and seed give the same beats. */
   seed?: number;
+  /**
+   * Teaching override of the patient's tendency to ischemic ectopy (core engine; the legacy engine ignores it): 0..3, a multiplier
+   * on the susceptibility the seed gives the patient (physics/ectopy.ts). 0 = never any PVC, 1 = as the seed has it (default).
+   */
+  ectopyTendency?: number;
 }
 
 export interface LesionSpec {
@@ -71,6 +76,7 @@ export interface Normalized {
     autonomic: AutonomicControls;
     patient: Patient;
     support: Support; // atropine here is always false: it is derived from drugs.atropine
+    ectopyTendency: number;
   };
   warnings: string[];
 }
@@ -163,9 +169,14 @@ export function normalizeScenario(input: Scenario = {}, base?: Normalized["scena
   const bl = input.bloodLoss ?? base?.bloodLoss ?? 0;
   const bloodLoss = clamp(num(bl) ? bl : 0, -0.3, 0.6);
   if (bloodLoss !== bl) warnings.push(`bloodLoss clamped to ${bloodLoss}`);
+  let ectopyTendency = base?.ectopyTendency ?? 1;
+  if (input.ectopyTendency !== undefined) {
+    if (!num(input.ectopyTendency)) warnings.push("ectopyTendency is not a number; ignored");
+    else { ectopyTendency = clamp(input.ectopyTendency, 0, 3); if (ectopyTendency !== input.ectopyTendency) warnings.push(`ectopyTendency clamped to ${ectopyTendency} (range 0..3)`); }
+  }
   return {
     scenario: {
-      anatomy: variant, lesions, lesionSpecs: specs, drugs, autonomic, bloodLoss, patient, support,
+      anatomy: variant, lesions, lesionSpecs: specs, drugs, autonomic, bloodLoss, patient, support, ectopyTendency,
       exertion: input.exertion ?? base?.exertion ?? false, seed: Math.trunc(input.seed ?? base?.seed ?? 1) >>> 0,
     },
     warnings,
@@ -182,6 +193,7 @@ export function toScenario(n: Normalized["scenario"]): Scenario {
     patient: { ...n.patient },
     support: supportSpec(n.support),
     seed: n.seed,
+    ...(n.ectopyTendency !== 1 ? { ectopyTendency: n.ectopyTendency } : {}), // only when set: the plain spec stays as it was
   };
 }
 

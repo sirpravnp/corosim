@@ -16,6 +16,7 @@ import { Support, supportedRhythm } from "../physics/support";
 import { Drugs, DrugDoses, DrugEffects } from "../physics/core/drugs";
 import type { DrugName } from "../config/drugs";
 import { BeatStream } from "../physics/beatStream";
+import { Ectopy, weightedBurden, ectopyState } from "../physics/ectopy";
 import { BeatHemodynamics } from "../physics/beatHemo";
 import { Autonomic, AUTONOMIC, AutonomicEffects } from "../physics/autonomic";
 import { LiveHeart, LiveBeat, endDiastolicBeats } from "../physics/core/live";
@@ -194,12 +195,13 @@ export class Simulation {
     if (this.engine === "legacy") for (const [k, v] of [["epinephrine", this.support.epi], ["milrinone", this.support.milrinone], ["vasopressin", this.support.vasopressin], ["nitroprusside", this.support.nitroprusside], ["furosemide", this.support.furosemide]] as const)
       if (v > 0) this.warnings = [...this.warnings, `support.${k} is modelled on the core engine only; the legacy engine ignores it.`];
     this.stream = new BeatStream(scenario.seed, Simulation.LOOKAHEAD, 0.05);
+    if (this.engine === "core") this.stream.ectopy = new Ectopy(scenario.seed, scenario.ectopyTendency); // B3a; the legacy engine keeps the old PVC rule
     this.beatHemo = new BeatHemodynamics();
     this.autonomic = new Autonomic(scenario.seed, this.engine === "core" ? { ...AUTONOMIC, ...AUTONOMIC_CORE } : AUTONOMIC);
     this.autonomic.controls = { ...scenario.autonomic };
     this.rebuildAnatomy();
     this.updateCirculation();
-    if (opts.settled) { Object.assign(this.sev, this.target); this.updateCirculation(); }
+    if (opts.settled) { Object.assign(this.sev, this.target); this.updateCirculation(); this.stream.ectopy?.settle(weightedBurden(this.sites, this.sev, this.transmural)); }
     if (this.engine === "core") this.initCore(opts.warmup ?? 0);
   }
 
@@ -279,7 +281,7 @@ export class Simulation {
     for (const k of Object.keys(this.sev)) delete this.sev[k];
     for (const k of Object.keys(this.scar)) delete this.scar[k];
     this.map = this.perfusion = this.solvedPerfusion = CIRC.baseMap; this.solvedDemand = 1; this.clinicalMinutes = 0; this.ischemicMinutes = 0;
-    this.beatHemo.reset();
+    this.beatHemo.reset(); this.stream.ectopy?.reset(); // a cleared heart is not a reperfused one
     this.resolveCoronaries(true);
     this.updateCirculation();
     if (this.engine === "core") { this.fluidModel = undefined; this.initCore(); }
@@ -297,6 +299,7 @@ export class Simulation {
     if (this.engine === "core" && patch.fluids !== undefined) this.patchFluids(patch);
     if (this.engine === "core" && (patch.heart || patch.pericardium || patch.septum !== undefined || patch.ventilation || patch.kind)) this.patchStructure(patch);
     if (patch.patient) this.patient = { ...scenario.patient };
+    if (this.stream.ectopy) this.stream.ectopy.tendency = scenario.ectopyTendency;
     this.autonomic.controls = { ...scenario.autonomic };
     if (anatomyChanged) { this.grafts = []; this.rebuildAnatomy(); } else this.resolveCoronaries(true);
   }
@@ -424,6 +427,7 @@ export class Simulation {
     ctl.volumeDeficit = Math.max(0, this.fluidModel ? 1 - this.fluidModel.bloodVolume / this.bv0 : this.bloodLoss); // core: the blood volume short of the patient's own, whatever its cause or refill
     this.autonomic.step(h);
     this.stream.alternans = alternansAmplitude(this.sac()?.effusionMl, this.periSpec?.open);
+    this.stream.ectopy?.update(minutes, weightedBurden(this.sites, this.sev, this.transmural), { sympathetic: this.fx.sympathetic, betaBlock: ctl.betaBlock, drugDrive: this.pk.effects().ectopyDrive });
     this.stream.extend(this.t, this.rstate, this.mod);
     this.stream.prune(this.t);
     this.t += h;
@@ -1020,7 +1024,7 @@ export class Simulation {
       rolling10s: { hr: r0(roll.hr), sbp: r0(roll.sbp), dbp: r0(roll.dbp), map: r0(roll.map), sv: r0(roll.sv), cardiacOutput: Number.isFinite(roll.cardiacOutput) ? +roll.cardiacOutput.toFixed(1) : null },
       meanArterialPressure: Math.round(this.map),
       coronaryPerfusionPressure: Math.round(this.perfusion),
-      rhythm: { label, sinusRate: Math.round(rs.sinusRate), avBlock: rs.avDegree, pvcSeverity: +rs.pvcSeverity.toFixed(2), baseline: { ...this.patient } },
+      rhythm: { label, sinusRate: Math.round(rs.sinusRate), avBlock: rs.avDegree, pvcSeverity: +rs.pvcSeverity.toFixed(2), baseline: { ...this.patient }, ...ectopyState(this.stream.ectopy, this.t) },
       treatment: {
         ischemicMinutes: Math.round(this.ischemicMinutes),
         stent: this.treated.stent, lysis: this.treated.lysed, grafted: this.treated.grafts.length > 0,

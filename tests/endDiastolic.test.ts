@@ -41,7 +41,7 @@ describe("anterior STEMI on the live page source", () => {
 describe("pressure-volume loops with premature beats (anterior STEMI, with and without an Impella)", () => {
   const run = (impella: boolean) => {
     const s = new Simulation({}, { engine: "core" });
-    s.reset({ seed: 3, ...CASE_BY_ID.ladocc.scenario }, { settled: true }); s.warmup(25);
+    s.reset({ seed: 3, ...CASE_BY_ID.ladocc.scenario, ectopyTendency: 3 }, { settled: true }); s.warmup(25); // B3a: an ectopy-prone patient, so the minute holds premature beats
     const src = new LiveSource(s);
     if (impella) s.apply({ devices: { impella: { model: "CP", level: 8, position: "correct" } }, support: { impella: true } });
     s.step(100);

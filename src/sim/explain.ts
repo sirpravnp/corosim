@@ -1,6 +1,8 @@
 import { Simulation } from "./simulation";
 import { AUTONOMIC } from "../physics/autonomic";
 import { CIRC } from "../physics/circulation";
+import { Ectopy, EctopyPhase } from "../physics/ectopy";
+import { ECTOPY } from "../config/ectopy";
 
 export interface Explanation {
   headline: string;
@@ -9,6 +11,28 @@ export interface Explanation {
   mechanisms: string[];
   teachingPoints: string[];
   caveats: string[];
+}
+
+const PHASE_WHY: Record<EctopyPhase, string> = {
+  none: "",
+  hyperacute: "ischemic ectopy peaks in the first hour or two after onset",
+  subacute: "ischemic ectopy falls over the hours after onset",
+  late: "many hours after onset, ischemic ectopy has settled to a low level",
+  reperfusion: "reperfusion of ischemic muscle brings a burst of ectopy that settles over tens of minutes, then a slow tail over hours",
+};
+
+/**
+ * The core engine's ectopy (B3a) as measured over the last minute of beats: frequent, occasional or none, with the phase that
+ * explains it. Nothing when the heart has no ischemic history (no ectopy to speak of).
+ */
+export function ectopyStatement(e: Ectopy, t: number): string | null {
+  const phase = e.phase(), r = e.recent(t);
+  if (phase === "none" && r.pvcs === 0) return null;
+  const why = PHASE_WHY[phase], per = `${r.pvcs} of the last ${r.beats} beats (${Math.round(r.share * 100)}%)`;
+  const pause = "each is followed by a compensatory pause and a stronger next beat";
+  if (r.pvcs === 0) return `No premature ventricular beats over the last minute${why ? `, although ${why}` : ""}; how many a patient has varies widely between patients.`;
+  if (r.share >= ECTOPY.frequent) return `Frequent premature ventricular beats: ${per}${why ? `; ${why}` : ""}; ${pause}.`;
+  return `Occasional premature ventricular beats: ${per}${why ? `; ${why}` : ""}; ${pause}.`;
 }
 
 /**
@@ -36,7 +60,9 @@ export function explain(sim: Simulation): Explanation {
     } else if (sim.t > 0) mech.push("No bed is ischemic yet: autoregulation is still meeting demand despite the lesion, or ischemia has not had time to develop (it takes about 20 s).");
   }
   if (st.rhythm.avBlock) mech.push(`AV-node artery ischemia has caused ${st.rhythm.label}; the ventricular rate is set by the block, not the sinus node.`);
-  if (st.rhythm.pvcSeverity > 0.6) mech.push("Ischemic burden is above the ectopy threshold, so premature ventricular beats occur; each is followed by a compensatory pause and a stronger next beat.");
+  const ect = sim.stream.ectopy;
+  if (ect) { const e = ectopyStatement(ect, sim.t); if (e) mech.push(e); } // core engine (B3a): what the monitor actually showed
+  else if (st.rhythm.pvcSeverity > 0.6) mech.push("Ischemic burden is above the ectopy threshold, so premature ventricular beats occur; each is followed by a compensatory pause and a stronger next beat.");
 
   const rs = sim.rstate, sup = st.support, v = st.ventricle;
   if (rs.rhythm === "af") mech.push("Atrial fibrillation: no P waves, an irregular ventricular response set by the AV node, and no atrial kick (each beat fills less).");

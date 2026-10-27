@@ -66,8 +66,11 @@ describe("inflow too deep", () => {
 
 describe("RV infarct starving a left-sided Impella", () => {
   const RCA = { lesions: [{ artery: "RCA", occluded: true, position: 0.2 }] }, RCAdist = { lesions: [{ artery: "RCA", occluded: true, position: 0.95 }] };
-  const RV = { heart: { rvEes: 0.2, rvStiffness: 4 } };
-  const rvf = run({ ...RCA, ...RV, bloodLoss: 0.25, ...imp(9) }), ref = run({ ...RCAdist, bloodLoss: 0.25, ...imp(9) });
+  // ectopyTendency 0 (B3a): an RCA occlusion in complete heart block now has PVCs too, and one premature beat at P9 sets the suction
+  // alarm in the reference patient as well; this block compares RV involvement, so ectopy is held out of all of it (as the old rule did
+  // in complete heart block).
+  const RV = { heart: { rvEes: 0.2, rvStiffness: 4 }, ectopyTendency: 0 };
+  const rvf = run({ ...RCA, ...RV, bloodLoss: 0.25, ...imp(9) }), ref = run({ ...RCAdist, bloodLoss: 0.25, ...imp(9), ectopyTendency: 0 });
   const fl = run({ ...RCA, ...RV, bloodLoss: 0.25, ...imp(9), support: { fluids: 1 } });
   const rp = run({ ...RCA, ...RV, bloodLoss: 0.25, devices: { impella: { level: 9 }, impellaRp: { level: 5 } } });
   const low = run({ ...RCA, ...RV, bloodLoss: 0.25, ...imp(5) });
