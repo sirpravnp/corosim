@@ -5,14 +5,15 @@
  * the rows of its sections (volume, ventilation, the settings of each device); the dock's other tabs (Rhythm, Coronary, Display) hold the
  * page's own controls, so there is one place for every control. The on/off switch of a device is the page's own (sim/index.html).
  */
-import { GROUP_INFO, addBolus, bolusTotalMl, patchDevice, patchSection, withBloodVolume } from "../sim/playground";
+import { GROUP_INFO, addBolus, bolusTotalMl, patchDevice, patchSection, valvePresetModified, withBloodVolume, withValvePreset } from "../sim/playground";
 import type { FieldGroupInfo, PlaygroundState } from "../sim/playground";
 import { PATIENT_RANGES } from "../sim/patient";
 import type { FluidKind, ImpellaModel } from "../sim/patient";
 import { PRESETS, PRESET_BY_ID } from "../sim/presets";
-import { LESIONS, LESION_BY_ID, defaults } from "../sim/structural";
+import { LESIONS, LESION_BY_ID } from "../sim/structural";
 import type { LesionId } from "../sim/structural";
-import { buildValves } from "./valvesPanel";
+import { buildValves, heartOf } from "./valvesPanel";
+import { buildBaseline, buildDefects, hasShunt } from "./heartDefects";
 
 export interface PlaygroundHost {
   getState(): PlaygroundState;
@@ -113,13 +114,16 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
   slider(el, "heart.volumeMl", "Blood volume", -1000, 5000, 50, (s) => (s.structural ? 0 : s.heart?.volumeMl), 0, (v) => (v ? `${v > 0 ? "+" : "−"}${Math.abs(v)} ml` : "normal"), (s, v) => withBloodVolume(s, v));
   el.append(h("p", { className: "note pg-note", textContent: "Baseline blood volume, as extra ml on the patient's normal. Blood loss, hemorrhage and IV boluses (Support tab) change it from here." }));
 
-  // ---- structural heart (Valves tab) ---------------------------------------------------------------------------------
+  // ---- valves (Valves tab) -----------------------------------------------------------------------------------------------
+  // The per-valve controls are the tab's main UI. The Preset menu above them fills them (and the shunt and baseline fields a lesson needs);
+  // editing a valve afterwards keeps the preset's name with "(modified)". The defect sizes follow in their own group, shown when the heart has a defect.
   el = mounts.valves;
+  const valvesCtx = { h, ctlId, fields, syncs, edit, legacy: host.legacy };
   {
-    const { box, body } = group("Structural heart", GROUP_INFO.heart, true);
+    const { box, body } = group("Valves", GROUP_INFO.heart, true);
     fields.push("heart");
-    const sel = h("select", { id: "pg-lesion", "aria-label": "Structural lesion" } as Partial<HTMLSelectElement>);
-    const customOpt = h("option", { value: CUSTOM, textContent: "Custom heart (from a preset or link)" });
+    const sel = h("select", { id: "pg-lesion", "aria-label": "Valve and defect preset" } as Partial<HTMLSelectElement>);
+    const customOpt = h("option", { value: CUSTOM, textContent: "Custom heart" });
     customOpt.hidden = true;
     sel.append(customOpt);
     for (const [g, label] of [["valve", "Valves"], ["congenital", "Congenital"]] as const) {
@@ -127,37 +131,25 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
       for (const l of LESIONS.filter((x) => x.group === g && x.patient === "adult")) og.append(h("option", { value: l.id, textContent: l.label }));
       sel.append(og);
     }
-    const sliders = h("div", { className: "pg-sliders" }), teach = h("p", { className: "note" }), custom = h("p", { className: "note pg-json" });
-    body.append(h("label", { htmlFor: "pg-lesion", textContent: "Lesion", className: "pg-first" }), sel, sliders, teach, custom);
-    sel.addEventListener("change", () => {
-      if (sel.value === CUSTOM) return;
-      const def = LESION_BY_ID[sel.value]!;
-      edit((s) => ({ ...s, structural: { id: def.id, values: defaults(def) }, heart: undefined }));
-    });
-    let shown: string | null = null;
+    const teach = h("p", { className: "note" });
+    body.append(h("label", { htmlFor: "pg-lesion", textContent: "Preset", className: "pg-first" }), sel, teach);
+    sel.addEventListener("change", () => { if (sel.value !== CUSTOM) edit((s) => withValvePreset(s, sel.value as LesionId)); });
     syncs.push((s) => {
-      const id = s.structural?.id ?? null;
-      sel.value = id ?? (s.heart ? CUSTOM : "normal"); customOpt.hidden = !(s.heart && !s.structural);
-      custom.textContent = !s.structural && s.heart ? `Heart fields in the spec: ${JSON.stringify(s.heart)}. Pick a lesion above to replace them.` : "";
-      const def = id ? LESION_BY_ID[id] : undefined;
+      const def = s.valvePreset ? LESION_BY_ID[s.valvePreset] : undefined, modified = valvePresetModified(s);
+      const id = s.structural?.id ?? (def && !modified ? def.id : null);
+      // an edited preset (or a heart from a link) shows in the hidden "Custom heart" entry, named after where it started
+      customOpt.textContent = def && modified ? `${def.label} (modified)` : "Custom heart";
+      customOpt.hidden = !(s.heart && !id);
+      sel.value = id ?? (s.heart ? CUSTOM : "normal");
       teach.textContent = def?.teach ?? "";
-      const key = id ?? "";
-      if (key !== shown) {
-        shown = key; sliders.replaceChildren();
-        for (const p of def?.params ?? []) {
-          const sid = ctlId(), val = h("span", { className: "val" }), input = h("input", { id: sid, type: "range", min: String(p.min), max: String(p.max), step: String(p.step) });
-          sliders.append(h("label", { htmlFor: sid }, `${p.label} `, val), input);
-          input.addEventListener("input", () => edit((st) => st.structural ? { ...st, structural: { id: st.structural.id, values: { ...st.structural.values, [p.key]: Number(input.value) } } } : st));
-          (input as HTMLInputElement & { _sync?: (v: number) => void })._sync = (v) => { if (document.activeElement !== input) input.value = String(v); val.textContent = `${+v.toFixed(3)}${p.unit ? ` ${p.unit}` : ""}`; };
-        }
-      }
-      if (def) [...sliders.querySelectorAll("input")].forEach((inp, i) => (inp as HTMLInputElement & { _sync?: (v: number) => void })._sync?.(s.structural!.values[def.params[i].key] ?? def.params[i].default));
     });
+    buildValves({ body, ...valvesCtx });
     el.append(box);
   }
   {
-    const { box, body } = group("Valves one by one", null, true);
-    buildValves({ body, h, ctlId, fields, syncs, edit, legacy: host.legacy });
+    const { box, body } = group("Defect settings", null, true);
+    buildDefects({ body, ...valvesCtx });
+    syncs.push((s) => { box.hidden = !hasShunt(heartOf(s)); });
     el.append(box);
   }
 
@@ -227,6 +219,13 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     slider(ecmo, "devices.ecmo.fio2", "FiO₂", R.fio2[0], R.fio2[1], 0.01, (s) => s.devices?.ecmo?.fio2, 0.6, (v) => `${Math.round(v * 100)}%`, (s, v) => patchDevice(s, "ecmo", { fio2: v }));
   }
   layout = "stack";
+
+  // ---- Hemodynamic baseline (Patient tab): its own group, added after the tab's other content ----------------------------------
+  {
+    const { box, body } = group("Hemodynamic baseline", null, true);
+    buildBaseline({ body, ...valvesCtx });
+    mounts.patient.append(box);
+  }
 
   return {
     mounts, fields,
