@@ -6,9 +6,11 @@ import { writeFileSync } from "node:fs";
 import { buildModel, simulate, volumeOffsetFor, type StructuralSpec } from "../../src/physics/structural";
 import { LESIONS, defaults } from "../../src/sim/structural";
 
+/** Lessons added after the old solver was frozen (D1, adult congenital): they are built from the same fields as the lessons below, with no old-solver reference of their own. */
+const ADDED_AFTER_FREEZE = new Set(["vsd-eisenmenger", "tof-repaired", "pda-adult"]);
 export const REFERENCE_CASES: [string, StructuralSpec][] = [
   ["adult normal", {}], ["neonate normal", { patient: "neonate" }],
-  ...LESIONS.map((l) => [l.id, l.build(defaults(l))] as [string, StructuralSpec]),
+  ...LESIONS.filter((l) => !ADDED_AFTER_FREEZE.has(l.id)).map((l) => [l.id, l.build(defaults(l))] as [string, StructuralSpec]),
 ];
 
 // Waveforms are large; the two normal hearts carry them, which is enough to pin the sampling grid and rounding.
