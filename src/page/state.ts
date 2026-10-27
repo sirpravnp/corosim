@@ -8,6 +8,7 @@ import { Circulation } from "../physics/circulation";
 import { BedSite } from "../physics/ecgLink";
 import { EcgStrip } from "../ecgStrip";
 import { RhythmState } from "../physics/rhythm";
+import type { Vitals } from "../sim/vitals";
 import { noSupport } from "../physics/support";
 import { Pending, Treated, untreated } from "../physics/revasc";
 import { Simulation } from "../sim/simulation";
@@ -99,3 +100,12 @@ export const takeRC = () => { rstate = sim.rstate; circ = sim.circ; };
 /** What the 3D view's O2 mode and the panels read from: the live core engine (workspace.ts `syncSource`). */
 export let panelSource: HemoSource | null = null;
 export const setPanelSource = (s: HemoSource | null) => { panelSource = s; };
+/**
+ * The page's one vital-signs snapshot (sim/vitals.ts): what the Monitor, the Hemodynamics table and the cath panels all show. Null where there
+ * is no live source (the game's legacy engine) or before the first beat, so those keep their existing readouts.
+ */
+export function pageVitals(): Vitals | null {
+  if (sim.engine !== "core" || !panelSource) return null;
+  const v = panelSource.vitals();
+  return Number.isFinite(v.map) && Number.isFinite(v.hr) ? v : null;
+}

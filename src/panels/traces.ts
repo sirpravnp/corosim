@@ -41,7 +41,7 @@ function drawBand(b: Band, source: HemoSource, nowLive: number, seconds: number,
   g.strokeStyle = "#232323"; g.lineWidth = 1; g.fillStyle = "#8a8a80";
   const step = gridStep(top);
   for (let p = Math.ceil(bottom / step) * step; p <= top; p += step) { g.beginPath(); g.moveTo(L, y(p)); g.lineTo(R, y(p)); g.stroke(); g.fillText(String(p), 8, y(p) + 4); }
-  g.fillText(`${b.title} · mmHg`, L, 16);
+  g.fillText(`${b.title} · mmHg · legend = last 3 s of trace`, L, 16);
   g.fillText(review ? `${seconds} s, ${review.back > 0.05 ? `${review.back.toFixed(1)} s back` : "paused"}` : `${seconds} s`, review ? R - 118 : R - 30, H - 5);
   // legend on its own row: colour key, label and current systolic/diastolic (mean)
   let lx = 8;
