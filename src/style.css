@@ -366,3 +366,13 @@ body.game #dock .dtab:not([data-tab="support"]), body[data-game="play"] #dock .d
 body.dead #hr, body.dead #rhythm { opacity: 0.6; }
 .acls .ctl { grid-template-columns: minmax(0, 1fr) 104px 84px; }
 .acls .ctl .val { white-space: nowrap; font-size: 11px; }
+
+/* Support > Drugs > "More drugs": a collapsed sub-group of the core engine's receptor-level drugs */
+.sup-more { margin: 8px 0 0; border-top: 1px dashed var(--sh-line); padding-top: 6px; }
+.sup-more > summary { cursor: pointer; font: 600 12px/1.4 var(--font-data); color: var(--muted); list-style: none; display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.sup-more > summary::-webkit-details-marker { display: none; }
+.sup-more > summary::before { content: "+"; font-weight: 700; }
+.sup-more[open] > summary::before { content: "−"; }
+.sup-more > summary .sum { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sup-more[open] > summary .sum { display: none; }
+.sup-more > .ctl { margin-top: 8px; }

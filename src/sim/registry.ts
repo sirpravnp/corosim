@@ -86,11 +86,11 @@ add("support.fluids", "support", num(0, 3, "Litres of IV fluid given (the legacy
 add("support.norepinephrine", "support", num(0, 1), ["nor"]);
 add("support.dobutamine", "support", num(0, 1), ["dob"]);
 add("support.nitroglycerin", "support", num(0, 1), ["m_nitro"]);
-add("support.epinephrine", "support", num(0, 1, "Core engine only."));
-add("support.milrinone", "support", num(0, 1, "Core engine only."));
-add("support.vasopressin", "support", num(0, 1, "Core engine only."));
-add("support.nitroprusside", "support", num(0, 1, "Core engine only."));
-add("support.furosemide", "support", num(0, 1, "Core engine only."));
+add("support.epinephrine", "support", num(0, 1, "Core engine only."), ["epi"]);
+add("support.milrinone", "support", num(0, 1, "Core engine only."), ["mil"]);
+add("support.vasopressin", "support", num(0, 1, "Core engine only."), ["vaso"]);
+add("support.nitroprusside", "support", num(0, 1, "Core engine only."), ["nitp"]);
+add("support.furosemide", "support", num(0, 1, "Core engine only."), ["furo"]);
 add("support.pacing", "support", bool(), ["m_pace"]);
 add("support.paceRate", "support", num(40, 120), ["pacerate"]);
 add("support.iabp", "support", bool("Intra-aortic balloon pump (the legacy switch; devices.iabp is the same pump with settings, and the page's one switch edits both)."), ["m_iabp"]);
