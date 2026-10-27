@@ -9,7 +9,7 @@ import { tree, A, sites, circ, $, V, S, sim, sev, PHYS, ecg, rstate } from "./st
 import { rhythmPickerUi } from "./rhythmPicker";
 import { manageUi } from "./manage";
 import { dockUi } from "./dock";
-import { gameUi } from "./gameUi";
+import { casesUi } from "./cases";
 
 export function controlsUi() {
   $("posv").textContent = Math.round(S.pos * 100) + "%";
@@ -76,7 +76,7 @@ export function liveUi() {
     const txt = Math.abs(v) < 0.05 ? "0.0" : (v > 0 ? "+" : "−") + Math.abs(v).toFixed(1);
     return `<div><b>${l}</b><span class="${cls}">${txt}</span></div>`;
   }).join("");
-  gameUi(); dockUi();
+  casesUi(); dockUi();
   manageUi();
   if (S.hide) return; // the perfusion table names the starved beds
   const bySeg: Record<string, { ratio: number; mass: number; label: string; isch: number }> = {};
