@@ -136,8 +136,8 @@ add("septum", "pericardium", bool("Ventricular interdependence through the septu
 // ---- fluids, ventilation, devices (Support tab) -----------------------------------------------------------------------
 add("fluids.given", "support", { type: "array", maxItems: 20, items: { type: "object", required: ["kind", "ml"], properties: { kind: en(["crystalloid", "colloid", "albumin", "blood"]), ml: num(0, 5000), atMin: num(0, 1440), overMin: num(0, 1440) } } }, ["pg:fluids.given"]);
 add("fluids.hemorrhageMlMin", "support", num(0, 500), ["pg:fluids.hemorrhageMlMin"]);
-add("fluids.capillaryLeak", "support", num(0, 1));
-add("fluids.legRaise", "support", bool());
+add("fluids.capillaryLeak", "support", num(0, 1, "Capillary leak (sepsis): scales the filtration coefficient up, so fluid leaves the vessels faster. 0 = none."), ["pg:fluids.capillaryLeak"]);
+add("fluids.legRaise", "support", bool("Passive leg raise in progress: shifts blood from the legs to the chest."), ["pg:fluids.legRaise"]);
 add("ventilation.mode", "support", en(["spontaneous", "positive"]), ["pg:ventilation.mode"]);
 add("ventilation.peep", "support", num(0, 25, "cmH2O"), ["pg:ventilation.peep"]);
 add("ventilation.tidalMlKg", "support", num(2, 15), ["pg:ventilation.tidalMlKg"]);

@@ -184,6 +184,14 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
   {
     const body = mounts.volume;
     slider(body, "fluids.hemorrhageMlMin", "Ongoing hemorrhage", R.hemorrhageMlMin[0], 200, 5, (s) => s.fluids?.hemorrhageMlMin, 0, (v) => (v ? `${v} ml/min` : "none"), (s, v) => patchSection(s, "fluids", { hemorrhageMlMin: v || undefined }));
+    slider(body, "fluids.capillaryLeak", "Capillary leak", R.capillaryLeak[0], R.capillaryLeak[1], 0.05, (s) => s.fluids?.capillaryLeak, 0, (v) => (v ? `${Math.round(v * 100)}%` : "none"), (s, v) => patchSection(s, "fluids", { capillaryLeak: v || undefined }));
+    {
+      fields.push("fluids.legRaise");
+      const lid = ctlId(), lb = h("button", { id: lid, type: "button", textContent: "Off", title: "Passive leg raise: shifts blood from the legs to the chest, a reversible fluid challenge" });
+      lb.addEventListener("click", () => edit((s) => patchSection(s, "fluids", { legRaise: !s.fluids?.legRaise || undefined })));
+      body.append(h("label", { htmlFor: lid, textContent: "Passive leg raise" }), lb, h("span", { className: "val" }));
+      syncs.push((s) => { const on = !!s.fluids?.legRaise; lb.classList.toggle("on", on); lb.setAttribute("aria-pressed", String(on)); lb.textContent = on ? "On" : "Off"; });
+    }
     // IV bolus: the kind of the next dose, quick volumes that add up, and the total given
     const KINDS: readonly (readonly [FluidKind, string])[] = [["crystalloid", "Crystalloid"], ["colloid", "Colloid"], ["albumin", "Albumin"], ["blood", "Blood"]];
     let kind: FluidKind = "crystalloid";
