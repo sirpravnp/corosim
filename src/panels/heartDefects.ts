@@ -25,7 +25,7 @@ function heartSlider(c: ValvesCtx, body: HTMLElement, o: {
     const h = heartOf(s), v = o.get(h) ?? o.dflt, on = o.shown ? o.shown(h) : true;
     label.hidden = input.hidden = !on;
     if (document.activeElement !== input) input.value = String(v);
-    val.textContent = o.fmt(v); input.disabled = !!c.legacy?.();
+    val.textContent = o.fmt(v);
   });
 }
 const patchHeart = (s: PlaygroundState, f: (h: HeartSpec) => HeartSpec) => withHeart(s, f(heartOf(s)));
@@ -66,5 +66,5 @@ export function buildBaseline(c: ValvesCtx) {
   const b = c.h("button", { type: "button", textContent: "Tetralogy of Fallot physiology", title: "Large VSD, right ventricular outflow obstruction and an overriding aorta; its sizes are in Defect settings on the Valves tab" });
   b.addEventListener("click", () => c.edit((s) => patchHeart(s, (h) => { const n = { ...h }; if (n.tof) delete n.tof; else n.tof = { vsdMm: 8, rvotFrac: 0.15 }; return n; })));
   body.append(c.h("div", { className: "row" }, b));
-  c.syncs.push((s) => { const on = !!heartOf(s).tof; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); b.disabled = !!c.legacy?.(); });
+  c.syncs.push((s) => { const on = !!heartOf(s).tof; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); });
 }
