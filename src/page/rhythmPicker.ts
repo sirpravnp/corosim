@@ -1,12 +1,9 @@
 // ---------------------------------------------------------------- the rhythm picker (C3): every D4 rhythm, grouped and searchable
 import { SIM_RHYTHMS, SIM_RHYTHM_CATEGORIES, libraryVentricularRate, libraryRhythm } from "../physics/rhythmSource";
 import { $, S } from "./state";
+import { pickerValue, norm, matches } from "./rhythmChoices";
 
-/** The picker's value for the patient's rhythm: the coronary model's own sinus is the library's "nsr" (AF is "af" in both). */
-export const pickerValue = (rhythm: string) => (rhythm === "sinus" ? "nsr" : rhythm);
 
-const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-const matches = (p: { name: string; id: string; category: string }, q: string) => !q || q.split(/\s+/).every((w) => norm(`${p.name} ${p.id} ${p.category}`).includes(w));
 
 /** Rebuild the grouped option list for a search text; the current rhythm always stays in it. */
 function fill(q: string) {
