@@ -85,6 +85,8 @@ function bedside(sim: Simulation) {
   const a = sim.assessment();
   return {
     scenario: sim.scenario(), // also what the in-chat viewer replays
+    engine: sim.engine, // the viewer replays on the same engine, with the whole patient (heart: valves and prostheses, devices...) below
+    patient: currentPatient(sim),
     state: sim.state(),
     ...arrestView(sim),
     ecg: sim.ecg(),
