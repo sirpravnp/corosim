@@ -33,7 +33,7 @@ describe("valves in the live Simulation", () => {
   });
   it("a second patch, a paravalvular leak on that valve, replaces nothing else and opens the diastolic pressure; clearing it by a new replacement closes it again", () => {
     const base = aorta(s).diastolic;
-    s.apply({ heart: { valves: { av: { prosthesis: { leak: 0.4 } } } } });
+    s.apply({ heart: { valves: { av: { prosthesis: { leak: 0.4 } as never } } } }); // a partial patch: merged into the prosthesis in force
     const leaky = aorta(s);
     expect(leaky.diastolic).toBeLessThan(base - 8);
     s.apply({ heart: intervene({ valves: { av: { prosthesis: { kind: "transcatheter", sizeMm: 26, leak: 0.4 } } } }, { type: "replace", valve: "av", kind: "bioprosthetic", sizeMm: 25 }).patch });
