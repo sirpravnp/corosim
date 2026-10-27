@@ -306,7 +306,7 @@ export const TOOLS: ToolDef[] = [
     inputSchema: { type: "object", properties: { display: displaySchema() } },
     run({ sim }, a) {
       const display = a.display && typeof a.display === "object" && !Array.isArray(a.display) ? (a.display as Record<string, unknown>) : undefined;
-      return { ...bedside(sim), ...(display ? { display } : {}), shown: "The patient is displayed in the chat. Describe what it shows briefly; do not paste a link." };
+      return { narrative: narrateCase(currentPatient(sim), vitalsOf(sim)), ...bedside(sim), ...(display ? { display } : {}), shown: "The patient is displayed in the chat. Describe what it shows briefly; do not paste a link." };
     },
   },
   {
