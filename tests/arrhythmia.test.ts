@@ -135,6 +135,21 @@ describe("runs on the beat stream", () => {
     expect(staysVt).toBeGreaterThanOrEqual(12); // a few stop by themselves (mean 4 min)
     expect(toVf).toBeGreaterThanOrEqual(13);
   });
+  it("a VT on top of an occluded proximal LAD degenerates to VF even with a held pressure; the same VT in a healthy heart does not", () => {
+    let ischemicVf = 0, healthyVf = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      const r = new ArrhythmiaRig(seed, { tendency: 0 }).lesions(LESIONS.ladProx);
+      r.map = 75;
+      r.run(10);
+      r.arrhythmia.tendency = 1;
+      expect(r.arrhythmia.induce("mono")).toBe(true);
+      r.run(300, 0); // 5 heartbeat minutes, the clinical clock stopped so the hazard of a new run does not mix in
+      if (r.arrhythmia.log.some((e) => e.kind === "vf" && e.cause === "degeneration")) ischemicVf++;
+      if (seed <= 8 && induced(seed, "mono", 120, 75).r.arrhythmia.log.some((e) => e.kind === "vf")) healthyVf++;
+    }
+    expect(healthyVf).toBe(0);
+    expect(ischemicVf).toBeGreaterThanOrEqual(16); // expected about 24 of 40: mean 2.5 min to VF against a spontaneous end at mean 4 min
+  });
   it("VF: after the trigger beat no ventricular complex at all, only silent ticks; it does not stop by itself", () => {
     const { r, beats } = induced(2, "vf", 30);
     const cur = r.arrhythmia.current!;

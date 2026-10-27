@@ -22,7 +22,7 @@ import { gaussian } from "./autonomic";
  *    (3 or more beats, returned to the generator as premature beats), or a sustained rhythm that takes over the beat stream: monomorphic
  *    VT, polymorphic VT, VF (the EKG library's own rhythms, so the strip and the live heart show them).
  * 3. Course, in heartbeat time: polymorphic VT stops or degenerates to VF; monomorphic VT degenerates to VF when the pressure collapses
- *    (or rarely stops); VF stays (defibrillation is task B4).
+ *    or on ongoing acute ischemia (or rarely stops); VF stays (defibrillation is task B4).
  * 4. Accelerated idioventricular rhythm after reperfusion: its own hazard from the burst store; it takes over when faster than the
  *    sinus node and ends after a while or when the sinus overtakes it.
  */
@@ -189,7 +189,8 @@ export class Arrhythmia implements RunTrigger {
       const stop = A.polyEndPerS, vf = A.polyToVfPerS;
       if (this.rng() < p(stop + vf)) { if (this.rng() < vf / (stop + vf)) this.degenerate(t); else this.end(t, "stopped"); }
     } else if (e.kind === "mono") {
-      const c = Math.min(1, Math.max(0, (A.okMap - this.inp.map) / (A.okMap - A.floorMap))), vf = A.collapseToVfPerS * c * c, stop = A.monoEndPerS;
+      const c = Math.min(1, Math.max(0, (A.okMap - this.inp.map) / (A.okMap - A.floorMap))), stop = A.monoEndPerS;
+      const vf = A.collapseToVfPerS * c * c + (this.ectopy.active ? A.ischemicToVfPerS * substrateEffect(this.ectopy.burden) : 0);
       if (this.rng() < p(stop + vf)) { if (this.rng() < vf / (stop + vf)) this.degenerate(t); else this.end(t, "stopped"); }
     } else if (e.kind === "aivr") {
       if (t >= (e.until ?? Infinity)) this.end(t, "stopped");

@@ -139,6 +139,17 @@ export const ARRHYTHMIA = {
    */
   monoEndPerS: 1 / 240, collapseToVfPerS: 1 / 30, okMap: 70, floorMap: 35,
   /**
+   * A second route of degeneration of a monomorphic VT: ongoing acute ischemia. hazard `ischemicToVfPerS` x substrateEffect(burden),
+   * only while an ischemic episode is active, so a fast VT on top of an occluded proximal LAD (substrate 0.83) breaks up into VF after
+   * about 2.5 minutes on average even when the baroreflex holds the mean pressure (the core engine keeps MAP near 70 in a VT of 200/min:
+   * a short-filled small stroke volume at twice the rate, with vasoconstriction), while a VT in a heart without acute ischemia (scar VT,
+   * an induced VT in a healthy heart) is left to the pressure route alone. Acute ischemia makes conduction and refractoriness
+   * heterogeneous, the substrate for wave break (Naito 1982, PMID 6174040: initiation of VT and VF in acute ischemia); sustained VT in acute
+   * infarction is often hemodynamically unstable and degenerates (GUSTO-I, Newby 1998, PMID 9843464: sustained VT and VF together in
+   * 10.2%, "both VT and VF" a group of its own). [rate assumed]
+   */
+  ischemicToVfPerS: 1 / 120,
+  /**
    * AIVR episode: rate = clip(sinus rate x uniform(rateOver), minRate, maxRate) (it shows only when faster than the sinus node; none when
    * the sinus rate is above `maxRate` / rateOver[0]); duration lognormal, median `durMedianS` heartbeat seconds, sigma `durSigma`, at most
    * `maxS`; it ends early if the sinus rate overtakes it by `overdrive`. AIVR runs at 50-110 beats/min with a gradual onset as the sinus

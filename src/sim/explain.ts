@@ -53,7 +53,7 @@ export function arrhythmiaStatement(a: Arrhythmia, t: number): string | null {
     const tail = cur.kind === "vf" ? "no organized contraction and no cardiac output: cardiac arrest (defibrillation is not yet modelled)"
       : cur.kind === "aivr" ? "a benign reperfusion rhythm, slightly faster than the sinus node, which ends by itself"
       : cur.kind === "poly" ? "chaotic contraction; it stops by itself or degenerates to ventricular fibrillation within seconds"
-      : "dyssynchronous contraction and short filling; if the pressure collapses it degenerates to ventricular fibrillation";
+      : "dyssynchronous contraction and short filling; it degenerates to ventricular fibrillation if the pressure collapses or while acute ischemia goes on";
     return `${what}: ${CAUSE_WHY[cur.cause]}; ${tail}.`;
   }
   const l = s.last;
