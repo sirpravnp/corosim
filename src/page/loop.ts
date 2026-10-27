@@ -1,7 +1,6 @@
 import { ischemicBurden } from "../physics/ecgLink";
 import { INFARCT } from "../config/management";
-import { TREAT } from "../game";
-import { A, sites, S, sim, takeAnalysis, sev, T, G, ecg, playClock, rstate, takeRC } from "./state";
+import { A, sites, S, sim, takeAnalysis, sev, T, K, ecg, playClock, rstate, takeRC } from "./state";
 import { renderer, scene, camera, controls } from "./scene";
 import { pumpMyocardium, o2Now, paintMyocardium } from "./heart3d";
 import { built, blockedFlags, shapeVessels, stepParticles, updateBranchLod } from "./vessels3d";
@@ -9,7 +8,7 @@ import { updateMarkers } from "./markers";
 import { manageStep } from "./manage";
 import { liveUi } from "./readouts";
 import { flush } from "./model";
-import { treatStep } from "./game";
+import { caseStep } from "./cases";
 import { settlingUi } from "./workspace";
 import { arrestSync, arrestUi } from "./arrest";
 
@@ -26,13 +25,12 @@ export function frame(now: number) {
     return;
   }
   if (wasSettling) { wasSettling = false; settlingUi(false); ecg.reset(sim.t); liveUi(); } // settled: the strip starts from now
-  const dt = G.phase === "idle" ? playClock.advance(realDt, sim.t, () => sim.stream.beats.filter((b) => !b.pOnly).map((b) => b.t)) : realDt;
+  // A case's prompt holds the clock; a case runs at the simulator's own time scale.
+  const held = K.runner?.paused ?? false;
+  const dt = held ? 0 : playClock.advance(realDt, sim.t, () => sim.stream.beats.filter((b) => !b.pOnly).map((b) => b.t));
   flush();
   pumpMyocardium(4);
-  const inCase = G.phase === "play" || G.phase === "treat";
-  if (inCase) G.clock += dt * S.speed;
-  // The clinical clock: the simulator's runs at its time scale; a case's at the game's fixed rate; none once a case is over.
-  const minutes = G.phase === "idle" ? dt * S.speed * INFARCT.minutesPerSecond : inCase ? dt * TREAT.minutesPerSecond : 0;
+  const minutes = dt * S.speed * INFARCT.minutesPerSecond; // the clinical clock
   arrestSync(); // a rhythm the arrest machine changed (shock, ROSC) becomes the page's own
   sim.speed = S.speed; sim.patient = { rhythm: S.rhythm, bbb: S.bbb }; sim.support = T.support; sim.treated = T.treated; // shared: an AI's treatment and the panel's are one record
   sim.step(dt, { minutes });
@@ -42,7 +40,7 @@ export function frame(now: number) {
   const fx = sim.ecgInputs();
   if (!sim.dead) ecg.step(dt, fx.injury, fx.tBoost, rstate!.rhythm); // death freezes the strip
   ecg.draw();
-  if (G.phase === "treat") treatStep(dt, minutes);
+  if (K.phase === "run") caseStep(dt * S.speed);
   if (S.flow) stepParticles(dt);
   if ((paintClock += dt) > 0.1) { paintClock = 0; paintMyocardium(); }
   if (S.mode === "o2" && (o2Clock += dt) > 0.5) { o2Clock = 0; const f = o2Now(), k = `${f.ready}|${f.arterial.toFixed(3)}`; if (k !== o2Key) { o2Key = k; shapeVessels(); } }

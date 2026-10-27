@@ -94,35 +94,19 @@
   </section>
 
   <aside>
-    <section id="quiz" data-phase="idle" hidden>
-      <h2>Find the culprit</h2>
-      <div class="q-live">
-        <div class="q-status"><span id="qround"></span><span id="qclock"></span><span id="qscore"></span></div>
+    <section id="cases" data-phase="idle" hidden>
+      <h2 id="c_name">Case</h2>
+      <div class="c-status"><span id="c_clock"></span><span id="c_state"></span></div>
+      <h3>The patient</h3>
+      <p class="note c-card" id="c_card"></p>
+      <h3>What you know</h3>
+      <ul class="c-log" id="c_log"></ul>
+      <div class="c-over">
+        <p class="q-result" id="c_result"></p>
+        <ul class="c-log" id="c_debrief"></ul>
+        <div class="row" style="margin-top:0"><button id="c_again" class="primary">Back to the cases</button></div>
       </div>
-      <div class="q-play">
-        <div class="q-call"><span>Your call</span><b id="qcall"></b></div>
-        <div class="q-call"><span>Right ventricle involved?</span><span class="q-rv"><button id="rv_yes">Yes</button><button id="rv_no">No</button></span></div>
-        <div class="row" style="margin-top:0">
-          <button id="qlock" class="primary" disabled>Lock in</button>
-          <button id="qreveal">Show me</button>
-        </div>
-        <p class="note">Click the spot on a vessel where you think the lesion is; click again to move it. Free within 7 mm (the lesion's own half-length), then points fall off with distance along the vessels. Then say whether the right ventricle is involved: 10 points either way. The clock is the patient's, running at 3×; ischemia takes about 20 s of it to develop.</p>
-      </div>
-      <div class="q-treat">
-        <p class="q-result" id="qcallresult"></p>
-        <div class="q-call"><span>Clinical time</span><b id="qclin"></b></div>
-        <div class="q-call"><span>Artery</span><b id="qartery"></b></div>
-        <div class="row" style="margin-top:0"><button id="qhand" class="primary">Hand over</button></div>
-        <p class="note">Now treat the patient. The lesion is shown; the Support tab of the settings below is live. Muscle dies while the artery stays closed, and orders take clinical minutes to arrive (2 a second). 40 points for muscle saved, against immediate PCI; 20 for the share of the time the pressure is held out of shock, less the share spent doing harm. The phase ends 20 min after reperfusion, at 150 min, or when you hand over.</p>
-      </div>
-      <div class="q-reveal">
-        <p class="q-result" id="qresult"></p>
-        <p class="note" id="qwhy"></p>
-        <p class="note" id="qtreatwhy"></p>
-        <div class="row" style="margin-top:0"><button id="qshare" class="primary">Share your score</button></div>
-        <p class="note">The next case comes tomorrow.</p>
-      </div>
-      <div class="row q-live"><button id="qquit">Leave the case</button></div>
+      <div class="row c-live"><button id="c_quit">Leave the case</button></div>
     </section>
 
     <section id="pgentry">
@@ -137,22 +121,21 @@
     <section>
       <h2>Monitor</h2>
       <table class="readout">
-        <tr class="q-hide"><td>Circulation</td><td id="circ"></td></tr>
+        <tr><td>Circulation</td><td id="circ"></td></tr>
         <tr><td>Blood pressure (MAP)</td><td id="bp"></td></tr>
         <tr><td>Cardiac output</td><td id="co"></td></tr>
-        <tr class="q-hide"><td>Rhythm</td><td id="rhythm"></td></tr>
+        <tr><td>Rhythm</td><td id="rhythm"></td></tr>
         <tr><td>Ventricular rate</td><td id="hr"></td></tr>
-        <tr class="q-hide"><td>Atrial rate</td><td id="arate"></td></tr>
-        <tr class="q-hide"><td>PR interval</td><td id="pr"></td></tr>
-        <tr class="q-hide"><td>ST elevation</td><td id="stup"></td></tr>
-        <tr class="q-hide"><td>ST depression</td><td id="stdown"></td></tr>
-        <tr class="q-hide"><td>Ischemic myocardium</td><td id="burden"></td></tr>
-        <tr class="q-hide"><td>Myocardium at risk</td><td id="risk"></td></tr>
-        <tr class="q-hide"><td>Lesion FFR</td><td id="ffr"></td></tr>
-        <tr class="q-hide"><td>Ischemic time</td><td id="m_time"></td></tr>
-        <tr class="q-hide"><td>Infarct, left ventricle</td><td id="m_inf"></td></tr>
+        <tr><td>Atrial rate</td><td id="arate"></td></tr>
+        <tr><td>PR interval</td><td id="pr"></td></tr>
+        <tr><td>ST elevation</td><td id="stup"></td></tr>
+        <tr><td>ST depression</td><td id="stdown"></td></tr>
+        <tr><td>Ischemic myocardium</td><td id="burden"></td></tr>
+        <tr><td>Myocardium at risk</td><td id="risk"></td></tr>
+        <tr><td>Lesion FFR</td><td id="ffr"></td></tr>
+        <tr><td>Ischemic time</td><td id="m_time"></td></tr>
+        <tr><td>Infarct, left ventricle</td><td id="m_inf"></td></tr>
       </table>
-      <p class="note q-hidden-note">Rate, output and pressure only while a case is running: the rest reads the tracing for you.</p>
     </section>
 
     <section id="dock" data-tab="patient" aria-label="Settings">
@@ -202,7 +185,6 @@
             <button id="s6">6×</button>
           </div>
         </div>
-        <p class="note q-hidden-note">The lesion is hidden while a case is running.</p>
         <p class="note">Ischemia develops over about 20 s after occlusion and resolves with a time constant of about 8 s after reperfusion. Rate and AV conduction follow the territory; lost contraction and slow rates lower blood pressure, and lower pressure perfuses every coronary bed less.</p>
         </div>
         <div id="anatomy">
@@ -273,7 +255,6 @@
           <div class="ctl">
             <label for="bl" class="sim-only">Blood loss</label><input id="bl" class="sim-only" type="range" min="-20" max="50" value="0"><span class="val sim-only" id="blv"></span>
             <div id="vol-mount" class="ctl-flat sim-only"></div>
-            <span class="game-only">IV fluid</span><div class="game-only row" id="gamefluid"></div>
           </div>
           <p class="note" id="fluidnote"></p>
         </details>
@@ -287,7 +268,7 @@
             <span>Nitroglycerin</span><button id="m_nitro">Off</button><span class="val"></span>
             <span>Atropine</span><button id="m_atropine">Off</button><span class="val"></span>
           </div>
-          <details class="sup-more sim-only" id="more-drugs">
+          <details class="sup-more" id="more-drugs">
             <summary>More drugs <span class="sum" id="sum-more-drugs"></span></summary>
             <p class="note" id="more-drugs-note">Receptor-level drugs of the core engine: epinephrine (beta and alpha), milrinone (inodilator), vasopressin (non-adrenergic pressor), nitroprusside (arterial and venous dilator), furosemide (diuretic). Doses are fractions of the full effect.</p>
             <div class="ctl">
@@ -332,19 +313,31 @@
   </aside>
 </main>
 <section class="ws-sec" hidden><h2>Live hemodynamics</h2><div id="workspace"></div></section>
-<!-- The game's front door: over the blurred page until a case starts -->
-<div id="qgate" hidden>
-  <div class="q-card">
-    <h2>Find the culprit</h2>
-    <p class="q-day" id="qday"></p>
-    <p class="q-done" id="qdone" hidden></p>
-    <div class="q-strip" id="qstrip" title="The last seven days"></div>
-    <p class="q-streak" id="qstreak"></p>
-    <nav class="q-arch" aria-label="Archive"><a id="qprev" href="#" hidden></a><a id="qtoday" href="#" hidden>Today</a><a id="qnext" href="#" hidden></a></nav>
-    <p>One case a day, the same for everyone. A lesion is placed and hidden: any anatomy, any vessel, an occlusion or a tight stenosis under exertion, on a patient who may be in atrial fibrillation or have a bundle branch block; the heart keeps its ischemia to itself. Read the tracing and the monitor, then press the spot on the vessel where you think the lesion is. Then the case goes on: treat the patient while the muscle is dying.</p>
-    <p class="note">Up to 170 points. Finding it: full on the lesion, falling with distance from it along the tree but never below 25 in the right territory, decaying with every second of the patient's time; then 10 for calling the right ventricle correctly, or 10 lost for calling it wrong. Then treat the patient: 40 for the muscle you save by opening the artery in time, 20 for holding the pressure without doing harm. Earlier cases are in the archive, scored but outside the streak.</p>
-    <div class="row"><button id="qstart" class="primary">Start today's case</button></div>
-    <a class="q-plain" href="../sim/">Just the simulator</a>
+<!-- The cases' front door: over the blurred page until a case starts -->
+<div id="cgate" hidden>
+  <div class="c-box">
+    <div id="c_list">
+      <h2>Cases</h2>
+      <p>A patient arrives, the simulator runs, and you keep them alive. The case stops to ask what you are thinking at the decisions that matter; what you answer, and what you do, changes what happens next.</p>
+      <div id="c_cards"></div>
+      <a class="c-plain" href="../sim/">Just the simulator</a>
+    </div>
+    <div id="c_intro" hidden>
+      <p class="c-tier" id="ci_tier"></p>
+      <h2 id="ci_title"></h2>
+      <p id="ci_presents"></p>
+      <p class="note" id="ci_pmh"></p>
+      <ul class="c-log" id="ci_info"></ul>
+      <div class="row"><button id="ci_begin" class="primary">Begin</button><button id="ci_back">Back</button></div>
+    </div>
+  </div>
+</div>
+<!-- A case's question: it holds the clock until answered -->
+<div id="cprompt" hidden>
+  <div class="c-box">
+    <p class="c-tier" id="cp_time"></p>
+    <p class="c-q" id="cp_text"></p>
+    <div id="cp_opts"></div>
   </div>
 </div>
 <footer id="shell-foot"></footer>

@@ -3,7 +3,7 @@
 // The panel lives at the top of the dock's Support tab and appears when the patient arrests; the overlay and the banner sit in the 3D view.
 import { ARREST } from "../config/arrest";
 import type { ArrestDrug, RhythmClass } from "../sim/arrest";
-import { $, S, sim, inGame, on, range, sel } from "./state";
+import { $, S, sim, inCases, on, range, sel } from "./state";
 import { setDockTab } from "./dock";
 import { adoptSimState } from "./model";
 import { rhythmPickerUi } from "./rhythmPicker";
@@ -17,7 +17,7 @@ export const clock = (s: number) => { const t = Math.max(0, Math.round(s)); retu
 let sync = false;          // the Synchronized toggle
 let lastStatus = "none";   // to bring the Support tab forward once, when an arrest begins
 let lastNote = "";         // the result of the last action (a refusal, a shock)
-/** Set when the patient died in the game page (a loss; the game's own scoring is untouched). */
+/** Set when the patient died on the cases page (the case runner ends the case). */
 export const arrestLoss = { lost: false };
 
 const num = (id: string) => +$<HTMLInputElement>(id).value;
@@ -93,8 +93,8 @@ export function arrestUi() {
   $("a_note").textContent = lastNote;
   if (dead) {
     $("a_deadAt").textContent = `Declared dead ${clock(st.arrestS)} into the arrest, after ${clock(st.noFlowS)} of no flow (irreversible injury ${Math.round(st.injury * 100)}%).`;
-    $("a_deadMsg").textContent = inGame ? "The patient died: this case is lost." : "The readouts are frozen. Restart the patient to begin again.";
-    $<HTMLButtonElement>("arrestRestart").hidden = inGame;
-    if (inGame) arrestLoss.lost = true;
+    $("a_deadMsg").textContent = inCases ? "The patient died: the case is over." : "The readouts are frozen. Restart the patient to begin again.";
+    $<HTMLButtonElement>("arrestRestart").hidden = inCases;
+    if (inCases) arrestLoss.lost = true;
   }
 }

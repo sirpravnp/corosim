@@ -28,7 +28,7 @@ const describe = (path: string) => String((FIELDS.find((f) => f.path === path)?.
 /** Build the group. The caller appends the returned element after the rest of the Patient tab. */
 export function buildAdvanced(c: AdvancedCtx): HTMLDetailsElement {
   const { h } = c;
-  const box = h("details", { className: "fold pg-group pg-advanced sim-only", id: "pg-advanced" });
+  const box = h("details", { className: "fold pg-group pg-advanced", id: "pg-advanced" });
   const body = h("div", { className: "pg-body" });
   box.append(h("summary", {}, h("h2", { textContent: "Advanced" }), h("span", { className: "sum", textContent: "reflexes, electrolytes, ectopy, seed" })), body);
   body.append(h("p", { className: "note pg-note", textContent: "Teaching overrides of the patient's physiology. The default is marked on each slider; Reset advanced puts them all back (the seed is kept)." }));
