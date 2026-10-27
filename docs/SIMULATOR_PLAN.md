@@ -22,7 +22,11 @@ Waves run in order; an item is done when merged to main and live. Updated as wor
 | B3b VT/VF initiation | done (branch, core engine): physics/arrhythmia.ts, config/arrhythmia.ts; R-on-T initiation, NSVT, mono/poly VT, VF by degeneration, AIVR on reperfusion, scar VT; VF in the first hour 11% of proximal LAD occlusions (literature 9.5-12% of all STEMIs), AIVR 46% after PCI (42%), none in a 70% stenosis at rest; docs/ARRHYTHMIA.md; tests arrhythmia (fast), arrhythmiaRates and arrhythmiaSim (slow) |
 | C3 rhythm picker | done: grouped, searchable picker of every D4 rhythm in the Rhythm tab (src/page/rhythmPicker.ts); ECG-overlay options (STEMI mimics) and valve pickers not done |
 | D1 spec registry | done (this PR): `src/sim/registry.ts` is the one field list; the MCP patient schema (set_scenario, adjust, compare), `corosim_show.display`, the OpenAI/Anthropic exports are generated from it; the dock tabs, every dock/overlay control id in `sim/index.html` and every control `createPlaygroundUi` builds are checked against it (`tests/specRegistry.test.ts`). Chat now has every library rhythm, valve prosthesis fields, valve interventions (`corosim_valve`), the full pericardium and the display options. To add a control: add its field in the registry. Not done: the page has no prosthesis or intervention control yet; the chat viewer applies `display.view` only (the other display options are for the page) |
-| everything else | not started |
+| C7 30 s history | done (PR 34): fading PV loops, scrubbable traces |
+| B4 arrest, ACLS, death | done (PR 39): `src/sim/arrest.ts` state machine wired into the core-engine Simulation (CPR force, shocks, drugs, ROSC, death); constants only partly checked against the literature, see docs/ARREST.md |
+| C8 arrest UI, D3 chat tools | done (PR 40): ACLS panel, ROSC banner, death overlay; `corosim_arrest` tool, arrest/dead in state, rhythm routing in the server instructions |
+| C4 valves tab, C6 b/c lesion cues, D4 viewer parity | done (PR 41); 3D valve jets and leaflets not done; the viewer does not draw pressure/velocity/shear/O2 maps or the flow animation |
+| Still open | live MCP server redeploy (needs the `FLY_API_TOKEN` repo secret, user action); real-GPU check of 3D frame rate and vessel picking; verify the unchecked rows of docs/ARREST.md; STEMI-mimic ECG overlays (D4 decision); coronary severity saturation (90 % vs 99 % stenosis identical); Echo page overflow at 390 px; drop `PlaygroundInfo.link`; C6 part d (veins) |
 
 ## 1. Where we start (from reading the code)
 

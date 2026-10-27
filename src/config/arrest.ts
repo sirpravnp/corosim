@@ -2,7 +2,7 @@
 // Each constant is tagged [lit] (a published figure, direction and rough size) or [assumed] (a teaching choice, not a measured value).
 //
 // Sources:
-//  - Larsen MP et al. Ann Emerg Med 1993;22:1652 (survival after VF falls about 7-10 % per minute without CPR/defibrillation). [lit]
+//  - Larsen MP et al. Ann Emerg Med 1993;22:1652 (PMID 8214853): survival after witnessed VF falls 5.5 % per minute with no CPR, shock or ACLS (1.1 %/min to defibrillation, 2.3 %/min to CPR, 2.1 %/min to ACLS). That is survival, not shock success. [lit]
 //  - Weisfeldt ML, Becker LB. JAMA 2002;288:3035 (CPR gives about 25-30 % of normal cardiac output; three-phase model of arrest). [lit]
 //  - Edelson DP et al. Resuscitation 2006;71:137 and Stiell IG et al. Circulation 2012;125:3004 (compression depth 5-6 cm, rate 100-120/min). [lit]
 //  - Christenson J et al. Circulation 2009;120:1241 (chest-compression fraction and interruptions lower survival). [lit]
@@ -56,7 +56,7 @@ export const ARREST = {
   shock: {
     /** First-shock success of a biphasic 200 J shock on fresh VF. [lit, AHA 2020] */
     baseSuccess: 0.9,
-    /** Absolute fall in success per minute of untreated VF (7-10 %/min). [lit, Larsen 1993] */
+    /** Absolute fall in shock success per minute of untreated VF. The 7-10 %/min figure often quoted for survival is NOT in Larsen 1993 (5.5 %/min); this value is a teaching choice, see docs/ARREST.md. [assumed] */
     declinePerMin: 0.085,
     /** Added success for perfect recent CPR. [assumed] */
     cprBonus: 0.08,
