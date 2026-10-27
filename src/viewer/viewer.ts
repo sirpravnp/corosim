@@ -56,7 +56,7 @@ function arrestPanel() {
   if (!a || !show) return;
   const cls = CLASS_NAME[a.rhythmClass] ?? a.rhythmClass;
   banner.className = `banner${a.status === "rosc" ? " rosc" : ""}`;
-  banner.textContent = a.status === "rosc" ? "ROSC: pulse restored" : `Cardiac arrest: ${cls} · ${fmt(a.arrestS)} s${a.cpr.on ? " · CPR" : ""}${a.shocks ? ` · ${a.shocks} shock${a.shocks === 1 ? "" : "s"}` : ""}`;
+  banner.textContent = a.status === "rosc" ? "ROSC: pulse restored" : a.rhythmClass === "perfusing" ? `Shock converted the rhythm: waiting for a pulse · ${fmt(a.arrestS)} s${a.cpr.on ? " · CPR" : ""}` : `Cardiac arrest: ${cls} · ${fmt(a.arrestS)} s${a.cpr.on ? " · CPR" : ""}${a.shocks ? ` · ${a.shocks} shock${a.shocks === 1 ? "" : "s"}` : ""}`;
   const lines: [string, string, string?][] = [
     ["Status", dead ? "DEAD" : a.status === "rosc" ? "ROSC (return of spontaneous circulation)" : a.status === "arrest" ? "IN ARREST" : "none", dead || a.status === "arrest" ? "bad" : a.status === "rosc" ? "ok" : ""],
     ["Rhythm class", cls],
@@ -118,11 +118,9 @@ function monitor() {
 let last = performance.now(), paintClock = 0, uiClock = 0;
 function frame(now: number) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
-  if (!reported.dead) { // a dead patient stops: the replay freezes like the simulation does
-    sim.step(dt * speed, { minutes: 0 }); // the infarct clock belongs to the AI's patient, not to this replay
-    const fx = sim.ecgInputs();
-    ecg.step(dt * speed, fx.injury, fx.tBoost, sim.rstate.rhythm);
-  }
+  if (!reported.dead) sim.step(dt * speed, { minutes: 0 }); // a dead patient stops: the replay freezes like the simulation does (the infarct clock belongs to the AI's patient, not to this replay)
+  const fx = sim.ecgInputs();
+  ecg.step(dt * speed, fx.injury, fx.tBoost, sim.rstate.rhythm); // with the simulation frozen no new beats arrive: the strip runs on as a flat line
   ecg.draw();
   if ((paintClock += dt) > 0.2) { paintClock = 0; scene.paint(); }
   if ((uiClock += dt) > 0.5) { uiClock = 0; monitor(); }
@@ -166,7 +164,8 @@ function receive(s: Structured) {
   if (!sc) return;
   const arrest = s.arrest ?? s.state?.arrest ?? null, dead = s.dead ?? s.state?.dead === true;
   reported = { infarct: s.state?.ventricle?.lvInfarctFraction, problems: s.assessment?.problems, steps: s.assessment?.guidelineNextSteps?.map((x) => x.step), narrative: s.narrative, rhythm: s.state?.rhythm, arrest, dead };
-  load(sc, s.outcome?.result ?? s.explanation?.headline ?? "Your CoroSim patient", s.engine === "core" || arrest ? "core" : "legacy");
+  // a dead patient's strip is a flat line: replay asystole (the rhythm row still names the rhythm they died in)
+  load(dead ? { ...sc, patient: { ...sc.patient, rhythm: "asystole" } } : sc, s.outcome?.result ?? s.explanation?.headline ?? "Your CoroSim patient", s.engine === "core" || arrest ? "core" : "legacy");
   if (s.display) applyDisplay(s.display);
 }
 const embedded = window.parent !== window;
