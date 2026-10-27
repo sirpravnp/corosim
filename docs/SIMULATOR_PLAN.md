@@ -15,6 +15,7 @@ Waves run in order; an item is done when merged to main and live. Updated as wor
 | B3a graded ischemic PVC model | done (PR 29): PVC share 3.6 % proximal LAD (0-16 % across seeds), burst after reperfusion, cited in docs/ECTOPY.md; B3b = VT/VF initiation after B2 |
 | C6 coronary depiction | part a done (side branches, perforators, flare, LOD); merging. Next parts: plaque and thrombus; myocardial blush; flow cues on branches; veins |
 | A2 neonate/bridge removal | done (PR pending); adult VSD/TOF/PDA presets left to D1 |
+| B2 rhythm unification | done (branch claude/b2-rhythm-unification): `patient.rhythm` takes any D4 library id (core engine); the EKG generator drives strip and engine (physics/rhythmSource.ts, config/rhythms.ts); VF/asystole give no flow; tests rhythmSource (fast), rhythmUnification (slow). MCP schema still lists sinus/af only (D3) |
 | everything else | not started |
 
 ## 1. Where we start (from reading the code)

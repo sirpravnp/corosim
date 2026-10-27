@@ -14,7 +14,7 @@ patients, scales with infarct size, peaks early and often bursts on reperfusion.
 
 ## The model
 
-Per eligible ventricular beat (sinus-conducted, AF or escape beat: the ischemic myocardium fires whatever drives the ventricles)
+Per eligible ventricular beat (sinus-conducted, AF or escape beat, and since B2 every beat an EKG-library rhythm takes from the conduction system or a pacemaker: flutter, SVT, junctional, MAT, the AV blocks, paced; not VT, torsades, VF or asystole; the ischemic myocardium fires whatever drives the ventricles)
 the expected number of PVCs is
 
     rate = S x tendency x exp(2.3 (sympathetic x (1 - betaBlock) - 0.3)) x (1 + 0.6 beta1Drive) x K x Mg
