@@ -15,7 +15,8 @@ describe("every lesion", () => {
   });
   it("each lesion's default is graded where a cardiologist would put it, and valves it does not touch are graded none", () => {
     const expected: Record<LesionId, Record<string, [string, string]>> = {
-      normal: {}, pda: {}, asd: {}, vsd: {},
+      normal: {}, pda: {}, asd: {}, vsd: {}, "vsd-eisenmenger": {}, "pda-adult": {},
+      "tof-repaired": { PVL: ["none", "severe"] },
       as: { AV: ["severe", "none"] }, ar: { AV: ["none", "severe"] }, ms: { MV: ["severe", "none"] }, mr: { MV: ["none", "moderate"] },
       ts: { TV: ["moderate", "none"] }, tr: { TV: ["none", "severe"] }, ps: { PVL: ["moderate", "none"] }, pr: { PVL: ["none", "severe"] },
       tof: { PVL: ["severe", "none"] }, "pa-vsd": { PVL: ["atretic", "none"] }, "pa-ivs": { PVL: ["atretic", "none"], TV: ["none", "severe"] },
