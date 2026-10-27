@@ -376,3 +376,4 @@ body.dead #hr, body.dead #rhythm { opacity: 0.6; }
 .sup-more > summary .sum { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .sup-more[open] > summary .sum { display: none; }
 .sup-more > .ctl { margin-top: 8px; }
+body.gated #pg-advanced, body.gated #more-drugs { display: none; } /* the game never shows the Advanced and More drugs controls (the gate is the game page before a case starts) */

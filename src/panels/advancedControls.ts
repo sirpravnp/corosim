@@ -41,7 +41,7 @@ export function buildAdvanced(c: AdvancedCtx): HTMLDetailsElement {
     list.append(h("option", { value: String(dflt) }));
     input.setAttribute("list", list.id);
     const fmt = (v: number) => `${+v.toFixed(2)}${unit}${Math.abs(v - dflt) < 1e-9 ? " (default)" : ""}`;
-    body.append(h("label", { htmlFor: id }, label + " ", val), input, list, h("p", { className: "note pg-note", textContent: `${describe(path)} Default ${dflt}${unit}.`.replace(/\s+/g, " ") }));
+    body.append(h("label", { htmlFor: id }, label + " ", val), input, list, h("p", { className: "note pg-note", textContent: /default/i.test(describe(path)) ? describe(path) : `${describe(path)} Default ${dflt}${unit}.` }));
     input.addEventListener("input", () => { val.textContent = fmt(Number(input.value)); c.patch(make(c.scenario(), Number(input.value))); });
     c.scenarioSyncs.push((sc) => { const v = read(sc) ?? dflt; if (document.activeElement !== input) input.value = String(v); val.textContent = fmt(v); input.disabled = core && !!c.legacy?.(); });
   }
