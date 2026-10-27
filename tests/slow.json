@@ -8,6 +8,7 @@
   "tests/filling.test.ts",
   "tests/fluids.test.ts",
   "tests/game.test.ts",
+  "tests/historyLive.test.ts",
   "tests/impella.test.ts",
   "tests/impellaMalposition.test.ts",
   "tests/liveHeart.test.ts",
