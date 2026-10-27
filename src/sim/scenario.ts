@@ -6,6 +6,7 @@ import { simRhythmId } from "../physics/rhythmSource";
 import type { Rhythm } from "../config/ecg";
 import { Support, noSupport } from "../physics/support";
 import { SUPPORT } from "../config/management";
+import { ARRHYTHMIA } from "../config/arrhythmia";
 
 /**
  * The complete, serialisable description of a simulated patient and what is being done to them.
@@ -44,6 +45,14 @@ export interface Scenario {
    * on the susceptibility the seed gives the patient (physics/ectopy.ts). 0 = never any PVC, 1 = as the seed has it (default).
    */
   ectopyTendency?: number;
+  /**
+   * Teaching override of the patient's tendency to ventricular tachycardia, fibrillation and accelerated idioventricular rhythm (core
+   * engine, physics/arrhythmia.ts): 0..3, a multiplier on the susceptibility the seed gives. 0 = never any (PVCs still come, see
+   * `ectopyTendency`), 1 = as the seed has it (default).
+   */
+  arrhythmiaTendency?: number;
+  /** Serum electrolytes, mmol/l (core engine): potassium (2..7.5, default 4.2) and magnesium (0.2..3, default 0.9); low or high values raise the VT/VF hazard and the PVCs. */
+  electrolytes?: { potassium?: number; magnesium?: number };
 }
 
 export interface LesionSpec {
@@ -84,6 +93,8 @@ export interface Normalized {
     patient: Patient;
     support: Support; // atropine here is always false: it is derived from drugs.atropine
     ectopyTendency: number;
+    arrhythmiaTendency: number;
+    electrolytes: { potassium: number; magnesium: number };
   };
   warnings: string[];
 }
@@ -181,9 +192,22 @@ export function normalizeScenario(input: Scenario = {}, base?: Normalized["scena
     if (!num(input.ectopyTendency)) warnings.push("ectopyTendency is not a number; ignored");
     else { ectopyTendency = clamp(input.ectopyTendency, 0, 3); if (ectopyTendency !== input.ectopyTendency) warnings.push(`ectopyTendency clamped to ${ectopyTendency} (range 0..3)`); }
   }
+  let arrhythmiaTendency = base?.arrhythmiaTendency ?? 1;
+  if (input.arrhythmiaTendency !== undefined) {
+    if (!num(input.arrhythmiaTendency)) warnings.push("arrhythmiaTendency is not a number; ignored");
+    else { arrhythmiaTendency = clamp(input.arrhythmiaTendency, 0, 3); if (arrhythmiaTendency !== input.arrhythmiaTendency) warnings.push(`arrhythmiaTendency clamped to ${arrhythmiaTendency} (range 0..3)`); }
+  }
+  const electrolytes = { ...(base?.electrolytes ?? { potassium: ARRHYTHMIA.potassium.normal, magnesium: ARRHYTHMIA.magnesium.normal }) };
+  for (const [k, R] of [["potassium", ARRHYTHMIA.potassium], ["magnesium", ARRHYTHMIA.magnesium]] as const) {
+    const v = input.electrolytes?.[k];
+    if (v === undefined) continue;
+    if (!num(v)) { warnings.push(`electrolytes.${k} is not a number; ignored`); continue; }
+    electrolytes[k] = clamp(v, R.min, R.max);
+    if (electrolytes[k] !== v) warnings.push(`electrolytes.${k} clamped to ${electrolytes[k]} (range ${R.min}..${R.max} mmol/l)`);
+  }
   return {
     scenario: {
-      anatomy: variant, lesions, lesionSpecs: specs, drugs, autonomic, bloodLoss, patient, support, ectopyTendency,
+      anatomy: variant, lesions, lesionSpecs: specs, drugs, autonomic, bloodLoss, patient, support, ectopyTendency, arrhythmiaTendency, electrolytes,
       exertion: input.exertion ?? base?.exertion ?? false, seed: Math.trunc(input.seed ?? base?.seed ?? 1) >>> 0,
     },
     warnings,
@@ -201,6 +225,8 @@ export function toScenario(n: Normalized["scenario"]): Scenario {
     support: supportSpec(n.support),
     seed: n.seed,
     ...(n.ectopyTendency !== 1 ? { ectopyTendency: n.ectopyTendency } : {}), // only when set: the plain spec stays as it was
+    ...(n.arrhythmiaTendency !== 1 ? { arrhythmiaTendency: n.arrhythmiaTendency } : {}),
+    ...(n.electrolytes.potassium !== ARRHYTHMIA.potassium.normal || n.electrolytes.magnesium !== ARRHYTHMIA.magnesium.normal ? { electrolytes: { ...n.electrolytes } } : {}),
   };
 }
 

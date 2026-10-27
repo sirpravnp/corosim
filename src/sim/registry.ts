@@ -77,6 +77,9 @@ add("patient.rhythm", "rhythm", en([...new Set(["sinus", "af", ...SIM_RHYTHMS.ma
 add("patient.bbb", "rhythm", en(["none", "rbbb", "lbbb"], "Pre-existing bundle branch block."), ["c_none", "c_rbbb", "c_lbbb"]);
 add("seed", "patient", { type: "integer", description: "Random seed. The same scenario and seed reproduce the same beats." });
 add("ectopyTendency", "patient", num(0, 3, "Teaching override of the patient's tendency to ischemic PVCs (core engine): a multiplier on the susceptibility the seed gives. 0 = never any PVC, 1 = as the seed has it (default), 3 = very ectopy-prone."));
+add("arrhythmiaTendency", "patient", num(0, 3, "Teaching override of the patient's tendency to ventricular tachycardia, ventricular fibrillation and reperfusion AIVR (core engine): a multiplier on the susceptibility the seed gives. 0 = never any (and ends one that is running), 1 = as the seed has it (default)."));
+add("electrolytes.potassium", "patient", num(2, 7.5, "Serum potassium in mmol/l (core engine); hypo- and hyperkalaemia raise the VT/VF hazard and the PVCs. Default 4.2."));
+add("electrolytes.magnesium", "patient", num(0.2, 3, "Serum magnesium in mmol/l (core engine); hypomagnesaemia raises the VT/VF hazard and the PVCs. Default 0.9."));
 
 // ---- support (the management panel) --------------------------------------------------------------------------------------
 add("support.fluids", "support", num(0, 3, "Litres of IV fluid given. Helps a right-ventricular infarct; congests the lungs of a failing left ventricle."), ["m_fluid"]);

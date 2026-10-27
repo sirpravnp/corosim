@@ -60,7 +60,7 @@ reperfusion burst is 15 s; burstiness (N, M, couplets) runs on heartbeat time be
 | Couplets | About one couplet per ten PVCs | Median 4 couplets against 44 PVCs an hour after reperfusion (Cercek 1987) |
 | Potassium | Hook only (1) | VF 17.2% with K <= 3.5 mmol/l against 7.4%, and earlier (Nordrehaug 1983, PMID 6651995) |
 | Magnesium | Hook only (1) | IV magnesium reduced PVCs and runs after MI (Thiele 2000, PMID 10907229) |
-| VT/VF (context for B3b) | Not modelled here | VT/VF in 5.7% of 5745 primary-PCI STEMIs, 64% before the end of the catheterization, 90% within 48 h (Mehta 2009); early primary VF 3.1% (Volpi 1998) |
+| VT/VF (context for B3b) | Not modelled here (B3b: docs/ARRHYTHMIA.md) | VT/VF in 5.7% of 5745 primary-PCI STEMIs, 64% before the end of the catheterization, 90% within 48 h (Mehta 2009); early primary VF 3.1% (Volpi 1998) |
 
 ## Measured (seed 1-20, core engine)
 
@@ -85,8 +85,8 @@ and after reperfusion at 2 hours a burst to a mean of about 11% in the first 40 
 
 ## What the model deliberately does not capture
 
-- VT, non-sustained or sustained, polymorphic VT, VF, accelerated idioventricular rhythm and arrest (task B3b): no run longer than a
-  couplet. R-on-T PVCs are possible only rarely (coupling floor 0.42 x RR), and they start nothing.
+- VT, non-sustained or sustained, polymorphic VT, VF, accelerated idioventricular rhythm and arrest: no run longer than a couplet
+  from this model; task B3b (physics/arrhythmia.ts, docs/ARRHYTHMIA.md) adds them on top through `Ectopy.trigger`. R-on-T PVCs are possible only rarely (coupling floor 0.42 x RR), and they start nothing.
 - PVC morphology (one focus, one shape: the strip draws every PVC alike), interpolated PVCs, fusion beats, parasystole.
 - Electrolytes and magnesium as live inputs; antiarrhythmic drugs (lidocaine, amiodarone); heart failure and age as risk factors.
 - Scar-related ectopy in the chronic phase (days to weeks): the late floor stands in for it.

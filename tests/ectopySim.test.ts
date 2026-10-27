@@ -12,7 +12,7 @@ const SEEDS = [11, 2, 19, 9];
 
 function course(seed: number) {
   const s = new Simulation({}, { engine: "core" });
-  s.reset({ seed });
+  s.reset({ seed, arrhythmiaTendency: 0 }); // B3b's VT runs are held out: this measures the PVC model (runs of VT are themselves premature beats)
   s.warmup(10);
   let n = 0, p = 0;
   s.onBeat = (b) => { n++; if (b.pvc) p++; };

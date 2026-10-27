@@ -18,6 +18,7 @@ import type { DrugName } from "../config/drugs";
 import { BeatStream } from "../physics/beatStream";
 import { isLibraryRhythm, libraryRhythm, libraryVentricularRate } from "../physics/rhythmSource";
 import { Ectopy, weightedBurden, ectopyState } from "../physics/ectopy";
+import { Arrhythmia } from "../physics/arrhythmia";
 import { BeatHemodynamics } from "../physics/beatHemo";
 import { Autonomic, AUTONOMIC, AutonomicEffects } from "../physics/autonomic";
 import { LiveHeart, LiveBeat } from "../physics/core/live";
@@ -98,6 +99,8 @@ export class Simulation {
   patient!: Patient;
   grafts: Graft[] = [];
   stream!: BeatStream;
+  /** VT, VF and AIVR (core engine, task B3b; physics/arrhythmia.ts); undefined with the legacy engine. */
+  arrhythmia?: Arrhythmia;
   beatHemo = new BeatHemodynamics();
   autonomic!: Autonomic;
   rstate!: RhythmState;
@@ -196,7 +199,13 @@ export class Simulation {
     if (this.engine === "legacy") for (const [k, v] of [["epinephrine", this.support.epi], ["milrinone", this.support.milrinone], ["vasopressin", this.support.vasopressin], ["nitroprusside", this.support.nitroprusside], ["furosemide", this.support.furosemide]] as const)
       if (v > 0) this.warnings = [...this.warnings, `support.${k} is modelled on the core engine only; the legacy engine ignores it.`];
     this.stream = new BeatStream(scenario.seed, Simulation.LOOKAHEAD, 0.05);
-    if (this.engine === "core") this.stream.ectopy = new Ectopy(scenario.seed, scenario.ectopyTendency); // B3a; the legacy engine keeps the old PVC rule
+    this.arrhythmia = undefined;
+    if (this.engine === "core") {
+      const e = new Ectopy(scenario.seed, scenario.ectopyTendency); // B3a; the legacy engine keeps the old PVC rule
+      this.stream.ectopy = e;
+      this.arrhythmia = this.stream.arrhythmia = new Arrhythmia(scenario.seed, e, scenario.arrhythmiaTendency); // B3b
+      this.arrhythmia.potassium = scenario.electrolytes.potassium; this.arrhythmia.magnesium = scenario.electrolytes.magnesium;
+    }
     this.beatHemo = new BeatHemodynamics();
     this.autonomic = new Autonomic(scenario.seed, this.engine === "core" ? { ...AUTONOMIC, ...AUTONOMIC_CORE } : AUTONOMIC);
     this.autonomic.controls = { ...scenario.autonomic };
@@ -279,7 +288,7 @@ export class Simulation {
     for (const k of Object.keys(this.sev)) delete this.sev[k];
     for (const k of Object.keys(this.scar)) delete this.scar[k];
     this.map = this.perfusion = this.solvedPerfusion = CIRC.baseMap; this.solvedDemand = 1; this.clinicalMinutes = 0; this.ischemicMinutes = 0;
-    this.beatHemo.reset(); this.stream.ectopy?.reset(); // a cleared heart is not a reperfused one
+    this.beatHemo.reset(); this.stream.ectopy?.reset(); this.arrhythmia?.reset(); // a cleared heart is not a reperfused one
     this.resolveCoronaries(true);
     this.updateCirculation();
     if (this.engine === "core") { this.fluidModel = undefined; this.initCore(); }
@@ -298,6 +307,11 @@ export class Simulation {
     if (this.engine === "core" && (patch.heart || patch.pericardium || patch.septum !== undefined || patch.ventilation)) this.patchStructure(patch);
     if (patch.patient) this.patient = this.ownPatient(scenario.patient);
     if (this.stream.ectopy) this.stream.ectopy.tendency = scenario.ectopyTendency;
+    if (this.arrhythmia) {
+      this.arrhythmia.tendency = scenario.arrhythmiaTendency;
+      this.arrhythmia.potassium = scenario.electrolytes.potassium; this.arrhythmia.magnesium = scenario.electrolytes.magnesium;
+      if (patch.patient?.rhythm !== undefined || scenario.arrhythmiaTendency === 0) this.arrhythmia.terminate(this.t); // setting the rhythm (or forbidding arrhythmias) ends a running VT or VF: the teacher's override until B4 brings the shock
+    }
     this.autonomic.controls = { ...scenario.autonomic };
     if (anatomyChanged) { this.grafts = []; this.rebuildAnatomy(); } else this.resolveCoronaries(true);
   }
@@ -434,6 +448,11 @@ export class Simulation {
     this.autonomic.step(h);
     this.stream.alternans = alternansAmplitude(this.sac()?.effusionMl, this.periSpec?.open);
     this.stream.ectopy?.update(minutes, weightedBurden(this.sites, this.sev, this.transmural), { sympathetic: this.fx.sympathetic, betaBlock: ctl.betaBlock, drugDrive: this.pk.effects().ectopyDrive });
+    if (this.arrhythmia) {
+      let scar = 0;
+      for (const s of this.sites) scar += (this.scar[s.key] ?? 0) * s.mass;
+      this.arrhythmia.update(minutes, h, this.t, { map: this.map, scar, sinusRate: this.rstate.sinusRate * (this.paced() ? 1 : this.autonomic.hrScaleAt(this.t)), sinus: this.rstate.rhythm === "sinus" && !this.paced() });
+    }
     this.stream.extend(this.t, this.rstate, this.mod);
     this.stream.prune(this.t);
     this.t += h;
@@ -1028,11 +1047,17 @@ export class Simulation {
     return { hr, sbp: avg((b) => b.sbp), dbp: avg((b) => b.dbp), map: avgF((b) => b.map), sv, cardiacOutput: (this.engine === "core" ? out : (hr * sv) / 1000) + this.circ.deviceFlow };
   }
 
+  /** The rhythm as the monitor shows it now: a running arrhythmia (B3b: VT, VF, AIVR) in place of the patient's own rhythm. */
+  private shownRhythm(): { rs: RhythmState; episodeRate?: number } {
+    const ep = this.arrhythmia?.rhythmAt(this.t), cur = this.arrhythmia?.current;
+    return ep && cur ? { rs: { ...this.rstate, rhythm: ep.id, avDegree: 0 }, episodeRate: cur.rate } : { rs: this.rstate };
+  }
+
   /** Where the patient is right now, in plain numbers. */
   state() {
     const last = this.history[this.history.length - 1];
     const roll = this.rolling(10), r0 = (x: number) => (Number.isFinite(x) ? Math.round(x) : null);
-    const cond = this.analysis.cond, rs = this.rstate, c = this.circ;
+    const shown = this.shownRhythm(), cond = this.analysis.cond, rs = shown.rs, c = this.circ;
     const beds = cond.terminals.map((x) => ({ bed: x.key, artery: x.segId, massPct: +(x.mass * 100).toFixed(1), flowRatio: +x.ratio.toFixed(2), ischemia: +(this.sev[x.key] ?? 0).toFixed(2), infarcted: +(this.scar[x.key] ?? 0).toFixed(2) }));
     const compromised = beds.filter((b) => b.ischemia > 0.05 || b.infarcted > 0.05).sort((a, b) => b.ischemia * b.massPct - a.ischemia * a.massPct);
     const af = rs.rhythm === "af", lib = libraryRhythm(rs.rhythm);
@@ -1046,7 +1071,7 @@ export class Simulation {
       rolling10s: { hr: r0(roll.hr), sbp: r0(roll.sbp), dbp: r0(roll.dbp), map: r0(roll.map), sv: r0(roll.sv), cardiacOutput: Number.isFinite(roll.cardiacOutput) ? +roll.cardiacOutput.toFixed(1) : null },
       meanArterialPressure: Math.round(this.map),
       coronaryPerfusionPressure: Math.round(this.perfusion),
-      rhythm: { label, ...(lib ? { library: lib.id, ventricularRate: Math.round(ventRate(rs)) } : {}), sinusRate: Math.round(rs.sinusRate), avBlock: lib ? 0 : rs.avDegree, pvcSeverity: +rs.pvcSeverity.toFixed(2), baseline: { ...this.patient }, ...ectopyState(this.stream.ectopy, this.t) },
+      rhythm: { label, ...(lib ? { library: lib.id, ventricularRate: Math.round(shown.episodeRate ?? ventRate(rs)) } : {}), sinusRate: Math.round(rs.sinusRate), avBlock: lib ? 0 : rs.avDegree, pvcSeverity: +rs.pvcSeverity.toFixed(2), baseline: { ...this.patient }, ...ectopyState(this.stream.ectopy, this.t), ...(this.arrhythmia ? { arrhythmia: this.arrhythmia.state(this.t) } : {}) },
       treatment: {
         ischemicMinutes: Math.round(this.ischemicMinutes),
         stent: this.treated.stent, lysis: this.treated.lysed, grafted: this.treated.grafts.length > 0,
@@ -1066,7 +1091,7 @@ export class Simulation {
    * app's ECG strip draws.
    */
   ecg() {
-    const rs = this.rstate, last = this.history[this.history.length - 1];
+    const rs = this.shownRhythm().rs, last = this.history[this.history.length - 1];
     const beat: Beat = { t: 10, rr: last ? last.interval : 60 / CIRC.baseRate, pvc: false, pr: rs.pr, bbb: rs.bbb === "none" ? undefined : rs.bbb, noP: rs.rhythm === "af" };
     const g = globalSeverity(ischemicBurden(this.sites, this.sev)), inj = injuryVector(this.sites, this.sev, this.transmural);
     const st = Object.fromEntries(ALL_LEADS.map((l) => [l, Math.round(stLevelVec(l, beat, [beat], inj, ST.tBoost * g) * 100) / 10])) as Record<LeadName, number>;
