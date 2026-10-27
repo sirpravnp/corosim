@@ -84,15 +84,19 @@ export class LibraryRhythm {
   /** Ischemic ectopy (core engine); unset, none. */
   ectopy?: EctopySource;
 
-  /** Start the rhythm at stream time `t0` (its first ventricular beat about 0.45 s later). `bbb` is the patient's bundle branch block, drawn when the library rhythm sets none of its own. */
-  constructor(readonly id: string, seed: number, readonly t0: number, readonly bbb: Bbb = "none") {
+  /**
+   * Start the rhythm at stream time `t0` (its first ventricular beat about 0.45 s later). `bbb` is the patient's bundle branch block,
+   * drawn when the library rhythm sets none of its own. `spec`, when given, replaces the preset's (an arrhythmia episode runs the
+   * library's VT at its own rate, physics/arrhythmia.ts).
+   */
+  constructor(readonly id: string, seed: number, readonly t0: number, readonly bbb: Bbb = "none", spec?: EkgSpec) {
     const p = BY_ID[id];
     if (!p) throw new Error(`"${id}" is not a Simulator rhythm`);
-    this.preset = p; this.spec = p.spec;
-    const k = p.spec.rhythm.kind;
+    this.preset = p; this.spec = spec ?? p.spec;
+    const k = this.spec.rhythm.kind;
     const follows = k === "sinus" || k === "mat" || k === "torsades" ? "sinus" : k === "af" ? "af" : null;
-    this.gen = new RhythmGenerator(p.spec, (seed * 7919 + 17) >>> 0, { t0, rate: follows ? (t) => this.rateScale(t, follows) : undefined });
-    const m = p.spec.morph ?? {};
+    this.gen = new RhythmGenerator(this.spec, (seed * 7919 + 17) >>> 0, { t0, rate: follows ? (t) => this.rateScale(t, follows) : undefined });
+    const m = this.spec.morph ?? {};
     this.painter = new BeatPainter(m.bbb || bbb === "none" ? m : { ...m, bbb });
     this.nextTick = t0 + 0.45;
     this.nextF = t0 + 0.45 - 0.12; // the flutter wave's sharp downstroke (engine.ts baseline phase), one atrial depolarization per cycle

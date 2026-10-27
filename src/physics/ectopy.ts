@@ -23,8 +23,8 @@ import { gaussian } from "./autonomic";
  *
  * Each beat's probability is then modulated by a slow random factor (heartbeat time, mean 1) and raised for the beat after a PVC,
  * and saturates at `cap`: p = cap (1 - exp(-rate x noise x memory / cap)). A PVC may be followed directly by a second (a couplet);
- * nothing longer: triplets, VT, VF, idioventricular rhythm and R-on-T initiation are task B3b, which reads `rate()`, `phase()` and
- * `couplingVsT()` from here.
+ * nothing longer from this model: runs of VT, VF, idioventricular rhythm and R-on-T initiation are task B3b (physics/arrhythmia.ts),
+ * which reads `phase()`, `age`, `burden`, `burst` and `couplingVsT()` from here and hooks in through `trigger`.
  */
 
 export type EctopyPhase = "none" | "hyperacute" | "subacute" | "late" | "reperfusion";
@@ -33,8 +33,14 @@ export type EctopyPhase = "none" | "hyperacute" | "subacute" | "late" | "reperfu
 export interface EctopyTone { sympathetic: number; betaBlock: number; drugDrive: number }
 export const REST_TONE: EctopyTone = { sympathetic: ECTOPY.restSympathetic, betaBlock: 0, drugDrive: 0 };
 
-/** What the generator needs from an ectopy model: for an eligible beat at `tR` with sinus interval `rr`, the times of the PVCs that follow it (none, one, or a couplet). */
+/** What the generator needs from an ectopy model: for an eligible beat at `tR` with sinus interval `rr`, the times of the PVCs that follow it (none, one, a couplet, or a run of VT when a run trigger is attached). */
 export interface EctopySource { decide(tR: number, rr: number): number[] }
+
+/**
+ * A model that may turn the premature beats after an eligible beat into a run (task B3b, physics/arrhythmia.ts): it gets the beat and the
+ * PVC times the ectopy model chose and returns the times to use instead (the same, a trigger beat it adds, or a run of VT).
+ */
+export interface RunTrigger { onBeat(tR: number, rr: number, pvcs: number[]): number[] }
 
 const E = ECTOPY;
 const hill = (x: number) => { const y = Math.max(0, x) ** E.hill; return y / (1 + y); };
@@ -95,6 +101,10 @@ export class Ectopy implements EctopySource {
   private z = 0; private zT = NaN;
   private afterPvc = false;
   private log: { t: number; pvc: boolean }[] = [];
+  /** VT/VF initiation (core engine, B3b); unset, the PVCs stop at a couplet as in B3a. */
+  trigger?: RunTrigger;
+  /** True while an ischemic episode runs (from the first burden above the floor until an hour without it). */
+  get active(): boolean { return this.inEpisode; }
 
   constructor(seed = 1, tendency = 1) {
     this.susceptibility = susceptibility(seed);
@@ -163,12 +173,14 @@ export class Ectopy implements EctopySource {
   }
 
   decide(tR: number, rr: number): number[] {
-    const p = this.probability(tR), out: number[] = [];
+    const p = this.probability(tR);
+    let out: number[] = [];
     if (p > 0 && this.rng() < p) {
       const c = rr * Math.min(E.couplingMax, Math.max(E.couplingMin, E.coupling * (1 + E.couplingSpread * gaussian(this.rng))));
       out.push(tR + c);
       if (this.rng() < Math.min(E.coupletMax, E.coupletBase + E.coupletPerRate * p)) out.push(tR + c + rr * E.coupletInterval);
     }
+    if (this.trigger) out = this.trigger.onBeat(tR, rr, out);
     this.afterPvc = out.length > 0;
     this.log.push({ t: tR, pvc: false }, ...out.map((t) => ({ t, pvc: true })));
     if (this.log.length > 600) this.log.splice(0, this.log.length - 400);
