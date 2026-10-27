@@ -5,6 +5,7 @@ import { Ectopy, EctopyPhase } from "../physics/ectopy";
 import { ECTOPY } from "../config/ectopy";
 import { libraryRhythm } from "../physics/rhythmSource";
 import type { Arrhythmia, RunCause } from "../physics/arrhythmia";
+import { arrestSentence, arrestWords } from "./narrate";
 
 export interface Explanation {
   headline: string;
@@ -50,7 +51,7 @@ export function arrhythmiaStatement(a: Arrhythmia, t: number): string | null {
   const s = a.state(t), cur = s.current;
   if (cur) {
     const what = `${cur.label[0].toUpperCase()}${cur.label.slice(1)}${cur.rate ? ` at ${cur.rate}/min` : ""} for ${Math.round(cur.forS)} s`;
-    const tail = cur.kind === "vf" ? "no organized contraction and no cardiac output: cardiac arrest (defibrillation is not yet modelled)"
+    const tail = cur.kind === "vf" ? "no organized contraction and no cardiac output: cardiac arrest, treated with CPR and defibrillation"
       : cur.kind === "aivr" ? "a benign reperfusion rhythm, slightly faster than the sinus node, which ends by itself"
       : cur.kind === "poly" ? "chaotic contraction; it stops by itself or degenerates to ventricular fibrillation within seconds"
       : "dyssynchronous contraction and short filling; it degenerates to ventricular fibrillation if the pressure collapses or while acute ischemia goes on";
@@ -89,6 +90,8 @@ export function explain(sim: Simulation): Explanation {
   if (st.rhythm.avBlock) mech.push(`AV-node artery ischemia has caused ${st.rhythm.label}; the ventricular rate is set by the block, not the sinus node.`);
   const ect = sim.stream.ectopy;
   if (ect) { const e = ectopyStatement(ect, sim.t); if (e) mech.push(e); } // core engine (B3a): what the monitor actually showed
+  const aw = arrestWords(st.arrest);
+  if (aw) mech.push(arrestSentence(aw)); // core engine (B4b)
   if (sim.arrhythmia) { const a = arrhythmiaStatement(sim.arrhythmia, sim.t); if (a) mech.push(a); } // core engine (B3b)
   else if (st.rhythm.pvcSeverity > 0.6) mech.push("Ischemic burden is above the ectopy threshold, so premature ventricular beats occur; each is followed by a compensatory pause and a stronger next beat.");
 

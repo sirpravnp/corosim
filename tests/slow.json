@@ -1,4 +1,5 @@
 [
+  "tests/arrestSim.test.ts",
   "tests/arrhythmiaRates.test.ts",
   "tests/arrhythmiaSim.test.ts",
   "tests/cathHeart.test.ts",
