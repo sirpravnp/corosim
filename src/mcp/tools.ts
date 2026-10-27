@@ -91,6 +91,11 @@ const scenarioSchema = {
     },
     seed: { type: "integer", description: "Random seed. The same scenario and seed reproduce the same beats." },
     ectopyTendency: { type: "number", minimum: 0, maximum: 3, description: "Teaching override of the patient's tendency to ischemic PVCs (core engine): a multiplier on the susceptibility the seed gives. 0 = never any PVC, 1 = as the seed has it (default), 3 = very ectopy-prone." },
+    arrhythmiaTendency: { type: "number", minimum: 0, maximum: 3, description: "Teaching override of the patient's tendency to ventricular tachycardia, ventricular fibrillation and reperfusion AIVR (core engine): a multiplier on the susceptibility the seed gives. 0 = never any (and ends one that is running), 1 = as the seed has it (default)." },
+    electrolytes: {
+      type: "object", description: "Serum electrolytes in mmol/l (core engine); hypo- and hyperkalaemia and hypomagnesaemia raise the VT/VF hazard and the PVCs.",
+      properties: { potassium: { type: "number", minimum: 2, maximum: 7.5, description: "Default 4.2." }, magnesium: { type: "number", minimum: 0.2, maximum: 3, description: "Default 0.9." } },
+    },
   },
 } as const;
 

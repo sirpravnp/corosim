@@ -27,7 +27,7 @@ export const ARRHYTHMIA = {
    * Jacobsen 2020, PMID 32067598), anterior infarcts about twice the others; primary VF 4.4% of patients admitted within 24 h (El-Sherif
    * 1976, PMID 57784), a population that had already outlived the first hours.
    */
-  ischemicPerMin: 0.020,
+  ischemicPerMin: 0.024,
   /**
    * Time course of the ischemic hazard, minutes since onset of the episode (Ectopy.age):
    * T(t) = (1 - e^(-t/rise)) x (e^(-t/tau) + sub x e^(-t/subTau) + late). Steeper than the PVCs': in GISSI-2 primary VF was 3.1% in
@@ -44,7 +44,7 @@ export const ARRHYTHMIA = {
    * one or two percent. Non-sustained VT in 26% of patients during primary PCI (Terkelsen 2009, PMID 19962468); VF during primary PCI in
    * 88 of 5373 (1.6%: Jabbari 2015, PMID 26150175) and 127 of 7929 (1.6%: Ravn Jacobsen 2020, PMID 32067598).
    */
-  reperfusionPerMin: 0.016,
+  reperfusionPerMin: 0.03,
   /**
    * Accelerated idioventricular rhythm (AIVR), a reperfusion rhythm of enhanced automaticity, not of re-entry: it is not triggered by
    * a premature beat but takes over when its rate exceeds the sinus rate. Hazard per clinical minute at full effect of the burst store.
@@ -53,7 +53,7 @@ export const ARRHYTHMIA = {
    * infarct (Terkelsen 2009, PMID 19962468); 18.9% on telemetry after primary PCI, more with extensive anterior infarction (Wu 2025,
    * PMID 40618073).
    */
-  aivrPerMin: 0.035,
+  aivrPerMin: 0.045,
   /**
    * Late (scar) VT: a re-entry circuit around healed infarct scar, monomorphic, slower, months to years after the infarct. Hazard per
    * clinical minute at full effect of the scar burden (sum of necrosis x mass, same Hill curve with a 2% floor), once the scar has
@@ -93,7 +93,7 @@ export const ARRHYTHMIA = {
    */
   mix: {
     ischemia: { nsvt: 0.72, vf: 0.16, poly: 0.06, mono: 0.06 },
-    reperfusion: { nsvt: 0.88, vf: 0.05, poly: 0.03, mono: 0.04 },
+    reperfusion: { nsvt: 0.9, vf: 0.025, poly: 0.03, mono: 0.045 },
     scar: { nsvt: 0.3, vf: 0, poly: 0, mono: 0.7 },
   },
   /**

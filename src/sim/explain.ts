@@ -4,6 +4,7 @@ import { CIRC } from "../physics/circulation";
 import { Ectopy, EctopyPhase } from "../physics/ectopy";
 import { ECTOPY } from "../config/ectopy";
 import { libraryRhythm } from "../physics/rhythmSource";
+import type { Arrhythmia, RunCause } from "../physics/arrhythmia";
 
 export interface Explanation {
   headline: string;
@@ -36,6 +37,31 @@ export function ectopyStatement(e: Ectopy, t: number): string | null {
   return `Occasional premature ventricular beats: ${per}${why ? `; ${why}` : ""}; ${pause}.`;
 }
 
+const CAUSE_WHY: Record<RunCause, string> = {
+  ischemia: "a premature beat on the vulnerable phase of acutely ischemic myocardium started it",
+  reperfusion: "it came with reperfusion of the ischemic muscle",
+  scar: "a re-entry circuit around healed infarct scar runs it",
+  degeneration: "a ventricular tachycardia broke up into fibrillation",
+  induced: "it was started on purpose",
+};
+
+/** The core engine's VT/VF and AIVR (B3b): what runs now, or the last run in the past minute. Nothing when nothing happened. */
+export function arrhythmiaStatement(a: Arrhythmia, t: number): string | null {
+  const s = a.state(t), cur = s.current;
+  if (cur) {
+    const what = `${cur.label[0].toUpperCase()}${cur.label.slice(1)}${cur.rate ? ` at ${cur.rate}/min` : ""} for ${Math.round(cur.forS)} s`;
+    const tail = cur.kind === "vf" ? "no organized contraction and no cardiac output: cardiac arrest (defibrillation is not yet modelled)"
+      : cur.kind === "aivr" ? "a benign reperfusion rhythm, slightly faster than the sinus node, which ends by itself"
+      : cur.kind === "poly" ? "chaotic contraction; it stops by itself or degenerates to ventricular fibrillation within seconds"
+      : "dyssynchronous contraction and short filling; if the pressure collapses it degenerates to ventricular fibrillation";
+    return `${what}: ${CAUSE_WHY[cur.cause]}; ${tail}.`;
+  }
+  const l = s.last;
+  if (!l || t - (l.end ?? l.t) > 60) return null;
+  if (l.kind === "nsvt") return `A run of ${l.beats} beats of non-sustained ventricular tachycardia at ${l.rate}/min${l.couplingVsT !== undefined && l.couplingVsT < 1 ? ", started by an R-on-T premature beat" : ""}; ${CAUSE_WHY[l.cause]}.`;
+  return `${l.label[0].toUpperCase()}${l.label.slice(1)} ended (${l.outcome ?? "stopped"}) ${Math.round(t - (l.end ?? l.t))} s ago.`;
+}
+
 /**
  * Turn the current state into grounded facts: what is abnormal, and which part of the model produced it.
  * An LLM asked to explain the patient should quote these, which keeps its explanation tied to what the
@@ -63,6 +89,7 @@ export function explain(sim: Simulation): Explanation {
   if (st.rhythm.avBlock) mech.push(`AV-node artery ischemia has caused ${st.rhythm.label}; the ventricular rate is set by the block, not the sinus node.`);
   const ect = sim.stream.ectopy;
   if (ect) { const e = ectopyStatement(ect, sim.t); if (e) mech.push(e); } // core engine (B3a): what the monitor actually showed
+  if (sim.arrhythmia) { const a = arrhythmiaStatement(sim.arrhythmia, sim.t); if (a) mech.push(a); } // core engine (B3b)
   else if (st.rhythm.pvcSeverity > 0.6) mech.push("Ischemic burden is above the ectopy threshold, so premature ventricular beats occur; each is followed by a compensatory pause and a stronger next beat.");
 
   const rs = sim.rstate, sup = st.support, v = st.ventricle;
