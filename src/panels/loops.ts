@@ -4,14 +4,14 @@
  * source.onBeat() only. Look follows the structural page's loop (src/structural/traces.ts drawLoop).
  */
 import type { BeatSummary, Chamber, HemoSource } from "../sim/hemoSource";
-import { recentHemodynamicBeats, SETTLE_BEATS } from "../sim/hemoBeats";
+import { DEFAULT_LOOP_WINDOW, LOOP_WINDOWS, loopAlpha, loopHistory } from "./loopHistory";
 import type { Panel, PanelDef } from "./panel";
 import { snapshots } from "./snapshots";
 import { DASH, fmt } from "./numbers";
 import { cleanLoop, fitEDPVR, fitESPVR, loopGap, loopStats, rescaleAxis, type Axis, type LoopStats, type Pt } from "../physics/loopMath";
 
-/** Beats drawn faintly behind the latest. */
-export const TRAIL_BEATS = 4;
+/** Beats asked of the source for the history (its ring holds 60 s; a fast rhythm over that is more than this). */
+const HISTORY_FETCH = 200;
 /** A loop is closed with a line only when its ends are this close (fraction of its own ranges); see `loopGap`. */
 const CLOSED_GAP = 0.12;
 type Choice = Chamber | "BV";
@@ -36,6 +36,8 @@ export const loopsPanel: PanelDef = {
     let seen: BeatSummary | undefined;
     let omitted = false; // the newest beat is a premature one (or was cut short by one) and is not drawn
     let choice: Choice = "LV";
+    let windowS: number = DEFAULT_LOOP_WINDOW; // seconds of loops shown; older ones fade with age
+    let usedRule = "steady";
     let ghost: BeatSummary | null = null; // the selected snapshot's beat (shared store, saved from the workspace bar)
     let unsubStore: (() => void) | undefined;
     let vAxis: Axis | null = null, pAxis: Axis | null = null;
@@ -79,11 +81,12 @@ export const loopsPanel: PanelDef = {
     function render(): void {
       // A loop is a closed cycle only for a hemodynamic beat (hemoBeats.ts: not premature, not cut short by a premature one, settled);
       // the others are left out (otherwise the panel joins their end to their start with a straight line across the loop).
-      const recent = src.beats(TRAIL_BEATS + 8 + SETTLE_BEATS), beats = recentHemodynamicBeats(recent).beats.slice(-(TRAIL_BEATS + 1));
+      const recent = src.beats(HISTORY_FETCH), hist = loopHistory(recent, src.now(), windowS), beats = hist.beats;
+      usedRule = hist.used;
       ghost = snapshots.selected()?.beat ?? null;
       const live = beats[beats.length - 1];
       seen = recent[recent.length - 1];
-      omitted = !!live && live !== seen;
+      omitted = !!live && hist.omittedNewest;
       wait.hidden = !!live;
       canvas.hidden = !live;
       if (!live) { table.replaceChildren(); note.textContent = ""; return; }
@@ -95,11 +98,12 @@ export const loopsPanel: PanelDef = {
       vAxis = rescaleAxis(vAxis, Math.max(0, vlo), vhi, 10);
       pAxis = rescaleAxis(pAxis, 0, Math.max(phi, 10), phi > 100 ? 20 : 10);
       pAxis.lo = 0;
-      drawCanvas(live, beats.slice(0, -1), chs);
+      drawCanvas(live, beats.slice(0, -1), chs, src.now());
+      if (usedRule !== "steady") note.textContent += usedRule === "all" ? "No steady beats (AF, VT, pacing or very frequent ectopy): every beat is drawn. " : "No steady beats: the non-premature beats are drawn. ";
       renderTable(live);
     }
 
-    function drawCanvas(live: BeatSummary, trail: BeatSummary[], chs: Chamber[]): void {
+    function drawCanvas(live: BeatSummary, trail: BeatSummary[], chs: Chamber[], now: number): void {
       const dpr = window.devicePixelRatio || 1;
       const W = Math.max(200, canvas.clientWidth || canvas.width), H = Math.round(W * 260 / 320);
       if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) { canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr); }
@@ -130,9 +134,10 @@ export const loopsPanel: PanelDef = {
       g.beginPath(); g.rect(L, T - 4, R - L + 2, B - T + 6); g.clip();
       if (ghost) for (const c of chs) { g.setLineDash([5, 4]); g.lineWidth = 1.6; g.strokeStyle = rgba(COLOR[c], 0.6); path(ghost, c); g.stroke(); }
       g.setLineDash([]);
-      trail.forEach((b, i) => {
-        for (const c of chs) { g.lineWidth = 1.3; g.strokeStyle = rgba(COLOR[c], 0.1 + 0.4 * ((i + 1) / (trail.length + 1))); path(b, c); g.stroke(); }
-      });
+      for (const b of trail) { // oldest first; fading by age
+        const a = loopAlpha(now - (b.t + b.rr), windowS);
+        if (a > 0) for (const c of chs) { g.lineWidth = 1.3; g.strokeStyle = rgba(COLOR[c], a); path(b, c); g.stroke(); }
+      }
       const shown = [...trail, live];
       if (chs.length === 1 && isVentricle(chs[0])) {
         const sts = shown.map(b => stats(b, chs[0]));
@@ -191,6 +196,17 @@ export const loopsPanel: PanelDef = {
         for (const [v, t] of OPTIONS) { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.append(o); }
         sel.addEventListener("change", () => { choice = sel.value as Choice; vAxis = pAxis = null; dirty = true; });
         ctl.append(sel);
+        const seg = document.createElement("div");
+        seg.className = "hp-seg"; seg.setAttribute("role", "group"); seg.setAttribute("aria-label", "History shown");
+        const wbtns = LOOP_WINDOWS.map((w) => {
+          const b = document.createElement("button");
+          b.type = "button"; b.textContent = `${w} s`; b.setAttribute("aria-pressed", String(w === windowS));
+          b.title = `Loops of the last ${w} s, older ones fainter`;
+          b.addEventListener("click", () => { windowS = w; wbtns.forEach((o) => o.setAttribute("aria-pressed", String(o === b))); dirty = true; });
+          return b;
+        });
+        seg.append(...wbtns);
+        ctl.append(seg);
         wait = document.createElement("p");
         wait.className = "note";
         wait.textContent = "waiting for first solve";
