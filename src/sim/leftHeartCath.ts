@@ -37,6 +37,7 @@
 import type { BeatSummary, HemoNumbers } from "./hemoSource";
 import { LHC } from "../config/cath";
 import { GORLIN, GRADE, PATIENTS, type PatientKind } from "../config/structural";
+import { PROSTHESIS_GRADIENT } from "../config/valves";
 
 export const MITRAL_GORLIN = 37.7;
 export const ONSET_FRACTION = 0.15;
@@ -106,8 +107,12 @@ function grade(fraction: number, f: { mild: number; moderate: number; severe: nu
 }
 const ORDER: Severity[] = ["none", "mild", "moderate", "severe"];
 
-/** The reading a left-heart cath would give, or null before a beat exists. `patient` picks the normal valve areas for grading. */
-export function leftHeartCath(n: HemoNumbers, beat: BeatSummary | undefined | null, patient: PatientKind = "adult"): LeftHeartCath | null {
+/**
+ * The reading a left-heart cath would give, or null before a beat exists. `patient` picks the normal valve areas for grading.
+ * `prosthetic` names the valves that are prostheses (B5): a prosthesis is graded by its mean gradient (ASE 2009 cut-offs), not as a
+ * share of a native valve's area, which would call every normal prosthesis a stenosis.
+ */
+export function leftHeartCath(n: HemoNumbers, beat: BeatSummary | undefined | null, patient: PatientKind = "adult", prosthetic: { aortic?: boolean; mitral?: boolean } = {}): LeftHeartCath | null {
   if (!beat || beat.time.length < 8 || !beat.pressure.LV || !beat.pressure.AO || !beat.pressure.LA) return null;
   const t = beat.time, lv = beat.pressure.LV, ao = beat.pressure.AO, la = beat.pressure.LA, N = lv.length;
   const onset = systolicOnset(lv, t);
@@ -149,6 +154,9 @@ export function leftHeartCath(n: HemoNumbers, beat: BeatSummary | undefined | nu
     if (ORDER.indexOf(byMean) > ORDER.indexOf(aortic)) aortic = byMean;
   }
   const mitral = grade(mitralEngine / normal.mv, GRADE.areaFraction.mv);
+  const byGradient = (g: number, c: { moderate: number; severe: number }): Severity => (!finite(g) ? "none" : g >= c.severe ? "severe" : g >= c.moderate ? "moderate" : "none");
+  if (prosthetic.aortic) aortic = byGradient(meanAo, PROSTHESIS_GRADIENT.av);
+  const mitralGrade = prosthetic.mitral ? byGradient(meanMit, PROSTHESIS_GRADIENT.mv) : mitral;
 
   return {
     hr: n.hr, co: n.co,
@@ -158,7 +166,7 @@ export function leftHeartCath(n: HemoNumbers, beat: BeatSummary | undefined | nu
     mitral: { meanGradient: meanMit, wedgeMean: meanOf(la) },
     area: { aorticGorlin, aorticHakki: hakki(p2p, LHC.minAorticGradientMmHg), mitralGorlin, mitralEngine, mitralHakki: hakki(meanMit, LHC.minMitralGradientMmHg) },
     sep, dfp, avForwardMl: av.forwardMl, mvForwardMl: mv.forwardMl,
-    severity: { aortic, mitral },
+    severity: { aortic, mitral: mitralGrade },
     ejection, filling: mCount ? [mFrom, mTo] : [0, 0],
     traces: { t, lv, ao, la },
   };
