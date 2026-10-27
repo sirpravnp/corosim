@@ -29,6 +29,7 @@ export function wireRhythmPicker(onPick: () => void) {
   const sel = $<HTMLSelectElement>("rhythmsel"), q = $<HTMLInputElement>("rhythmq");
   fill("");
   sel.addEventListener("change", () => {
+    sel.value = sel.value; // re-render the styled list (a programmatic change does not)
     S.rhythm = sel.value === "nsr" ? "sinus" : sel.value;
     onPick();
   });
