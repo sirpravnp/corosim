@@ -16,6 +16,7 @@
   "tests/liveSource.test.ts",
   "tests/lungWater.test.ts",
   "tests/mcpHemo.test.ts",
+  "tests/mcpValve.test.ts",
   "tests/pericardialScenarios.test.ts",
   "tests/playground.test.ts",
   "tests/rhythmUnification.test.ts",
