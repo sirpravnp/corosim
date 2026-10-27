@@ -10,7 +10,7 @@ import { createStubSource } from "../src/sim/stubSource";
 import { rightHeartCath, mixedVenous, wedgeFromLA } from "../src/sim/rightHeartCath";
 import type { RhcSnapshot } from "../src/sim/rightHeartCath";
 
-/** A StructuralReport as the snapshot the module takes (numbers as the bridge builds them, one beat from the waveform). */
+/** A StructuralReport as the snapshot the module takes (numbers as a source builds them, one beat from the waveform). */
 function snapshot(r: StructuralReport): RhcSnapshot {
   const base = PATIENTS[r.spec.patient ?? "adult"], p = r.pressure, w = r.waveform!;
   const numbers: HemoNumbers = {

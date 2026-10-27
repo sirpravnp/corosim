@@ -10,7 +10,7 @@
  *   ischemia-derived placeholder, normal = LIVE_SOURCE.bedOxygen.base and floor = base - slope (severity 1). When E2/E3
  *   supply real per-bed values, pass their own normal and floor to `o2Frame`. Each ventricular vertex mixes its nearest
  *   beds by the weights the ischemia painting already uses.
- * - Before the bridge's first solve every value is NaN: grey, with a "waiting" legend note.
+ * - Before the first beat every value is NaN: grey, with a "waiting" legend note.
  */
 import { SAT_RANGE, legendGradient, satColor } from "../structural/heartView";
 import { LIVE_SOURCE } from "../config/liveSource";

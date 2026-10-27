@@ -29,7 +29,7 @@ describe("structural <-> simulator and cath lab for every adult lesion", () => {
     });
   }
   it("non-default sliders survive the trip", () => {
-    for (const hash of ["#lesion=as&severity=0.5", "#lesion=asd&diameter=12"]) {
+    for (const hash of ["#lesion=as&severity=0.5", "#lesion=asd&diameter=7"]) {
       const spec = patientFromLesionHash(hash);
       expect(hashOf(link("sim", spec, "structural")!.href), hash).toBe(hash);
     }

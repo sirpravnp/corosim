@@ -7,7 +7,7 @@
  * FORMULAS AND CONVENTIONS
  *  - O2 content (ml/L) = 1.34 * Hb(g/dl) * 10 * Sat   (dissolved O2 ignored). 1.34 ml O2 per g Hb, as the engine uses.
  *    Hb: the source does not report it, so it is recovered from the source's own oxygen delivery,
- *    Hb = DO2 / (CO * 10 * 1.34 * SpO2) (the bridge defines DO2 that way); if that is not available, `opts.hb`, else 14 g/dl
+ *    Hb = DO2 / (CO * 10 * 1.34 * SpO2) (the sources define DO2 that way); if that is not available, `opts.hb`, else 14 g/dl
  *    (the adult baseline). The Hb used is returned in `hb`.
  *  - Mixed venous saturation for shunt calculation, Flamm: SvO2 = (3*SVC + IVC)/4.
  *  - Step-up (jump in saturation between consecutive sites): atrial = RA - mixed venous >= 7 %; ventricular = RV - RA >= 5 %;
@@ -32,7 +32,7 @@
  * WEDGE_TAU_S (0.03 s), applied circularly (a periodic beat) and then re-centred so the wedge mean equals the reported PCWP.
  * Modest on purpose: a real wedge is more damped, but peaks must stay readable.
  * RA a and v: a = the peak RA pressure within A_WINDOW_S after the atrial activation time (NaN when the beat has none, as in
- * AF); v = the peak RA pressure outside that window. (The bridge replays a solved waveform, so its a wave persists in AF.)
+ * AF); v = the peak RA pressure outside that window.
  */
 import type { BeatSummary, HemoNumbers, HemoSource, Saturations } from "./hemoSource";
 import { recentHemodynamicBeats, SETTLE_BEATS } from "./hemoBeats";

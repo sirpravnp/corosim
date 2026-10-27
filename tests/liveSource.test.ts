@@ -47,7 +47,7 @@ describe("the source of a normal adult", () => {
     expect(Math.abs(n.cvp - h.cvp)).toBeLessThan(0.7); expect(Math.abs(n.pcwp - h.pcwp)).toBeLessThan(1);
     expect(Math.abs(n.co - sim.rolling(8).cardiacOutput)).toBeLessThan(0.5);
   });
-  it("has normal saturations from the bridge's oxygen model, finite everywhere", () => {
+  it("has normal saturations from the oxygen model, finite everywhere", () => {
     expect(sat.spo2).toBeGreaterThan(0.95); expect(sat.preductal).toBeCloseTo(sat.postductal, 2);
     expect(sat.svo2).toBeGreaterThan(0.62); expect(sat.svo2).toBeLessThan(0.8);
     expect(sat.do2).toBeGreaterThan(800); expect(sat.do2).toBeLessThan(1200);
