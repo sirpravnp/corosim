@@ -5,7 +5,7 @@
 import type { Series } from "../sim/hemoSource";
 
 /** Selectable time windows, s. */
-export const WINDOWS = [3, 6, 12] as const;
+export const WINDOWS = [3, 6, 12, 30] as const;
 export const DEFAULT_WINDOW = 6;
 
 /** Axis tops, mmHg; the same ladder as the structural page's traces. */
@@ -76,3 +76,28 @@ export function legendText(l: LegendValues): string {
 
 /** True when no series has a finite sample: the worker has not delivered the first solve. */
 export const isWaiting = (series: readonly Series[]): boolean => !Number.isFinite(dataRange(series).max);
+
+/** Seconds of history a paused review keeps (the source's trace buffer). */
+export const REVIEW_SECONDS = 60;
+
+/**
+ * The part of `s` with `from <= t <= to`, thinned to at most `maxPoints` (evenly by index; the first and last kept). Samples are
+ * in time order. Used by the paused review, which holds one long copy and shows a sliding window of it.
+ */
+export function windowSeries(s: Series, from: number, to: number, maxPoints = Infinity): Series {
+  const n = Math.min(s.t.length, s.v.length);
+  let a = 0;
+  while (a < n && s.t[a] < from) a++;
+  let b = a;
+  while (b < n && s.t[b] <= to) b++;
+  const len = b - a;
+  if (len <= 0) return { t: new Float32Array(0), v: new Float32Array(0) };
+  const m = Math.max(2, Math.min(len, Math.floor(maxPoints)));
+  if (m >= len) return { t: s.t.slice(a, b), v: s.v.slice(a, b) };
+  const t = new Float32Array(m), v = new Float32Array(m);
+  for (let i = 0; i < m; i++) { const k = a + Math.floor((i * (len - 1)) / (m - 1)); t[i] = s.t[k]; v[i] = s.v[k]; }
+  return { t, v };
+}
+
+/** How far back (s) a paused review can be scrolled: what was kept, less the window shown. Never negative. */
+export const maxScrub = (kept: number, window: number): number => Math.max(0, kept - window);

@@ -6,21 +6,27 @@ import { LEFT, RIGHT, type Trace } from "../structural/traces";
 import type { HemoSource, Series } from "../sim/hemoSource";
 import type { Panel, PanelDef } from "./panel";
 import { snapshots } from "./snapshots";
-import { DEFAULT_WINDOW, WINDOWS, axisBottom, dataRange, gridStep, isWaiting, legendText, legendValues, nextTop, pickMaxPoints } from "./traceMath";
+import { DEFAULT_WINDOW, REVIEW_SECONDS, WINDOWS, axisBottom, dataRange, gridStep, isWaiting, legendText, legendValues, maxScrub, nextTop, pickMaxPoints, windowSeries } from "./traceMath";
 
 const ASPECT = 0.4;
 const FONT = "12px ui-monospace, Menlo, monospace";
 
 interface Band { canvas: HTMLCanvasElement; traces: Trace[]; title: string; top?: number }
 
-function drawBand(b: Band, source: HemoSource, now: number, seconds: number): void {
+/** A paused review: one long copy of each node's trace, and how far back the window ends from the moment of the pause. */
+interface Review { at: number; kept: Map<string, Series>; back: number }
+
+function drawBand(b: Band, source: HemoSource, nowLive: number, seconds: number, review: Review | null): void {
+  const now = review ? review.at - review.back : nowLive;
   const c = b.canvas;
   const dpr = window.devicePixelRatio || 1, W = Math.max(200, c.clientWidth || c.width), H = Math.round(W * ASPECT);
   if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
   const g = c.getContext("2d");
   if (!g) return;
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const series: Series[] = b.traces.map(t => source.trace(t.node, seconds, { maxPoints: pickMaxPoints(W) }));
+  const series: Series[] = b.traces.map(t => review
+    ? windowSeries(review.kept.get(t.node) ?? { t: new Float32Array(0), v: new Float32Array(0) }, now - seconds, now, pickMaxPoints(W))
+    : source.trace(t.node, seconds, { maxPoints: pickMaxPoints(W) }));
   const L = 36, R = W - 10, T = 42, B = H - 20;
   g.fillStyle = "#0b0b0b"; g.fillRect(0, 0, W, H);
   g.font = FONT; g.textBaseline = "alphabetic";
@@ -36,7 +42,7 @@ function drawBand(b: Band, source: HemoSource, now: number, seconds: number): vo
   const step = gridStep(top);
   for (let p = Math.ceil(bottom / step) * step; p <= top; p += step) { g.beginPath(); g.moveTo(L, y(p)); g.lineTo(R, y(p)); g.stroke(); g.fillText(String(p), 8, y(p) + 4); }
   g.fillText(`${b.title} · mmHg`, L, 16);
-  g.fillText(`${seconds} s`, R - 30, H - 5);
+  g.fillText(review ? `${seconds} s, ${review.back > 0.05 ? `${review.back.toFixed(1)} s back` : "paused"}` : `${seconds} s`, review ? R - 118 : R - 30, H - 5);
   // legend on its own row: colour key, label and current systolic/diastolic (mean)
   let lx = 8;
   g.font = "11px ui-monospace, Menlo, monospace";
@@ -91,6 +97,25 @@ export const tracesPanel: PanelDef = {
     let src: HemoSource;
     let bands: Band[] = [];
     let seconds = DEFAULT_WINDOW;
+    let review: Review | null = null;
+    let lastNow = NaN;
+    let pauseBtn: HTMLButtonElement, scrub: HTMLInputElement, scrubLabel: HTMLElement;
+    const syncScrub = () => {
+      const max = review ? maxScrub(REVIEW_SECONDS, seconds) : 0;
+      scrub.max = String(max);
+      if (review) review.back = Math.min(review.back, max);
+      scrub.value = String(review ? review.back : 0);
+      scrub.hidden = scrubLabel.hidden = !review;
+      scrubLabel.textContent = review ? (review.back > 0.05 ? `${review.back.toFixed(1)} s back` : "paused") : "";
+      pauseBtn.textContent = review ? "Resume" : "Pause";
+      pauseBtn.setAttribute("aria-pressed", String(!!review));
+    };
+    const pause = () => {
+      if (!Number.isFinite(lastNow)) return;
+      const kept = new Map<string, Series>();
+      for (const b of bands) for (const t of b.traces) kept.set(t.node, src.trace(t.node, REVIEW_SECONDS, { maxPoints: 40000 }));
+      review = { at: lastNow, kept, back: 0 };
+    };
     return {
       id: "traces",
       title: "Pressures",
@@ -106,10 +131,25 @@ export const tracesPanel: PanelDef = {
           b.addEventListener("click", () => {
             seconds = w;
             btns.forEach(o => o.setAttribute("aria-pressed", String(o === b)));
+            syncScrub();
           });
           return b;
         });
         bar.append(...btns);
+        pauseBtn = document.createElement("button");
+        pauseBtn.type = "button"; pauseBtn.title = "Freeze the traces to review them; drag the slider to go back up to a minute";
+        pauseBtn.style.cssText = "width:auto;padding:2px 10px;font:600 11px/1.4 var(--font-data)";
+        pauseBtn.addEventListener("click", () => { if (review) review = null; else pause(); syncScrub(); });
+        scrub = document.createElement("input");
+        scrub.type = "range"; scrub.min = "0"; scrub.step = "0.1"; scrub.value = "0"; scrub.hidden = true;
+        scrub.setAttribute("aria-label", "Scrub back in time");
+        scrub.style.cssText = "flex:1 1 140px;min-width:100px;direction:rtl"; // right end = now, dragging left goes back
+        scrub.addEventListener("input", () => { if (review) { review.back = Number(scrub.value); syncScrub(); } });
+        scrubLabel = document.createElement("span");
+        scrubLabel.className = "note"; scrubLabel.hidden = true;
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;align-items:center";
+        row.append(bar, pauseBtn, scrub, scrubLabel);
         const mk = (traces: Trace[], title: string): Band => {
           const canvas = document.createElement("canvas");
           canvas.style.cssText = "display:block;width:100%;border-radius:4px;margin-top:6px";
@@ -118,11 +158,12 @@ export const tracesPanel: PanelDef = {
           el.append(canvas);
           return { canvas, traces, title };
         };
-        el.append(bar);
+        el.append(row);
         bands = [mk(LEFT, "Left heart"), mk(RIGHT, "Right heart")];
+        syncScrub();
       },
-      setSource(s) { src = s; for (const b of bands) b.top = undefined; },
-      draw(now) { for (const b of bands) drawBand(b, src, now, seconds); },
+      setSource(s) { src = s; review = null; syncScrub(); for (const b of bands) b.top = undefined; },
+      draw(now) { lastNow = now; for (const b of bands) drawBand(b, src, now, seconds, review); },
       dispose() { for (const b of bands) b.canvas.remove(); bands = []; },
     };
   },

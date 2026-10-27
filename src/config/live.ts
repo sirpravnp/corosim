@@ -11,8 +11,8 @@ export const LIVE = {
   maxStep: 0.0005,
   /** Spacing of the stored trace samples, s (2 ms). [assumed] */
   traceEvery: 0.002,
-  /** Length of the trace ring buffer, s. [assumed] */
-  traceSeconds: 30,
+  /** Length of the trace ring buffer, s: 60 so the traces panel can be paused on a 30 s window and scrubbed back another 30 s (task C7), as long as the source's beat ring (`ringSeconds`). [assumed] */
+  traceSeconds: 60,
   /** An atrial event counts as the atrial kick of a ventricular event when it came this long before it, s: at least `kickMinLead` (an atrium contracting later has nothing left to add) and at most `kickMaxLead` (about the longest PR). [assumed] */
   kickMinLead: 0.04, kickMaxLead: 0.35,
   /** Beats of history the record list keeps. [assumed] */
