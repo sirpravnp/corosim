@@ -25,6 +25,9 @@ export interface PatientSpec extends Scenario {
   devices?: DeviceSpec;
 }
 
+/** The `heart` keys the spec takes (the spec registry, sim/registry.ts, must list a field for each: tests/specRegistry.test.ts). */
+export const HEART_KEYS = ["pvri", "svrScale", "satLung", "volumeMl", "valves", "pda", "asd", "vsd", "bt", "lvSize", "laSize", "lvEes", "rvEes", "lvStiffness", "rvStiffness", "rvContractility", "rvSize", "raSize", "tof"] as const;
+
 /** The structural engine's lesion fields, without its patient and rate (those come from the rest of the spec). */
 export type HeartSpec = Omit<StructuralSpec, "patient" | "hr">;
 
@@ -139,7 +142,7 @@ export function normalizePatient(input: PatientSpec = {}): NormalizedPatient {
   // heart: the structural engine's own clamping decides the ranges; anything it changes or unsets is reported
   const heart = section(input.heart, "heart");
   if (heart) {
-    const known = new Set(["pvri", "svrScale", "satLung", "volumeMl", "valves", "pda", "asd", "vsd", "bt", "lvSize", "laSize", "lvEes", "rvEes", "lvStiffness", "rvStiffness", "rvContractility", "rvSize", "raSize", "tof"]);
+    const known = new Set<string>(HEART_KEYS);
     const kept: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(heart)) { if (known.has(k)) kept[k] = v; else warnings.push(`heart.${k} is not a structural field; dropped`); }
     let out: Record<string, unknown> = {};

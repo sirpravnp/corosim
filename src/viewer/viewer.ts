@@ -65,7 +65,7 @@ for (const b of document.querySelectorAll<HTMLButtonElement>(".views button")) {
 }
 
 // ---- in a chat: receive the AI's tool results
-interface Structured { scenario?: Scenario; applied?: Scenario; state?: { ventricle?: { lvInfarctFraction?: number } }; assessment?: { problems?: string[]; guidelineNextSteps?: { step: string }[] }; explanation?: { headline?: string }; outcome?: { result?: string } }
+interface Structured { display?: { view?: string }; scenario?: Scenario; applied?: Scenario; state?: { ventricle?: { lvInfarctFraction?: number } }; assessment?: { problems?: string[]; guidelineNextSteps?: { step: string }[] }; explanation?: { headline?: string }; outcome?: { result?: string } }
 const embedded = window.parent !== window;
 let app: App | null = null;
 const appUrl = () => `https://corosim.com/sim/#s=${encodeScenario(sim.scenario())}`;
@@ -74,8 +74,14 @@ if (embedded) {
   app = new App({ name: "CoroSim viewer", version: "0.5.0" }, {}, { autoResize: true });
   app.ontoolresult = (r) => {
     const s = (r.structuredContent ?? {}) as Structured;
+    const showView = (v?: string) => { // corosim_show.display.view (spec registry, sim/registry.ts)
+      if (!v) return;
+      scene.view(v);
+      for (const x of document.querySelectorAll<HTMLButtonElement>(".views button")) x.classList.toggle("on", x.dataset.view === v);
+    };
     const sc = s.scenario ?? s.applied;
     if (!sc) return;
+    queueMicrotask(() => showView(s.display?.view));
     reported = { infarct: s.state?.ventricle?.lvInfarctFraction, problems: s.assessment?.problems, steps: s.assessment?.guidelineNextSteps?.map((x) => x.step) };
     load(sc, s.outcome?.result ?? s.explanation?.headline ?? "Your CoroSim patient");
   };

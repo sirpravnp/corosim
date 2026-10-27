@@ -10,6 +10,9 @@ import { buildTree } from "../anatomy/tree";
 import { CATEGORIES, PRESETS, EkgPreset, findPreset, resolveSpec } from "../ekg/presets";
 import { EkgSpec, measure } from "../ekg/engine";
 import { CustomEkg, TERRITORIES, buildCustom, encodeCustom } from "../ekg/custom";
+import { patientProperties, displaySchema } from "../sim/registry";
+import { intervene } from "../sim/valves";
+import type { Intervention } from "../sim/valves";
 
 /**
  * Tool definitions in one place, as plain JSON Schema. The MCP server, the HTTP/OpenAPI adapter and the
@@ -31,92 +34,16 @@ export interface ToolDef {
 
 const NOT_CLINICAL = "Educational simulation; not for clinical decisions.";
 
+/**
+ * The patient schema is generated from the spec registry (src/sim/registry.ts): one list of fields feeds this schema, the page's
+ * controls and the parity test (tests/specRegistry.test.ts). To add a field, add it there.
+ */
 const scenarioSchema = {
   type: "object",
-  description: "Patient and intervention description. Every field optional; omitted fields keep the typical resting adult.",
-  properties: {
-    anatomy: {
-      type: "object", description: "Coronary anatomy variant.",
-      properties: {
-        dominance: { enum: ["right", "co", "left"] }, lm: { enum: ["bifurcation", "trifurcation", "absent"], description: "Left-main pattern; trifurcation adds a ramus intermedius." },
-        saNodeFrom: { enum: ["RCA", "LCx"] }, conusOstium: { enum: ["shared", "separate"] }, ladCourse: { enum: ["normal", "short", "wrap"] },
-      },
-    },
-    lesions: {
-      type: "array", description: "Coronary lesions, at most one per artery.",
-      items: {
-        type: "object", required: ["artery"],
-        properties: {
-          artery: { type: "string", description: "LM, LAD, D1, D2, RAMUS, LCX, OM1, OM2, RCA, AM, PDA, PLV, SAN (SA-node artery), AVN (AV-node artery), CONUS. Names like 'circumflex' also work." },
-          stenosis: { type: "number", minimum: 0, maximum: 0.99, description: "Fractional diameter reduction at the narrowest point (0.7 = 70 % diameter stenosis). Default 0.7." },
-          occluded: { type: "boolean", description: "Complete occlusion; overrides stenosis." },
-          position: { type: "number", minimum: 0, maximum: 1, description: "0 = proximal end of the artery, 1 = distal. Default 0.15." },
-        },
-      },
-    },
-    exertion: { type: "boolean", description: "Moderate exertion: doubles myocardial oxygen demand." },
-    bloodLoss: { type: "number", minimum: -0.3, maximum: 0.6, description: "Fraction of blood volume lost (0.15 = ATLS class II, 0.3 = class III). Negative = volume overload." },
-    drugs: {
-      type: "object",
-      properties: {
-        betaBlocker: { type: "number", minimum: 0, maximum: 1, description: "Fraction of beta-adrenergic effect blocked." },
-        atropine: { type: "number", minimum: 0, maximum: 1, description: "Fraction of vagal effect on the sinus node blocked." },
-        vasopressor: { type: "number", minimum: -1, maximum: 1, description: "-1 strong vasodilator, +1 strong alpha-agonist (phenylephrine-like)." },
-      },
-    },
-    autonomic: {
-      type: "object",
-      properties: {
-        baroreflexGain: { type: "number", minimum: 0, maximum: 4, description: "0 = denervated, 1 = normal, ≥2 = enough loop gain for a sustained ~0.1 Hz (Mayer-wave) oscillation." },
-        respRate: { type: "number", minimum: 4, maximum: 40, description: "Breaths per minute (drives respiratory sinus arrhythmia)." },
-        respDepth: { type: "number", minimum: 0, maximum: 2 },
-        setPointShift: { type: "number", minimum: -30, maximum: 60, description: "mmHg added to the baroreceptor set point (chronic hypertension resets it upward)." },
-        noise: { type: "number", minimum: 0, maximum: 3, description: "Scale of physiological noise. 0 = deterministic loop; 1 = normal." },
-      },
-    },
-    patient: {
-      type: "object", description: "What the patient brought with them.",
-      properties: { rhythm: { enum: ["sinus", "af"], description: "Baseline rhythm; af = atrial fibrillation (no P waves, irregular, no atrial kick)." }, bbb: { enum: ["none", "rbbb", "lbbb"], description: "Pre-existing bundle branch block." } },
-    },
-    support: {
-      type: "object", description: "Hemodynamic support (as in the app's management panel). Atropine is drugs.atropine.",
-      properties: {
-        fluids: { type: "number", minimum: 0, maximum: 3, description: "Litres of IV fluid given. Helps a right-ventricular infarct; congests the lungs of a failing left ventricle." },
-        norepinephrine: { type: "number", minimum: 0, maximum: 1 }, dobutamine: { type: "number", minimum: 0, maximum: 1 }, nitroglycerin: { type: "number", minimum: 0, maximum: 1 },
-        epinephrine: { type: "number", minimum: 0, maximum: 1, description: "Core engine only." }, milrinone: { type: "number", minimum: 0, maximum: 1, description: "Core engine only." }, vasopressin: { type: "number", minimum: 0, maximum: 1, description: "Core engine only." },
-        nitroprusside: { type: "number", minimum: 0, maximum: 1, description: "Core engine only." }, furosemide: { type: "number", minimum: 0, maximum: 1, description: "Core engine only." },
-        pacing: { type: "boolean" }, paceRate: { type: "number", minimum: 40, maximum: 120 },
-        iabp: { type: "boolean", description: "Intra-aortic balloon pump." }, impella: { type: "boolean", description: "Microaxial left-ventricular pump." },
-      },
-    },
-    seed: { type: "integer", description: "Random seed. The same scenario and seed reproduce the same beats." },
-    ectopyTendency: { type: "number", minimum: 0, maximum: 3, description: "Teaching override of the patient's tendency to ischemic PVCs (core engine): a multiplier on the susceptibility the seed gives. 0 = never any PVC, 1 = as the seed has it (default), 3 = very ectopy-prone." },
-  },
+  description: "Patient and intervention description (a Scenario plus heart, pericardium, septum, fluids, ventilation and devices). Every field optional; omitted fields keep the typical resting adult. The additional fields are accepted and validated. `heart` shapes the readings of corosim_heart_cath, corosim_jvp, corosim_oxygen and corosim_loop_metrics too; `devices`, `heart`, `pericardium`, `ventilation` and library rhythms are read by the core engine only (the legacy engine ignores them).",
+  properties: patientProperties(),
 } as const;
-
-const numP = (min: number, max: number, description?: string) => ({ type: "number", minimum: min, maximum: max, ...(description ? { description } : {}) });
-/** The Scenario schema plus the PatientSpec fields (src/sim/patient.ts). The core engine reads `devices` (Impella model, P-level and position; IABP ratio, timing offsets and volume); the legacy engine ignores it and keeps the on/off toggles. */
-const patientSchema = {
-  ...scenarioSchema,
-  description: "Patient and intervention description (a Scenario plus heart, pericardium, septum, fluids, ventilation and devices). Every field optional; omitted fields keep the typical resting adult. The additional fields are accepted and validated. `kind` and `heart` shape the readings of corosim_heart_cath, corosim_jvp, corosim_oxygen and corosim_loop_metrics (the monitor, ECG and coronary physiology stay the adult ACS model); `devices` is read by the core engine only (P-level, IABP ratio and timing; the legacy engine ignores it).",
-  properties: {
-    ...scenarioSchema.properties,
-    heart: { type: "object", description: "Structural lesions as in the structural page: valves {av|mv|tv|pv: {open 0..1, reg 0..10}}, pda|asd|vsd|bt {diameterMm 0..40}, tof, pvri, svrScale, satLung, volumeMl, lvSize|laSize|rvSize|raSize, rvContractility. See the reference for ranges." },
-    pericardium: { type: "object", properties: { effusionMl: numP(0, 2000), effusionRateMlMin: numP(0, 100), stiffness: numP(0.2, 10, "1 normal, > 1 constrictive"), open: { type: "boolean", description: "Pericardium opened (post cardiac surgery)." }, drainMl: numP(0, 2000, "Pericardiocentesis, an action for corosim_adjust: ml of effusion to remove now (50-100 ml relieves a tamponade); it is subtracted from the effusion and never stored.") } },
-    septum: { type: "boolean", description: "Ventricular interdependence through the septum (core engine): a failing right ventricle bows the septum into the left. Switch it on for RV infarct and tamponade." },
-    fluids: { type: "object", properties: { given: { type: "array", maxItems: 20, items: { type: "object", required: ["kind", "ml"], properties: { kind: { enum: ["crystalloid", "colloid", "albumin", "blood"] }, ml: numP(0, 5000), atMin: numP(0, 1440), overMin: numP(0, 1440) } } }, hemorrhageMlMin: numP(0, 500), capillaryLeak: numP(0, 1), legRaise: { type: "boolean" } } },
-    ventilation: { type: "object", properties: { mode: { enum: ["spontaneous", "positive"] }, peep: numP(0, 25, "cmH2O"), tidalMlKg: numP(2, 15) } },
-    devices: {
-      type: "object", description: "Mechanical support with settings. support.iabp / support.impella (true) mean the defaults: IABP 1:1 at correct timing, 40 ml; Impella CP at P6, correct position.",
-      properties: {
-        impella: { type: "object", properties: { model: { enum: ["2.5", "CP", "5.5"] }, level: numP(0, 9, "P-level"), position: { enum: ["correct", "aortic", "deep"] } } },
-        impellaRp: { type: "object", properties: { level: numP(0, 9) } },
-        iabp: { type: "object", properties: { ratio: { enum: [1, 2, 3] }, inflateMs: numP(-100, 100), deflateMs: numP(-100, 100), volumeMl: numP(0, 50) } },
-        ecmo: { type: "object", properties: { flowLpm: numP(0, 7), sweepLpm: numP(0, 10), fio2: numP(0.21, 1) } },
-      },
-    },
-  },
-} as const;
+const patientSchema = scenarioSchema;
 
 const round = (x: number, d = 1) => +x.toFixed(d);
 const num = (v: unknown, def: number, lo: number, hi: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : def);
@@ -237,6 +164,36 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "corosim_valve", title: "Valve intervention: replace, TAVR, dilate, clip or repair", readOnly: false,
+    description: `Do a valve procedure on the running patient and optionally run on to watch the response. replace: surgical or transcatheter prosthesis in any valve (kind bioprosthetic, mechanical or transcatheter; a transcatheter valve in a failed bioprosthesis is valve-in-valve); tavr: transcatheter aortic valve; balloon: valvuloplasty of a stenotic aortic, mitral or pulmonary valve (effect 0..1 for a calcified valve); teer: MitraClip or TriClip for mitral or tricuspid regurgitation (1 to 4 clips); repair: annuloplasty ring for mitral or tricuspid regurgitation. Changes only the valve it touches, so several valves can be diseased or treated at once. Returns what changed, warnings (a procedure that cannot be done changes nothing) and the patient afterwards. Needs the core engine (corosim_set_scenario engine: "core"). Build a native lesion or a prosthesis directly with heart.valves.* in corosim_adjust. ${NOT_CLINICAL}`,
+    inputSchema: {
+      type: "object", required: ["type"],
+      properties: {
+        type: { enum: ["replace", "tavr", "balloon", "teer", "repair"] },
+        valve: { enum: ["av", "mv", "tv", "pv"], description: "Aortic, mitral, tricuspid or pulmonary. Not needed for tavr." },
+        kind: { enum: ["bioprosthetic", "mechanical", "transcatheter"], description: "Replace only: the prosthesis." },
+        sizeMm: { type: "number", minimum: 19, maximum: 36, description: "Replace or tavr: labelled valve size, mm (a default for the valve and kind if omitted; clamped to the valve's range)." },
+        leakCm2: { type: "number", minimum: 0, maximum: 2, description: "Replace or tavr: paravalvular leak, regurgitant orifice cm2 (default none)." },
+        effect: { type: "number", minimum: 0, maximum: 1, description: "Balloon: scales the result (default 1; less for a heavily calcified valve)." },
+        clips: { type: "integer", minimum: 1, maximum: 4, description: "teer: number of clips (default 2)." },
+        runSeconds: { type: "number", minimum: 0, maximum: 300, description: "Simulated seconds to run after the procedure (default 30)." },
+      },
+    },
+    run(ctx, a) {
+      const type = String(a.type), valve = String(a.valve ?? (type === "tavr" ? "av" : ""));
+      if (!["replace", "tavr", "balloon", "teer", "repair"].includes(type)) throw new Error("type must be replace, tavr, balloon, teer or repair.");
+      if (!["av", "mv", "tv", "pv"].includes(valve)) throw new Error("valve must be av, mv, tv or pv.");
+      if (type === "replace" && !["bioprosthetic", "mechanical", "transcatheter"].includes(String(a.kind))) throw new Error("replace needs kind: bioprosthetic, mechanical or transcatheter.");
+      if (ctx.sim.engine !== "core") throw new Error("Valve interventions need the core engine: call corosim_set_scenario with engine \"core\" first.");
+      const opt = (k: string) => (typeof a[k] === "number" && Number.isFinite(a[k]) ? (a[k] as number) : undefined);
+      const iv = { type, valve, kind: a.kind, sizeMm: opt("sizeMm"), leakCm2: opt("leakCm2"), effect: opt("effect"), clips: opt("clips") } as unknown as Intervention;
+      const r = intervene(currentPatient(ctx.sim).heart ?? {}, iv);
+      if (Object.keys(r.patch).length) { ctx.sim.apply({ heart: r.patch }); patchPatient(ctx.sim, { heart: r.patch }); }
+      const rep = runReport(ctx, num(a.runSeconds, 30, 0, 300) || 0.02, "none", 0);
+      return { done: Object.keys(r.patch).length > 0, changes: r.changes, warnings: [...r.warnings, ...ctx.sim.warnings], heartNow: currentPatient(ctx.sim).heart ?? {}, ...rep };
+    },
+  },
+  {
     name: "corosim_explain", title: "Grounded explanation of the current state", readOnly: true,
     description: `The model's causal account of the current state: which lesion, reflex or treatment produced each abnormal finding, and teaching points. Quote it rather than improvising physiology. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: {} },
@@ -261,9 +218,12 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "corosim_show", title: "Show the patient in the chat", readOnly: true, viewer: true,
-    description: `Display the patient visually, right here in the chat: an interactive 3D heart (ischemic wall darkened, infarct darker, narrowing marked), a live 12-lead ECG and a bedside monitor with the guideline next steps. Call this whenever the user wants to see, show, view, visualize or look at the patient, the heart or the ECG. Does not advance time. For a rhythm strip or EKG pattern on its own, use corosim_ekg_show instead. ${NOT_CLINICAL}`,
-    inputSchema: { type: "object", properties: {} },
-    run({ sim }) { return { ...bedside(sim), shown: "The patient is displayed in the chat. Describe what it shows briefly; do not paste a link." }; },
+    description: `Display the patient visually, right here in the chat: an interactive 3D heart (ischemic wall darkened, infarct darker, narrowing marked), a live 12-lead ECG and a bedside monitor with the guideline next steps. Call this whenever the user wants to see, show, view, visualize or look at the patient, the heart or the ECG. Does not advance time. The optional display fields choose the camera view (the chat viewer applies the view; the website page has the rest: coloring, heart style, labels, flow, valves, posterior leads). For a rhythm strip or EKG pattern on its own, use corosim_ekg_show instead. ${NOT_CLINICAL}`,
+    inputSchema: { type: "object", properties: { display: displaySchema() } },
+    run({ sim }, a) {
+      const display = a.display && typeof a.display === "object" && !Array.isArray(a.display) ? (a.display as Record<string, unknown>) : undefined;
+      return { ...bedside(sim), ...(display ? { display } : {}), shown: "The patient is displayed in the chat. Describe what it shows briefly; do not paste a link." };
+    },
   },
   {
     name: "corosim_open_link", title: "Shareable link to this patient", readOnly: true,

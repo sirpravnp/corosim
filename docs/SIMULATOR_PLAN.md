@@ -19,6 +19,7 @@ Waves run in order; an item is done when merged to main and live. Updated as wor
 | B2 rhythm unification | done (wave 2 PR): `patient.rhythm` takes any D4 library id (core engine); the EKG generator drives strip and engine (physics/rhythmSource.ts, config/rhythms.ts); VF/asystole give no flow; tests rhythmSource (fast), rhythmUnification (slow). MCP schema still lists sinus/af only (D3) |
 | C2 settings dock, C5 display in 3D view | done (wave 2 PR); the ischemia table is a panel but has no 3D colour mode of its own (the Ischemia heat map covers it) |
 | C3 rhythm picker | done: grouped, searchable picker of every D4 rhythm in the Rhythm tab (src/page/rhythmPicker.ts); ECG-overlay options (STEMI mimics) and valve pickers not done |
+| D1 spec registry | done (this PR): `src/sim/registry.ts` is the one field list; the MCP patient schema (set_scenario, adjust, compare), `corosim_show.display`, the OpenAI/Anthropic exports are generated from it; the dock tabs, every dock/overlay control id in `sim/index.html` and every control `createPlaygroundUi` builds are checked against it (`tests/specRegistry.test.ts`). Chat now has every library rhythm, valve prosthesis fields, valve interventions (`corosim_valve`), the full pericardium and the display options. To add a control: add its field in the registry. Not done: the page has no prosthesis or intervention control yet; the chat viewer applies `display.view` only (the other display options are for the page) |
 | everything else | not started |
 
 ## 1. Where we start (from reading the code)

@@ -24,6 +24,8 @@ export type MountId = "patient" | "valves" | "pericardium" | "support";
 export interface PlaygroundUi {
   /** The containers for the settings dock's tabs. */
   mounts: Record<MountId, HTMLElement>;
+  /** The field path (sim/registry.ts) each control edits, one entry per control (`action:preset` is the preset picker). */
+  fields: readonly string[];
   /** Show the state: every control takes its value from it. */
   sync(state: PlaygroundState, info: PlaygroundInfo): void;
 }
@@ -41,6 +43,8 @@ const badge = (m: FieldGroupInfo["modelled"]) => { const t = h("span", { classNa
 
 export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
   const syncs: ((st: PlaygroundState) => void)[] = [];
+  /** The field path (sim/registry.ts) of every control built here: the parity test checks each one has a field. */
+  const fields: string[] = ["action:preset"];
   const mounts = { patient: h("div", { className: "pg" }), valves: h("div", { className: "pg" }), pericardium: h("div", { className: "pg" }), support: h("div", { className: "pg" }) } as Record<MountId, HTMLElement>;
   let el = mounts.patient; // the container the groups below are added to
 
@@ -60,20 +64,23 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     }
     return { box, body };
   }
-  function slider(body: HTMLElement, label: string, min: number, max: number, step: number, get: (s: PlaygroundState) => number | undefined, dflt: number, fmt: (v: number) => string, set: (s: PlaygroundState, v: number) => PlaygroundState) {
+  function slider(body: HTMLElement, path: string, label: string, min: number, max: number, step: number, get: (s: PlaygroundState) => number | undefined, dflt: number, fmt: (v: number) => string, set: (s: PlaygroundState, v: number) => PlaygroundState) {
+    fields.push(path);
     const id = ctlId(), val = h("span", { className: "val" }), input = h("input", { id, type: "range", min: String(min), max: String(max), step: String(step) });
     body.append(h("label", { htmlFor: id }, label + " ", val), input);
     input.addEventListener("input", () => edit((s) => set(s, Number(input.value))));
     syncs.push((s) => { const v = get(s) ?? dflt; if (document.activeElement !== input) input.value = String(v); val.textContent = fmt(v); });
   }
-  function choice<T extends string | number>(body: HTMLElement, label: string, options: readonly (readonly [T, string])[], get: (s: PlaygroundState) => T | undefined, dflt: T, set: (s: PlaygroundState, v: T) => PlaygroundState) {
+  function choice<T extends string | number>(body: HTMLElement, path: string, label: string, options: readonly (readonly [T, string])[], get: (s: PlaygroundState) => T | undefined, dflt: T, set: (s: PlaygroundState, v: T) => PlaygroundState) {
+    fields.push(path);
     const id = ctlId(), sel = h("select", { id });
     for (const [v, t] of options) sel.append(h("option", { value: String(v), textContent: t }));
     body.append(h("label", { htmlFor: id, textContent: label }), sel);
     sel.addEventListener("change", () => { const o = options.find(([v]) => String(v) === sel.value); if (o) edit((s) => set(s, o[0])); });
     syncs.push((s) => { sel.value = String(get(s) ?? dflt); });
   }
-  function toggle(body: HTMLElement, text: string, get: (s: PlaygroundState) => boolean, set: (s: PlaygroundState, on: boolean) => PlaygroundState) {
+  function toggle(body: HTMLElement, path: string, text: string, get: (s: PlaygroundState) => boolean, set: (s: PlaygroundState, on: boolean) => PlaygroundState) {
+    fields.push(path);
     const b = h("button", { type: "button", textContent: text });
     b.addEventListener("click", () => edit((s) => set(s, !get(s))));
     body.append(h("div", { className: "row" }, b));
@@ -98,6 +105,7 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
   el = mounts.valves;
   {
     const { box, body } = group("Structural heart", GROUP_INFO.heart, true);
+    fields.push("heart");
     const sel = h("select", { id: "pg-lesion", "aria-label": "Structural lesion" } as Partial<HTMLSelectElement>);
     const customOpt = h("option", { value: CUSTOM, textContent: "Custom heart (from a preset or link)" });
     customOpt.hidden = true;
@@ -140,15 +148,16 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
   el = mounts.pericardium;
   {
     const { box, body } = group("Pericardium", GROUP_INFO.pericardium, true);
-    slider(body, "Effusion", R.effusionMl[0], R.effusionMl[1], 25, (s) => s.pericardium?.effusionMl, 0, (v) => `${v} ml`, (s, v) => patchSection(s, "pericardium", { effusionMl: v || undefined }));
-    slider(body, "Stiffness", R.stiffness[0], R.stiffness[1], 0.1, (s) => s.pericardium?.stiffness, 1, (v) => `${v.toFixed(1)}× normal`, (s, v) => patchSection(s, "pericardium", { stiffness: v === 1 ? undefined : v }));
-    slider(body, "Accumulating", 0, 100, 5, (s) => s.pericardium?.effusionRateMlMin, 0, (v) => (v ? `${v} ml per clinical minute` : "stable"), (s, v) => patchSection(s, "pericardium", { effusionRateMlMin: v || undefined }));
-    toggle(body, "Pericardium open (after surgery)", (s) => !!s.pericardium?.open, (s, on) => patchSection(s, "pericardium", { open: on || undefined }));
+    slider(body, "pericardium.effusionMl", "Effusion", R.effusionMl[0], R.effusionMl[1], 25, (s) => s.pericardium?.effusionMl, 0, (v) => `${v} ml`, (s, v) => patchSection(s, "pericardium", { effusionMl: v || undefined }));
+    slider(body, "pericardium.stiffness", "Stiffness", R.stiffness[0], R.stiffness[1], 0.1, (s) => s.pericardium?.stiffness, 1, (v) => `${v.toFixed(1)}× normal`, (s, v) => patchSection(s, "pericardium", { stiffness: v === 1 ? undefined : v }));
+    slider(body, "pericardium.effusionRateMlMin", "Accumulating", 0, 100, 5, (s) => s.pericardium?.effusionRateMlMin, 0, (v) => (v ? `${v} ml per clinical minute` : "stable"), (s, v) => patchSection(s, "pericardium", { effusionRateMlMin: v || undefined }));
+    toggle(body, "pericardium.open", "Pericardium open (after surgery)", (s) => !!s.pericardium?.open, (s, on) => patchSection(s, "pericardium", { open: on || undefined }));
+    fields.push("pericardium.drainMl");
     const drain = h("button", { type: "button", textContent: "Pericardiocentesis: remove 100 ml", title: "Take 100 ml (or what is left) out of the sac; the pressure and the output recover at once" });
     drain.addEventListener("click", () => edit((s) => patchSection(s, "pericardium", { effusionMl: Math.max(0, (s.pericardium?.effusionMl ?? 0) - 100) || undefined })));
     body.append(h("div", { className: "row" }, drain));
     syncs.push((s) => { drain.disabled = !(s.pericardium?.effusionMl && s.pericardium.effusionMl > 0); });
-    toggle(body, "Ventricular interdependence (septum)", (s) => !!s.septum, (s, on) => ({ ...s, septum: on || undefined }));
+    toggle(body, "septum", "Ventricular interdependence (septum)", (s) => !!s.septum, (s, on) => ({ ...s, septum: on || undefined }));
     el.append(box);
   }
 
@@ -157,18 +166,18 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
   {
     const { box, body } = group("Fluids and hemorrhage", GROUP_INFO.fluids);
     const KINDS: readonly (readonly [FluidKind, string])[] = [["crystalloid", "Crystalloid"], ["colloid", "Colloid"], ["albumin", "Albumin"], ["blood", "Blood"]];
-    choice(body, "Bolus kind", KINDS, (s) => s.fluids?.given?.[0]?.kind, "crystalloid", (s, k) => withBolus(s, k, s.fluids?.given?.[0]?.ml ?? 500));
-    slider(body, "Bolus volume", 0, 2000, 50, (s) => s.fluids?.given?.[0]?.ml, 0, (v) => (v ? `${v} ml` : "none"), (s, v) => withBolus(s, s.fluids?.given?.[0]?.kind ?? "crystalloid", v));
-    slider(body, "Hemorrhage", R.hemorrhageMlMin[0], 200, 5, (s) => s.fluids?.hemorrhageMlMin, 0, (v) => (v ? `${v} ml/min` : "none"), (s, v) => patchSection(s, "fluids", { hemorrhageMlMin: v || undefined }));
+    choice(body, "fluids.given", "Bolus kind", KINDS, (s) => s.fluids?.given?.[0]?.kind, "crystalloid", (s, k) => withBolus(s, k, s.fluids?.given?.[0]?.ml ?? 500));
+    slider(body, "fluids.given", "Bolus volume", 0, 2000, 50, (s) => s.fluids?.given?.[0]?.ml, 0, (v) => (v ? `${v} ml` : "none"), (s, v) => withBolus(s, s.fluids?.given?.[0]?.kind ?? "crystalloid", v));
+    slider(body, "fluids.hemorrhageMlMin", "Hemorrhage", R.hemorrhageMlMin[0], 200, 5, (s) => s.fluids?.hemorrhageMlMin, 0, (v) => (v ? `${v} ml/min` : "none"), (s, v) => patchSection(s, "fluids", { hemorrhageMlMin: v || undefined }));
     el.append(box);
   }
 
   // ---- ventilation ---------------------------------------------------------------------------------------------------
   {
     const { box, body } = group("Ventilation", GROUP_INFO.ventilation);
-    choice(body, "Mode", [["spontaneous", "Spontaneous breathing"], ["positive", "Positive-pressure ventilation"]] as const, (s) => s.ventilation?.mode, "spontaneous", (s, m) => patchSection(s, "ventilation", { mode: m }));
-    slider(body, "PEEP", R.peep[0], R.peep[1], 1, (s) => s.ventilation?.peep, 0, (v) => `${v} cmH₂O`, (s, v) => patchSection(s, "ventilation", { peep: v || undefined }));
-    slider(body, "Tidal volume", R.tidalMlKg[0], R.tidalMlKg[1], 1, (s) => s.ventilation?.tidalMlKg, 8, (v) => `${v} ml/kg`, (s, v) => patchSection(s, "ventilation", { tidalMlKg: v === 8 ? undefined : v }));
+    choice(body, "ventilation.mode", "Mode", [["spontaneous", "Spontaneous breathing"], ["positive", "Positive-pressure ventilation"]] as const, (s) => s.ventilation?.mode, "spontaneous", (s, m) => patchSection(s, "ventilation", { mode: m }));
+    slider(body, "ventilation.peep", "PEEP", R.peep[0], R.peep[1], 1, (s) => s.ventilation?.peep, 0, (v) => `${v} cmH₂O`, (s, v) => patchSection(s, "ventilation", { peep: v || undefined }));
+    slider(body, "ventilation.tidalMlKg", "Tidal volume", R.tidalMlKg[0], R.tidalMlKg[1], 1, (s) => s.ventilation?.tidalMlKg, 8, (v) => `${v} ml/kg`, (s, v) => patchSection(s, "ventilation", { tidalMlKg: v === 8 ? undefined : v }));
     el.append(box);
   }
 
@@ -183,28 +192,28 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     /** A device's settings, shown only while it is switched on. */
     const settings = (on: (s: PlaygroundState) => boolean) => { const d = h("div", { className: "pg-dev" }); body.append(d); syncs.push((s) => { d.hidden = !on(s); }); return d; };
     sub("Impella", GROUP_INFO.impella);
-    toggle(body, "Impella on", (s) => !!s.devices?.impella, (s, on) => withDevice(s, "impella", on));
+    toggle(body, "devices.impella", "Impella on", (s) => !!s.devices?.impella, (s, on) => withDevice(s, "impella", on));
     const imp = settings((s) => !!s.devices?.impella);
-    choice<ImpellaModel>(imp, "Model", [["2.5", "Impella 2.5"], ["CP", "Impella CP"], ["5.5", "Impella 5.5"]], (s) => s.devices?.impella?.model, "CP", (s, m) => patchDevice(s, "impella", { model: m }));
-    slider(imp, "P-level", R.impellaLevel[0], R.impellaLevel[1], 1, (s) => s.devices?.impella?.level, 6, (v) => `P${v}`, (s, v) => patchDevice(s, "impella", { level: v }));
-    choice(imp, "Position", [["correct", "Correct"], ["aortic", "Too far out (in the aorta)"], ["deep", "Too deep (in the ventricle)"]] as const, (s) => s.devices?.impella?.position, "correct", (s, p) => patchDevice(s, "impella", { position: p }));
+    choice<ImpellaModel>(imp, "devices.impella.model", "Model", [["2.5", "Impella 2.5"], ["CP", "Impella CP"], ["5.5", "Impella 5.5"]], (s) => s.devices?.impella?.model, "CP", (s, m) => patchDevice(s, "impella", { model: m }));
+    slider(imp, "devices.impella.level", "P-level", R.impellaLevel[0], R.impellaLevel[1], 1, (s) => s.devices?.impella?.level, 6, (v) => `P${v}`, (s, v) => patchDevice(s, "impella", { level: v }));
+    choice(imp, "devices.impella.position", "Position", [["correct", "Correct"], ["aortic", "Too far out (in the aorta)"], ["deep", "Too deep (in the ventricle)"]] as const, (s) => s.devices?.impella?.position, "correct", (s, p) => patchDevice(s, "impella", { position: p }));
     sub("Intra-aortic balloon pump", GROUP_INFO.iabp);
-    toggle(body, "Balloon pump on", (s) => !!s.devices?.iabp, (s, on) => withDevice(s, "iabp", on));
+    toggle(body, "devices.iabp", "Balloon pump on", (s) => !!s.devices?.iabp, (s, on) => withDevice(s, "iabp", on));
     const iabp = settings((s) => !!s.devices?.iabp);
-    choice(iabp, "Ratio", [[1, "1:1"], [2, "1:2"], [3, "1:3"]] as const, (s) => s.devices?.iabp?.ratio, 1, (s, r) => patchDevice(s, "iabp", { ratio: r }));
-    slider(iabp, "Inflation timing", R.iabpOffsetMs[0], R.iabpOffsetMs[1], 10, (s) => s.devices?.iabp?.inflateMs, 0, (v) => (v === 0 ? "correct" : `${v > 0 ? "late" : "early"} ${Math.abs(v)} ms`), (s, v) => patchDevice(s, "iabp", { inflateMs: v }));
-    slider(iabp, "Deflation timing", R.iabpOffsetMs[0], R.iabpOffsetMs[1], 10, (s) => s.devices?.iabp?.deflateMs, 0, (v) => (v === 0 ? "correct" : `${v > 0 ? "late" : "early"} ${Math.abs(v)} ms`), (s, v) => patchDevice(s, "iabp", { deflateMs: v }));
+    choice(iabp, "devices.iabp.ratio", "Ratio", [[1, "1:1"], [2, "1:2"], [3, "1:3"]] as const, (s) => s.devices?.iabp?.ratio, 1, (s, r) => patchDevice(s, "iabp", { ratio: r }));
+    slider(iabp, "devices.iabp.inflateMs", "Inflation timing", R.iabpOffsetMs[0], R.iabpOffsetMs[1], 10, (s) => s.devices?.iabp?.inflateMs, 0, (v) => (v === 0 ? "correct" : `${v > 0 ? "late" : "early"} ${Math.abs(v)} ms`), (s, v) => patchDevice(s, "iabp", { inflateMs: v }));
+    slider(iabp, "devices.iabp.deflateMs", "Deflation timing", R.iabpOffsetMs[0], R.iabpOffsetMs[1], 10, (s) => s.devices?.iabp?.deflateMs, 0, (v) => (v === 0 ? "correct" : `${v > 0 ? "late" : "early"} ${Math.abs(v)} ms`), (s, v) => patchDevice(s, "iabp", { deflateMs: v }));
     sub("ECMO (VA)", GROUP_INFO.ecmo);
-    toggle(body, "ECMO on", (s) => !!s.devices?.ecmo, (s, on) => withDevice(s, "ecmo", on));
+    toggle(body, "devices.ecmo", "ECMO on", (s) => !!s.devices?.ecmo, (s, on) => withDevice(s, "ecmo", on));
     const ecmo = settings((s) => !!s.devices?.ecmo);
-    slider(ecmo, "Flow", R.ecmoFlowLpm[0], R.ecmoFlowLpm[1], 0.5, (s) => s.devices?.ecmo?.flowLpm, 3, (v) => `${v.toFixed(1)} L/min`, (s, v) => patchDevice(s, "ecmo", { flowLpm: v }));
-    slider(ecmo, "Sweep gas", R.ecmoSweepLpm[0], R.ecmoSweepLpm[1], 0.5, (s) => s.devices?.ecmo?.sweepLpm, 2, (v) => `${v.toFixed(1)} L/min`, (s, v) => patchDevice(s, "ecmo", { sweepLpm: v }));
-    slider(ecmo, "FiO₂", R.fio2[0], R.fio2[1], 0.01, (s) => s.devices?.ecmo?.fio2, 0.6, (v) => `${Math.round(v * 100)}%`, (s, v) => patchDevice(s, "ecmo", { fio2: v }));
+    slider(ecmo, "devices.ecmo.flowLpm", "Flow", R.ecmoFlowLpm[0], R.ecmoFlowLpm[1], 0.5, (s) => s.devices?.ecmo?.flowLpm, 3, (v) => `${v.toFixed(1)} L/min`, (s, v) => patchDevice(s, "ecmo", { flowLpm: v }));
+    slider(ecmo, "devices.ecmo.sweepLpm", "Sweep gas", R.ecmoSweepLpm[0], R.ecmoSweepLpm[1], 0.5, (s) => s.devices?.ecmo?.sweepLpm, 2, (v) => `${v.toFixed(1)} L/min`, (s, v) => patchDevice(s, "ecmo", { sweepLpm: v }));
+    slider(ecmo, "devices.ecmo.fio2", "FiO₂", R.fio2[0], R.fio2[1], 0.01, (s) => s.devices?.ecmo?.fio2, 0.6, (v) => `${Math.round(v * 100)}%`, (s, v) => patchDevice(s, "ecmo", { fio2: v }));
     el.append(box);
   }
 
   return {
-    mounts,
+    mounts, fields,
     sync(state, info) {
       for (const f of syncs) f(state);
       preset.value = info.presetId ?? "";
