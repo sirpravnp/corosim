@@ -98,7 +98,7 @@ export const tracesPanel: PanelDef = {
     let bands: Band[] = [];
     let seconds = DEFAULT_WINDOW;
     let review: Review | null = null;
-    let lastNow = NaN;
+    let lastNow = NaN, stalled = 0, auto = false, manualLive = false;
     let pauseBtn: HTMLButtonElement, scrub: HTMLInputElement, scrubLabel: HTMLElement;
     const syncScrub = () => {
       const max = review ? maxScrub(REVIEW_SECONDS, seconds) : 0;
@@ -107,7 +107,7 @@ export const tracesPanel: PanelDef = {
       scrub.value = String(review ? review.back : 0);
       scrub.hidden = scrubLabel.hidden = !review;
       scrubLabel.textContent = review ? (review.back > 0.05 ? `${review.back.toFixed(1)} s back` : "paused") : "";
-      pauseBtn.textContent = review ? "Resume" : "Pause";
+      pauseBtn.textContent = review ? "Live" : "Review";
       pauseBtn.setAttribute("aria-pressed", String(!!review));
     };
     const pause = () => {
@@ -137,9 +137,9 @@ export const tracesPanel: PanelDef = {
         });
         bar.append(...btns);
         pauseBtn = document.createElement("button");
-        pauseBtn.type = "button"; pauseBtn.title = "Freeze the traces to review them; drag the slider to go back up to a minute";
+        pauseBtn.type = "button"; pauseBtn.title = "Freeze the traces to review them (the simulation keeps running); drag the slider to go back up to a minute. Pausing the simulation does this too.";
         pauseBtn.style.cssText = "width:auto;padding:2px 10px;font:600 11px/1.4 var(--font-data)";
-        pauseBtn.addEventListener("click", () => { if (review) review = null; else pause(); syncScrub(); });
+        pauseBtn.addEventListener("click", () => { if (review) { review = null; auto = false; manualLive = true; } else pause(); syncScrub(); });
         scrub = document.createElement("input");
         scrub.type = "range"; scrub.min = "0"; scrub.step = "0.1"; scrub.value = "0"; scrub.hidden = true;
         scrub.setAttribute("aria-label", "Scrub back in time");
@@ -162,8 +162,14 @@ export const tracesPanel: PanelDef = {
         bands = [mk(LEFT, "Left heart"), mk(RIGHT, "Right heart")];
         syncScrub();
       },
-      setSource(s) { src = s; review = null; syncScrub(); for (const b of bands) b.top = undefined; },
-      draw(now) { lastNow = now; for (const b of bands) drawBand(b, src, now, seconds, review); },
+      setSource(s) { src = s; review = null; auto = false; syncScrub(); for (const b of bands) b.top = undefined; },
+      draw(now) {
+        // The simulation's own Pause stops the clock: the traces then go into review by themselves, and back to live when it runs again.
+        stalled = now === lastNow ? stalled + 1 : 0;
+        if (now !== lastNow) manualLive = false;
+        if (stalled >= 5 && !review && !manualLive) { pause(); auto = !!review; syncScrub(); }
+        else if (review && auto && now > review.at + 1e-6) { review = null; auto = false; syncScrub(); }
+        lastNow = now; for (const b of bands) drawBand(b, src, now, seconds, review); },
       dispose() { for (const b of bands) b.canvas.remove(); bands = []; },
     };
   },

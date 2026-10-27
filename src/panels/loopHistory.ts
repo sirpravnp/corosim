@@ -45,5 +45,5 @@ export function loopHistory<T extends HBeat>(all: readonly T[], now: number, win
 export function loopAlpha(age: number, window: number): number {
   if (!(window > 0) || !Number.isFinite(age) || age > window) return 0;
   const f = 1 - Math.max(0, age) / window;
-  return 0.08 + 0.45 * f * f;
+  return 0.1 + 0.5 * f * f;
 }
