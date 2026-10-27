@@ -62,7 +62,7 @@ export function arrestUi() {
   $("arrestDead").hidden = !dead;
   if (!st || !a || status === "none") { $("arrestRosc").hidden = true; lastStatus = "none"; return; }
   if (status !== lastStatus) {
-    if (lastStatus === "none" && status === "arrest") setDockTab("support"); // bring the ACLS panel forward when the arrest begins
+    if (lastStatus === "none" && status === "arrest") { lastNote = ""; setDockTab("support"); } // bring the ACLS panel forward when the arrest begins
     $("arrestRosc").hidden = status !== "rosc";
     lastStatus = status;
   }
