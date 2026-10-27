@@ -18,7 +18,7 @@ import type { HemoSource } from "../sim/hemoSource";
 
 export const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 export const MMHG = 133.322;
-export type Mode = "real" | "anat" | "pressure" | "velocity" | "wss" | "o2";
+export type Mode = "real" | "anat" | "pressure" | "velocity" | "wss" | "o2" | "isch";
 export type HeartView = "solid" | "ghost" | "none";
 
 
@@ -31,6 +31,7 @@ export const S = {
   rhythm: "sinus" as Rhythm, bbb: "none" as Bbb, // what the patient brought with them
   props: false, // structural valves, defects and jets inside the heart (not in the game)
   posterior: false, // show V7–V9 as a fifth column
+  labels: false, // name the arteries and chambers in the 3D view
 };
 // The physics lives in the shared headless Simulation (the MCP server and the tests step the same object);
 // the page modules draw it, feed it the controls, and run the game and the management panel around it.

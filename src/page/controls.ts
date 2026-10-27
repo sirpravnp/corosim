@@ -21,6 +21,12 @@ export function setProps(on: boolean) {
   else if (heartBeforeProps && S.heart === "ghost") { S.heart = heartBeforeProps; heartBeforeProps = null; }
   propsView.show(on); applyHeartView(); controlsUi();
 }
+/** The view overlay shows one panel at a time (View, Layers, Heat map); the tab of the open one pressed again closes it. */
+function openVc(id: string) {
+  const open = $(`vc`).querySelector<HTMLElement>(`[data-vcp="${id}"]`)!.hidden;
+  for (const p of document.querySelectorAll<HTMLElement>(".vc-pane")) p.hidden = p.dataset.vcp !== id || !open;
+  for (const t of document.querySelectorAll<HTMLElement>(".vc-tab")) { const on = open && t.dataset.vc === id; t.classList.toggle("on", on); t.setAttribute("aria-expanded", String(on)); }
+}
 /** The lesion, anatomy, display, time-scale and camera controls. */
 export function wireControls() {
   sel("dom", (v) => { V.dominance = v as Variant["dominance"]; scheduleAnatomy(); });
@@ -40,8 +46,10 @@ export function wireControls() {
   for (const r of ["sinus", "af"] as Rhythm[]) on("r_" + r, () => { S.rhythm = r; controlsUi(); });
   for (const b of ["none", "rbbb", "lbbb"] as Bbb[]) on("c_" + b, () => { S.bbb = b; controlsUi(); });
   on("postbtn", () => { S.posterior = !S.posterior; controlsUi(); liveUi(); });
-  (["real", "anat", "pressure", "velocity", "wss", "o2"] as Mode[]).forEach((m) => on("m_" + m, () => { S.mode = m; shapeVessels(); controlsUi(); }));
+  (["real", "isch", "anat", "pressure", "velocity", "wss", "o2"] as Mode[]).forEach((m) => on("m_" + m, () => { S.mode = m; shapeVessels(); controlsUi(); }));
   (["solid", "ghost", "none"] as HeartView[]).forEach((h) => on("h_" + h, () => { S.heart = h; applyHeartView(); controlsUi(); }));
+  on("labelbtn", () => { S.labels = !S.labels; controlsUi(); });
+  for (const t of document.querySelectorAll<HTMLElement>(".vc-tab")) t.addEventListener("click", () => openVc(t.dataset.vc!));
   on("propsbtn", () => setProps(!S.props));
   on("flowbtn", () => { S.flow = !S.flow; points.visible = S.flow; shapeVessels(); controlsUi(); });
   for (const k of Object.keys(VIEWS)) on(k, () => setView(k));

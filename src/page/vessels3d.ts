@@ -107,7 +107,7 @@ export function shapeVessels() {
       const lift = R * 0.6; // arteries sit in the epicardial fat, mostly above the muscle
       const cx = b.ctr[i].x + b.out[i].x * lift, cy = b.ctr[i].y + b.out[i].y * lift, cz = b.ctr[i].z + b.out[i].z * lift;
       const blocked = b.blocked[i] && !S.hide;
-      if (S.mode === "real") { c.copy(ARTERY).lerp(ARTERY_DEEP, 0.35 * (1 - b.d[i] / dMax)); if (blocked) c.lerp(ARTERY_EMPTY, 0.75); } // beyond an occlusion the vessel is empty: dark, not just a deeper red
+      if (S.mode === "real" || S.mode === "isch") { c.copy(ARTERY).lerp(ARTERY_DEEP, 0.35 * (1 - b.d[i] / dMax)); if (blocked) c.lerp(ARTERY_EMPTY, 0.75); } // beyond an occlusion the vessel is empty: dark, not just a deeper red
       else if (S.mode === "anat") c.setHex(GROUP_COLOR[b.seg.group]);
       else if (S.mode === "o2") vesselO2Color(o2f!, c);
       else if (blocked) c.copy(GRAY);
@@ -235,6 +235,7 @@ function legend() {
   const bar = $("bar");
   const set = (g: string, a: string, m: string, z: string) => { bar.style.background = g; $("l0").textContent = a; $("lmid").textContent = m; $("l1").textContent = z; };
   if (S.mode === "real") set("linear-gradient(90deg,#8e3a33 0 50%,#4e3a5a 50%)", "Myocardium", "", "Ischemic");
+  else if (S.mode === "isch") set(`linear-gradient(90deg,${MAGMA.join(",")})`, "Perfused", "", "Ischemic or infarcted");
   else if (S.mode === "anat") set("linear-gradient(90deg,#1f5fa8 0 33%,#2e7d4f 33% 66%,#c77c00 66%)", "LAD", "Circumflex", "RCA");
   else if (S.mode === "pressure") set(`linear-gradient(90deg,${VIRIDIS.join(",")})`, "20 mmHg", "55", "90 mmHg");
   else if (S.mode === "velocity") set(`linear-gradient(90deg,${MAGMA.join(",")})`, "0.01 m/s", "log", "4 m/s");

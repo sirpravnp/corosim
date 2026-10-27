@@ -13,7 +13,7 @@ import { rebuildAnatomy, syncSelects, setPhys } from "./model";
 import { setProps } from "./controls";
 
 const LESION_KEYS = ["lesionSeg", "pos", "ds", "occ", "exert", "mode", "flow", "speed", "rhythm", "bbb", "posterior"] as const;
-const LOCKED = ["m_pressure", "m_velocity", "m_wss", "m_o2", "flowbtn", "propsbtn", "s1", "s3", "s6", "postbtn"]; // displays that would show the lesion, the clock, and the leads
+const LOCKED = ["m_isch", "m_pressure", "m_velocity", "m_wss", "m_o2", "flowbtn", "propsbtn", "s1", "s3", "s6", "postbtn"]; // displays that would show the lesion, the clock, and the leads
 /** A clean slate for a case: no ischemia carried over, pressure back at baseline. */
 function resetPhysiology() {
   clearTreatment();

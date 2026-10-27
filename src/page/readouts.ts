@@ -17,8 +17,9 @@ export function controlsUi() {
   $("occ").textContent = S.occ ? "Reperfuse" : "Occlude";
   $("occ").classList.toggle("on", S.occ); $("exert").classList.toggle("on", S.exert);
   $("flowbtn").classList.toggle("on", S.flow);
+  $("labelbtn").classList.toggle("on", S.labels);
   $("propsbtn").classList.toggle("on", S.props);
-  for (const m of ["real", "anat", "pressure", "velocity", "wss", "o2"]) $("m_" + m).classList.toggle("on", S.mode === m);
+  for (const m of ["real", "isch", "anat", "pressure", "velocity", "wss", "o2"]) $("m_" + m).classList.toggle("on", S.mode === m);
   for (const s of [1, 3, 6]) $("s" + s).classList.toggle("on", S.speed === s);
   for (const r of ["sinus", "af"]) $("r_" + r).classList.toggle("on", S.rhythm === r);
   for (const b of ["none", "rbbb", "lbbb"]) $("c_" + b).classList.toggle("on", S.bbb === b);

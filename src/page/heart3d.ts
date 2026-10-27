@@ -7,7 +7,7 @@ import { o2Frame, myocardiumO2Color } from "../sim/o2View";
 import type { SurfaceMesh } from "../anatomy/heartSurface";
 import type { O2Frame } from "../sim/o2View";
 import type { Saturations } from "../sim/hemoSource";
-import { tree, sites, $, S, sev, panelSource } from "./state";
+import { tree, sites, $, S, sev, nec, panelSource } from "./state";
 import { heartGroup } from "./scene";
 
 const heartGeo = new THREE.BufferGeometry();
@@ -52,6 +52,8 @@ const PART_COLOR: Record<Part, THREE.Color> = {
   [Part.LV]: new THREE.Color(0x7c2a24), [Part.RV]: new THREE.Color(0x82302a), [Part.RA]: new THREE.Color(0x70282a), [Part.LA]: new THREE.Color(0x732b2b),
   [Part.Aorta]: new THREE.Color(0xd2a08f),
 };
+const HEAT = [0x3b4252, 0x51127c, 0xb73779, 0xfc8961, 0xfcfdbf].map((h) => new THREE.Color(h)); // ischemia heat map: perfused -> infarcted
+const heat = (t: number, out: THREE.Color) => { t = Math.min(1, Math.max(0, t)) * (HEAT.length - 1); const k = Math.min(HEAT.length - 2, Math.floor(t)); return out.copy(HEAT[k]).lerp(HEAT[k + 1], t - k); };
 const FAT = new THREE.Color(0xc9a564), DUSKY = new THREE.Color(0x3f3150);
 let fatK = new Float32Array(0), grain = new Float32Array(0);
 let bedIdx: Int16Array = new Int16Array(0), bedW = new Float32Array(0), cover = new Float32Array(0);
@@ -109,6 +111,10 @@ export function paintMyocardium() {
     if (o2 && isVentricle(i)) {
       for (let k = 0; k < NB; k++) { bk[k] = sites[bedIdx[i * NB + k]].key; bw[k] = bedW[i * NB + k]; }
       base.copy(c); myocardiumO2Color(o2, bk, bw, cover[i], base, c);
+    } else if (S.mode === "isch" && isVentricle(i)) {
+      let isch = 0, dead = 0;
+      if (!S.hideIsch) for (let k = 0; k < NB; k++) { const key = sites[bedIdx[i * NB + k]].key; isch += bedW[i * NB + k] * (sev[key] ?? 0); dead += bedW[i * NB + k] * (nec[key] ?? 0); }
+      heat(Math.min(1, (isch + dead) * cover[i]), c);
     } else if (isVentricle(i)) {
       let isch = 0;
       if (!S.hideIsch) for (let k = 0; k < NB; k++) isch += bedW[i * NB + k] * (sev[sites[bedIdx[i * NB + k]].key] ?? 0);
