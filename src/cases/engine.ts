@@ -1,4 +1,5 @@
 import type { PatientSpec } from "../sim/patient";
+import { GENERIC_HARMS } from "./harms";
 
 /**
  * The case engine: a case is a patient to start from, a card to read, and a set of checkpoints that fire as the case goes on.
@@ -21,6 +22,10 @@ export interface Probe {
   cpr: boolean;
   ecmo: boolean; impella: boolean; iabp: boolean;
   pci: boolean; pciPending: boolean; // a stent is in / a PCI is on its way
+  /** Infusion levels now, 0..1 of a full dose, by drug name (betaBlocker, nitroglycerin, ...). */
+  drugs: Record<string, number>;
+  /** Left-ventricular ejection fraction (0..1), ischemic fraction of each ventricle (0..1), pulmonary congestion (0..1), litres of fluid given. */
+  ef: number; lvIschemia: number; rvIschemia: number; congestion: number; fluidsL: number;
   dead: boolean;
 }
 export type Cond = (p: Probe) => boolean;
@@ -44,9 +49,12 @@ export interface Outcome {
   flags?: string[];
   /** A procedure the page orders on the team's behalf. */
   order?: "pci";
+  /** A shock the page delivers (`sim.shock`); what follows depends on whether it worked. */
+  shock?: ShockOrder;
   /** Ends the case. */
   end?: "success" | "fail";
 }
+export interface ShockOrder { joules: number; sync?: boolean; onSuccess?: Outcome; onFail?: Outcome }
 export interface Prompt { text: string; options: Option[] }
 export interface Checkpoint {
   id: string;
@@ -71,7 +79,10 @@ export interface CaseDef {
   checkpoints: Checkpoint[];
   /** Counted as "kept alive and stable" time (default: pressure at 60 or more and not in arrest). */
   stable?: Cond;
+  /** Harms particular to this case, on top of the generic ones (`GENERIC_HARMS`). */
   harms?: Harm[];
+  /** Tags of generic harms that do not apply here. */
+  skipHarms?: string[];
   /** Flags the learner should have earned, named for the debrief. */
   musts?: { flag: string; label: string }[];
   points: { survive: number; stable: number; harm: number };
@@ -82,7 +93,7 @@ export type Result = "success" | "fail" | "died" | "timeout";
 export interface Logged { t: number; text: string }
 export interface Choice { id: string; prompt: string; label: string; points: number; correct?: boolean; why?: string }
 export interface Tick {
-  patches: PatientSpec[]; reveals: string[]; orders: "pci"[];
+  patches: PatientSpec[]; reveals: string[]; orders: "pci"[]; shocks: ShockOrder[];
   opened: { id: string; prompt: Prompt } | null;
   over: Result | null;
 }
@@ -104,7 +115,9 @@ export class CaseRunner {
   private stableS = 0; private harmS = 0; private harmBy = new Map<string, number>();
   private points = 0;
 
-  constructor(readonly def: CaseDef) {}
+  /** The harms this case is scored against: the generic list less what it skips, plus its own. */
+  readonly harms: Harm[];
+  constructor(readonly def: CaseDef) { this.harms = [...GENERIC_HARMS.filter((h) => !def.skipHarms?.includes(h.tag)), ...(def.harms ?? [])]; }
 
   get paused() { return this.open !== null; }
   get over() { return this.result !== null; }
@@ -128,19 +141,21 @@ export class CaseRunner {
     if (o.patch) into.patches.push(o.patch);
     for (const f of o.flags ?? []) this.flags.add(f);
     if (o.order) into.orders.push(o.order);
+    if (o.shock) into.shocks.push(o.shock);
     if (o.end) this.finish(o.end, into);
   }
   private finish(r: Result, into: Tick) { if (!this.result) { this.result = r; this.open = null; this.queue = []; into.over = r; } }
 
   /** Advance by `dt` case seconds with the patient as `p`. Does nothing while a prompt is open or once the case is over. */
   tick(p: Probe, dt: number): Tick {
-    const out: Tick = { patches: [], reveals: [], orders: [], opened: null, over: null };
+    const out: Tick = { patches: [], reveals: [], orders: [], shocks: [], opened: null, over: null };
     if (this.result || this.open) return out;
     this.t += dt;
     if (p.dead) { this.finish("died", out); return out; }
     if ((this.def.stable ?? STABLE)(p)) this.stableS += dt;
-    for (const h of this.def.harms ?? []) if (h.when(p)) { this.harmBy.set(h.tag, (this.harmBy.get(h.tag) ?? 0) + dt); }
-    if ((this.def.harms ?? []).some((h) => h.when(p))) this.harmS += dt;
+    let harmed = false;
+    for (const h of this.harms) if (h.when(p)) { harmed = true; this.harmBy.set(h.tag, (this.harmBy.get(h.tag) ?? 0) + dt); }
+    if (harmed) this.harmS += dt;
     for (const c of this.def.checkpoints) {
       if (this.queue.includes(c)) continue;
       if (!this.eligible(c, p, dt)) continue;
@@ -155,7 +170,7 @@ export class CaseRunner {
 
   /** Answer the open prompt. The outcome comes back as a Tick for the page to carry out. */
   answer(i: number): Tick {
-    const out: Tick = { patches: [], reveals: [], orders: [], opened: null, over: null };
+    const out: Tick = { patches: [], reveals: [], orders: [], shocks: [], opened: null, over: null };
     const o = this.open;
     if (!o) return out;
     const opt = o.prompt.options[i];
@@ -164,6 +179,13 @@ export class CaseRunner {
     this.points += opt.points ?? 0;
     this.choices.push({ id: o.id, prompt: o.prompt.text, label: opt.label, points: opt.points ?? 0, correct: opt.correct, why: opt.why });
     if (opt.outcome) this.play(opt.outcome, out);
+    return out;
+  }
+
+  /** Play an outcome that depends on something the page found out (a shock that did or did not convert the rhythm). */
+  resolve(o: Outcome): Tick {
+    const out: Tick = { patches: [], reveals: [], orders: [], shocks: [], opened: null, over: null };
+    if (!this.result) this.play(o, out);
     return out;
   }
 
@@ -186,7 +208,7 @@ export class CaseRunner {
     const missed = (this.def.musts ?? []).filter((m) => !this.flags.has(m.flag));
     if (missed.length) lines.push(`Not done: ${missed.map((m) => m.label).join("; ")}.`);
     lines.push(`Held stable ${Math.round(stableFrac * 100)}% of the time.`);
-    const harms = [...this.harmBy].filter(([, s]) => s / span >= 0.05).map(([tag, s]) => `${this.def.harms!.find((h) => h.tag === tag)!.label} (${Math.round((100 * s) / span)}%)`);
+    const harms = [...this.harmBy].filter(([, s]) => s / span >= 0.05).map(([tag, s]) => `${this.harms.find((h) => h.tag === tag)!.label} (${Math.round((100 * s) / span)}%)`);
     if (harms.length) lines.push(`Harmful: ${harms.join(", ")}.`);
     return { result: r, score, max: this.maxScore(), lines };
   }

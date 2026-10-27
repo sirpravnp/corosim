@@ -83,6 +83,7 @@ const DOSE: [string, string, string][] = [
   ["support.vasopressin", "vasopressin", "vasoconstriction without a faster rate"],
   ["support.nitroprusside", "nitroprusside", "arterial vasodilation lowers afterload and the pressure"],
   ["support.furosemide", "furosemide", "diuresis lowers the filling pressures"],
+  ["support.diltiazem", "diltiazem", "a slower ventricular response in atrial fibrillation, at the cost of weaker contraction and some vasodilation"],
 ];
 
 /** The patient as a map of named clinical phrases. Only what is abnormal or supported appears. */

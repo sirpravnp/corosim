@@ -37,6 +37,8 @@ function probe(): Probe {
     cpr: st.cpr.on,
     ecmo: (d?.ecmo?.flowLpm ?? 0) > 0.5, impella: !!d?.impella?.on, iabp: !!d?.iabp?.on,
     pci: reperfused(), pciPending: T.pending?.kind === "pci",
+    drugs: { ...(sim.drugState()?.level ?? {}) },
+    ef: sim.circ?.ejectionFraction ?? 0.6, lvIschemia: sim.circ?.lvIschemia ?? 0, rvIschemia: sim.circ?.rvIschemia ?? 0, congestion: sim.circ?.congestion ?? 0, fluidsL: sim.support.fluids,
     dead: sim.dead,
   };
 }
@@ -49,6 +51,12 @@ function carry(t: Tick) {
   }
   arrestSync();
   for (const o of t.orders) if (o === "pci") orderProcedure("pci");
+  for (const sh of t.shocks) {
+    const r = sim.shock({ joules: sh.joules, sync: sh.sync });
+    arrestSync();
+    const next = r.success ? sh.onSuccess : sh.onFail;
+    if (next && K.runner) carry(K.runner.resolve(next));
+  }
   if (t.over) end();
   setReveal();
   casesUi();

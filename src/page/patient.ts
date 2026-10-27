@@ -58,6 +58,7 @@ export function pgPatch(patch: PatientSpec) {
   pg = st;
   const { devices: _devices, ...rest } = patch;
   if (Object.keys(rest).length) sim.apply(rest);
+  if (rest.support) T.support = { ...sim.support }; // the frame loop hands T.support to the simulation: it must hold what the case just gave (fluids, pacing, a drip)
   pgApply(true);
 }
 /** A #s= link opens that patient, on load and when a link is pasted into an open tab. A link with playground fields opens in playground mode. */

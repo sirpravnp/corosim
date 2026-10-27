@@ -2,6 +2,8 @@
   "tests/arrestSim.test.ts",
   "tests/arrhythmiaRates.test.ts",
   "tests/arrhythmiaSim.test.ts",
+  "tests/caseDeath.test.ts",
+  "tests/caseScenarios.test.ts",
   "tests/cathHeart.test.ts",
   "tests/congenitalAdult.test.ts",
   "tests/coronaryCoupling.test.ts",

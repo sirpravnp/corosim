@@ -1,10 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { CaseRunner, Probe, CaseDef } from "../src/cases/engine";
+import { CaseRunner, Probe, CaseDef, Outcome } from "../src/cases/engine";
 import { CASES, caseById } from "../src/cases";
 import { ECPELLA } from "../src/cases/ecpella";
 import { Simulation } from "../src/sim/simulation";
+import { GENERIC_HARMS } from "../src/cases/harms";
 
-const P = (o: Partial<Probe> = {}): Probe => ({ map: 70, hr: 80, arrest: "none", rhythmClass: "perfusing", shocks: 0, epiDoses: 0, amioMg: 0, lidoDoses: 0, cpr: false, ecmo: false, impella: false, iabp: false, pci: false, pciPending: false, dead: false, ...o });
+const P = (o: Partial<Probe> = {}): Probe => ({ map: 70, hr: 80, arrest: "none", rhythmClass: "perfusing", shocks: 0, epiDoses: 0, amioMg: 0, lidoDoses: 0, cpr: false, ecmo: false, impella: false, iabp: false, pci: false, pciPending: false, drugs: {}, ef: 0.6, lvIschemia: 0, rvIschemia: 0, congestion: 0, fluidsL: 0, dead: false, ...o });
 const run = (r: CaseRunner, p: Probe, s: number) => { for (let i = 0; i < s; i++) r.tick(p, 1); };
 
 const toy: CaseDef = {
@@ -81,7 +82,8 @@ describe("the cases", () => {
       expect(c.card.presents.length).toBeGreaterThan(20);
       const ids = c.checkpoints.map((x) => x.id); expect(new Set(ids).size).toBe(ids.length);
       for (const cp of c.checkpoints) for (const o of cp.prompt?.options ?? []) { expect(o.correct === undefined || typeof o.why === "string").toBe(true); }
-      const flags = new Set(c.checkpoints.flatMap((x) => (x.prompt?.options.flatMap((o) => o.outcome?.flags ?? []) ?? []).concat(x.outcome?.flags ?? [])));
+      const outs = (o?: Outcome): string[] => (o ? [...(o.flags ?? []), ...outs(o.shock?.onSuccess), ...outs(o.shock?.onFail)] : []);
+      const flags = new Set(c.checkpoints.flatMap((x) => (x.prompt?.options.flatMap((o) => outs(o.outcome)) ?? []).concat(outs(x.outcome))));
       for (const cp of c.checkpoints) for (const f of [...(cp.requires ?? []), ...(cp.forbids ?? [])]) expect(flags.has(f)).toBe(true);
       for (const m of c.musts ?? []) expect(flags.has(m.flag)).toBe(true);
     }
@@ -110,6 +112,18 @@ describe("the cases", () => {
     expect(r.answer(1).over).toBe("success");
     const d = r.debrief(); expect(d.result).toBe("success"); expect(d.lines.join(" ")).toContain("Impella");
   });
+  it("ECPELLA: a vasodilator or beta blocker on support costs points and is named in the debrief", () => {
+    const run2 = (drugs: Record<string, number>) => {
+      const r = new CaseRunner(ECPELLA); const p = P({ arrest: "arrest", ecmo: true, impella: true, drugs });
+      r.tick(p, 1); r.answer(1); r.tick(p, 1); r.answer(1); run(r, p, 19); r.tick(p, 1); r.answer(0);
+      const d = r.tick(P({ pci: true, ecmo: true, impella: true, drugs }), 1); expect(d.opened?.id).toBe("after"); r.answer(1);
+      for (let i = 0; i < 20; i++) { /* the case is over: further ticks do nothing */ }
+      return r.debrief();
+    };
+    const clean = run2({}), harm = run2({ nitroglycerin: 0.6 });
+    expect(clean.lines.join(" ")).not.toContain("vasodilator");
+    expect(harm.lines.join(" ")).toContain("vasodilator"); expect(harm.score).toBeLessThan(clean.score);
+  });
   it("ECPELLA: ACLS-only answers repeat the arrival prompt instead of ending the case", () => {
     const r = new CaseRunner(ECPELLA); r.tick(P({ arrest: "arrest" }), 1); r.answer(0);
     run(r, P({ arrest: "arrest" }), 149); expect(r.open).toBeNull();
@@ -128,4 +142,43 @@ describe("the cases", () => {
     const d = sim.devices();
     expect(d?.ecmo?.flowLpm).toBeGreaterThan(2.5); expect(d?.impella?.on).toBe(true);
   }, 60000);
+});
+
+describe("generic harms", () => {
+  const bare: CaseDef = { ...toy, harms: undefined, musts: undefined, checkpoints: [] };
+  const harmed = (p: Probe, def: CaseDef = bare) => { const r = new CaseRunner(def); r.tick(p, 1); const d = r.debrief(); return d.lines.filter((l) => l.startsWith("Harmful")).join(" "); };
+  it("every rule fires in its own bad context and stays quiet in a benign one", () => {
+    const cases: [string, Probe, Probe][] = [
+      ["vasodilator", P({ map: 55, drugs: { nitroglycerin: 0.5 } }), P({ map: 90, drugs: { nitroglycerin: 0.5 } })],
+      ["beta blocker", P({ ef: 0.25, drugs: { betaBlocker: 0.5 } }), P({ ef: 0.6, drugs: { betaBlocker: 0.5 } })],
+      ["catecholamine", P({ hr: 150, lvIschemia: 0.4, drugs: { dobutamine: 0.6 } }), P({ hr: 90, lvIschemia: 0.4, drugs: { dobutamine: 0.6 } })],
+      ["pure vasoconstrictor", P({ ef: 0.25, drugs: { phenylephrine: 0.6 } }), P({ ef: 0.6, drugs: { phenylephrine: 0.6 } })],
+      ["diuretic", P({ map: 55, drugs: { furosemide: 0.5 } }), P({ map: 55, congestion: 0.6, drugs: { furosemide: 0.5 } })],
+      ["calcium channel blocker", P({ ef: 0.25, drugs: { diltiazem: 0.5 } }), P({ ef: 0.6, map: 90, drugs: { diltiazem: 0.5 } })],
+      ["dual AV-nodal blockade", P({ ef: 0.6, map: 90, drugs: { betaBlocker: 0.5, diltiazem: 0.5 } }), P({ ef: 0.6, map: 90, drugs: { diltiazem: 0.5 } })],
+      ["fluid into congestion", P({ ef: 0.25, congestion: 0.6, fluidsL: 1 }), P({ ef: 0.6, congestion: 0, fluidsL: 1 })],
+    ];
+    expect(cases.map((c) => c[0]).sort()).toEqual(GENERIC_HARMS.map((h) => h.tag).sort()); // a new rule needs a test here
+    for (const [tag, bad, ok] of cases) {
+      const label = GENERIC_HARMS.find((h) => h.tag === tag)!.label.slice(0, 20);
+      // eslint-disable-next-line no-await-in-loop
+      expect(harmed(bad), tag).toContain(label.slice(0, 12));
+      expect(harmed(ok), tag).toBe("");
+    }
+  });
+  it("a preload-dependent right ventricle makes a vasodilator harmful even at a normal pressure", () => {
+    expect(harmed(P({ map: 80, rvIschemia: 0.5, drugs: { nitroglycerin: 0.5 } }))).toContain("vasodilator");
+  });
+  it("a case may skip a generic rule and add its own", () => {
+    const bad = P({ map: 50, drugs: { nitroglycerin: 0.5 } });
+    expect(harmed(bad, { ...bare, skipHarms: ["vasodilator"] })).toBe("");
+    const own: CaseDef = { ...bare, harms: [{ tag: "x", label: "a thing this case dislikes", when: (p) => p.hr > 100 }] };
+    expect(harmed(P({ hr: 120 }), own)).toContain("a thing this case dislikes");
+  });
+  it("harm lowers the score in proportion to the time spent doing it", () => {
+    // stable the whole time, so only harm moves the score
+    const run3 = (drugs: Record<string, number>, secs: number) => { const r = new CaseRunner(bare); for (let i = 0; i < 10; i++) r.tick(P({ map: 80, rvIschemia: 0.5, drugs: i < secs ? drugs : {} }), 1); return r.debrief().score; };
+    const none = run3({}, 0), brief = run3({ nitroglycerin: 0.5 }, 2), long = run3({ nitroglycerin: 0.5 }, 8);
+    expect(brief).toBeLessThan(none); expect(long).toBeLessThan(brief);
+  });
 });

@@ -108,6 +108,8 @@ the share of the time the patient was held stable (pressure at 60 or more and no
 and a deduction for time spent doing harm. The debrief lists each choice with its teaching point and anything the case
 expected that was not done. Best scores are kept in the browser.
 
+The cases so far, easy to hard: Pressure in the chest (anterior STEMI), Racing heart (AF with RVR in a stable patient: rate control, then the anticoagulation question), Slow and low (inferior STEMI with right-ventricular infarct and heart block), Short of breath and racing (fast AF in a failing ventricle: diltiazem is the trap, cardioversion the route), Cold and wet (left main shock) and Collapse at home (refractory VF, ECPELLA). Harms are scored by a shared list in `src/cases/harms.ts` (a drug given into a physiology it makes worse); a case adds its own or skips a generic one.
+
 The engine is `src/cases/engine.ts` (pure: a `CaseRunner` fed a `Probe` of the patient each frame; tests in
 `tests/cases.test.ts`), the cases are one file each in `src/cases/` (list them in `src/cases/index.ts`), and the page is
 `src/page/cases.ts`. A case is a `PatientSpec` to start from, a card, an optional opening (rhythm, CPR, drugs already
