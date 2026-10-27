@@ -11,7 +11,7 @@ const has = (id: string) => new RegExp(`\\bid="${id}"`).test(html);
 
 describe("Support tab layout", () => {
   it("is six collapsible sections in order, only Treat open, each with a live summary and an (i)", () => {
-    const secs = [...support.matchAll(/<details class="fold sup-sec[^"]*" id="sec-(\w+)"( open)?>/g)].map((m) => [m[1], !!m[2]]);
+    const secs = [...support.matchAll(/<details class="fold sup-sec[^"]*" id="sec-(\w+)"( open)?>/g)].map((m): [string, boolean] => [m[1], !!m[2]]);
     expect(secs).toEqual([["treat", true], ["volume", false], ["drugs", false], ["devices", false], ["vent", false], ["assess", false]]);
     for (const [s] of secs) {
       expect(has(`sum-${s}`), s).toBe(true);
