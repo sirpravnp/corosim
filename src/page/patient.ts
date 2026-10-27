@@ -72,6 +72,7 @@ export function initPatient() {
     },
     loadPreset(id) { const p = PRESET_BY_ID[id]; if (p) pgAdopt(p.spec, id); },
     exit: () => pgShow(false),
+    legacy: () => inGame,
   });
   mountDock(pgUi.mounts);
   // The existing controls (lesions, rhythm, drugs, support) change the Scenario inside the Simulation: pick that up for the link.
