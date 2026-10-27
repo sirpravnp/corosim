@@ -1,6 +1,6 @@
 import { untreated } from "../physics/revasc";
 import { Scenario, LesionSpec } from "../sim/scenario";
-import { tree, A, $, V, S, sim, takeTree, takeAnalysis, T, clearTreatment, pend, clearPending, on, range, PHYS_REST, PHYS, ecg } from "./state";
+import { tree, A, $, V, S, sim, takeTree, takeAnalysis, T, clearTreatment, pend, clearPending, range, PHYS, ecg } from "./state";
 import { prepareMyocardium } from "./heart3d";
 import { built, blockedFlags, buildVessels, lumen, shapeVessels, points, initParticles, buildGrafts } from "./vessels3d";
 import { resetManageSig } from "./manage";
@@ -48,10 +48,9 @@ export const syncSelects = () => { $<HTMLSelectElement>("dom").value = V.dominan
 
 function applyPhys() { sim.apply({ bloodLoss: PHYS.bl / 100, drugs: { betaBlocker: PHYS.bb / 100 } }); physUi(); }
 export const setPhys = (p: Partial<typeof PHYS>) => { Object.assign(PHYS, p); applyPhys(); };
-/** The Volume and drugs sliders and presets. */
+/** The blood loss and beta blocker sliders (Support tab: Volume, Drugs). */
 export function wireVolume() {
   for (const k of Object.keys(PHYS) as (keyof typeof PHYS)[]) range(k, (v) => setPhys({ [k]: v }));
-  on("x_bleed", () => setPhys({ bl: 20 })); on("x_reset", () => setPhys(PHYS_REST));
 }
 
 // ---------------------------------------------------------------- the simulation changed underneath the controls

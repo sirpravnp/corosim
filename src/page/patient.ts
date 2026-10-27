@@ -1,13 +1,14 @@
 // ---------------------------------------------------------------- playground mode (task P12)
 import { createPlaygroundUi } from "../panels/playgroundControls";
 import { decodePatient, encodePatient } from "../sim/llm";
-import { buildPlaygroundSpec, hasPlaygroundFields, stateOfSpec, withDevice } from "../sim/playground";
+import { buildPlaygroundSpec, hasPlaygroundFields, patchSection, stateOfSpec, withDevice } from "../sim/playground";
 import { PRESET_BY_ID } from "../sim/presets";
 import type { PlaygroundState } from "../sim/playground";
 import type { PatientSpec } from "../sim/patient";
 import { $, sim, T, on, inGame, patientOpts } from "./state";
+import { hooks } from "./manage";
 import { propsView } from "./scene";
-import { loadScenario } from "./model";
+import { loadScenario, setPhys } from "./model";
 import { pushPatient } from "./workspace";
 import { mountDock } from "./dock";
 
@@ -75,6 +76,15 @@ export function initPatient() {
     legacy: () => inGame,
   });
   mountDock(pgUi.mounts);
+  // The Support tab's one switch per device edits `devices.*`; the legacy `support.iabp` / `support.impella` follow in pgApply.
+  hooks.device = (id, isOn) => { if (!pgOn) pgShow(true); pg = withDevice(pg, id, isOn); pgPreset = null; pgSticky = []; pgApply(true); };
+  // Reset treatment: the devices, the boluses and the beta blocker go; the insult (blood loss, hemorrhage) stays
+  hooks.resetTreatment = () => {
+    if (inGame) return;
+    let next: PlaygroundState = { ...pg, devices: undefined };
+    next = patchSection(next, "fluids", { given: undefined });
+    pg = next; pgPreset = null; setPhys({ bb: 0 }); pgApply(true);
+  };
   // The existing controls (lesions, rhythm, drugs, support) change the Scenario inside the Simulation: pick that up for the link.
   setInterval(() => {
     if (!pgOn || inGame) return;
