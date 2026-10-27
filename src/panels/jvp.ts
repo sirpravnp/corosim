@@ -5,6 +5,7 @@
  */
 import { analyzeJvp, jvpHeightCm, jvpWords, type JvpResult } from "../physics/jvp";
 import type { BeatSummary, HemoSource } from "../sim/hemoSource";
+import { recentHemodynamicBeats, SETTLE_BEATS } from "../sim/hemoBeats";
 import { DASH, fmt } from "./numbers";
 import type { Panel, PanelDef } from "./panel";
 
@@ -50,7 +51,7 @@ export const jvpPanel: PanelDef = {
     let cached: { beat: BeatSummary; res: JvpResult } | null = null;
 
     const analyze = (): { beat: BeatSummary; res: JvpResult } | null => {
-      const bs = src.beats(1), beat = bs[bs.length - 1];
+      const bs = recentHemodynamicBeats(src.beats(4 + SETTLE_BEATS)).beats, beat = bs[bs.length - 1]; // the latest steady beat: a premature or cut-short one has a distorted a/v pattern
       if (!beat) return null;
       if (cached?.beat === beat) return cached;
       const res = analyzeJvp({ p: beat.pressure.RA, t: beat.time, atrial: beat.atrial, rr: beat.rr });

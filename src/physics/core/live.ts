@@ -95,17 +95,6 @@ const range = (x: number, [lo, hi]: readonly [number, number] | readonly number[
  * The first ventricular event after `warm()` measures its RR from the last event of the warm-up, so put it at about one RR after 0
  * (a beat at 0 follows the warm-up at the steady rate).
  */
-/**
- * The beats whose end is a true end-diastole, for end-diastolic pressure and volume: the next beat is known and is not premature.
- * A beat's end is "the pressure and volume when the next beat starts"; when that next beat is a PVC it can arrive while the ventricle
- * is still relaxing or even ejecting, so those readings are not end-diastolic (they read 70-90 mmHg in an ischemic heart with ectopy).
- * The newest beat is left out until its successor is known. Falls back to every beat when none qualifies.
- */
-export function endDiastolicBeats<T>(beats: readonly T[], pvc: (b: T) => boolean): T[] {
-  const out = beats.filter((_, i) => i + 1 < beats.length && !pvc(beats[i + 1]));
-  return out.length ? out : [...beats];
-}
-
 export class LiveHeart {
   readonly model: Model;
   readonly engine: Engine;

@@ -11,10 +11,10 @@ Waves run in order; an item is done when merged to main and live. Updated as wor
 | A0 faster CI | done, merged (PR 27); slow checks passed on the PR in 4.5 min |
 | A1 split app.ts | done, merged (PR 26) |
 | C1 Share button | done, merged (PR 25), live |
-| B1 hemodynamic beats | done on its branch; merges after B3a (conflicts in simulationCore bars to resolve) |
+| B1 hemodynamic beats | done (merged with B3a); beat-shape readouts use steady beats, flows and MAP use all beats over 30 s |
 | B3a graded ischemic PVC model | done (PR 29): PVC share 3.6 % proximal LAD (0-16 % across seeds), burst after reperfusion, cited in docs/ECTOPY.md; B3b = VT/VF initiation after B2 |
 | C6 coronary depiction | part a done (side branches, perforators, flare, LOD); merging. Next parts: plaque and thrombus; myocardial blush; flow cues on branches; veins |
-| A2 neonate/bridge removal | waits for B1 (same files) |
+| A2 neonate/bridge removal | ready to start |
 | everything else | not started |
 
 ## 1. Where we start (from reading the code)
