@@ -274,6 +274,7 @@ details.fold > :not(summary):last-child { margin-bottom: 16px; }
 #manage .sec-info.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 #manage .sup-info[hidden] { display: none; }
 #manage .sup-info { margin: 0 0 10px; }
+#manage .ctl { grid-template-columns: minmax(0, 1fr) 92px 68px; } /* narrow value column so long drug names (norepinephrine, nitroglycerin) get the room */
 .ctl-flat, .ctl .pg-dev:not([hidden]) { display: contents; }
 .ctl .ctl-wide { grid-column: 1 / -1; margin: 0; }
 .ctl label.ctl-sub { padding-left: 12px; color: var(--muted); }
