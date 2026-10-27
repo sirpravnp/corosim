@@ -162,10 +162,10 @@
       <div class="dpane" data-pane="rhythm">
         <div id="patient">
         <p class="glabel" style="margin-top:0">Rhythm</p>
-        <div class="row" style="margin-top:0">
-          <button id="r_sinus" class="on">Sinus</button>
-          <button id="r_af">Atrial fibrillation</button>
-        </div>
+        <input id="rhythmq" type="search" placeholder="Search rhythms (VT, flutter, block...)" aria-label="Search rhythms" autocomplete="off">
+        <select id="rhythmsel" aria-label="Rhythm"></select>
+        <p class="note" id="rhythmcount" style="margin:4px 0 0"></p>
+        <p class="note" id="rhythminfo"></p>
         <p class="glabel">Conduction</p>
         <div class="row" style="margin-top:0">
           <button id="c_none" class="on">Normal</button>
