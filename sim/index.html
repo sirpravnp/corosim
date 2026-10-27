@@ -20,16 +20,54 @@
     <figure>
       <div id="view" class="viewport">
         <div id="tag"></div>
+        <div id="vc" class="vc">
+          <div class="vc-bar" role="tablist" aria-label="3D view display">
+            <button class="vc-tab" data-vc="view" role="tab" aria-expanded="false">View</button>
+            <button class="vc-tab" data-vc="layers" role="tab" aria-expanded="false">Layers</button>
+            <button class="vc-tab" data-vc="heat" role="tab" aria-expanded="false">Heat map</button>
+          </div>
+          <div class="vc-pane" data-vcp="view" hidden>
+            <div class="row">
+              <button id="vAnt" class="on">Anterior</button>
+              <button id="vLeft">Left lateral</button>
+              <button id="vPost">Posterior</button>
+              <button id="vInf">Inferior</button>
+              <button id="vRight">Right</button>
+              <button id="spin">Auto-rotate</button>
+            </div>
+          </div>
+          <div class="vc-pane" data-vcp="layers" hidden>
+            <p class="glabel">Myocardium</p>
+            <div class="row">
+              <button id="h_solid" class="on">Solid</button>
+              <button id="h_ghost">Translucent</button>
+              <button id="h_none">Hidden</button>
+            </div>
+            <p class="glabel">Show</p>
+            <div class="row">
+              <button id="flowbtn">Blood flow</button>
+              <button id="propsbtn" title="Show the heart's valves, septal defects and jets inside it (from a shared link's structural lesions); makes a solid heart see-through">Valves and defects</button>
+              <button id="labelbtn">Labels</button>
+              <button id="postbtn" title="Posterior leads V7–V9 on the ECG">Leads V7–V9</button>
+            </div>
+            <label for="ex">Coronary scale <span class="val"><span id="exv"></span>×</span></label>
+            <input id="ex" type="range" min="1" max="5" step="0.5" value="2.5">
+          </div>
+          <div class="vc-pane" data-vcp="heat" hidden>
+            <p class="glabel">Color by</p>
+            <div class="row">
+              <button id="m_real" class="on">Anatomic</button>
+              <button id="m_isch">Ischemia</button>
+              <button id="m_anat">Territory</button>
+              <button id="m_pressure">Pressure</button>
+              <button id="m_velocity">Velocity</button>
+              <button id="m_wss">Wall shear</button>
+              <button id="m_o2">O₂ sat</button>
+            </div>
+          </div>
+        </div>
         <div id="pick"></div>
         <div id="legend"><div id="bar"></div><div class="lg"><span id="l0"></span><span id="lmid"></span><span id="l1"></span></div><div id="legend2" hidden><div id="bar2"></div><div class="lg"><span id="m0"></span><span id="mmid"></span><span id="m1"></span></div><div id="lnote"></div></div></div>
-      </div>
-      <div class="row views">
-        <button id="vAnt" class="on">Anterior</button>
-        <button id="vLeft">Left lateral</button>
-        <button id="vPost">Posterior</button>
-        <button id="vInf">Inferior</button>
-        <button id="vRight">Right</button>
-        <button id="spin">Auto-rotate</button>
       </div>
       <figcaption><b>Figure 1.</b> The heart with its chambers and great vessels; the coronary arteries run in the fat-filled atrioventricular and interventricular grooves. Ventricular muscle darkens where it becomes ischemic. Click a vessel for its length, caliber, inflow and territory, or click the heart to name a structure.</figcaption>
     </figure>
@@ -225,32 +263,6 @@
       <select id="san"><option value="RCA">From the RCA</option><option value="LCx">From the circumflex</option></select>
       <label for="conus">Conus branch</label>
       <select id="conus"><option value="shared">From the RCA</option><option value="separate">Separate ostium</option></select>
-    </details>
-
-    <details class="fold" id="display">
-      <summary><h2>Display</h2><span class="sum" id="displaysum"></span></summary>
-      <p class="glabel" style="margin-top:0">Color the vessels by</p>
-      <div class="row" style="margin-top:0">
-        <button id="m_real" class="on">Anatomic</button>
-        <button id="m_anat">Territory</button>
-        <button id="m_pressure">Pressure</button>
-        <button id="m_velocity">Velocity</button>
-        <button id="m_wss">Wall shear</button>
-        <button id="m_o2">O₂ sat</button>
-      </div>
-      <p class="glabel">Myocardium</p>
-      <div class="row" style="margin-top:0">
-        <button id="h_solid" class="on">Solid</button>
-        <button id="h_ghost">See-through</button>
-        <button id="h_none">Hidden</button>
-      </div>
-      <label for="ex">Vessel radius exaggeration <span class="val"><span id="exv"></span>×</span></label>
-      <input id="ex" type="range" min="1" max="5" step="0.5" value="2.5">
-      <div class="row">
-        <button id="flowbtn">Show blood flow</button>
-        <button id="propsbtn" title="Show the heart's valves, septal defects and jets inside it (from a shared link's structural lesions); makes a solid heart see-through">Valves and defects</button>
-        <button id="postbtn">Posterior leads V7–V9</button>
-      </div>
     </details>
   </aside>
 </main>

@@ -49,4 +49,35 @@ export function updateMarkers(dt: number) {
   placeMarker(lesionMarker, lb, S.pos, `${S.occ ? "Occluded" : Math.round(S.ds * 100) + "% stenosis"} · ${lb?.seg.name ?? ""}`, 7, probe);
   const cb = G.call && G.phase !== "idle" ? built.find((x) => x.seg.id === G.call!.segId) : undefined;
   placeMarker(callMarker, cb, G.call?.pos ?? 0, "Your call", 0, probe);
+  updateLabels(probe);
+}
+
+// ---------------------------------------------------------------- name labels (the Layers panel's Labels switch)
+const LABELLED = ["LM", "LAD", "LCX", "RCA", "PDA_R", "PDA_L"];
+const segLabels = new Map<string, { el: HTMLElement; p: THREE.Vector3 }>();
+const lp = new THREE.Vector3();
+/** Floating names on the main arteries, placed at the middle of each, dimmed when the heart or another vessel is in front. */
+export function updateLabels(probe: boolean) {
+  for (const l of segLabels.values()) l.el.hidden = !S.labels;
+  if (!S.labels) return;
+  for (const b of built) {
+    if (!LABELLED.includes(b.seg.id)) continue;
+    let l = segLabels.get(b.seg.id);
+    if (!l) { const el = document.createElement("div"); el.className = "seglabel"; el.textContent = b.seg.name; view.append(el); l = { el, p: new THREE.Vector3() }; segLabels.set(b.seg.id, l); }
+    const i = b.ctr.length >> 1;
+    l.p.copy(b.ctr[i]).addScaledVector(b.out[i], b.rad[i] * S.exag * 1.4);
+    vesselGroup.localToWorld(l.p);
+    lp.copy(l.p).project(camera);
+    const inView = lp.z < 1 && Math.abs(lp.x) < 1 && Math.abs(lp.y) < 1;
+    l.el.hidden = !inView;
+    if (!inView) continue;
+    l.el.style.transform = `translate(${((lp.x + 1) / 2) * view.clientWidth}px, ${((1 - lp.y) / 2) * view.clientHeight}px) translate(-50%, -120%)`;
+    if (probe) {
+      lzDir.copy(l.p).sub(camera.position);
+      const dist = lzDir.length();
+      ray.set(camera.position, lzDir.normalize());
+      const hit = ray.intersectObjects([...built.filter((x) => x !== b).map((x) => x.mesh), ...(heartMesh.visible ? [heartMesh] : [])])[0];
+      l.el.classList.toggle("back", !!hit && hit.distance < dist - 3);
+    }
+  }
 }
