@@ -16,6 +16,7 @@
   "tests/mcpHemo.test.ts",
   "tests/pericardialScenarios.test.ts",
   "tests/playground.test.ts",
+  "tests/rhythmUnification.test.ts",
   "tests/septum.test.ts",
   "tests/simulation.test.ts",
   "tests/simulationCore.test.ts",

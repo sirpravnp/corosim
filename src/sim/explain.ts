@@ -3,6 +3,7 @@ import { AUTONOMIC } from "../physics/autonomic";
 import { CIRC } from "../physics/circulation";
 import { Ectopy, EctopyPhase } from "../physics/ectopy";
 import { ECTOPY } from "../config/ectopy";
+import { libraryRhythm } from "../physics/rhythmSource";
 
 export interface Explanation {
   headline: string;
@@ -65,6 +66,8 @@ export function explain(sim: Simulation): Explanation {
   else if (st.rhythm.pvcSeverity > 0.6) mech.push("Ischemic burden is above the ectopy threshold, so premature ventricular beats occur; each is followed by a compensatory pause and a stronger next beat.");
 
   const rs = sim.rstate, sup = st.support, v = st.ventricle;
+  const lib = libraryRhythm(rs.rhythm);
+  if (lib) mech.push(`${lib.name} (from the EKG library; it sets the beats the ventricles get): ${lib.summary}${/^(vf|asystole)/.test(lib.id) ? " The ventricles do not contract: there is no output and the pressure falls to the mean filling pressure." : ""}`);
   if (rs.rhythm === "af") mech.push("Atrial fibrillation: no P waves, an irregular ventricular response set by the AV node, and no atrial kick (each beat fills less).");
   if (rs.bbb !== "none") mech.push(`Pre-existing ${rs.bbb === "lbbb" ? "left" : "right"} bundle branch block widens the QRS${rs.bbb === "lbbb" ? " and masks ST changes" : ""}.`);
   if (v.lvInfarctFraction > 0.02) mech.push(`Irreversible injury: ${Math.round(v.lvInfarctFraction * 100)}% of the left ventricle has infarcted (${st.clinicalMinutes} clinical minutes of evolution); estimated LVEF ${Math.round(v.ejectionFraction * 100)}%. Reperfusion stops further loss but does not restore it.`);

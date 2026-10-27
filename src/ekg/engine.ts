@@ -91,6 +91,7 @@ export interface EBeat {
   vm?: VMorph;
   paced?: boolean;
   alt?: number; // QRS voltage × for this beat (electrical alternans)
+  pvc?: boolean; // a premature ventricular beat interrupting the rhythm (not an escape or a sustained ventricular rhythm)
 }
 
 // ---- ventricular complexes [assumed vectors chosen for the classic lead pattern]
@@ -111,11 +112,31 @@ const FLUTTER_VEC: Vec3 = [0.05, 0.18, -0.12]; // the circuit runs up the septum
 /** Sawtooth: a sharp negative deflection, then a slow rise (as lead II sees typical flutter). */
 function sawtooth(ph: number) { return ph < 0.25 ? 0.5 - 6 * ph : -1 + 2 * (ph - 0.25); }
 
-class Generator {
+/**
+ * Options of a `RhythmGenerator`. `t0` shifts its clock (the first P wave at t0 + 0.25 s, the first ventricular beat at t0 + 0.45 s)
+ * so a rhythm can start in the middle of a running simulation. `rate(t)` multiplies the rate of the rhythms a pacemaker cell sets
+ * and the autonomic nervous system moves (sinus, including its blocks; the AV node's response in AF; MAT; the sinus rhythm between
+ * torsades runs) at time t: the simulator's baroreflex and drugs. Re-entrant and ventricular rhythms (flutter, SVT, junctional,
+ * VT, paced, escapes) keep their own rate. Omitted, 1 (the EKG page).
+ */
+export interface GeneratorOptions { t0?: number; rate?: (t: number) => number }
+
+/**
+ * The rhythm itself: beat events (`EBeat`) generated ahead of a clock, and the continuous atrial or ventricular activity between
+ * them (`baseline`). The EKG page draws them; the simulator's beat stream (physics/rhythmSource.ts) converts the same events into
+ * beats for the ECG strip and the hemodynamic engine, so both show the same rhythm.
+ */
+export class RhythmGenerator {
   private rng: () => number;
-  private tP = 0.25; private tV = 0.45; private n = 0; private sv = 0; private ang = 0;
-  private seg = 0; private segEnd = 6; private runStart = 0; // torsades: sinus (0) or run (1), and when it ends
-  constructor(private spec: EkgSpec, seed: number) { this.rng = mulberry32(seed); }
+  private tP: number; private tV: number; private n = 0; private sv = 0; private ang = 0;
+  private seg = 0; private segEnd: number; private runStart = 0; // torsades: sinus (0) or run (1), and when it ends
+  private t0: number; private rateAt: (t: number) => number;
+  constructor(private spec: EkgSpec, seed: number, opts: GeneratorOptions = {}) {
+    this.rng = mulberry32(seed);
+    const t0 = opts.t0 ?? 0;
+    this.tP = t0 + 0.25; this.tV = t0 + 0.45; this.segEnd = t0 + 6;
+    this.t0 = t0; this.rateAt = opts.rate ?? (() => 1);
+  }
   private jit(x: number) { return 1 + x * (2 * this.rng() - 1); }
 
   advance(until: number): EBeat[] {
@@ -124,7 +145,7 @@ class Generator {
       case "sinus": {
         const pr0 = s.pr ?? 0.16, av = s.av ?? "normal", cycle = Math.max(2, s.cycle ?? 4);
         while (this.tP <= until) {
-          const tP = this.tP, rate = s.rate * (1 + (s.resp ?? 0) * Math.sin((2 * Math.PI * tP) / 4.5));
+          const tP = this.tP, rate = s.rate * this.rateAt(tP) * (1 + (s.resp ?? 0) * Math.sin((2 * Math.PI * tP) / 4.5));
           const pp = (60 / rate) * this.jit(s.hrv ?? 0.02);
           this.tP += pp;
           let pr = pr0, conducts = true;
@@ -137,9 +158,9 @@ class Generator {
           out.push({ t: tR, rr: pp, kind: "sv", pr, alt });
           this.sv++;
           if (s.ectopy && this.sv % s.ectopy.every === 0) {
-            out.push({ t: tR + pp * (s.ectopy.coupling ?? 0.55), rr: pp, kind: "v", vm: s.ectopy.vm });
+            out.push({ t: tR + pp * (s.ectopy.coupling ?? 0.55), rr: pp, kind: "v", vm: s.ectopy.vm, pvc: true });
             // The next sinus P still fires but lands inside the PVC and cannot conduct: a compensatory pause.
-            const next = this.tP, pp2 = 60 / s.rate;
+            const next = this.tP, pp2 = 60 / (s.rate * this.rateAt(next));
             out.push({ t: next + pr0, rr: pp2, kind: "p", pr: pr0 });
             this.tP = next + pp2;
           }
@@ -156,7 +177,7 @@ class Generator {
       }
       case "af":
         while (this.tV <= until) {
-          const rr = (60 / s.rate) * this.jit(s.irregularity ?? 0.4);
+          const rr = (60 / (s.rate * this.rateAt(this.tV))) * this.jit(s.irregularity ?? 0.4);
           out.push({ t: this.tV, rr, kind: "sv" }); this.tV += Math.max(0.25, rr);
         }
         break;
@@ -177,7 +198,7 @@ class Generator {
       case "mat": {
         const foci: Vec3[] = [WAVES.P.v, [0.13, -0.06, 0.07], [0.02, 0.16, -0.03], [0.14, 0.05, 0.12]];
         while (this.tP <= until) {
-          const rr = (60 / s.rate) * this.jit(0.28), pr = 0.12 + 0.08 * this.rng();
+          const rr = (60 / (s.rate * this.rateAt(this.tP))) * this.jit(0.28), pr = 0.12 + 0.08 * this.rng();
           out.push({ t: this.tP + pr, rr, kind: "sv", pr, pVec: foci[Math.floor(this.rng() * foci.length)] });
           this.tP += rr;
         }
@@ -201,7 +222,7 @@ class Generator {
         const base = s.baseRate ?? 52, rate = s.rate ?? 230;
         while (this.tV <= until) {
           if (this.seg === 0) {
-            const rr = (60 / base) * this.jit(0.02);
+            const rr = (60 / (base * this.rateAt(this.tV))) * this.jit(0.02);
             out.push({ t: this.tV, rr, kind: "sv", pr: 0.16 });
             if (this.tV + rr > this.segEnd) { this.runStart = this.tV + 0.44; this.tV = this.runStart; this.segEnd = this.runStart + 9; this.seg = 1; }
             else this.tV += rr;
@@ -230,7 +251,7 @@ class Generator {
   baseline(t: number): Vec3 {
     const s = this.spec.rhythm;
     if (s.kind === "af") return fWaves(t, s.fMv ?? 0.06);
-    if (s.kind === "flutter") { const cyc = 60 / (s.atrial ?? 300), f = 0.16 * sawtooth((((t - 0.45 + 0.12) / cyc) % 1 + 1) % 1); return scale(norm(FLUTTER_VEC), f); }
+    if (s.kind === "flutter") { const cyc = 60 / (s.atrial ?? 300), f = 0.16 * sawtooth((((t - this.t0 - 0.45 + 0.12) / cyc) % 1 + 1) % 1); return scale(norm(FLUTTER_VEC), f); }
     if (s.kind === "vf") {
       // Chaotic: a few incommensurate rhythms near 5 Hz, phase-wandering, along a slowly turning axis.
       const d = norm([Math.sin(0.71 * t), Math.cos(0.53 * t + 1), Math.sin(0.37 * t + 2)]);
@@ -242,32 +263,19 @@ class Generator {
   }
 }
 
-/** A running EKG: beats generated ahead of the clock, sampled into the 15 leads. */
-export class EkgEngine {
-  beats: EBeat[] = [];
-  private gen: Generator;
-  private horizon = 0;
-  private morph: Required<Pick<Morph, "p" | "pWide" | "qrs" | "qrsWide" | "axisShift" | "t" | "tNarrow" | "qt" | "tBoost">> & Morph;
+/**
+ * How one beat event looks: the dipole (mV) of an `EBeat` at `dt` s after its R peak, for a morphology. The EKG page's engine and
+ * the simulator's ECG strip (for the rhythms that come from this generator) both draw with it. `injury` and `tBoost` may be changed
+ * between calls (the simulator's coronary model moves them every frame); the rest of the morphology is fixed at construction.
+ */
+export class BeatPainter {
+  readonly morph: Required<Pick<Morph, "p" | "pWide" | "qrs" | "qrsWide" | "axisShift" | "t" | "tNarrow" | "qt" | "tBoost">> & Morph;
   private qrsVec: { Q: V; R: V; S: V };
-
-  constructor(readonly spec: EkgSpec, readonly seed = 1) {
-    this.gen = new Generator(spec, seed);
-    const m = spec.morph ?? {};
-    this.morph = { p: 1, pWide: 1, qrs: 1, qrsWide: 1, axisShift: 0, t: 1, tNarrow: 1, qt: 1, tBoost: 0, ...m };
+  constructor(morph: Morph = {}) {
+    this.morph = { p: 1, pWide: 1, qrs: 1, qrsWide: 1, axisShift: 0, t: 1, tNarrow: 1, qt: 1, tBoost: 0, ...morph };
     const k = this.morph.qrs, a = this.morph.axisShift;
     this.qrsVec = { Q: scale(rotFrontal(WAVES.Q.v, a), k), R: scale(rotFrontal(WAVES.R.v, a), k), S: scale(rotFrontal(WAVES.S.v, a), k) };
   }
-
-  /** Beats exist through `until` (s). */
-  ensure(until: number) {
-    while (this.horizon < until) {
-      this.horizon += 0.5;
-      this.beats.push(...this.gen.advance(this.horizon));
-    }
-    this.beats.sort((a, b) => a.t - b.t);
-  }
-  /** Forget beats more than `keep` s before t. */
-  prune(t: number, keep = 15) { if (this.beats.length && this.beats[0].t < t - keep) this.beats = this.beats.filter((b) => b.t > t - keep); }
 
   /** T-wave centre and width (s after R) for a supraventricular beat. */
   tTiming(rr: number) {
@@ -275,7 +283,8 @@ export class EkgEngine {
     return { tc: T_CENTER(rr) * m.qt + (m.qrsWide - 1) * 0.04, tw: T_WIDTH(rr) * m.tNarrow * Math.sqrt(m.qt) };
   }
 
-  private beatVector(dt: number, b: EBeat, out: V) {
+  /** Add the beat's dipole at `dt` s after its R peak to `out`. */
+  vector(dt: number, b: EBeat, out: V) {
     const add = (v: Vec3, k: number) => { if (k) { out[0] += v[0] * k; out[1] += v[1] * k; out[2] += v[2] * k; } };
     const m = this.morph;
     if (b.pr !== undefined && m.p) add(b.pVec ?? m.pVec ?? WAVES.P.v, m.p * gauss(dt, -b.pr, WAVES.P.w * m.pWide));
@@ -320,6 +329,33 @@ export class EkgEngine {
       }
     }
   }
+}
+
+/** A running EKG: beats generated ahead of the clock, sampled into the 15 leads. */
+export class EkgEngine {
+  beats: EBeat[] = [];
+  private gen: RhythmGenerator;
+  private horizon = 0;
+  private painter: BeatPainter;
+
+  constructor(readonly spec: EkgSpec, readonly seed = 1) {
+    this.gen = new RhythmGenerator(spec, seed);
+    this.painter = new BeatPainter(spec.morph);
+  }
+
+  /** Beats exist through `until` (s). */
+  ensure(until: number) {
+    while (this.horizon < until) {
+      this.horizon += 0.5;
+      this.beats.push(...this.gen.advance(this.horizon));
+    }
+    this.beats.sort((a, b) => a.t - b.t);
+  }
+  /** Forget beats more than `keep` s before t. */
+  prune(t: number, keep = 15) { if (this.beats.length && this.beats[0].t < t - keep) this.beats = this.beats.filter((b) => b.t > t - keep); }
+
+  /** T-wave centre and width (s after R) for a supraventricular beat. */
+  tTiming(rr: number) { return this.painter.tTiming(rr); }
 
   /** Cardiac dipole (mV) at time t: what the 3D view draws, and what every lead projects. */
   vector(t: number): V {
@@ -329,7 +365,7 @@ export class EkgEngine {
       const dt = t - b.t;
       if (dt < -0.6) break;
       if (dt > 1.0) continue;
-      this.beatVector(dt, b, out);
+      this.painter.vector(dt, b, out);
     }
     const tr = this.spec.tremor;
     if (tr) {

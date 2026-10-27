@@ -9,6 +9,8 @@ export interface BeatRecord {
   sympathetic: number; vagal: number; // autonomic tone 0..1
   afferent: number; // −1..1 baroreceptor drive
   respPhase: number; // rad, 0 = start of inspiration
+  /** Not a heartbeat: a record closed by a timing tick while the ventricles did not contract (VF, asystole; core engine, B2). hr is 0. */
+  silent?: boolean;
 }
 
 const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN);
@@ -109,9 +111,9 @@ export function rsaPeakToTrough(beats: BeatRecord[]): number | null {
  * beat's instantaneous 60/interval. With irregular intervals (a premature beat then its pause, atrial fibrillation) the mean of
  * reciprocals reads high: intervals of 0.34 s and 0.81 s are 176 and 74 bpm, mean 125, but two beats in 1.15 s is 104 bpm.
  */
-export function meanRate(beats: readonly { interval: number }[]): number {
+export function meanRate(beats: readonly { interval: number; silent?: boolean }[]): number {
   const T = beats.reduce((s, b) => s + b.interval, 0);
-  return T > 0 ? (60 * beats.length) / T : NaN;
+  return T > 0 ? (60 * beats.filter((b) => !b.silent).length) / T : NaN; // silent records (VF, asystole) are time without a beat
 }
 
 export function computeMetrics(beats: BeatRecord[], durationS: number): Metrics {

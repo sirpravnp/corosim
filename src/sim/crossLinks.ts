@@ -3,6 +3,7 @@ import type { HeartSpec, PatientSpec } from "./patient";
 import type { Scenario } from "./scenario";
 import { ALTERNANS, alternansAmplitude } from "../config/pericardium";
 import { defaults, LESIONS, LesionDef, lesionHash, patientFromLesionHash } from "./structural";
+import { isLibraryRhythm } from "../physics/rhythmSource";
 
 /**
  * "Open this patient in…" links between the pages (task P14). DOM-free: each page hands in the patient it shows and the path
@@ -116,6 +117,7 @@ export function ekgPresetFor(patient: PatientSpec): string {
   for (const l of patient.lesions ?? []) if (l.occluded) { const p = presetForArtery(String(l.artery).toUpperCase()); if (p) return p; }
   const pt = patient.patient;
   if (pt?.rhythm === "af") return "af";
+  if (pt?.rhythm && isLibraryRhythm(pt.rhythm)) return pt.rhythm; // a rhythm of the EKG library (B2): the same tracing
   if (pt?.bbb === "lbbb") return "lbbb";
   if (pt?.bbb === "rbbb") return "rbbb";
   return "nsr";

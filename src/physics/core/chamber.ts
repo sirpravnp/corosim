@@ -8,13 +8,13 @@ export function atrialDuration(interval: number): number {
 
 /** The double-Hill ventricular activation (unnormalised, Stergiopulos) shaped for one RR interval; its peak is found once per RR. */
 class VentCurve {
-  rr = NaN; tPeak = 0; peak = 1;
+  rr = NaN; k = 1; tPeak = 0; peak = 1;
   private a1 = 0; private a2 = 0;
   /** Set up the curve for preceding RR interval `rr` (s): Tmax = tMaxCoef·rr^tMaxExp, a1 = a1Frac·Tmax, a2 = a2Frac·a1. Cached per RR. */
-  setRR(rr: number) {
-    if (Math.abs(rr - this.rr) < 1e-9) return;
-    this.rr = rr;
-    const tMax = A.tMaxCoef * Math.pow(rr, A.tMaxExp);
+  setRR(rr: number, k = 1) {
+    if (Math.abs(rr - this.rr) < 1e-9 && k === this.k) return;
+    this.rr = rr; this.k = k;
+    const tMax = A.tMaxCoef * Math.pow(rr, A.tMaxExp) * k; // k: a slower, dyssynchronous contraction (HeartEvent.systole)
     this.a1 = A.a1Frac * tMax; this.a2 = A.a2Frac * this.a1;
     let top = 0, at = 0;
     for (let i = 0; i <= A.peakSamples; i++) { const x = this.raw((i / A.peakSamples) * rr); if (x > top) { top = x; at = (i / A.peakSamples) * rr; } }
@@ -64,7 +64,7 @@ export class ElastanceChamber implements NodeModel, Tunable<ElastanceParams> {
   onEvent(ev: HeartEvent) {
     if (ev.kind !== this.kind) return;
     const interval = this.tEvent === -Infinity ? this.defaultInterval : ev.t - this.tEvent;
-    if (this.kind === "atrial") this.ta = atrialDuration(interval); else this.curve.setRR(interval);
+    if (this.kind === "atrial") this.ta = atrialDuration(interval); else this.curve.setRR(interval, ev.kind === "ventricular" ? ev.systole ?? 1 : 1);
     this.tEvent = ev.t; this.strength = ev.strength ?? 1;
   }
   /**
