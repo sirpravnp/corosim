@@ -27,16 +27,18 @@ export const ARRHYTHMIA = {
    * Jacobsen 2020, PMID 32067598), anterior infarcts about twice the others; primary VF 4.4% of patients admitted within 24 h (El-Sherif
    * 1976, PMID 57784), a population that had already outlived the first hours.
    */
-  ischemicPerMin: 0.024,
+  ischemicPerMin: 0.043,
   /**
    * Time course of the ischemic hazard, minutes since onset of the episode (Ectopy.age):
    * T(t) = (1 - e^(-t/rise)) x (e^(-t/tau) + sub x e^(-t/subTau) + late). Steeper than the PVCs': in GISSI-2 primary VF was 3.1% in
    * the first 4 h against 0.6% from 4 to 48 h, about 50 times the hourly hazard (Volpi 1998, PMID 9708651); shorter time to treatment
    * predicted in-hospital VF in GUSTO-III (Al-Khatib 2003, PMID 12660676); experimentally the arrhythmias of phase 1a and 1b come in the
-   * first half hour (Naito 1982, PMID 6174040). With these constants the first 4 hours hold about 50 times the hourly hazard of hours
-   * 4-48, and two thirds of the first 4 hours' events fall in the first hour. [time constants assumed]
+   * first half hour (Naito 1982, PMID 6174040). With these constants the first 4 hours hold about 60 times the hourly hazard of hours
+   * 4-48, and three quarters of the first 4 hours' events fall in the first hour. The burden itself builds up over the first ~40
+   * clinical minutes (the ischemia kinetics run in heartbeat time), so the hazard the patient feels peaks around 20-40 minutes and the
+   * first hour holds about 2.3 times the VF of the second (rig: tests/arrhythmiaRates.test.ts). [time constants assumed]
    */
-  riseMin: 2, tauMin: 60, sub: 0.05, subTauMin: 360, late: 0.002,
+  riseMin: 2, tauMin: 30, sub: 0.04, subTauMin: 240, late: 0.001,
   /**
    * Hazard of an initiating event from reperfusion, per clinical minute at full effect of the ectopy model's reperfusion burst store
    * (Ectopy.burst: the fall of the burden weighted by how long the ischemia lasted, decaying over 30 clinical minutes), same Hill
