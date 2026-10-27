@@ -6,7 +6,7 @@ import { PROCEDURE, SUPPORT, Procedure } from "../config/management";
 import { lvInfarctSize, clinicalTime } from "../physics/infarct";
 import { order, applyProcedure } from "../physics/revasc";
 import { assess, Situation } from "../physics/advice";
-import { tree, A, sites, circ, $, S, sim, sev, T, nec, clearTreatment, scheduleLesion, on, range, G, ecg, rstate, pageVitals, PHYS, patientOpts } from "./state";
+import { tree, A, sites, circ, $, S, sim, sev, T, nec, clearTreatment, scheduleLesion, on, range, ecg, rstate, pageVitals, PHYS, patientOpts } from "./state";
 import { DEFAULT_IABP, DEFAULT_IMPELLA } from "../sim/patient";
 import { buildGrafts } from "./vessels3d";
 
@@ -32,14 +32,12 @@ function land(kind: Procedure) {
   else if (r.lysed === undefined) T.lastResult = "Fibrinolytic: no clot to lyse in a stenosis.";
   else if (r.lysed) { S.occ = false; S.ds = r.lesion!.ds; T.treated.lysed = true; T.lastResult = `Fibrinolytic: the clot lysed; a ${Math.round(S.ds * 100)}% stenosis is left behind. Consider angiography.`; }
   else { T.treated.lysed = false; T.lastResult = "Fibrinolytic: the artery stayed closed. Rescue PCI."; }
-  if (G.treat && reperfused() && G.treat.reperfusedBy === null) G.treat.reperfusedBy = PROC_LABEL[kind];
   scheduleLesion(); buildGrafts();
 }
-function orderProcedure(kind: Procedure) {
+export function orderProcedure(kind: Procedure) {
   if (T.pending) { T.lastResult = `${PROC_LABEL[T.pending.kind]} is already on its way.`; return; }
   if (!currentLesion()) { T.lastResult = "There is no lesion to treat."; return; }
   T.pending = order(kind); T.lastResult = "";
-  if (G.treat && G.treat.orderedAt === null) G.treat.orderedAt = G.treat.minutes;
 }
 
 /** The facts the advisor reads, from the live state. */
@@ -95,7 +93,6 @@ function summaries() {
 /** The panel: readouts, which support is running, what is on order, where things stand, and the hint. */
 let manageSig = "";
 export function manageUi() {
-  const live = G.phase !== "play";
   const inf = lvInfarctSize(sites, nec);
   const set = (id: string, v: string, bad = false) => { const e = $(id); e.textContent = v; e.classList.toggle("bad", bad); };
   set("m_time", T.ischemicMin > 0 ? clinicalTime(T.ischemicMin) : "—");
@@ -108,19 +105,18 @@ export function manageUi() {
   $("pacev").textContent = sp.paceRate + " bpm";
   $("manage").classList.toggle("pacing", sp.pacing);
   const total = $("fluidv"); if (total) total.textContent = volumeGiven() || "none";
-  for (const b of $("gamefluid").querySelectorAll("button")) b.disabled = sp.fluids >= SUPPORT.maxFluids;
   summaries();
   $("fluidnote").textContent = circ && circ.congestion > 0.2 ? `Lungs congesting (${Math.round(circ.congestion * 100)}%).` : "";
   for (const k of ["pci", "lysis", "cabg"] as const) {
     const b = $("m_" + k) as HTMLButtonElement;
-    b.classList.toggle("on", T.pending?.kind === k); b.disabled = !live || (!!T.pending && T.pending.kind !== k);
+    b.classList.toggle("on", T.pending?.kind === k); b.disabled = (!!T.pending && T.pending.kind !== k);
   }
   ($("m_cancel") as HTMLButtonElement).disabled = !T.pending;
   $("mstatus").textContent = T.pending
     ? `${PROC_LABEL[T.pending.kind]} in ${clinicalTime(Math.max(0, T.pending.remaining))}.`
     : T.lastResult || `Nothing on order. PCI takes about ${PROCEDURE.pci.delayMin} min to reach the artery, a fibrinolytic ${PROCEDURE.lysis.delayMin}, CABG ${PROCEDURE.cabg.delayMin / 60} h.`;
 
-  const sit = live ? situation() : null;
+  const sit = situation();
   if (!sit) return;
   const a = assess(sit);
   const n = a.issues.length, w = a.warnings.length;
@@ -148,14 +144,6 @@ export function wireManage() {
     note.hidden = !show; b.setAttribute("aria-expanded", String(show)); b.classList.toggle("on", show);
     if (show) (b.closest("details") as HTMLDetailsElement).open = true;
   });
-  // the game plays on the legacy engine, whose IV fluid is litres given (the Simulator's bolus is the playground's `fluids.given`)
-  const gf = $("gamefluid");
-  for (const ml of [250, 500, 1000]) {
-    const b = document.createElement("button"); b.type = "button"; b.textContent = `+${ml} ml`;
-    b.addEventListener("click", toggle(() => { T.support.fluids = Math.min(SUPPORT.maxFluids, T.support.fluids + ml / 1000); }));
-    gf.append(b);
-  }
-  const total = document.createElement("span"); total.className = "val"; total.id = "fluidv"; gf.append(total);
   range("nor", (v) => { T.support.norepi = v / 100; manageUi(); });
   range("dob", (v) => { T.support.dobutamine = v / 100; manageUi(); });
   range("pacerate", (v) => { T.support.paceRate = v; manageUi(); });

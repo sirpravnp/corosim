@@ -14,6 +14,8 @@ export const ARREST_SIM = {
   cprDuty: 0.5,
   /** Native output (fraction of the patient's own at build) below which an organized rhythm has no pulse: PEA, or pulseless VT. [assumed] */
   pulselessOutput: 0.2,
+  /** Floor (L/min) for the reference output that "fraction of normal" is measured against: a patient settled at a tiny output (a heavy bleed at build) must not make any flow read as many times normal. [assumed] */
+  minReferenceCoLpm: 2,
   /** Ventricular rate (per min) above which a perfusing rhythm counts as a tachyarrhythmia (a target for synchronized cardioversion). [assumed] */
   tachyRate: 150,
   /** A ventricular rhythm faster than this is VT (slower: an idioventricular or paced rhythm). [lit] */
