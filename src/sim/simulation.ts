@@ -30,6 +30,7 @@ import { COUPLING } from "../config/coronary";
 import { ImpellaConsole } from "../physics/core/devices/impella";
 import { ImpellaRp } from "../physics/core/devices/impellaRp";
 import { Ecmo } from "../physics/core/devices/ecmo";
+import { CprCompression } from "../physics/core/devices/cpr";
 import type { Pericardium } from "../physics/core/pericardium";
 import { Thorax } from "../physics/core/thorax";
 import type { FromModelOptions } from "../physics/core/fromModel";
@@ -49,6 +50,8 @@ import { ACS_CORE, AUTONOMIC_CORE } from "../config/acsCore";
 import { ischemiaFactors } from "../config/ischemia";
 import { Normalized, Scenario, normalizeScenario, toScenario, supportSpec } from "./scenario";
 import { BeatRecord, computeMetrics, meanRate, Metrics } from "./metrics";
+import { ArrestState, ArrestDrug, CprState, RhythmClass, ShockRecord, ShockResult, Rng, createArrest, createRng, step as arrestStep, shock as arrestShock, give as arrestGive, setCpr as arrestSetCpr, perfusion as cprPerfusion } from "./arrest";
+import { ARREST_SIM } from "../config/arrestSim";
 
 /** Drug and volume changes ramp in over seconds instead of stepping, so interventions play out as transients. */
 const DRUG_TAU = 8, VOLUME_TAU = 10;
@@ -120,6 +123,20 @@ export class Simulation {
   private pk = new Drugs();
   private bloodLoss = 0;
   private mod: SinusModulation;
+  /**
+   * Cardiac arrest (task B4b, core engine): the arrest state machine (sim/arrest.ts) once the patient has arrested, null before. See the
+   * section "Cardiac arrest" below.
+   */
+  arrest: ArrestState | null = null;
+  /** True once the patient has died (the arrest machine's no-flow clock ran out): the simulation stops evolving until `restartPatient()` or `reset()`. */
+  dead = false;
+  private arrestRng: Rng = createRng(1);
+  private shockNoArrest: ShockRecord | null = null;
+  private shockCount = 0;
+  private perfusingRhythm = "sinus";
+  private lastReset: { input: PatientSpec; opts: { settled?: boolean; warmup?: number } } = { input: {}, opts: {} };
+  /** Cardiac output (L/min) of the patient's own heart as built (the settled warm-up beat): the reference for "fraction of normal". */
+  private coRef = NaN;
   /** Called with each new ventricular beat (UI hooks, tests). */
   onBeat?: (b: BeatRecord) => void;
 
@@ -139,6 +156,8 @@ export class Simulation {
   private rp?: ImpellaRp;
   private rpConsole?: ImpellaConsole;
   private ecmo?: Ecmo;
+  /** Chest compressions on the ventricles (B4b); built with every core heart, idle (no pressure) unless CPR is running. */
+  cprPump?: CprCompression;
   /** Devices the patient has (core engine): settings of the real Impella and IABP, ECMO and Impella RP, from the spec (booleans mean the defaults). */
   private devSpec: DeviceSpec = {};
   // ---- the PatientSpec fields the core engine builds (task P16), see `setPatient`
@@ -185,10 +204,13 @@ export class Simulation {
   /** Start over from a scenario. `settled` puts ischemia at its steady value instead of starting from a normal heart. */
   reset(input: PatientSpec = {}, opts: { settled?: boolean; warmup?: number } = {}) {
     const { scenario, warnings } = normalizeScenario(input);
+    this.lastReset = { input: JSON.parse(JSON.stringify(input)), opts: { ...opts } };
+    this.arrest = null; this.dead = false; this.shockNoArrest = null; this.shockCount = 0; this.arrestRng = createRng((scenario.seed ^ ARREST_SIM.seedSalt) >>> 0);
     this.job = null; this.building = null; this.jobWarm = 0;
     this.live = undefined; this.fluidModel = undefined; this.liveSeen = false;
     this.n = scenario; this.warnings = warnings;
     this.support = { ...scenario.support }; this.patient = this.ownPatient(scenario.patient); this.grafts = [];
+    this.perfusingRhythm = this.isPerfusingRhythm(this.patient.rhythm) ? this.patient.rhythm : "sinus";
     if (this.engine === "core") { this.readPatient(input); this.fluidSpec = normalizePatient(input).spec.fluids ?? {}; }
     this.t = 0; this.clinicalMinutes = 0; this.ischemicMinutes = 0; this.treated = untreated(); this.history = []; this.beatCount = 0;
     for (const k of Object.keys(this.sev)) delete this.sev[k];
@@ -377,6 +399,7 @@ export class Simulation {
    */
   step(dt: number, opts: { minutes?: number } = {}): number {
     if (this.job && !this.inJob) return 0; // the core engine is still being built: the clock holds
+    if (this.dead) return 0; // death freezes the patient (B4b): nothing evolves until restartPatient() / reset()
     const total = opts.minutes ?? dt * this.speed * this.minutesPerSecond;
     let left = dt;
     while (left > 1e-9) { const h = Math.min(left, Simulation.DT); this.sub(h, dt > 0 ? (total * h) / dt : 0); left -= h; }
@@ -456,7 +479,7 @@ export class Simulation {
     this.stream.extend(this.t, this.rstate, this.mod);
     this.stream.prune(this.t);
     this.t += h;
-    if (this.live) this.coreStep(h, minutes); else for (const b of this.stream.drain(this.t)) this.handleBeat(b);
+    if (this.live) { this.coreStep(h, minutes); if (this.liveSeen) this.arrestTick(h); } else for (const b of this.stream.drain(this.t)) this.handleBeat(b);
     // Coronary perfusion follows the pressure the heart actually generates (plus any balloon augmentation),
     // and demand follows what drugs and devices do to it.
     // core (E2): the aortic-equivalent pressure of the subendocardium from the beat's traces (diastolic pressure, diastolic time, LVEDP, intramyocardial
@@ -605,6 +628,7 @@ export class Simulation {
     const iabpEl = (m: Model) => (this.iabp = Iabp.forModel(m, { ...DEFAULT_IABP, ...this.devSpec.iabp, volumeMl: 0 })); // off during the warm-up
     const ecmoEl = (m: Model) => (this.ecmo = Ecmo.forModel(m, { ...this.devSpec.ecmo }));
     const rpEl = (m: Model) => (this.rp = ImpellaRp.forModel(m, { ...this.devSpec.impellaRp }));
+    this.cprPump = new CprCompression("cpr", [NODE("LV"), NODE("RV")]);
     this.exchange = new VolumeExchange("volumeExchange", veins, vessels, (n, v) => { const m = (this.building ?? this.live!).engine.nodes[n].model; return m instanceof Compliance ? m.stressed(v) : v; });
     const core: FromModelOptions = {}, pe = this.periSpec, ve = this.ventSpec;
     if (pe) core.pericardium = { effusionMl: pe.effusionMl ?? 0, stiffness: pe.stiffness ?? 1, open: pe.open ?? false };
@@ -612,7 +636,7 @@ export class Simulation {
     if (this.septumSpec) core.septum = true;
     this.appliedEffusion = pe?.effusionMl ?? 0; this.hasSac = !!pe; this.hasThorax = !!ve; this.hasSeptum = this.septumSpec;
     this.live = undefined;
-    const live = (this.building = new LiveHeart({ ...this.heartSpec, volumeMl: hv + this.volApplied }, { core, extra: [impellaEl, iabpEl, this.exchange, ...(this.devSpec.ecmo ? [ecmoEl] : []), ...(this.devSpec.impellaRp ? [rpEl] : [])] }));
+    const live = (this.building = new LiveHeart({ ...this.heartSpec, volumeMl: hv + this.volApplied }, { core, extra: [impellaEl, iabpEl, this.exchange, this.cprPump, ...(this.devSpec.ecmo ? [ecmoEl] : []), ...(this.devSpec.impellaRp ? [rpEl] : [])] }));
     this.impConsole?.dispose(); this.impConsole = new ImpellaConsole(live.engine);
     this.rpConsole?.dispose(); this.rpConsole = this.rp ? new ImpellaConsole(live.engine, "impellaRp") : undefined;
     this.dia = { t: NaN, aoT: 0, aoSum: 0, dT: 0, dSum: 0, peak: -Infinity, sys: -Infinity, closed: false, opened: false, balloon: 0, fill: 0 };
@@ -676,6 +700,7 @@ export class Simulation {
     this.map = lb.map;
     sm.sv = lb.strokeVolume; sm.co = (lb.strokeVolume / lb.interval) * 0.06; sm.ef = lb.strokeVolume / lb.edv.LV;
     sm.pcwp = lb.p.LA.mean; sm.cvp = lb.p.RA.mean; sm.sbp = lb.systolic; sm.dbp = lb.diastolic;
+    this.coRef = sm.co;
     this.liveSeen = true;
     this.circ = this.coreCirc(this.base);
   }
@@ -1011,6 +1036,140 @@ export class Simulation {
     return before - (this.sac()?.effusionMl ?? 0);
   }
 
+  // ======================================================================================================================
+  // Cardiac arrest (task B4b, core engine only; the legacy engine cannot fibrillate and its methods here return a note)
+  //
+  // Each sub-step the rhythm on the monitor and the native output (smoothed cardiac output over the patient's own as built, less what
+  // CPR adds) give a rhythm class: VF; pulseless VT (a ventricular rhythm above `vtRate` with output below `pulselessOutput`); asystole;
+  // PEA (an organized rhythm with output below `pulselessOutput`); or perfusing. A non-perfusing class starts an arrest (the machine of
+  // sim/arrest.ts), which is then stepped every sub-step with the measured output (CPR flow included). CPR is an external force on the
+  // ventricles (`CprCompression`), its peak pressure set from the machine's `perfusion()` (calibration: config/arrestSim.ts). Shocks and
+  // spontaneous ROSC that the machine decides are carried out on the rhythm: back to the patient's perfusing rhythm (the arrhythmia
+  // episode ends; a preset VF, VT or asystole gives way to the preset's own perfusing rhythm, else sinus), or VF induced by an
+  // unsynchronized shock on a perfusing rhythm. When the machine declares death the simulation freezes (`dead`).
+  // ======================================================================================================================
+
+  /** Whether a rhythm id (patient preset or library) perfuses on its own (not VF, asystole, VT or torsades). */
+  private isPerfusingRhythm(id: string): boolean {
+    const r = libraryRhythm(id)?.spec.rhythm;
+    if (!r) return true;
+    return !(r.kind === "vf" || r.kind === "asystole" || r.kind === "torsades" || (r.kind === "ventricular" && !r.paced && r.rate > ARREST_SIM.vtRate));
+  }
+
+  /** CPR output now, fraction of normal (0 with no arrest machine or CPR off). */
+  cprOutput(): number { return this.arrest ? cprPerfusion(this.arrest) : 0; }
+
+  /** Measured output now, fraction of the patient's own (CPR flow included). */
+  private outputFraction(): number {
+    return this.coRef > 0 && Number.isFinite(this.sm.co) ? Math.max(0, (this.sm.co + this.sm.dev) / this.coRef) : 1;
+  }
+
+  /** The rhythm class the monitor and the pulse give now, and whether a perfusing rhythm is a tachyarrhythmia. */
+  rhythmClass(): { rhythmClass: RhythmClass; tachyarrhythmia: boolean } {
+    if (this.engine !== "core") return { rhythmClass: "perfusing", tachyarrhythmia: false };
+    const shown = this.shownRhythm(), r = libraryRhythm(shown.rs.rhythm)?.spec.rhythm, cpr = this.cprOutput();
+    const native = Math.max(0, this.outputFraction() - cpr), pulseless = native < ARREST_SIM.pulselessOutput;
+    if (r?.kind === "vf") return { rhythmClass: "vf", tachyarrhythmia: false };
+    if (r?.kind === "asystole") return { rhythmClass: "asystole", tachyarrhythmia: false };
+    const rate = shown.episodeRate ?? ventRate(shown.rs);
+    const vt = r?.kind === "torsades" || (r?.kind === "ventricular" && !r.paced && rate > ARREST_SIM.vtRate);
+    if (vt) return pulseless ? { rhythmClass: "pulselessVt", tachyarrhythmia: false } : { rhythmClass: "perfusing", tachyarrhythmia: true };
+    if (pulseless) return { rhythmClass: "pea", tachyarrhythmia: false };
+    return { rhythmClass: "perfusing", tachyarrhythmia: rate > ARREST_SIM.tachyRate };
+  }
+
+  /** One sub-step of the arrest wiring: detect an arrest, step the machine, carry out its rhythm decisions, set the compressions. */
+  private arrestTick(h: number) {
+    const c = this.rhythmClass();
+    if (!this.arrest) {
+      if (c.rhythmClass === "perfusing") return;
+      this.arrest = createArrest(c.rhythmClass);
+    }
+    const a = this.arrest, before = a.rhythmClass;
+    arrestStep(a, h, { output: this.outputFraction(), rhythmClass: c.rhythmClass, tachyarrhythmia: c.tachyarrhythmia }, this.arrestRng);
+    if (a.status === "dead") { this.dead = true; this.cprPump?.set({ peakMmHg: 0 }); return; }
+    if (before === "asystole" && a.rhythmClass === "perfusing") this.restorePerfusing(); // spontaneous ROSC from asystole under CPR (a PEA's cause stays, so its ROSC is the engine's to make)
+    this.pushCpr();
+  }
+
+  private pushCpr() {
+    const a = this.arrest, f = a ? cprPerfusion(a) : 0, K = ARREST_SIM;
+    this.cprPump?.set({ peakMmHg: f > 0 ? K.cprPeakOffsetMmHg + K.cprPeakPerOutput * f : 0, rate: a?.cpr.rate ?? 110, duty: K.cprDuty });
+  }
+
+  /** The rhythm after a successful shock or ROSC: the arrhythmia episode ends and a non-perfusing (or tachycardic) preset gives way to the patient's own perfusing rhythm. */
+  private restorePerfusing() {
+    this.arrhythmia?.terminate(this.t);
+    const id = this.patient.rhythm, fast = (x: string) => (isLibraryRhythm(x) && libraryVentricularRate(x) > ARREST_SIM.tachyRate) || x === "af";
+    if (!this.isPerfusingRhythm(id) || fast(id)) {
+      const own = this.perfusingRhythm, to = own !== id && this.isPerfusingRhythm(own) && !fast(own) ? own : "sinus";
+      this.patient = this.ownPatient({ ...this.patient, rhythm: to });
+    }
+  }
+
+  private noArrest(what: string) { return { ok: false, note: this.engine !== "core" ? `${what}: cardiac arrest is modelled on the core engine only` : this.dead ? `${what}: the patient has died; restartPatient() to start again` : `${what}: the patient is not in cardiac arrest` }; }
+
+  /** Start chest compressions (during an arrest; CPR on a patient with a pulse is refused). Optional rate (per min), depth (cm), quality (0..1). */
+  startCpr(p: Partial<Omit<CprState, "on">> = {}): { ok: boolean; note?: string } { return this.setCpr({ ...p, on: true }); }
+  /** Stop chest compressions (a pause for a rhythm check, or ROSC). */
+  stopCpr(): { ok: boolean; note?: string } { return this.setCpr({ on: false }); }
+  /** Change CPR: on/off, rate (per min), depth (cm), quality (0..1). */
+  setCpr(p: Partial<CprState>): { ok: boolean; note?: string } {
+    if (!this.arrest || this.dead || this.engine !== "core") return p.on === false && !this.dead && this.engine === "core" ? { ok: true } : this.noArrest("CPR");
+    arrestSetCpr(this.arrest, p);
+    this.pushCpr();
+    return { ok: true };
+  }
+
+  /**
+   * Deliver a shock: unsynchronized defibrillation (VF, pulseless VT) or synchronized cardioversion (a perfusing tachyarrhythmia).
+   * Outcomes are the machine's (sim/arrest.ts, seeded): success restores the patient's perfusing rhythm; synchronized mode does not
+   * discharge in VF; an unsynchronized shock on a perfusing rhythm may induce VF; asystole and PEA do not convert.
+   */
+  shock(opts: { joules: number; sync?: boolean }): ShockResult & { rhythm: string } {
+    const sync = !!opts.sync, joules = opts.joules;
+    if (this.engine !== "core" || this.dead || !this.live) return { success: false, newRhythmClass: this.arrest?.rhythmClass ?? "perfusing", discharged: false, note: this.noArrest("shock").note, rhythm: this.state().rhythm.label };
+    const c = this.rhythmClass();
+    // without an arrest the machine's shock logic runs on a scratch state (cardioversion of a perfusing tachyarrhythmia, or an unsynchronized shock that induces VF)
+    const m = this.arrest ?? { ...createArrest(c.rhythmClass), status: "rosc" as const, tS: this.t };
+    m.rhythmClass = c.rhythmClass; m.tachyarrhythmia = c.tachyarrhythmia;
+    const r = arrestShock(m, { joules, sync }, this.arrestRng);
+    if (!this.arrest) this.shockNoArrest = m.lastShock;
+    if (r.discharged) this.shockCount++;
+    if (r.discharged && r.success) this.restorePerfusing();
+    else if (r.newRhythmClass === "vf" && c.rhythmClass === "perfusing") { this.arrhythmia?.terminate(this.t); this.patient = this.ownPatient({ ...this.patient, rhythm: "vf-coarse" }); }
+    this.updateCirculation();
+    return { ...r, rhythm: this.state().rhythm.label };
+  }
+
+  /** Give an ACLS drug during an arrest (epinephrine 1 mg, amiodarone 300 then 150 mg, lidocaine 100 mg by default; dose in mg). */
+  giveDrug(name: ArrestDrug, dose?: number): { ok: boolean; note?: string } {
+    if (!this.arrest || this.dead || this.engine !== "core") return this.noArrest(name);
+    if (!["epinephrine", "amiodarone", "lidocaine"].includes(name)) return { ok: false, note: `unknown arrest drug "${name}" (epinephrine, amiodarone, lidocaine)` };
+    const r = arrestGive(this.arrest, name, dose);
+    this.pushCpr();
+    return r;
+  }
+
+  /** Start again: the scenario last given to `reset()` (or the constructor), from the beginning. The only way out of death besides `reset()`. */
+  restartPatient() { this.reset(this.lastReset.input, this.lastReset.opts); }
+
+  /** The arrest part of `state()`. `status` is "none" until the patient first arrests. */
+  arrestState() {
+    const a = this.arrest, r1 = (x: number) => +x.toFixed(1);
+    return {
+      status: a ? a.status : ("none" as const),
+      rhythmClass: a?.rhythmClass ?? this.rhythmClass().rhythmClass,
+      noFlowS: a ? r1(a.noFlowS) : 0,
+      arrestS: a ? r1(a.arrestS) : 0,
+      injury: a ? +a.injury.toFixed(3) : 0,
+      cpr: a ? { ...a.cpr, output: +cprPerfusion(a).toFixed(3) } : { on: false, output: 0 },
+      lastShock: a?.lastShock ?? this.shockNoArrest,
+      shocks: this.shockCount,
+      drugs: a ? a.drugs.map((d) => ({ ...d })) : [],
+    };
+  }
+
   /** Run for `seconds` of simulated time and return the beats that occurred. */
   run(seconds: number): BeatRecord[] {
     const from = this.history.length ? this.history[this.history.length - 1].n + 1 : 0;
@@ -1066,6 +1225,7 @@ export class Simulation {
       + (rs.bbb === "rbbb" ? ", right bundle branch block" : rs.bbb === "lbbb" ? ", left bundle branch block" : "") + (this.paced() ? ", paced" : "");
     return {
       timeS: +this.t.toFixed(1),
+      dead: this.dead,
       clinicalMinutes: Math.round(this.clinicalMinutes),
       lastBeat: last ?? null,
       rolling10s: { hr: r0(roll.hr), sbp: r0(roll.sbp), dbp: r0(roll.dbp), map: r0(roll.map), sv: r0(roll.sv), cardiacOutput: Number.isFinite(roll.cardiacOutput) ? +roll.cardiacOutput.toFixed(1) : null },
@@ -1082,6 +1242,7 @@ export class Simulation {
       ischemicMassFraction: +cond.atRisk.toFixed(3),
       compromisedBeds: compromised.slice(0, 8),
       ffr: this.analysis.ffr.map((f, i) => ({ artery: this.n.lesions[i]?.segId, ffr: +f.toFixed(2) })),
+      ...(this.engine === "core" ? { arrest: this.arrestState() } : {}),
     };
   }
 
