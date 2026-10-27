@@ -13,6 +13,8 @@ import { CustomEkg, TERRITORIES, buildCustom, encodeCustom } from "../ekg/custom
 import { patientProperties, displaySchema } from "../sim/registry";
 import { intervene } from "../sim/valves";
 import type { Intervention } from "../sim/valves";
+import { narrateCase, narrateNewPatient, narrateChange, narrateRun, narrateTreat, narrateValve, features } from "../sim/narrate";
+import { vitalsOf, snapshot } from "./narration";
 
 /**
  * Tool definitions in one place, as plain JSON Schema. The MCP server, the HTTP/OpenAPI adapter and the
@@ -124,8 +126,9 @@ export const TOOLS: ToolDef[] = [
       if (a.engine) sim.engine = a.engine as "legacy" | "core"; // takes effect at the reset below
       sim.reset((a.scenario ?? {}) as PatientSpec, { settled: a.settled !== false });
       rememberPatient(sim, (a.scenario ?? {}) as PatientSpec);
-      sim.warmup(num(a.warmupSeconds, 45, 0, 300));
-      return { warnings: sim.warnings, ...bedside(sim), explanation: explain(sim) };
+      const warm = num(a.warmupSeconds, 45, 0, 300);
+      sim.warmup(warm);
+      return { narrative: narrateNewPatient(currentPatient(sim), vitalsOf(sim), warm), warnings: sim.warnings, ...bedside(sim), explanation: explain(sim) };
     },
   },
   {
@@ -133,17 +136,22 @@ export const TOOLS: ToolDef[] = [
     description: `Apply a change to the running patient (give a drug, start a hemorrhage, occlude an artery) and optionally run on to watch the response. Fields you leave out are unchanged; drug and volume changes ramp in over ~10 s like a real bolus. Returns the response time course. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", required: ["patch"], properties: { patch: patientSchema, runSeconds: { type: "number", minimum: 0, maximum: 600, description: "Simulated seconds to run after the change (default 60)." } } },
     run(ctx, a) {
+      const before = snapshot(ctx.sim), secs = num(a.runSeconds, 60, 0, 600);
       ctx.sim.apply((a.patch ?? {}) as PatientSpec);
       patchPatient(ctx.sim, (a.patch ?? {}) as PatientSpec);
-      const rep = runReport(ctx, num(a.runSeconds, 60, 0, 600), "none", 0);
-      return { applied: currentPatient(ctx.sim), ...rep };
+      const rep = runReport(ctx, secs, "none", 0), now = snapshot(ctx.sim);
+      return { narrative: narrateChange(before.spec, now.spec, before.vitals, now.vitals, secs), applied: currentPatient(ctx.sim), ...rep };
     },
   },
   {
     name: "corosim_run", title: "Advance the simulation", readOnly: false,
     description: `Run the current patient forward (the infarct clock runs: 2 clinical minutes per second) and return rate, pressures, stroke volume and ectopy, a time course, the monitor, ECG and guideline assessment at the end, and optionally the individual beats. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: { seconds: { type: "number", minimum: 1, maximum: 900, description: "Simulated seconds (default 60)." }, beats: { enum: ["none", "all"], description: "'all' adds a beat-by-beat table (decimated to maxBeats)." }, maxBeats: { type: "integer", minimum: 5, maximum: 500, description: "Row cap for the beat table (default 120)." }, autonomic: { type: "boolean", description: "Also return heart-rate variability and baroreflex-sensitivity statistics. Only for autonomic-physiology questions." } } },
-    run(ctx, a) { return runReport(ctx, num(a.seconds, 60, 1, 900), a.beats === "all" ? "all" : "none", Math.trunc(num(a.maxBeats, 120, 5, 500)), a.autonomic === true); },
+    run(ctx, a) {
+      const before = vitalsOf(ctx.sim), secs = num(a.seconds, 60, 1, 900);
+      const rep = runReport(ctx, secs, a.beats === "all" ? "all" : "none", Math.trunc(num(a.maxBeats, 120, 5, 500)), a.autonomic === true);
+      return { narrative: narrateRun(before, vitalsOf(ctx.sim), secs), ...rep };
+    },
   },
   {
     name: "corosim_get_state", title: "Current hemodynamic state", readOnly: true,
@@ -158,9 +166,10 @@ export const TOOLS: ToolDef[] = [
     run(ctx, a) {
       const kind = String(a.procedure);
       if (!["pci", "lysis", "cabg"].includes(kind)) throw new Error("procedure must be pci, lysis or cabg.");
+      const before = vitalsOf(ctx.sim);
       const outcome = ctx.sim.revascularize(kind as "pci" | "lysis" | "cabg");
       const after = runReport(ctx, num(a.runSecondsAfter, 30, 0, 300) || 0.02, "none", 0);
-      return { outcome, ...after };
+      return { narrative: narrateTreat(outcome, before, vitalsOf(ctx.sim)), outcome, ...after };
     },
   },
   {
@@ -186,11 +195,22 @@ export const TOOLS: ToolDef[] = [
       if (type === "replace" && !["bioprosthetic", "mechanical", "transcatheter"].includes(String(a.kind))) throw new Error("replace needs kind: bioprosthetic, mechanical or transcatheter.");
       if (ctx.sim.engine !== "core") throw new Error("Valve interventions need the core engine: call corosim_set_scenario with engine \"core\" first.");
       const opt = (k: string) => (typeof a[k] === "number" && Number.isFinite(a[k]) ? (a[k] as number) : undefined);
+      const before = vitalsOf(ctx.sim);
       const iv = { type, valve, kind: a.kind, sizeMm: opt("sizeMm"), leakCm2: opt("leakCm2"), effect: opt("effect"), clips: opt("clips") } as unknown as Intervention;
       const r = intervene(currentPatient(ctx.sim).heart ?? {}, iv);
       if (Object.keys(r.patch).length) { ctx.sim.apply({ heart: r.patch }); patchPatient(ctx.sim, { heart: r.patch }); }
       const rep = runReport(ctx, num(a.runSeconds, 30, 0, 300) || 0.02, "none", 0);
-      return { done: Object.keys(r.patch).length > 0, changes: r.changes, warnings: [...r.warnings, ...ctx.sim.warnings], heartNow: currentPatient(ctx.sim).heart ?? {}, ...rep };
+      const done = Object.keys(r.patch).length > 0, warnings = [...r.warnings, ...ctx.sim.warnings];
+      return { narrative: narrateValve(done, r.changes, warnings, before, vitalsOf(ctx.sim)), done, changes: r.changes, warnings, heartNow: currentPatient(ctx.sim).heart ?? {}, ...rep };
+    },
+  },
+  {
+    name: "corosim_describe_case", title: "The case in plain sentences", readOnly: true,
+    description: `The current patient as a short case description, the way someone would read it out while building it on the website: the coronary lesions, valve disease and prostheses, rhythm, support devices, pericardium, bleeding and electrolytes, then where the monitor stands now (rhythm and rate, pressure, shock, ischemia and infarct). Returns narrative (one or two sentences) and the list of findings behind it. Does not advance time or change the patient. Every tool that changes the patient (corosim_set_scenario, corosim_adjust, corosim_run, corosim_treat, corosim_valve) also returns a narrative of what changed and why. ${NOT_CLINICAL}`,
+    inputSchema: { type: "object", properties: {} },
+    run({ sim }) {
+      const spec = currentPatient(sim);
+      return { narrative: narrateCase(spec, vitalsOf(sim)), findings: [...features(spec).values()].map((f) => (f.why ? { finding: f.text, why: f.why } : { finding: f.text })) };
     },
   },
   {
