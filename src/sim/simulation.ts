@@ -132,6 +132,7 @@ export class Simulation {
   dead = false;
   private arrestRng: Rng = createRng(1);
   private shockNoArrest: ShockRecord | null = null;
+  private shockCount = 0;
   private perfusingRhythm = "sinus";
   private lastReset: { input: PatientSpec; opts: { settled?: boolean; warmup?: number } } = { input: {}, opts: {} };
   /** Cardiac output (L/min) of the patient's own heart as built (the settled warm-up beat): the reference for "fraction of normal". */
@@ -204,7 +205,7 @@ export class Simulation {
   reset(input: PatientSpec = {}, opts: { settled?: boolean; warmup?: number } = {}) {
     const { scenario, warnings } = normalizeScenario(input);
     this.lastReset = { input: JSON.parse(JSON.stringify(input)), opts: { ...opts } };
-    this.arrest = null; this.dead = false; this.shockNoArrest = null; this.arrestRng = createRng((scenario.seed ^ ARREST_SIM.seedSalt) >>> 0);
+    this.arrest = null; this.dead = false; this.shockNoArrest = null; this.shockCount = 0; this.arrestRng = createRng((scenario.seed ^ ARREST_SIM.seedSalt) >>> 0);
     this.job = null; this.building = null; this.jobWarm = 0;
     this.live = undefined; this.fluidModel = undefined; this.liveSeen = false;
     this.n = scenario; this.warnings = warnings;
@@ -1134,6 +1135,7 @@ export class Simulation {
     m.rhythmClass = c.rhythmClass; m.tachyarrhythmia = c.tachyarrhythmia;
     const r = arrestShock(m, { joules, sync }, this.arrestRng);
     if (!this.arrest) this.shockNoArrest = m.lastShock;
+    if (r.discharged) this.shockCount++;
     if (r.discharged && r.success) this.restorePerfusing();
     else if (r.newRhythmClass === "vf" && c.rhythmClass === "perfusing") { this.arrhythmia?.terminate(this.t); this.patient = this.ownPatient({ ...this.patient, rhythm: "vf-coarse" }); }
     this.updateCirculation();
@@ -1163,6 +1165,7 @@ export class Simulation {
       injury: a ? +a.injury.toFixed(3) : 0,
       cpr: a ? { ...a.cpr, output: +cprPerfusion(a).toFixed(3) } : { on: false, output: 0 },
       lastShock: a?.lastShock ?? this.shockNoArrest,
+      shocks: this.shockCount,
       drugs: a ? a.drugs.map((d) => ({ ...d })) : [],
     };
   }

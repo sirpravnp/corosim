@@ -249,6 +249,47 @@ export interface Vitals {
   noOutput: boolean;
   /** Revascularization already done ("stenting", "fibrinolysis", "bypass grafting"). */
   treated: string[];
+  /** Cardiac arrest (B4b, core engine): absent when the patient has never arrested. */
+  arrest?: ArrestWords;
+}
+
+// ---------------------------------------------------------------- cardiac arrest (B4b)
+/** The arrest part of the monitor reading (from `Simulation.state().arrest`). */
+export interface ArrestWords {
+  status: "arrest" | "rosc" | "dead";
+  rhythmClass: "vf" | "pulselessVt" | "asystole" | "pea" | "perfusing";
+  arrestS: number; noFlowS: number; injury: number;
+  cprOn: boolean; cprOutput: number;
+  shocks: number; lastShockSuccess: boolean | null;
+  drugs: string[];
+}
+
+const CLASS_WORDS: Record<ArrestWords["rhythmClass"], string> = {
+  vf: "ventricular fibrillation", pulselessVt: "pulseless ventricular tachycardia", asystole: "asystole", pea: "pulseless electrical activity", perfusing: "a perfusing rhythm",
+};
+
+/** `ArrestWords` from the `arrest` block of `Simulation.state()` (null when absent or the patient has never arrested). */
+export function arrestWords(a: { status: string; rhythmClass: string; arrestS: number; noFlowS: number; injury: number; cpr: { on: boolean; output: number }; lastShock: { success: boolean } | null; shocks?: number; drugs: { drug: string; dose: number }[] } | undefined | null): ArrestWords | null {
+  if (!a || a.status === "none") return null;
+  const names = [...new Set(a.drugs.map((d) => d.drug))].map((d) => { const mg = a.drugs.filter((x) => x.drug === d).reduce((s, x) => s + x.dose, 0); return `${d} ${mg} mg`; });
+  return {
+    status: a.status as ArrestWords["status"], rhythmClass: a.rhythmClass as ArrestWords["rhythmClass"], arrestS: a.arrestS, noFlowS: a.noFlowS, injury: a.injury,
+    cprOn: a.cpr.on, cprOutput: a.cpr.output, shocks: a.shocks ?? (a.lastShock ? 1 : 0), lastShockSuccess: a.lastShock ? a.lastShock.success : null, drugs: names,
+  };
+}
+
+/** One plain sentence on the arrest: "In cardiac arrest (ventricular fibrillation) for 95 s, CPR under way giving about 30% of normal output; ...". */
+export function arrestSentence(a: ArrestWords): string {
+  if (a.status === "dead") return `The patient has died: ${Math.round(a.noFlowS)} s of effective no-flow left irreversible brain and heart injury. Nothing more changes until the patient is restarted.`;
+  if (a.status === "rosc") return `Return of spontaneous circulation${a.lastShockSuccess ? " after a successful shock" : ""}: a perfusing rhythm with output again${a.injury > 0.01 ? `, but with ${pct(a.injury)} irreversible injury from the time without flow` : ""}.`;
+  const shockable = a.rhythmClass === "vf" || a.rhythmClass === "pulselessVt";
+  const parts = [`In cardiac arrest (${CLASS_WORDS[a.rhythmClass]}) for ${Math.round(a.arrestS)} s`];
+  parts.push(a.cprOn ? `CPR under way, giving about ${pct(a.cprOutput)} of normal output` : "no CPR: no flow at all");
+  if (a.shocks) parts.push(`${a.shocks} shock${a.shocks > 1 ? "s" : ""} so far, the last ${a.lastShockSuccess ? "successful" : "unsuccessful"}`);
+  if (a.drugs.length) parts.push(`given ${joinList(a.drugs)}`);
+  const next = shockable ? "a shockable rhythm: defibrillate (unsynchronized, 120-200 J biphasic) and keep compressions going between shocks"
+    : "not shockable: compressions and epinephrine, and look for the cause";
+  return `${parts.join("; ")}. It is ${next}.${a.injury > 0.01 ? ` Irreversible injury so far ${pct(a.injury)}.` : ""}`;
 }
 
 const NO_OUTPUT = /fibrillation|asystole/i;
@@ -258,7 +299,8 @@ const isNoOutput = (rhythm: string) => NO_OUTPUT.test(rhythm) && !/atrial/i.test
 export function vitalsNow(v: Vitals): string {
   const rate = v.hr !== null && !v.noOutput ? ` at ${v.hr}/min` : "";
   const parts: string[] = [`now in ${v.rhythm}${rate}${v.rhythmWhy ? ` (${v.rhythmWhy})` : ""}`];
-  if (v.noOutput) parts.push("with no cardiac output (an arrest rhythm)");
+  if (v.arrest?.status === "dead") return "the patient has died (no flow for too long)";
+  if (v.noOutput || v.arrest?.status === "arrest") parts.push(v.arrest?.status === "arrest" ? (v.arrest.cprOn ? "in cardiac arrest with CPR under way" : "in cardiac arrest with no CPR") : "with no cardiac output (an arrest rhythm)");
   else if (v.map !== null) parts.push(`BP ${v.sbp}/${v.dbp} (MAP ${v.map})`);
   if (!v.noOutput && v.circulation !== "stable") parts.push(v.circulation === "shock" ? "in shock" : "hypotensive");
   const heart: string[] = [];
@@ -272,6 +314,8 @@ export function vitalsNow(v: Vitals): string {
 export function vitalsChange(b: Vitals, a: Vitals): string {
   const bits: string[] = [];
   if (b.rhythm !== a.rhythm) bits.push(`was ${b.rhythm}`);
+  const sa = a.arrest?.status, sb = b.arrest?.status;
+  if (sa !== sb && sa) bits.push(sa === "dead" ? "the patient died" : sa === "rosc" ? "spontaneous circulation returned" : "the patient arrested");
   const mv = (name: string, x: number | null, y: number | null, tol: number) => { if (x !== null && y !== null && Math.abs(x - y) >= tol) bits.push(`${name} ${x} -> ${y}`); };
   if (!a.noOutput && !b.noOutput) { mv("HR", b.hr, a.hr, 5); mv("MAP", b.map, a.map, 5); }
   else if (a.noOutput !== b.noOutput) bits.push(a.noOutput ? "the output stopped" : "output returned");
