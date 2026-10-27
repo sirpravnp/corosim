@@ -257,28 +257,10 @@
         <p class="note">Shocks given <b id="a_shocks">0</b> · last shock: <span id="a_last">none yet</span></p>
         <p class="note" id="a_note"></p>
       </div>
-      <div id="manage" data-tab="support">
-        <div class="tabs" role="tablist">
-          <button class="tab on" data-tab="support" role="tab">Drugs</button>
-          <button class="tab" data-tab="revasc" role="tab">Reperfuse</button>
-          <button class="tab" data-tab="assess" role="tab">Assessment</button>
-        </div>
-        <div class="pane" data-pane="support">
-          <div class="ctl">
-            <label for="nor">Norepinephrine</label><input id="nor" type="range" min="0" max="100" value="0"><span class="val" id="norv"></span>
-            <label for="dob">Dobutamine</label><input id="dob" type="range" min="0" max="100" value="0"><span class="val" id="dobv"></span>
-            <span>IV fluid</span><button id="m_fluid">+500 ml</button><span class="val" id="fluidv"></span>
-            <span>Nitroglycerin</span><button id="m_nitro">Off</button><span class="val"></span>
-            <span>Atropine</span><button id="m_atropine">Off</button><span class="val"></span>
-            <span>Pacing</span><button id="m_pace">Off</button><span class="val" id="pacev"></span>
-            <label for="pacerate" class="pace-only">at rate</label><input id="pacerate" class="pace-only" type="range" min="40" max="120" value="70"><span class="val pace-only"></span>
-            <span>Balloon pump</span><button id="m_iabp">Off</button><span class="val"></span>
-            <span>Impella</span><button id="m_impella">Off</button><span class="val"></span>
-          </div>
-          <p class="note" id="fluidnote"></p>
-          <p class="note">Support changes what the patient can tolerate and how much oxygen the heart asks for; it does not open the artery. Each choice also has a cost: pressors add afterload, inotropes add demand and ectopy, volume congests a failing left ventricle, nitrates drop the preload a right ventricle depends on.</p>
-        </div>
-        <div class="pane" data-pane="revasc">
+      <div id="manage" class="sup">
+        <details class="fold sup-sec" id="sec-treat" open>
+          <summary><h2>Treat</h2><span class="sum" id="sum-treat"></span><button type="button" class="sec-info" data-info="treat" aria-label="About Treat" aria-expanded="false">i</button></summary>
+          <p class="note sup-info" id="info-treat" hidden>Orders take clinical time to reach the artery (about 2 minutes pass per second at 1×), and muscle that stays ischemic dies as it waits. PCI stents the lesion; a fibrinolytic opens an occlusion in about half of patients and leaves a stenosis; a bypass feeds the vessel beyond the lesion and leaves the lesion itself. Support below changes what the patient can tolerate; it does not open the artery.</p>
           <div class="row" style="margin-top:0">
             <button id="m_pci">Primary PCI</button>
             <button id="m_lysis">Fibrinolytic</button>
@@ -288,29 +270,56 @@
           </div>
           <div id="xlinks" hidden></div>
           <p class="note" id="mstatus"></p>
-          <p class="note">Orders take clinical time to reach the artery (about 2 minutes pass per second at 1×), and muscle that stays ischemic dies as it waits. PCI stents the lesion; a fibrinolytic opens an occlusion in about half of patients and leaves a stenosis; a bypass feeds the vessel beyond the lesion and leaves the lesion itself.</p>
-        </div>
-        <div class="pane" data-pane="assess">
+        </details>
+        <details class="fold sup-sec" id="sec-volume">
+          <summary><h2>Volume</h2><span class="sum" id="sum-volume"></span><button type="button" class="sec-info" data-info="volume" aria-label="About Volume" aria-expanded="false">i</button></summary>
+          <p class="note sup-info" id="info-volume" hidden>Blood loss and an IV bolus ramp in over about 10 s; ongoing hemorrhage keeps taking blood at the rate you set. What follows is the patient's own response: watch the rate, the pressure and the pulse pressure. A bolus of crystalloid mostly leaves the vessels; colloid, albumin and blood stay longer. Volume helps a right ventricular infarct and congests a failing left ventricle.</p>
+          <div class="ctl">
+            <label for="bl" class="sim-only">Blood loss</label><input id="bl" class="sim-only" type="range" min="-20" max="50" value="0"><span class="val sim-only" id="blv"></span>
+            <div id="vol-mount" class="ctl-flat sim-only"></div>
+            <span class="game-only">IV fluid</span><div class="game-only row" id="gamefluid"></div>
+          </div>
+          <p class="note" id="fluidnote"></p>
+        </details>
+        <details class="fold sup-sec" id="sec-drugs">
+          <summary><h2>Drugs</h2><span class="sum" id="sum-drugs"></span><button type="button" class="sec-info" data-info="drugs" aria-label="About Drugs" aria-expanded="false">i</button></summary>
+          <p class="note sup-info" id="info-drugs" hidden>Each choice has a cost: pressors add afterload, inotropes add demand and ectopy, nitrates drop the preload a right ventricle depends on, a beta blocker slows the heart and weakens contraction. Doses are fractions of the full effect.</p>
+          <div class="ctl">
+            <label for="nor">Norepinephrine</label><input id="nor" type="range" min="0" max="100" value="0"><span class="val" id="norv"></span>
+            <label for="dob">Dobutamine</label><input id="dob" type="range" min="0" max="100" value="0"><span class="val" id="dobv"></span>
+            <label for="bb" class="sim-only">Beta blocker</label><input id="bb" class="sim-only" type="range" min="0" max="100" value="0"><span class="val sim-only" id="bbv"></span>
+            <span>Nitroglycerin</span><button id="m_nitro">Off</button><span class="val"></span>
+            <span>Atropine</span><button id="m_atropine">Off</button><span class="val"></span>
+          </div>
+        </details>
+        <details class="fold sup-sec" id="sec-devices">
+          <summary><h2>Devices</h2><span class="sum" id="sum-devices"></span><button type="button" class="sec-info" data-info="devices" aria-label="About Devices" aria-expanded="false">i</button></summary>
+          <p class="note sup-info" id="info-devices" hidden>Settings appear when a device is on. Pacing captures the ventricle at the set rate. The balloon pump augments diastolic pressure and unloads the ventricle; an Impella pumps blood from the ventricle to the aorta (a wrong position cuts its flow); VA ECMO drains the right atrium and returns blood to the aorta.</p>
+          <div class="ctl">
+            <span>Pacing</span><button id="m_pace">Off</button><span class="val"></span>
+            <label for="pacerate" class="pace-only">Rate</label><input id="pacerate" class="pace-only" type="range" min="40" max="120" value="70"><span class="val pace-only" id="pacev"></span>
+            <span>Intra-aortic balloon pump</span><button id="m_iabp">Off</button><span class="val"></span>
+            <div id="dev-iabp" class="ctl-flat sim-only"></div>
+            <span>Impella</span><button id="m_impella">Off</button><span class="val"></span>
+            <div id="dev-impella" class="ctl-flat sim-only"></div>
+            <span class="sim-only">ECMO</span><button id="m_ecmo" class="sim-only">Off</button><span class="val sim-only"></span>
+            <div id="dev-ecmo" class="ctl-flat sim-only"></div>
+          </div>
+        </details>
+        <details class="fold sup-sec sim-only" id="sec-vent">
+          <summary><h2>Ventilation</h2><span class="sum" id="sum-vent"></span><button type="button" class="sec-info" data-info="vent" aria-label="About Ventilation" aria-expanded="false">i</button></summary>
+          <p class="note sup-info" id="info-vent" hidden>Positive-pressure breaths raise intrathoracic pressure: they cut venous return and right ventricular filling, and unload a failing left ventricle. PEEP and tidal volume set how much.</p>
+          <div class="ctl"><div id="vent-mount" class="ctl-flat"></div></div>
+        </details>
+        <details class="fold sup-sec" id="sec-assess">
+          <summary><h2>Assessment</h2><span class="sum" id="sum-assess"></span><button type="button" class="sec-info" data-info="assess" aria-label="About Assessment" aria-expanded="false">i</button></summary>
+          <p class="note sup-info" id="info-assess" hidden>Issues are what the monitor shows now; warnings are choices that are doing harm. The guidelines list the next steps in order. Reset treatment takes support, orders and the procedure away and lets the heart start over.</p>
           <div id="issues" class="issues"></div>
           <div id="warns" class="warns"></div>
           <div class="row"><button id="m_hint">What would the guidelines do?</button><button id="m_reset">Reset treatment</button></div>
           <div id="steps" class="steps" hidden></div>
-        </div>
+        </details>
       </div>
-
-        <div id="volume">
-          <p class="glabel">Volume and drugs</p>
-        <label for="bl" style="margin-top:0">Blood loss <span class="val" id="blv"></span></label>
-        <input id="bl" type="range" min="-20" max="50" value="0">
-        <label for="bb">Beta blocker <span class="val" id="bbv"></span></label>
-        <input id="bb" type="range" min="0" max="100" value="0">
-        <div class="row">
-          <button id="x_bleed">Bleed 20%</button>
-          <button id="x_reset">Reset</button>
-        </div>
-        <p class="note">Both ramp in over about 10 s. What follows is the patient's own response: watch the rate, the pressure and the pulse pressure.</p>
-        </div>
-        <div id="dpane-support"></div>
       </div>
     </section>
   </aside>

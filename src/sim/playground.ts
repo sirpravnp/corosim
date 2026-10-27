@@ -136,5 +136,21 @@ export function withBolus(state: PlaygroundState, kind: NonNullable<FluidSpec["g
   return patchSection(state, "fluids", { given: given.length ? given : undefined });
 }
 
+/** Add one more dose of `ml` of `kind` to the fluids section, starting now: boluses add up (the quick-volume buttons). A 21st dose is refused. Pure. */
+export function addBolus(state: PlaygroundState, kind: NonNullable<FluidSpec["given"]>[number]["kind"], ml: number): PlaygroundState {
+  const given = state.fluids?.given ?? [];
+  if (!(ml > 0) || given.length >= 20) return state;
+  return patchSection(state, "fluids", { given: [...given, { kind, ml }] });
+}
+/** The IV volume of the fluids section's doses, ml. */
+export const bolusTotalMl = (state: PlaygroundState) => (state.fluids?.given ?? []).reduce((a, d) => a + d.ml, 0);
+
+/** Set the patient's baseline blood volume (`heart.volumeMl`, extra ml); a lesion pick is turned into its heart fields first. 0 removes the field. Pure. */
+export function withBloodVolume(state: PlaygroundState, ml: number): PlaygroundState {
+  const heart: HeartSpec = { ...((state.structural ? heartOfPick(state.structural) : state.heart) ?? {}) };
+  if (ml) heart.volumeMl = ml; else delete heart.volumeMl;
+  return { ...state, structural: undefined, heart: isEmpty(heart) ? undefined : heart };
+}
+
 /** True when the spec carries anything the plain simulator would not show (decides whether a shared link opens in playground mode). */
 export const hasPlaygroundFields = (spec: PatientSpec) => PLAYGROUND_FIELDS.some((k) => spec[k] !== undefined);

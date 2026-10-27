@@ -33,8 +33,6 @@ cathLinkUi();
 $("pgentry").hidden = true;
 if (!inGame) {
   pgShow(true);
-  // Impella and balloon pump have one place: Patient, Mechanical support (with model, level and timing). Hide Management's duplicate switches.
-  for (const id of ["m_iabp", "m_impella"]) { const b = $(id); for (const el of [b.previousElementSibling, b, b.nextElementSibling]) if (el) (el as HTMLElement).hidden = true; }
 }
 if (!inGame) mountPanels(); // not in the game (inGame is set by applyMode)
 void shell.ai.start();
