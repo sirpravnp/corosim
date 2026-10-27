@@ -10,7 +10,7 @@ import { hPart, heartMesh, applyHeartView } from "./heart3d";
 import { built, vesselGroup, shapeVessels, points, buildGrafts, branchMesh, segIdOfHit } from "./vessels3d";
 import { callUi } from "./gameUi";
 import { controlsUi, liveUi } from "./readouts";
-import { syncSelects } from "./model";
+import { syncSelects, anatomyPreset, ANATOMY_PRESETS } from "./model";
 
 let heartBeforeProps: HeartView | null = null; // the heart view the toggle replaced with see-through, put back when it is turned off
 
@@ -30,14 +30,17 @@ function openVc(id: string) {
 }
 /** The lesion, anatomy, display, time-scale and camera controls. */
 export function wireControls() {
-  sel("dom", (v) => { V.dominance = v as Variant["dominance"]; scheduleAnatomy(); });
-  sel("lm", (v) => { V.lm = v as Variant["lm"]; scheduleAnatomy(); });
-  sel("lad", (v) => { V.ladCourse = v as Variant["ladCourse"]; scheduleAnatomy(); });
-  sel("san", (v) => { V.saNodeFrom = v as Variant["saNodeFrom"]; scheduleAnatomy(); });
-  sel("conus", (v) => { V.conusOstium = v as Variant["conusOstium"]; scheduleAnatomy(); });
+  const syncAnat = () => { $<HTMLSelectElement>("anat").value = anatomyPreset(); };
+  sel("dom", (v) => { V.dominance = v as Variant["dominance"]; syncAnat(); scheduleAnatomy(); });
+  sel("lm", (v) => { V.lm = v as Variant["lm"]; syncAnat(); scheduleAnatomy(); });
+  sel("lad", (v) => { V.ladCourse = v as Variant["ladCourse"]; syncAnat(); scheduleAnatomy(); });
+  sel("san", (v) => { V.saNodeFrom = v as Variant["saNodeFrom"]; syncAnat(); scheduleAnatomy(); });
+  sel("conus", (v) => { V.conusOstium = v as Variant["conusOstium"]; syncAnat(); scheduleAnatomy(); });
   sel("lseg", (v) => { S.lesionSeg = v; T.treated = untreated(); T.pending = null; T.original = null; buildGrafts(); scheduleLesion(); });
-  const preset = (p: Partial<Variant>) => { Object.assign(V, TYPICAL, p); syncSelects(); scheduleAnatomy(); };
-  on("p_typ", () => preset({})); on("p_left", () => preset({ dominance: "left" })); on("p_ramus", () => preset({ lm: "trifurcation" })); on("p_abs", () => preset({ lm: "absent" }));
+  sel("anat", (k) => {
+    if (k === "custom") { $<HTMLDetailsElement>("anat-custom").open = true; return; }
+    Object.assign(V, TYPICAL, ANATOMY_PRESETS[k]); syncSelects(); scheduleAnatomy();
+  });
   range("pos", (v) => { S.pos = v / 100; scheduleLesion(); });
   range("ds", (v) => { S.ds = v / 100; S.occ = false; scheduleLesion(); });
   range("ex", (v) => { S.exag = v; shapeVessels(); controlsUi(); });
