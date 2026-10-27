@@ -12,10 +12,23 @@ iframe.addEventListener("load", async () => {
   bridge.oninitialized = async () => {
     log("host: view initialized");
     const sim = new Simulation();
-    const tool = TOOLS.find((t) => t.name === "corosim_set_scenario")!;
-    const result = tool.run({ sim, appUrl: "https://corosim.com/sim/" }, { scenario: { lesions: [{ artery: "RCA", occluded: true, position: 0.1 }] }, warmupSeconds: 20 }) as Record<string, unknown>;
+    const call = (name: string, args: Record<string, unknown>) => TOOLS.find((t) => t.name === name)!.run({ sim, appUrl: "https://corosim.com/sim/" }, args) as Record<string, unknown>;
+    // ?case=vf (arrest with CPR), valve (lesions and a prosthesis, display options) or the default RCA occlusion
+    const which = new URLSearchParams(location.search).get("case");
+    let result: Record<string, unknown>;
+    if (which === "vf") {
+      call("corosim_set_scenario", { engine: "core", scenario: {}, warmupSeconds: 8 });
+      call("corosim_adjust", { patch: { patient: { rhythm: "vf-coarse" } }, runSeconds: 20 });
+      call("corosim_arrest", { action: "cpr", on: true, runSeconds: 15 });
+      result = call("corosim_show", { display: { labels: true, mode: "anat" } });
+    } else if (which === "valve") {
+      call("corosim_set_scenario", { engine: "core", scenario: { heart: { valves: { av: { open: 0.3 }, mv: { prosthesis: { kind: "mechanical", sizeMm: 29 } } } } }, warmupSeconds: 15 });
+      result = call("corosim_show", { display: { mode: "isch", heart: "ghost", valves: true } });
+    } else {
+      result = call("corosim_set_scenario", { scenario: { lesions: [{ artery: "RCA", occluded: true, position: 0.1 }] }, warmupSeconds: 20 });
+    }
     await bridge.sendToolResult({ content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result });
-    log("host: sent corosim_set_scenario result (proximal RCA occlusion)");
+    log(`host: sent the ${which ?? "RCA occlusion"} result`);
     (window as unknown as { hostDone: boolean }).hostDone = true;
   };
   await bridge.connect(new PostMessageTransport(iframe.contentWindow!, iframe.contentWindow!));
