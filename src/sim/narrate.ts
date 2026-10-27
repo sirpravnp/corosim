@@ -28,6 +28,8 @@ export function getPath(o: unknown, path: string): unknown {
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 const r1 = (x: number) => (Math.abs(x - Math.round(x)) < 0.05 ? String(Math.round(x)) : x.toFixed(1));
+const aan = (s: string) => (/^(8|11|18)/.test(s) ? "an" : /^[aeiou]/i.test(s) ? "an" : "a");
+export const lowerFirst = (s: string) => (s.length > 1 && s[1] === s[1].toLowerCase() && s[0] !== s[0].toLowerCase() ? s[0].toLowerCase() + s.slice(1) : s);
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
@@ -42,7 +44,8 @@ function lesionText(l: Obj): string {
   const pos = num(l.position) ?? 0.15, loc = pos < 0.34 ? "proximal" : pos < 0.67 ? "mid" : "distal";
   if (l.occluded === true) return `a ${loc} ${name} occlusion`;
   const s = num(l.stenosis) ?? 0.7;
-  return `a ${pct(s)} ${loc} ${name} stenosis`;
+  const p = pct(s);
+  return `${aan(p)} ${p} ${loc} ${name} stenosis`;
 }
 
 function gradeOf(x: number) { return x < 0.15 ? "none" : x < 0.4 ? "mild" : x < 0.7 ? "moderate" : "severe"; }
@@ -105,7 +108,7 @@ export function features(spec: PatientSpec): Features {
   if (s.exertion === true) put("exertion", "exerting", "oxygen demand doubles");
 
   const rh = getPath(s, "patient.rhythm");
-  if (typeof rh === "string" && rh !== "sinus" && rh !== "nsr") put("rhythm", `a baseline rhythm of ${rhythmName(rh)}`);
+  if (typeof rh === "string" && rh !== "sinus" && rh !== "nsr") put("rhythm", `a baseline rhythm of ${lowerFirst(rhythmName(rh))}`, /^(vf|asystole)/.test(rh) ? "no organized contraction, so no cardiac output" : /^(vt|torsades)/.test(rh) ? "fast dyssynchronous beats with short filling" : undefined);
   const bbb = getPath(s, "patient.bbb");
   if (bbb === "rbbb" || bbb === "lbbb") put("bbb", `${bbb === "rbbb" ? "right" : "left"} bundle branch block`);
 
@@ -197,7 +200,7 @@ export function diffSpecs(before: PatientSpec, after: PatientSpec): string[] {
   const fb = features(before), fa = features(after), out: string[] = [], changed: string[] = [];
   for (const [k, a] of fa) {
     const b = fb.get(k);
-    if (!b) { out.push(a.why ? `${a.text} (${a.why})` : a.text); changed.push(k); }
+    if (!b) { out.push(a.why ? `${a.text}: ${a.why}` : a.text); changed.push(k); }
     else if (b.text !== a.text) { out.push(`${a.text} (was ${b.text})`); changed.push(k); }
   }
   for (const [k, b] of fb) if (!fa.has(k)) { out.push(removedText(k, b.text)); changed.push(k); }
@@ -235,13 +238,17 @@ function featureOwns(key: string, path: string): boolean {
 export interface Vitals {
   /** The rhythm in words ("sinus", "ventricular tachycardia", "ventricular fibrillation"). */
   rhythm: string;
+  /** Why an arrhythmia started, when the engine knows ("it came with reperfusion of the ischemic muscle"). */
+  rhythmWhy?: string;
   hr: number | null; sbp: number | null; dbp: number | null; map: number | null;
   circulation: "stable" | "hypotension" | "shock";
   /** Fraction of the left ventricle infarcted, and of the myocardium at risk (ischemic). */
   infarct: number; ischemicMass: number;
   ef: number | null;
-  /** Library or arrhythmia id that has no output (VF, asystole). */
+  /** VF or asystole: no cardiac output. */
   noOutput: boolean;
+  /** Revascularization already done ("stenting", "fibrinolysis", "bypass grafting"). */
+  treated: string[];
 }
 
 const NO_OUTPUT = /fibrillation|asystole/i;
@@ -250,21 +257,21 @@ const isNoOutput = (rhythm: string) => NO_OUTPUT.test(rhythm) && !/atrial/i.test
 /** "in ventricular tachycardia at 168/min, BP 92/58 (MAP 69)". */
 export function vitalsNow(v: Vitals): string {
   const rate = v.hr !== null && !v.noOutput ? ` at ${v.hr}/min` : "";
-  const parts: string[] = [`now in ${v.rhythm}${rate}`];
+  const parts: string[] = [`now in ${v.rhythm}${rate}${v.rhythmWhy ? ` (${v.rhythmWhy})` : ""}`];
   if (v.noOutput) parts.push("with no cardiac output (an arrest rhythm)");
   else if (v.map !== null) parts.push(`BP ${v.sbp}/${v.dbp} (MAP ${v.map})`);
   if (!v.noOutput && v.circulation !== "stable") parts.push(v.circulation === "shock" ? "in shock" : "hypotensive");
   const heart: string[] = [];
   if (v.ischemicMass >= 0.02) heart.push(`about ${pct(v.ischemicMass)} of the myocardium ischemic`);
   if (v.infarct >= 0.01) heart.push(`${pct(v.infarct)} of the left ventricle infarcted`);
-  if (v.ef !== null && (v.infarct >= 0.01 || v.ischemicMass >= 0.02 || v.ef < 0.5)) heart.push(`EF ${pct(v.ef)}`);
+  if (v.ef !== null && v.ef >= 0.05 && (v.infarct >= 0.01 || v.ischemicMass >= 0.02 || v.ef < 0.5)) heart.push(`EF ${pct(v.ef)}`);
   return parts.join(", ") + (heart.length ? `; ${heart.join(", ")}` : "");
 }
 
 /** What the monitor did: "HR 72 -> 168, MAP 88 -> 62, sinus rhythm -> ventricular tachycardia"; empty when nothing moved. */
 export function vitalsChange(b: Vitals, a: Vitals): string {
   const bits: string[] = [];
-  if (b.rhythm !== a.rhythm) bits.push(`rhythm ${b.rhythm} -> ${a.rhythm}`);
+  if (b.rhythm !== a.rhythm) bits.push(`was ${b.rhythm}`);
   const mv = (name: string, x: number | null, y: number | null, tol: number) => { if (x !== null && y !== null && Math.abs(x - y) >= tol) bits.push(`${name} ${x} -> ${y}`); };
   if (!a.noOutput && !b.noOutput) { mv("HR", b.hr, a.hr, 5); mv("MAP", b.map, a.map, 5); }
   else if (a.noOutput !== b.noOutput) bits.push(a.noOutput ? "the output stopped" : "output returned");
@@ -276,7 +283,7 @@ export function vitalsChange(b: Vitals, a: Vitals): string {
 // ---------------------------------------------------------------- the sentences the tools return
 /** `corosim_describe_case` and the first sentence of `corosim_set_scenario`: the patient and where it stands. */
 export function narrateCase(spec: PatientSpec, v: Vitals): string {
-  return `A patient ${describeSpec(spec)}, ${vitalsNow(v)}.`;
+  return `A patient ${describeSpec(spec)}${v.treated.length ? `, after ${joinList(v.treated)}` : ""}, ${vitalsNow(v)}.`;
 }
 
 /** A new patient was built. */
@@ -287,7 +294,7 @@ export function narrateNewPatient(spec: PatientSpec, v: Vitals, warmupS: number)
 /** A change to the running patient (`corosim_adjust`) and the response to it. */
 export function narrateChange(before: PatientSpec, after: PatientSpec, vb: Vitals, va: Vitals, ranS: number): string {
   const d = diffSpecs(before, after);
-  const head = d.length ? `${cap(joinList(d))}.` : "Nothing in the patient changed.";
+  const head = d.length ? `${cap(d.some((x) => x.includes(": ")) ? d.join("; ") : joinList(d))}.` : "Nothing in the patient changed.";
   const moved = vitalsChange(vb, va);
   const tail = `${ranS > 0 ? `After ${Math.round(ranS)} s: ` : "Now: "}${vitalsNow(va).replace(/^now /, "")}${moved ? ` (${moved})` : ""}.`;
   return `${head} ${tail}`;
