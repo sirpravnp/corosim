@@ -44,8 +44,8 @@ const F: FieldSpec[] = [];
 const add = (path: string, tab: FieldTab, schema: Record<string, unknown>, controls: readonly string[] = [], target: FieldTarget = "patient") => { F.push({ path, tab, target, schema, controls }); };
 
 // ---- coronary anatomy and lesions --------------------------------------------------------------------------------
-add("anatomy.dominance", "coronary", en(["right", "co", "left"]), ["dom", "p_typ", "p_left"]);
-add("anatomy.lm", "coronary", en(["bifurcation", "trifurcation", "absent"], "Left-main pattern; trifurcation adds a ramus intermedius."), ["lm", "p_ramus", "p_abs"]);
+add("anatomy.dominance", "coronary", en(["right", "co", "left"]), ["dom", "anat"]);
+add("anatomy.lm", "coronary", en(["bifurcation", "trifurcation", "absent"], "Left-main pattern; trifurcation adds a ramus intermedius."), ["lm", "anat"]);
 add("anatomy.saNodeFrom", "coronary", en(["RCA", "LCx"]), ["san"]);
 add("anatomy.conusOstium", "coronary", en(["shared", "separate"]), ["conus"]);
 add("anatomy.ladCourse", "coronary", en(["normal", "short", "wrap"]), ["lad"]);

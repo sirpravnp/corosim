@@ -27,6 +27,7 @@ export function numberRows(n: HemoNumbers, s: Saturations): [string, string][] {
     ["CO / CI", Number.isFinite(n.co) || Number.isFinite(n.ci) ? `${fmt(n.co, 1)} / ${fmt(n.ci, 1)}` : DASH],
     ["SVR (WU)", fmt(n.svr, 1)],
     ["PVR (WU)", fmt(n.pvr, 1)],
+    ["CPP", fmt(n.diastolic - n.lvedp)], // coronary perfusion pressure: aortic diastolic minus LVEDP
     ["LVEF", pct(n.lvEf)],
     ["RVEF", pct(n.rvEf)],
     ["Qp:Qs", Number.isFinite(n.qpQs) ? n.qpQs.toFixed(2) : DASH],
@@ -57,7 +58,7 @@ export function deltaBasis(n: HemoNumbers, s: Saturations): { value: number; dig
     { value: n.hr, digits: 0, unit: "" }, { value: n.map, digits: 0, unit: "" }, { value: n.cvp, digits: 0, unit: "" },
     { value: n.pa.mean, digits: 0, unit: "" }, { value: n.pcwp, digits: 0, unit: "" }, { value: n.lvedp, digits: 0, unit: "" },
     { value: n.rvedp, digits: 0, unit: "" }, { value: n.co, digits: 1, unit: "" }, { value: n.svr, digits: 1, unit: "" },
-    { value: n.pvr, digits: 1, unit: "" }, pt(n.lvEf), pt(n.rvEf), { value: n.qpQs, digits: 2, unit: "" }, pt(s.spo2), pt(s.svo2),
+    { value: n.pvr, digits: 1, unit: "" }, { value: n.diastolic - n.lvedp, digits: 0, unit: "" }, pt(n.lvEf), pt(n.rvEf), { value: n.qpQs, digits: 2, unit: "" }, pt(s.spo2), pt(s.svo2),
   ];
 }
 

@@ -151,8 +151,6 @@
         <tr class="q-hide"><td>Lesion FFR</td><td id="ffr"></td></tr>
         <tr class="q-hide"><td>Ischemic time</td><td id="m_time"></td></tr>
         <tr class="q-hide"><td>Infarct, left ventricle</td><td id="m_inf"></td></tr>
-        <tr class="q-hide"><td>Estimated LVEF</td><td id="m_ef"></td></tr>
-        <tr class="q-hide"><td>Coronary perfusion</td><td id="m_cpp"></td></tr>
       </table>
       <p class="note q-hidden-note">Rate, output and pressure only while a case is running: the rest reads the tracing for you.</p>
     </section>
@@ -209,12 +207,9 @@
         </div>
         <div id="anatomy">
           <p class="glabel">Anatomy</p>
-        <div class="row" style="margin-top:0">
-          <button id="p_typ">Typical</button>
-          <button id="p_left">Left-dominant</button>
-          <button id="p_ramus">Ramus</button>
-          <button id="p_abs">Absent left main</button>
-        </div>
+        <label for="anat">Preset</label>
+        <select id="anat"><option value="typical">Typical</option><option value="left">Left-dominant</option><option value="ramus">Ramus intermedius</option><option value="absent">Absent left main</option><option value="custom">Custom</option></select>
+        <details id="anat-custom"><summary>Custom anatomy</summary>
         <label for="dom">Dominance</label>
         <select id="dom"><option value="right">Right-dominant</option><option value="co">Co-dominant</option><option value="left">Left-dominant</option></select>
         <label for="lm">Left main pattern</label>
@@ -225,6 +220,7 @@
         <select id="san"><option value="RCA">From the RCA</option><option value="LCx">From the circumflex</option></select>
         <label for="conus">Conus branch</label>
         <select id="conus"><option value="shared">From the RCA</option><option value="separate">Separate ostium</option></select>
+        </details>
         </div>
       </div>
       <div class="dpane" data-pane="valves" id="dpane-valves"></div>

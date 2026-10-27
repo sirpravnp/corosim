@@ -58,7 +58,6 @@ export function vitalsUi() {
   const hr = vit && Math.round(vit.hr) > 0 ? Math.round(vit.hr) : Math.round(ecg.rhythm().hr);
   $("hr").textContent = hr ? hr + " bpm" : "…";
   $("hr").style.color = hr && (hr < 50 || hr > 110) ? "var(--bad)" : hr && (hr < 60 || hr > 100) ? "var(--warn)" : "var(--ink)";
-  if (vit && mt) { const ef = $("m_ef"); ef.textContent = mt.ef; ef.classList.toggle("bad", Number.isFinite(vit.lvEf) && vit.lvEf < 0.4); }
   if (circ) {
     const mapSm = vit ? vit.map : sim.map, lb = sim.history[sim.history.length - 1], roll = sim.rolling(10); // legacy (the game): this beat's own pressure; output over 10 s
     $("bp").textContent = mt ? mt.bp : lb ? `${Math.round(lb.sbp)}/${Math.round(lb.dbp)} (${Math.round(mapSm)})` : `— (${Math.round(mapSm)})`;
