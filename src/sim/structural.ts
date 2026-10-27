@@ -1,4 +1,5 @@
-import { analyze, StructuralReport, StructuralSpec } from "../physics/structural";
+import { analyze, resolveValve, StructuralReport, StructuralSpec } from "../physics/structural";
+import { MISMATCH, PROSTHESIS_GRADIENT, REGURG_AREA_FRAC, STENOSIS_SPAN } from "../config/valves";
 import type { PatientSpec } from "./patient";
 import { GORLIN, GRADE, ORIFICE_EPS, PATIENTS, PatientKind } from "../config/structural";
 
@@ -25,14 +26,14 @@ const withDuct = (v: Record<string, number>): Pick<StructuralSpec, "pda"> => (v.
 
 export const LESIONS: LesionDef[] = [
   { id: "normal", label: "Normal heart", group: "valve", patient: "adult", params: [], teach: "Resting adult: 72 bpm, stroke volume 70 ml, mean arterial pressure 90.", build: () => ({}) },
-  { id: "as", label: "Aortic stenosis", group: "valve", patient: "adult", params: [sev(0.95)], teach: "Pressure overload: the gradient across the valve grows as its area falls, so the left ventricle must generate a pressure well above the aorta's. (Wall thickening and the late rise in wedge pressure are not modelled.)", build: (v) => ({ valves: { av: { open: 1 - 0.85 * v.severity } } }) },
-  { id: "ar", label: "Aortic regurgitation", group: "valve", patient: "adult", params: [sev(0.6)], teach: "Volume overload: wide pulse pressure, low diastolic pressure and a large total stroke volume, part of which leaks back. Without the chronic dilation that compensates, the forward output falls.", build: (v) => ({ valves: { av: { reg: v.severity * 0.16 * A("adult").av } } }) },
-  { id: "ms", label: "Mitral stenosis", group: "valve", patient: "adult", params: [sev(0.95)], teach: "Left atrial pressure rises to push blood across the valve and the pulmonary artery pressure follows; at severe grades the output falls. (This model has no reflexes, so the body's pressure falls with it.)", build: (v) => ({ valves: { mv: { open: 1 - 0.85 * v.severity } } }) },
-  { id: "mr", label: "Mitral regurgitation", group: "valve", patient: "adult", params: [sev(0.6)], teach: "Part of each stroke goes backward into the left atrium; the forward stroke volume falls and the atrium takes a large v wave.", build: (v) => ({ valves: { mv: { reg: v.severity * 0.12 * A("adult").mv } } }) },
-  { id: "ts", label: "Tricuspid stenosis", group: "valve", patient: "adult", params: [sev(0.75)], teach: "Right atrial pressure rises; the caval veins back up.", build: (v) => ({ valves: { tv: { open: 1 - 0.85 * v.severity } } }) },
-  { id: "tr", label: "Tricuspid regurgitation", group: "valve", patient: "adult", params: [sev(0.8)], teach: "The right atrium takes part of each right ventricular stroke; the atrial pressure carries a large v wave.", build: (v) => ({ valves: { tv: { reg: v.severity * 0.14 * A("adult").tv } } }) },
-  { id: "ps", label: "Pulmonary stenosis", group: "valve", patient: "adult", params: [sev(0.8)], teach: "The right ventricle works against a fixed gradient; its pressure rises while the pulmonary artery's does not.", build: (v) => ({ valves: { pv: { open: 1 - 0.9 * v.severity } } }) },
-  { id: "pr", label: "Pulmonary regurgitation", group: "valve", patient: "adult", params: [sev(0.6)], teach: "Diastolic backflow into the right ventricle; tolerated for years unless pulmonary resistance is high.", build: (v) => ({ valves: { pv: { reg: v.severity * 0.25 * A("adult").pv } } }) },
+  { id: "as", label: "Aortic stenosis", group: "valve", patient: "adult", params: [sev(0.95)], teach: "Pressure overload: the gradient across the valve grows as its area falls, so the left ventricle must generate a pressure well above the aorta's. (Wall thickening and the late rise in wedge pressure are not modelled.)", build: (v) => ({ valves: { av: { open: 1 - STENOSIS_SPAN.av * v.severity } } }) },
+  { id: "ar", label: "Aortic regurgitation", group: "valve", patient: "adult", params: [sev(0.6)], teach: "Volume overload: wide pulse pressure, low diastolic pressure and a large total stroke volume, part of which leaks back. Without the chronic dilation that compensates, the forward output falls.", build: (v) => ({ valves: { av: { reg: v.severity * REGURG_AREA_FRAC.av * A("adult").av } } }) },
+  { id: "ms", label: "Mitral stenosis", group: "valve", patient: "adult", params: [sev(0.95)], teach: "Left atrial pressure rises to push blood across the valve and the pulmonary artery pressure follows; at severe grades the output falls. (This model has no reflexes, so the body's pressure falls with it.)", build: (v) => ({ valves: { mv: { open: 1 - STENOSIS_SPAN.mv * v.severity } } }) },
+  { id: "mr", label: "Mitral regurgitation", group: "valve", patient: "adult", params: [sev(0.6)], teach: "Part of each stroke goes backward into the left atrium; the forward stroke volume falls and the atrium takes a large v wave.", build: (v) => ({ valves: { mv: { reg: v.severity * REGURG_AREA_FRAC.mv * A("adult").mv } } }) },
+  { id: "ts", label: "Tricuspid stenosis", group: "valve", patient: "adult", params: [sev(0.75)], teach: "Right atrial pressure rises; the caval veins back up.", build: (v) => ({ valves: { tv: { open: 1 - STENOSIS_SPAN.tv * v.severity } } }) },
+  { id: "tr", label: "Tricuspid regurgitation", group: "valve", patient: "adult", params: [sev(0.8)], teach: "The right atrium takes part of each right ventricular stroke; the atrial pressure carries a large v wave.", build: (v) => ({ valves: { tv: { reg: v.severity * REGURG_AREA_FRAC.tv * A("adult").tv } } }) },
+  { id: "ps", label: "Pulmonary stenosis", group: "valve", patient: "adult", params: [sev(0.8)], teach: "The right ventricle works against a fixed gradient; its pressure rises while the pulmonary artery's does not.", build: (v) => ({ valves: { pv: { open: 1 - STENOSIS_SPAN.pv * v.severity } } }) },
+  { id: "pr", label: "Pulmonary regurgitation", group: "valve", patient: "adult", params: [sev(0.6)], teach: "Diastolic backflow into the right ventricle; tolerated for years unless pulmonary resistance is high.", build: (v) => ({ valves: { pv: { reg: v.severity * REGURG_AREA_FRAC.pv * A("adult").pv } } }) },
   { id: "pda", label: "Patent ductus arteriosus", group: "congenital", patient: "neonate", params: [{ key: "diameter", label: "Duct diameter", min: 1, max: 8, step: 0.5, default: 4, unit: "mm" }, pvri(2)], teach: "Aorta-to-pulmonary shunt that grows as pulmonary resistance falls: pulmonary overcirculation, diastolic run-off and a volume-loaded left heart. With very high resistance it reverses.", build: (v) => ({ patient: "neonate", pvri: v.pvri, pda: { diameterMm: v.diameter } }) },
   { id: "asd", label: "Atrial septal defect", group: "congenital", patient: "adult", params: [{ key: "diameter", label: "Defect diameter", min: 2, max: 25, step: 1, default: 12, unit: "mm" }], teach: "Left-to-right shunt at the atria: the right heart and lungs carry extra volume.", build: (v) => ({ asd: { diameterMm: v.diameter } }) },
   { id: "vsd", label: "Ventricular septal defect", group: "congenital", patient: "neonate", params: [{ key: "diameter", label: "Defect diameter", min: 1, max: 12, step: 0.5, default: 5, unit: "mm" }, pvri(2)], teach: "Left-to-right shunt in systole: pulmonary overcirculation and a volume-loaded left heart; large defects equalize ventricular pressures.", build: (v) => ({ patient: "neonate", pvri: v.pvri, vsd: { diameterMm: v.diameter } }) },
@@ -58,6 +59,8 @@ export interface ValveFinding {
   valve: string; label: string;
   stenosis: StenosisGrade; regurgitation: Grade; grade: StenosisGrade; // grade: the worse of the two
   gorlinArea: number | null; areaFraction: number | null; // of this patient's normal valve
+  /** Set when the valve is a prosthesis: its kind, size, effective orifice area (cm², as built) and indexed to body surface area, the mismatch grade (aortic and mitral) and the regurgitant orifice of its leak alone. */
+  prosthesis?: { kind: string; sizeMm: number; eoa: number; eoaIndexed: number; mismatch: Grade; leakEroa: number; obstruction: number; inRing: boolean };
   meanGradient: number; regurgFraction: number | null; regurgMl: number; regurgPeakGradient: number;
 }
 export interface StructuralFindings {
@@ -80,10 +83,10 @@ export function gorlinArea(f: number, openMs: number, meanGradient: number): num
 
 function gradeValve(id: string, spec: StructuralSpec, r: StructuralReport): ValveFinding {
   const v = r.valves[id], k = VALVE_SPEC[id], patient = PATIENTS[spec.patient ?? "adult"];
+  const lesion = spec.valves?.[k], pro = resolveValve(patient, k, lesion).prosthesis;
   // an overriding aorta leaves the left ventricle only its share of the valve
   const normal = patient.valveAreas[k] * (id === "AV" && spec.tof ? 1 - (spec.tof.override ?? 0.5) : 1);
-  const lesion = spec.valves?.[k];
-  const atretic = lesion?.open === 0 || (id === "PVL" && spec.tof?.rvotFrac === 0);
+  const atretic = !pro && (lesion?.open === 0 || (id === "PVL" && spec.tof?.rvotFrac === 0));
   const area = gorlinArea(v.forwardMl, v.openMs, v.meanGradient), fraction = area === null ? null : area / normal;
 
   // stenosis: by the valve's area as a fraction of this patient's normal (adult cm² cut-offs, scaled), and for the aortic valve by mean gradient too
@@ -91,16 +94,25 @@ function gradeValve(id: string, spec: StructuralSpec, r: StructuralReport): Valv
   let stenosis: StenosisGrade = "none";
   if (atretic) stenosis = "atretic";
   else if (fraction !== null) stenosis = fraction <= B.severe ? "severe" : fraction <= B.moderate ? "moderate" : fraction <= B.mild ? "mild" : "none";
-  if (id === "AV" && (spec.patient ?? "adult") === "adult" && !atretic)
+  // a prosthesis is judged by its mean gradient (ASE 2009), not by the share of a native valve's area: a normal 1.6 cm² prosthesis is not a stenosis
+  if (pro) { const G = PROSTHESIS_GRADIENT[k]; stenosis = pro.obstruction >= 1 ? "atretic" : v.meanGradient >= G.severe ? "severe" : v.meanGradient >= G.moderate ? "moderate" : "none"; }
+  else if (id === "AV" && (spec.patient ?? "adult") === "adult" && !atretic)
     stenosis = worse(stenosis, v.meanGradient >= GRADE.asMeanGradient.severe ? "severe" : v.meanGradient >= GRADE.asMeanGradient.moderate ? "moderate" : "none");
 
   // regurgitation: by regurgitant fraction and by the leak's orifice area relative to the valve (both inputs are known to the model)
-  const rf = v.forwardMl > 1e-6 ? v.regurgMl / v.forwardMl : null, eroa = (lesion?.reg ?? 0) / normal, E = GRADE.eroaFraction[k];
-  const byRf: Grade = rf === null ? "none" : rf >= GRADE.regFraction.severe ? "severe" : rf >= GRADE.regFraction.moderate ? "moderate" : rf >= 0.05 ? "mild" : "none";
+  // (a prosthesis's own closing backflow is physiological: only its leak, or a regurgitant fraction past the moderate bin, counts)
+  const rf = v.forwardMl > 1e-6 ? v.regurgMl / v.forwardMl : null, eroa = (pro ? pro.leak : lesion?.reg ?? 0) / normal, E = GRADE.eroaFraction[k];
+  const byRf: Grade = rf === null ? "none" : rf >= GRADE.regFraction.severe ? "severe" : rf >= GRADE.regFraction.moderate ? "moderate" : rf >= 0.05 && !pro ? "mild" : "none";
   const byEroa: Grade = eroa >= E.severe ? "severe" : eroa >= E.moderate ? "moderate" : eroa > 0.005 ? "mild" : "none";
   const regurgitation = worse(byRf, byEroa) as Grade;
 
+  let prosthesis: ValveFinding["prosthesis"];
+  if (pro) {
+    const iEoa = pro.eoa / patient.bsa, M = MISMATCH[k];
+    prosthesis = { kind: pro.kind, sizeMm: pro.sizeMm, eoa: pro.eoa, eoaIndexed: iEoa, mismatch: M ? (iEoa < M.severe ? "severe" : iEoa < M.moderate ? "moderate" : "none") : "none", leakEroa: pro.leak, obstruction: pro.obstruction, inRing: pro.inRing };
+  }
   return {
+    prosthesis,
     valve: id, label: VALVE_LABEL[id], stenosis, regurgitation, grade: worse(stenosis, regurgitation), gorlinArea: area, areaFraction: fraction,
     meanGradient: v.meanGradient, regurgFraction: rf, regurgMl: v.regurgMl, regurgPeakGradient: v.regurgPeakGradient,
   };

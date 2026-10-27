@@ -16,6 +16,7 @@
   "tests/mcpHemo.test.ts",
   "tests/pericardialScenarios.test.ts",
   "tests/playground.test.ts",
+  "tests/rhythmUnification.test.ts",
   "tests/septum.test.ts",
   "tests/simulation.test.ts",
   "tests/simulationCore.test.ts",
@@ -24,5 +25,7 @@
   "tests/structuralHeart.test.ts",
   "tests/structuralLesions.test.ts",
   "tests/structuralProps.test.ts",
-  "tests/thorax.test.ts"
+  "tests/thorax.test.ts",
+  "tests/valves.test.ts",
+  "tests/valvesSim.test.ts"
 ]

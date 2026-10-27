@@ -98,6 +98,15 @@ export class InertialResistor implements Element, Tunable<{ R: number; L: number
 }
 
 /**
+ * Shortest time constant (s) the flow state of an `InertialValve` may have. Near its steady flow the state relaxes at 2·√(K·ΔP)/L per
+ * second; a very small orifice (a prosthesis's closing leak of 0.02 cm², a clip's residual jet) makes K large, and with the step of
+ * 0.5 ms the explicit integration then oscillates and diverges. The effective inertance is therefore raised to keep that time constant
+ * at 0.4 ms or more, which changes nothing a pulse can see (an orifice that small has no inertia of its own worth modelling) and leaves
+ * every orifice of 0.5 cm² or more exactly as before.
+ */
+const MIN_VALVE_TAU = 4e-4;
+
+/**
  * One-way valve with inertance and its own state, the flow Q (ml/s, positive from → to):
  *
  *     L·dQ/dt = (P_from − P_to) − K·Q·|Q|,   K = 1/(GORLIN·A)²
@@ -137,7 +146,7 @@ export class InertialValve implements Element, Gated, Tunable<{ area: number; re
     if (!a) { out.flow(this.from, this.to, 0); out.rate(this.idx, -1000 * q); return; } // no orifice this way: the flow dies out within ms
     const k = 1 / (GORLIN * a) ** 2;
     out.flow(this.from, this.to, q);
-    out.rate(this.idx, (d - k * q * Math.abs(q)) / L);
+    out.rate(this.idx, (d - k * q * Math.abs(q)) / Math.max(L, 2 * Math.sqrt(k * Math.abs(d)) * MIN_VALVE_TAU));
   }
   taps(ctx: Ctx) { return { Q: ctx.y[this.idx] }; }
 }

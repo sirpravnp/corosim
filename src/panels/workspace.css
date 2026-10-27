@@ -18,10 +18,12 @@
 .ws-grid > .ws-card { grid-column: span 4; display: flex; flex-direction: column; }
 .ws-grid > .ws-card[data-panel="traces"] { grid-column: span 8; }
 .ws-grid > .ws-card > .ws-body { flex: 1; }
+.ws-grid > .ws-card[data-panel="ischemia"] { grid-column: span 6; }
 @media (max-width: 1180px) {
   .ws-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ws-grid > .ws-card { grid-column: span 1; }
   .ws-grid > .ws-card[data-panel="traces"] { grid-column: 1 / -1; }
+  .ws-grid > .ws-card[data-panel="ischemia"] { grid-column: span 1; }
 }
 .ws-phone .ws-grid { grid-template-columns: minmax(0, 1fr); }
 .ws-phone .ws-grid > .ws-card, .ws-phone .ws-grid > .ws-card[data-panel] { grid-column: 1 / -1; }

@@ -1,3 +1,4 @@
+import { DEFAULT_PROSTHESIS_SIZE, PROSTHESIS_CLOSING_LEAK, PROSTHESIS_EOA, PROSTHESIS_KINDS, PROSTHESIS_SIZE, VALVE_IN_VALVE_EOA, type ProsthesisKind, type ValveKey } from "../config/valves";
 import { ACTIVATION, BRONCHIAL, O2_PER_G_HB, WU_TO_MMHG_S_ML, PATIENTS, PatientBaseline, PatientKind, SOLVER, VESSELS } from "../config/structural";
 
 import { BAKED_OFFSETS } from "./calibration.baked";
@@ -39,8 +40,15 @@ export interface Model {
   qDesign: number; // ml/s, the baseline systemic flow
 }
 
-/** One valve's lesion: `open` is its opening as a fraction of normal (0 = atretic); `reg` is a regurgitant orifice area, cm². */
-export interface ValveLesion { open?: number; reg?: number }
+/**
+ * A prosthetic valve in a valve's position (B5, docs/VALVES.md). The native valve is gone (or, for a transcatheter valve, pushed aside), so
+ * `open` and `reg` of the lesion are ignored: the opening is the prosthesis's effective orifice area and the leak is the prosthesis's own.
+ * `sizeMm` labelled size; `leak` paravalvular (or degenerative) regurgitant orifice, cm², on top of the closing leak of its kind;
+ * `obstruction` share of the orifice lost to thrombus, pannus or degeneration (0..1); `inRing` a transcatheter valve inside a failed surgical bioprosthesis.
+ */
+export interface Prosthesis { kind: ProsthesisKind; sizeMm?: number; leak?: number; obstruction?: number; inRing?: boolean }
+/** One valve's lesion: `open` is its opening as a fraction of normal (0 = atretic); `reg` is a regurgitant orifice area, cm². `prosthesis` (null = none) replaces both. */
+export interface ValveLesion { open?: number; reg?: number; prosthesis?: Prosthesis | null }
 
 /** What the page and tests set. Everything is optional; no lesion is a normal heart. */
 export interface StructuralSpec {
@@ -75,7 +83,12 @@ const passive = (P: number, v0: number, b: number, a: number) => v0 + Math.log(1
 const clamp = (x: number | undefined, lo: number, hi: number) => (x === undefined || !Number.isFinite(x) ? undefined : Math.min(hi, Math.max(lo, x)));
 const frac = (x: number | undefined) => clamp(x, 0, 1);
 const diam = (d: { diameterMm: number } | undefined) => (d && Number.isFinite(d.diameterMm) ? { diameterMm: clamp(d.diameterMm, 0, 40)! } : undefined);
-const valveLesion = (l: ValveLesion | undefined): ValveLesion | undefined => (l ? { open: frac(l.open), reg: clamp(l.reg, 0, 10) } : undefined);
+const prosthesis = (p: Prosthesis | null | undefined, k: ValveKey): Prosthesis | undefined => {
+  if (!p || typeof p !== "object" || !PROSTHESIS_KINDS.includes(p.kind)) return undefined;
+  const [lo, hi] = PROSTHESIS_SIZE[k];
+  return { kind: p.kind, sizeMm: clamp(p.sizeMm, lo, hi), leak: clamp(p.leak, 0, 2), obstruction: frac(p.obstruction), inRing: typeof p.inRing === "boolean" ? p.inRing : undefined };
+};
+const valveLesion = (l: ValveLesion | undefined, k: ValveKey): ValveLesion | undefined => (l ? { open: frac(l.open), reg: clamp(l.reg, 0, 10), prosthesis: prosthesis(l.prosthesis, k) } : undefined);
 
 /** The spec as the engine will use it: every number clamped to the engine's own range, non-finite numbers unset. Pure; `buildModel` applies it first. */
 export function clampStructuralSpec(input: StructuralSpec = {}): StructuralSpec {
@@ -83,7 +96,7 @@ export function clampStructuralSpec(input: StructuralSpec = {}): StructuralSpec 
     ...input, hr: clamp(input.hr, 20, 300), pvri: clamp(input.pvri, 0.2, 60), svrScale: clamp(input.svrScale, 0.1, 5),
     rvSize: clamp(input.rvSize, 0.05, 4), raSize: clamp(input.raSize, 0.05, 4), lvSize: clamp(input.lvSize, 0.05, 4), laSize: clamp(input.laSize, 0.05, 4),
     rvContractility: clamp(input.rvContractility, 0.2, 5), lvEes: clamp(input.lvEes, 0.2, 5), rvEes: clamp(input.rvEes, 0.2, 5), lvStiffness: clamp(input.lvStiffness, 0.2, 5), rvStiffness: clamp(input.rvStiffness, 0.2, 5), satLung: clamp(input.satLung, 0.3, 1), volumeMl: clamp(input.volumeMl, -1000, 5000),
-    valves: input.valves && { tv: valveLesion(input.valves.tv), pv: valveLesion(input.valves.pv), mv: valveLesion(input.valves.mv), av: valveLesion(input.valves.av) },
+    valves: input.valves && { tv: valveLesion(input.valves.tv, "tv"), pv: valveLesion(input.valves.pv, "pv"), mv: valveLesion(input.valves.mv, "mv"), av: valveLesion(input.valves.av, "av") },
     pda: diam(input.pda), asd: diam(input.asd), vsd: diam(input.vsd), bt: diam(input.bt),
     tof: input.tof && { vsdMm: clamp(input.tof.vsdMm, 0, 40) ?? 0, rvotFrac: frac(input.tof.rvotFrac) ?? 1, spasm: frac(input.tof.spasm), override: frac(input.tof.override), rvHypertrophy: clamp(input.tof.rvHypertrophy, 0.2, 5) },
   };
@@ -109,6 +122,34 @@ export interface BuildOptions {
   baseline?: Partial<Record<PatientKind, Partial<PatientBaseline>>>;
 }
 export const LEGACY_BUILD: Readonly<BuildOptions> = { zc: false, unstressed: false, splanchnic: false, bronchial: false, atrialEesScale: 1, baseline: { adult: { rap: 4, lap: 8 } } };
+
+const VALVE_EDGE = { tv: "TV", pv: "PVL", mv: "MV", av: "AV" } as const;
+
+/** A prosthesis as the model sees it: its effective orifice area (cm²) and total regurgitant orifice (closing leak of its kind plus `leak`). */
+export interface ResolvedProsthesis { kind: ProsthesisKind; sizeMm: number; eoa: number; reg: number; leak: number; obstruction: number; inRing: boolean }
+
+/** EOA (cm²) of a working prosthesis of this kind and labelled size in this position: linear between the table's sizes, held at its ends. */
+export function prosthesisEoa(kind: ProsthesisKind, valve: ValveKey, sizeMm: number): number {
+  const t = PROSTHESIS_EOA[kind][valve];
+  if (sizeMm <= t[0][0]) return t[0][1];
+  for (let i = 1; i < t.length; i++) if (sizeMm <= t[i][0]) return t[i - 1][1] + ((t[i][1] - t[i - 1][1]) * (sizeMm - t[i - 1][0])) / (t[i][0] - t[i - 1][0]);
+  return t[t.length - 1][1];
+}
+
+/** The prosthesis of a lesion, resolved against the patient's valve; null for a native valve. The EOA never exceeds the native valve's normal area. */
+export function resolveProsthesis(patient: PatientBaseline, valve: ValveKey, l: ValveLesion | undefined): ResolvedProsthesis | null {
+  const pr = l?.prosthesis; if (!pr) return null;
+  const sizeMm = pr.sizeMm ?? DEFAULT_PROSTHESIS_SIZE[pr.kind][valve], obstruction = pr.obstruction ?? 0, inRing = !!pr.inRing && pr.kind === "transcatheter";
+  const eoa = Math.min(patient.valveAreas[valve], prosthesisEoa(pr.kind, valve, sizeMm) * (inRing ? VALVE_IN_VALVE_EOA : 1) * (1 - obstruction)), leak = pr.leak ?? 0;
+  return { kind: pr.kind, sizeMm, eoa, reg: PROSTHESIS_CLOSING_LEAK[pr.kind] + leak, leak, obstruction, inRing };
+}
+
+/** Opening area and regurgitant orifice (cm²) the engine uses for a valve: the prosthesis's if it has one, otherwise the native lesion's. */
+export function resolveValve(patient: PatientBaseline, valve: ValveKey, l: ValveLesion | undefined): { area: number; reg: number; prosthesis: ResolvedProsthesis | null } {
+  const prosthesis = resolveProsthesis(patient, valve, l);
+  if (prosthesis) return { area: prosthesis.obstruction >= 1 ? 0 : prosthesis.eoa, reg: prosthesis.reg, prosthesis };
+  return { area: patient.valveAreas[valve] * (l?.open ?? 1), reg: l?.reg ?? 0, prosthesis: null };
+}
 
 export function buildModel(input: StructuralSpec = {}, volumeOffset = 0, build: BuildOptions = {}): Model {
   const spec = clampStructuralSpec(input), useZc = build.zc !== false, useVu = build.unstressed !== false, useSpl = build.splanchnic !== false;
@@ -185,10 +226,9 @@ export function buildModel(input: StructuralSpec = {}, volumeOffset = 0, build: 
   const E = (n: string) => edges.find((e) => e.name === n)!;
 
   // lesions
-  const VALVE_EDGE = { tv: "TV", pv: "PVL", mv: "MV", av: "AV" } as const;
-  for (const k of Object.keys(VALVE_EDGE) as (keyof typeof VALVE_EDGE)[]) {
+  for (const k of Object.keys(VALVE_EDGE) as ValveKey[]) {
     const l = spec.valves?.[k]; if (!l) continue;
-    const e = E(VALVE_EDGE[k]); e.area! *= l.open ?? 1; e.reg = l.reg ?? 0;
+    const e = E(VALVE_EDGE[k]), r = resolveValve(p, k, l); e.area = r.area; e.reg = r.reg;
   }
   if (spec.pda) E("PDA").area = areaFromMm(spec.pda.diameterMm);
   if (spec.asd) E("ASD").area = areaFromMm(spec.asd.diameterMm);

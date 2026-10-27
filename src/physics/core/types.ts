@@ -76,10 +76,14 @@ export interface StateDecl {
   min?: number;
 }
 
-/** Events from the rhythm model. `strength` scales activation (a PVC contracts weakly, a potentiated beat strongly). */
+/**
+ * Events from the rhythm model. `strength` scales activation (a PVC contracts weakly, a potentiated beat strongly). `systole`
+ * (ventricular, default 1) stretches the beat's contraction in time as if its RR were that much longer: activation spreading
+ * through muscle (a ventricular rhythm, pacing) takes longer and leaves less of the cycle for filling (task B2).
+ */
 export type HeartEvent =
   | { kind: "atrial"; t: number; strength?: number }
-  | { kind: "ventricular"; t: number; strength?: number; pvc?: boolean };
+  | { kind: "ventricular"; t: number; strength?: number; pvc?: boolean; systole?: number };
 
 /** Anything the engine runs. All methods are optional; an element implements the phases it takes part in. */
 export interface Element {

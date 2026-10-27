@@ -90,7 +90,10 @@ const range = (x: number, [lo, hi]: readonly [number, number] | readonly number[
  *  - PVC (`pvc`): ventricular only, strength `LIVE.pvcStrength`;
  *  - `pOnly` (blocked P wave): atrial event only, at b.t − pr;
  *  - `noP` (junctional escape, atrial fibrillation): ventricular only;
- *  - the first ventricular beat after a PVC: strength `LIVE.potentiatedStrength`.
+ *  - the first ventricular beat after a PVC: strength `LIVE.potentiatedStrength`;
+ *  - a beat of an EKG-library rhythm (B2, physics/rhythmSource.ts) may set its own ventricular `strength` (VT, paced; 0 = a silent
+ *    tick of VF or asystole: the event closes a record but nothing contracts) and `systole` (slower contraction), its atrial event's
+ *    `atrialStrength` (flutter) and `retroP` (an atrial event that many s AFTER the ventricular one: junctional, AV re-entry).
  * An atrial event already in the past when its beat arrives is dropped (right after `warm()`, whose last cycle already contained it).
  * The first ventricular event after `warm()` measures its RR from the last event of the warm-up, so put it at about one RR after 0
  * (a beat at 0 follows the warm-up at the steady rate).
@@ -198,16 +201,18 @@ export class LiveHeart {
     this.seen.add(b);
     this.attach();
     const tv = b.t + this.offset, pr = b.pr ?? defaultPr(b.rr);
-    const atrial = () => { if (tv - pr >= this.engine.t - 1e-6) this.engine.schedule({ kind: "atrial", t: tv - pr }); };
+    const atrial = () => { if (tv - pr >= this.engine.t - 1e-6) this.engine.schedule(b.atrialStrength !== undefined ? { kind: "atrial", t: tv - pr, strength: b.atrialStrength } : { kind: "atrial", t: tv - pr }); };
     if (b.pOnly) { atrial(); return; }
     if (b.t <= this.lastVentT) return; // out of order or duplicate
     this.lastVentT = b.t;
     const kick = !b.noP && !b.pvc;
     if (kick) atrial();
-    const strength = b.pvc ? LIVE.pvcStrength : this.afterPvc ? LIVE.potentiatedStrength : 1;
+    // B2: a beat of an EKG-library rhythm may carry its own strength (VT, paced; 0 = a silent tick of VF or asystole, no contraction)
+    const strength = b.strength ?? (b.pvc ? LIVE.pvcStrength : this.afterPvc ? LIVE.potentiatedStrength : 1);
     this.afterPvc = b.pvc;
     this.queue.push({ t: tv, rr: b.rr, pvc: b.pvc, atrialKick: kick, strength });
-    this.engine.schedule({ kind: "ventricular", t: tv, strength, pvc: b.pvc });
+    this.engine.schedule(b.systole !== undefined ? { kind: "ventricular", t: tv, strength, pvc: b.pvc, systole: b.systole } : { kind: "ventricular", t: tv, strength, pvc: b.pvc });
+    if (b.retroP !== undefined) this.engine.schedule({ kind: "atrial", t: tv + b.retroP }); // retrograde P: the atria contract against closed AV valves
   }
 
   /** Advance dt seconds (split into steps of at most `LIVE.maxStep`; the engine cuts a step at every event). */
