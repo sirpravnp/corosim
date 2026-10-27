@@ -8,6 +8,8 @@
  * Units: mmHg, ml, ml/s, L/min, seconds, saturations 0..1. NaN means "not available in this patient" (no ductus, no device).
  */
 
+import type { Vitals } from "./vitals";
+
 /** Nodes every source provides. The core engine may add more (venous reservoirs); panels must ignore names they do not know. */
 export type HemoNode = "SVC" | "IVC" | "RA" | "RV" | "PA" | "PV" | "LA" | "LV" | "AO" | "DAO";
 export type Chamber = "RA" | "RV" | "LA" | "LV";
@@ -91,6 +93,8 @@ export interface HemoSource {
   /** The last completed beats, newest last. */
   beats(count?: number): readonly BeatSummary[];
   numbers(): HemoNumbers;
+  /** The one vital-signs snapshot every panel shows (vitals.ts), from the same beats as `numbers()`. */
+  vitals(): Vitals;
   saturations(): Saturations;
   devices(): readonly DeviceConsole[];
   /** Called after each completed beat; returns an unsubscribe function. */

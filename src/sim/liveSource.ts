@@ -5,6 +5,7 @@ import { NODES as ALL_NODES, CATH_NODES as NODES, solveOxygen, type Model } from
 import { oxygenatorSat, type Ecmo } from "../physics/core/devices/ecmo";
 import type { RotaryPump } from "../physics/core/devices/pump";
 import type { LiveBeat, LiveHeart } from "../physics/core/live";
+import { vitalsOf, type Vitals } from "./vitals";
 import { windowedHemodynamicBeats, type HemoBeatSelection } from "./hemoBeats";
 import { PATIENTS, O2_PER_G_HB } from "../config/structural";
 import { LIVE_SOURCE as CFG } from "../config/liveSource";
@@ -215,6 +216,9 @@ export class LiveSource implements HemoSource {
       ...(sel ? { ectopy: { fraction: sel.fraction, beats: recs.length, used: sel.used } } : {}),
     };
   }
+
+  /** The one vital-signs snapshot (vitals.ts): the same numbers as `numbers()`, so the Monitor and the cath panels never disagree with the Hemodynamics table. */
+  vitals(): Vitals { return vitalsOf(this.numbers()); }
 
   saturations(): Saturations {
     const live = this.sync(), { recs, flow: fb, key } = this.window();
