@@ -155,16 +155,17 @@
         <button class="tab dtab" data-tab="rhythm" role="tab" aria-selected="false">Rhythm</button>
         <button class="tab dtab" data-tab="coronary" role="tab" aria-selected="false">Coronary</button>
         <button class="tab dtab" data-tab="valves" role="tab" aria-selected="false">Valves</button>
+        <button class="tab dtab" data-tab="pericardium" role="tab" aria-selected="false">Pericardium</button>
         <button class="tab dtab" data-tab="support" role="tab" aria-selected="false">Support</button>
       </div>
       <div class="dpane" data-pane="patient" id="dpane-patient"></div>
       <div class="dpane" data-pane="rhythm">
         <div id="patient">
         <p class="glabel" style="margin-top:0">Rhythm</p>
-        <div class="row" style="margin-top:0">
-          <button id="r_sinus" class="on">Sinus</button>
-          <button id="r_af">Atrial fibrillation</button>
-        </div>
+        <input id="rhythmq" type="search" placeholder="Search rhythms (VT, flutter, block...)" aria-label="Search rhythms" autocomplete="off">
+        <select id="rhythmsel" aria-label="Rhythm"></select>
+        <p class="note" id="rhythmcount" style="margin:4px 0 0"></p>
+        <p class="note" id="rhythminfo"></p>
         <p class="glabel">Conduction</p>
         <div class="row" style="margin-top:0">
           <button id="c_none" class="on">Normal</button>
@@ -218,6 +219,7 @@
         </div>
       </div>
       <div class="dpane" data-pane="valves" id="dpane-valves"></div>
+      <div class="dpane" data-pane="pericardium" id="dpane-pericardium"></div>
       <div class="dpane" data-pane="support">
       <div id="manage" data-tab="support">
         <div class="tabs" role="tablist">

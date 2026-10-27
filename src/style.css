@@ -116,6 +116,7 @@ aside h2 { margin: 0 0 12px; font: 600 13px/1 var(--font-ui); letter-spacing: 0;
 label { display: flex; justify-content: space-between; gap: 8px; margin: 12px 0 4px; font-size: 13px; }
 label .val { font-family: var(--font-data); color: var(--muted); font-variant-numeric: tabular-nums; }
 input[type="range"] { width: 100%; height: 22px; margin: 0; accent-color: var(--range); }
+input[type="search"] { width: 100%; box-sizing: border-box; padding: 8px 10px; margin: 0 0 6px; font: 400 13px/1.2 var(--font-ui); color: var(--ink); background: var(--panel); border: 1px solid var(--sh-line); border-radius: 8px; }
 .dd { position: relative; }
 .dd-native { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 button.dd-btn { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; font: 400 13px/1.2 var(--font-ui); letter-spacing: 0; text-transform: none; text-align: left; }
@@ -300,7 +301,7 @@ body.game #pgentry { display: none; }
 /* Settings dock: one tabbed panel for every control (Patient · Rhythm · Coronary · Valves · Support · Display) */
 .dpane { display: none; min-width: 0; }
 #dock[data-tab="patient"] .dpane[data-pane="patient"], #dock[data-tab="rhythm"] .dpane[data-pane="rhythm"], #dock[data-tab="coronary"] .dpane[data-pane="coronary"],
-#dock[data-tab="valves"] .dpane[data-pane="valves"], #dock[data-tab="support"] .dpane[data-pane="support"] { display: grid; gap: 14px; }
+#dock[data-tab="valves"] .dpane[data-pane="valves"], #dock[data-tab="pericardium"] .dpane[data-pane="pericardium"], #dock[data-tab="support"] .dpane[data-pane="support"] { display: grid; gap: 14px; }
 .dpane > * { min-width: 0; margin: 0; }
 .dpane .glabel:first-child { margin-top: 0; }
 #dock .pg { padding: 0; border: 0; background: transparent; border-radius: 0; }

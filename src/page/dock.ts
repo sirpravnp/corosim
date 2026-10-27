@@ -5,7 +5,7 @@ import type { MountId } from "../panels/playgroundControls";
 const tabs = () => [...document.querySelectorAll<HTMLButtonElement>("#dock .dtab")];
 const visible = (b: HTMLElement) => b.getClientRects().length > 0;
 
-/** Show one tab of the dock (Patient · Rhythm · Coronary · Valves · Support · Display). */
+/** Show one tab of the dock (Patient · Rhythm · Coronary · Valves · Pericardium · Support). */
 export function setDockTab(t: string) {
   $("dock").dataset.tab = t;
   for (const b of tabs()) { const on = b.dataset.tab === t; b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); b.tabIndex = on ? 0 : -1; }
@@ -19,7 +19,7 @@ export function dockUi() {
 }
 /** Put the patient editor's groups in their tabs and wire the tab buttons (arrow keys move between tabs). */
 export function mountDock(mounts: Record<MountId, HTMLElement>) {
-  $("dpane-patient").append(mounts.patient); $("dpane-valves").append(mounts.valves); $("dpane-support").append(mounts.support);
+  $("dpane-patient").append(mounts.patient); $("dpane-valves").append(mounts.valves); $("dpane-pericardium").append(mounts.pericardium); $("dpane-support").append(mounts.support);
   const all = tabs();
   for (const b of all) {
     b.addEventListener("click", () => setDockTab(b.dataset.tab!));
