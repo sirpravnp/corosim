@@ -1,4 +1,6 @@
 [
+  "tests/arrhythmiaRates.test.ts",
+  "tests/arrhythmiaSim.test.ts",
   "tests/cathHeart.test.ts",
   "tests/congenitalAdult.test.ts",
   "tests/coronaryCoupling.test.ts",

@@ -1,6 +1,8 @@
 import { Beat } from "./ecg";
 import { Conduction, RhythmState, SinusModulation } from "./rhythm";
 import type { Ectopy } from "./ectopy";
+import type { Arrhythmia } from "./arrhythmia";
+import { ARRHYTHMIA } from "../config/arrhythmia";
 import { LibraryRhythm, isLibraryRhythm } from "./rhythmSource";
 import type { Vec3 } from "../config/ecg";
 
@@ -13,6 +15,10 @@ import type { Vec3 } from "../config/ecg";
  * the patient's rhythm is "sinus" or "af", and the EKG library's generator (`LibraryRhythm`, rhythmSource.ts) for any other rhythm
  * (flutter, SVT, junctional, VT, VF, paced, the AV blocks...). A change of rhythm takes effect at the end of the beats already
  * generated (the look-ahead), so nothing already drawn changes.
+ *
+ * A sustained arrhythmia of the core engine (task B3b, physics/arrhythmia.ts: VT, polymorphic VT, VF, AIVR) runs as a library rhythm
+ * over whatever the patient's rhythm is, for as long as it lasts. One that a premature beat starts takes over at that beat: the beats
+ * generated after it are dropped (they lay ahead of the clock) and the run's first beat follows the trigger.
  */
 export class BeatStream {
   beats: Beat[] = [];
@@ -26,6 +32,9 @@ export class BeatStream {
   private library: LibraryRhythm | null = null;
   private segments: { from: number; lib: LibraryRhythm | null }[] = [];
   private lastV = -Infinity;
+  private key: string | null = null;
+  /** VT/VF and AIVR of the core engine (physics/arrhythmia.ts); unset, none. */
+  arrhythmia?: Arrhythmia;
 
   /**
    * `lookahead` is how far beats are generated ahead of the clock and `chunk` how much is added at a time.
@@ -43,29 +52,45 @@ export class BeatStream {
 
   /** Make sure beats exist through `t + lookahead` s, generated from the current rhythm state. */
   extend(t: number, state: RhythmState, mod?: SinusModulation) {
-    if (this.horizon < t + this.lookahead) {
+    if (this.horizon >= t + this.lookahead) return;
+    const target = t + this.lookahead + this.chunk;
+    for (let guard = 0; this.horizon < target && guard < 4; guard++) {
       const from = this.horizon;
-      this.horizon = t + this.lookahead + this.chunk;
+      this.horizon = target;
       this.select(state, from);
-      const fresh = this.library ? this.library.advance(this.horizon, state, mod) : this.conduction.advance(this.horizon, state, mod);
+      let fresh = this.library ? this.library.advance(target, state, mod) : this.conduction.advance(target, state, mod);
+      const cut = this.arrhythmia?.takeCut();
+      if (cut !== undefined) {
+        // a run started at the trigger beat `cut`: what was generated after it does not happen (it all lies ahead of the clock)
+        fresh = fresh.filter((b) => b.t <= cut + 1e-9);
+        this.beats = this.beats.filter((b) => b.t <= cut + 1e-9 || this.delivered.has(b));
+        this.horizon = Math.max(from, cut);
+      }
       if (this.alternans > 0) for (const b of fresh) if (!b.pOnly && !b.pvc && !b.silent) b.alt = this.altCount++ % 2 ? 1 - this.alternans : 1 + this.alternans;
       for (const b of fresh) if (!b.pOnly && !b.silent && b.t > this.lastV) this.lastV = b.t;
       this.beats.push(...fresh);
     }
   }
 
-  /** Switch pacemaker when the patient's rhythm changed; the new one starts where the generated beats end (`from`). */
+  /** Switch pacemaker when the patient's rhythm changed or an arrhythmia started or ended; the new one starts where the generated beats end (`from`). */
   private select(state: RhythmState, from: number) {
-    const want = isLibraryRhythm(state.rhythm) ? state.rhythm : null, cur = this.library;
-    if ((cur?.id ?? null) === want && (!cur || cur.bbb === state.bbb)) return;
-    if (want) {
+    const ep = this.arrhythmia?.rhythmAt(from) ?? null;
+    const want = ep ? ep.key : isLibraryRhythm(state.rhythm) ? state.rhythm : null, cur = this.library;
+    if (this.key === want && (!cur || !!ep || cur.bbb === state.bbb)) return;
+    let segFrom = from;
+    if (ep) {
+      const first = Math.max(ep.firstBeat ?? from + 0.1, from, ep.kind === "vf" ? -Infinity : this.lastV + ARRHYTHMIA.minGapS);
+      this.library = new LibraryRhythm(ep.id, (this.seed + 7919 * this.segments.length) >>> 0, first - 0.45, state.bbb, ep.spec);
+      if (ep.kind === "vf") segFrom = first;
+    } else if (want) {
       this.library = new LibraryRhythm(want, this.seed, from, state.bbb);
       this.library.ectopy = this.conduction.ectopy;
     } else {
       this.library = null;
       if (cur) this.conduction.resync(from, this.lastV);
     }
-    this.segments.push({ from, lib: this.library });
+    this.key = want;
+    this.segments.push({ from: segFrom, lib: this.library });
     if (this.segments.length > 8) this.segments.splice(0, this.segments.length - 8);
   }
 

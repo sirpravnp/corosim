@@ -11,10 +11,14 @@ import type { BeatRecord } from "../src/sim/metrics";
 const say = (...a: unknown[]) => { if (process.env.CORE_VERBOSE) console.log(...a.map((x) => (x && typeof x === "object" && "circ" in x ? Object.fromEntries(Object.entries(x).filter(([k]) => k !== "circ").map(([k, v]) => [k, typeof v === "number" ? +v.toFixed(2) : v])) : x))); };
 const mean = (a: number[]) => a.reduce((s, x) => s + x, 0) / a.length;
 
-/** A settled core-engine simulation: seed 3, `warm` s of reflex settling with no clinical time. */
+/**
+ * A settled core-engine simulation: seed 3, `warm` s of reflex settling with no clinical time. arrhythmiaTendency 0 (B3b): these are
+ * direction and calibration tests of the pump, reflexes and devices; a chance run of VT in the window (seed 3's anterior STEMI has a
+ * 4-beat run in its first clinical hour) is not what they measure. VT and VF have their own tests (arrhythmia*.test.ts).
+ */
 function make(sc: Scenario = {}, warm = 40, engine: "core" | "legacy" = "core") {
   const s = new Simulation({}, { engine });
-  s.reset({ seed: 3, ...sc }, { settled: true });
+  s.reset({ seed: 3, arrhythmiaTendency: 0, ...sc }, { settled: true });
   s.warmup(warm); s.history = [];
   return s;
 }
