@@ -28,6 +28,8 @@ export interface Beat {
   origin?: "sinus" | "atrial" | "junctional" | "ventricular" | "paced";
   /** Ventricular activation strength for the hemodynamic engine (1 = normal; 0 = no contraction). Absent: the PVC and potentiation rule of the live heart. */
   strength?: number;
+  /** Duration of the ventricular contraction relative to a normally conducted beat at the same RR (> 1: slower spread through muscle; core `HeartEvent.systole`). Absent: 1. */
+  systole?: number;
   /** Strength of this beat's atrial contraction (flutter: weak). Absent: 1. */
   atrialStrength?: number;
   /** Retrograde atrial activation this many s after the R peak (junctional rhythm, AV nodal re-entry): the atria contract against closed AV valves. */

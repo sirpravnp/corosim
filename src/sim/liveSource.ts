@@ -206,7 +206,7 @@ export class LiveSource implements HemoSource {
     const mapF = map, cvpF = wf((r) => r.lb.p.RA.mean), pamF = wf((r) => r.lb.p.PA.mean), pcwpF = wf((r) => r.lb.p.LA.mean); // resistances use pressures from the same beats as their flow
     const ef = (c: "LV" | "RV") => w((r) => (r.lb.v[c].max > 0 ? (r.lb.edv[c] - r.lb.esv[c]) / r.lb.edv[c] : NaN));
     return {
-      hr: (60 * all.length) / Tall, // the rate counts every beat, premature ones included
+      hr: (60 * all.filter((r) => r.lb.strength !== 0).length) / Tall, // the rate counts every beat, premature ones included; not the silent ticks of VF or asystole (B2)
       map, systolic: w((r) => r.lb.p.AO.max), diastolic: w((r) => r.lb.p.AO.min), cvp,
       pa: { systolic: w((r) => r.lb.p.PA.max), diastolic: w((r) => r.lb.p.PA.min), mean: pam }, pcwp,
       lvedp: w((r) => r.lb.p.LV.end), rvedp: w((r) => r.lb.p.RV.end),

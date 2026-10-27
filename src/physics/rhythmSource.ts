@@ -147,7 +147,7 @@ export class LibraryRhythm {
       if (e.pr !== undefined) b.pr = e.pr; else b.noP = true;
       if (e.retroP !== undefined) b.retroP = e.retroP;
       const st = this.strength(e);
-      if (st !== undefined) b.strength = st;
+      if (st !== undefined) { b.strength = st; b.systole = e.paced ? M.pacedSystole : st === M.polymorphic ? M.polymorphicSystole : M.ventricularSystole; }
       out.push(b);
       if (this.ectopy && this.eligible(e)) {
         const pv = this.ectopy.decide(e.t, e.rr);

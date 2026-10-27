@@ -208,7 +208,7 @@ export class LiveHeart {
     const strength = b.strength ?? (b.pvc ? LIVE.pvcStrength : this.afterPvc ? LIVE.potentiatedStrength : 1);
     this.afterPvc = b.pvc;
     this.queue.push({ t: tv, rr: b.rr, pvc: b.pvc, atrialKick: kick, strength });
-    this.engine.schedule({ kind: "ventricular", t: tv, strength, pvc: b.pvc });
+    this.engine.schedule(b.systole !== undefined ? { kind: "ventricular", t: tv, strength, pvc: b.pvc, systole: b.systole } : { kind: "ventricular", t: tv, strength, pvc: b.pvc });
     if (b.retroP !== undefined) this.engine.schedule({ kind: "atrial", t: tv + b.retroP }); // retrograde P: the atria contract against closed AV valves
   }
 
