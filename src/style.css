@@ -294,6 +294,12 @@ body.game #pgentry { display: none; }
 .pg-sub { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
 .pg-sliders { display: contents; }
 .pg-json { word-break: break-all; font-family: var(--font-data); }
+.pg-valve { margin-top: 6px; padding-top: 2px; border-top: 1px solid var(--rule); }
+.pg-readout { margin: 2px 0 6px; font-family: var(--font-data); font-size: 12px; overflow-wrap: anywhere; min-height: 1.2em; }
+.pg-iv { flex-wrap: wrap; gap: 6px; }
+.pg-ivresult { overflow-wrap: anywhere; }
+.pg-ivresult:empty { display: none; }
+.pg-prosthesis[hidden], .pg-ivresult[hidden] { display: none; }
 .pg-note { margin-top: 6px; }
 .pg-body details.fold { padding: 0; border: 0; }
 .ctl > [hidden] { display: none; }

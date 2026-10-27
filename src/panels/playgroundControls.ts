@@ -11,6 +11,7 @@ import type { FluidKind, ImpellaModel } from "../sim/patient";
 import { PRESETS, PRESET_BY_ID } from "../sim/presets";
 import { LESIONS, LESION_BY_ID, defaults } from "../sim/structural";
 import type { LesionId } from "../sim/structural";
+import { buildValves } from "./valvesPanel";
 
 export interface PlaygroundHost {
   getState(): PlaygroundState;
@@ -18,6 +19,8 @@ export interface PlaygroundHost {
   setState(next: PlaygroundState): void;
   loadPreset(id: string): void;
   exit(): void;
+  /** True when the page runs the legacy engine (the game): the per-valve controls are disabled. */
+  legacy?(): boolean;
 }
 export interface PlaygroundInfo { warnings: readonly string[]; link: string; presetId: string | null }
 export type MountId = "patient" | "valves" | "pericardium" | "support";
@@ -141,6 +144,11 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
       }
       if (def) [...sliders.querySelectorAll("input")].forEach((inp, i) => (inp as HTMLInputElement & { _sync?: (v: number) => void })._sync?.(s.structural!.values[def.params[i].key] ?? def.params[i].default));
     });
+    el.append(box);
+  }
+  {
+    const { box, body } = group("Valves one by one", null, true);
+    buildValves({ body, h, ctlId, fields, syncs, edit, legacy: host.legacy });
     el.append(box);
   }
 

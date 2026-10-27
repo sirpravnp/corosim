@@ -1,6 +1,7 @@
 // ---------------------------------------------------------------- helpers
 import * as THREE from "three";
-import { rotateHeart, Segment, diameterAt } from "../anatomy/tree";
+import { rotateHeart, Segment, diameterAt, restFlowAt } from "../anatomy/tree";
+import { narrowing, plaqueSector, plaqueBulge, plaqueTint, calcification, thrombusAt, muralThrombus, flowDensity, flowSpeedScale } from "../anatomy/lesionCues";
 import { Branch, buildBranches, tierOf, branchTierCount } from "../anatomy/branches";
 import { BRANCHES } from "../config/tree";
 import { projectToEpicardium } from "../anatomy/heartSurface";
@@ -18,9 +19,10 @@ const ramp = (stops: string[], t: number) => { t = Math.min(1, Math.max(0, t)) *
 const lg = (v: number, lo: number, hi: number) => (Math.log10(Math.max(v, lo)) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo));
 const GROUP_COLOR: Record<string, number> = { LAD: 0x1f5fa8, LCx: 0x2e7d4f, RCA: 0xc77c00 };
 const ARTERY = new THREE.Color(0xc2392f), ARTERY_DEEP = new THREE.Color(0x8a221d), ARTERY_EMPTY = new THREE.Color(0x3d2530), GRAY = new THREE.Color(0x9a9a9a);
+const PLAQUE = new THREE.Color(0xe3cd8c), CALCIUM = new THREE.Color(0xf4f1e6), CLOT = new THREE.Color(0x7d0d18); // lesion cues: lipid plaque, calcium fleck, fresh thrombus
 
 // ---------------------------------------------------------------- vessels
-export interface Built { seg: Segment; mesh: THREE.Mesh; ctr: THREE.Vector3[]; out: THREE.Vector3[]; nrm: THREE.Vector3[]; bin: THREE.Vector3[]; rad: number[]; d: number[]; blocked: boolean[] }
+export interface Built { seg: Segment; mesh: THREE.Mesh; ctr: THREE.Vector3[]; out: THREE.Vector3[]; nrm: THREE.Vector3[]; bin: THREE.Vector3[]; rad: number[]; d: number[]; dh: number[]; blocked: boolean[] }
 export let built: Built[] = [];
 export const vesselGroup = new THREE.Group(); heartGroup.add(vesselGroup);
 const M = 22;
@@ -70,7 +72,7 @@ export function buildVessels() {
     geo.setIndex(idx);
     const mesh = new THREE.Mesh(geo, vesselMat);
     mesh.userData.segId = seg.id; vesselGroup.add(mesh);
-    const b: Built = { seg, mesh, ctr, out: surfN, nrm, bin, rad: [], d: [], blocked: blockedFlags(seg) };
+    const b: Built = { seg, mesh, ctr, out: surfN, nrm, bin, rad: [], d: [], dh: [], blocked: blockedFlags(seg) };
     lumen(b); built.push(b);
   }
   buildBranchMesh();
@@ -87,6 +89,7 @@ function bifurcationBulge(seg: Segment, s: number) {
 export function lumen(b: Built) {
   const seg = b.seg, r = A.cond.seg[seg.id], L = seg.length, ph = hash(seg.id) * 6.283;
   b.d = S.hide ? r.s.map((s) => diameterAt(tree, seg, s)) : r.d; // a hidden lesion must not pinch the tube
+  b.dh = r.s.map((s) => diameterAt(tree, seg, s)); // the healthy lumen: what the lesion is measured against
   b.rad = r.s.map((s, i) => {
     const flare = (1 + 0.28 * Math.exp(-s / 2.2)) * (1 + bifurcationBulge(seg, s));
     const tip = Math.sqrt(Math.max(0, Math.min(1, (L - s) / 3.5))); // hemispherical close-off at the distal end
@@ -96,14 +99,17 @@ export function lumen(b: Built) {
 }
 
 export function shapeVessels() {
-  const c = new THREE.Color(), o2f = S.mode === "o2" ? o2Now() : null;
+  const c = new THREE.Color(), tmp = new THREE.Color(), o2f = S.mode === "o2" ? o2Now() : null;
   for (const b of built) {
     const r = A.cond.seg[b.seg.id], n = r.s.length;
     const col = (segCol[b.seg.id] = segCol[b.seg.id]?.length === n * 3 ? segCol[b.seg.id] : new Float32Array(n * 3));
     const pa = b.mesh.geometry.attributes.position as THREE.BufferAttribute, ca = b.mesh.geometry.attributes.color as THREE.BufferAttribute;
-    const dMax = Math.max(...b.d);
+    const dMax = Math.max(...b.d), theta0 = hash(b.seg.id + "plaque") * 6.283; // the plaque's side of the wall is fixed per vessel
+    const cues = S.mode === "real" || S.mode === "isch"; // heat-map colours are data: only the real views take the plaque and clot tints
     for (let i = 0; i < n; i++) {
       const R = b.rad[i] * S.exag;
+      const nar = S.hide ? 0 : narrowing(b.d[i], b.dh[i]), clot = S.hide ? 0 : thrombusAt(r.s[i], r.blockedFrom), thr = Math.max(clot, S.hide ? 0 : muralThrombus(nar)), cue = nar > 0 || thr > 0;
+      const ratio = b.dh[i] / Math.max(b.d[i], 1e-9);
       const lift = R * 0.6; // arteries sit in the epicardial fat, mostly above the muscle
       const cx = b.ctr[i].x + b.out[i].x * lift, cy = b.ctr[i].y + b.out[i].y * lift, cz = b.ctr[i].z + b.out[i].z * lift;
       const blocked = b.blocked[i] && !S.hide;
@@ -117,9 +123,20 @@ export function shapeVessels() {
       if (S.selected === b.seg.id) c.lerp(new THREE.Color(0xffffff), 0.35);
       col[3 * i] = c.r; col[3 * i + 1] = c.g; col[3 * i + 2] = c.b; // the side branches take the parent's final colour at their take-off
       for (let j = 0; j <= M; j++) {
-        const th = (j / M) * Math.PI * 2, cs = Math.cos(th) * R, sn = Math.sin(th) * R, o = i * (M + 1) + j;
+        const th = (j / M) * Math.PI * 2, o = i * (M + 1) + j;
+        let Rj = R, vr = c.r, vg = c.g, vb = c.b;
+        if (cue) { // eccentric plaque on one side of the wall, a clot cap on the proximal side of an occlusion, mural thrombus on a plaque's crown
+          const sec = plaqueSector(th, theta0), crown = plaqueSector(th, theta0 + 0.9);
+          Rj = R * (1 + plaqueBulge(nar, sec, ratio) + 0.22 * thr);
+          if (cues) {
+            const tw = clot > 0 ? clot : thr * crown;
+            tmp.copy(c).lerp(PLAQUE, 0.8 * plaqueTint(nar, sec)).lerp(CALCIUM, 0.85 * calcification(r.s[i], th, nar) * sec).lerp(CLOT, 0.9 * tw);
+            vr = tmp.r; vg = tmp.g; vb = tmp.b;
+          }
+        }
+        const cs = Math.cos(th) * Rj, sn = Math.sin(th) * Rj;
         pa.setXYZ(o, cx + b.nrm[i].x * cs + b.bin[i].x * sn, cy + b.nrm[i].y * cs + b.bin[i].y * sn, cz + b.nrm[i].z * cs + b.bin[i].z * sn);
-        ca.setXYZ(o, c.r, c.g, c.b);
+        ca.setXYZ(o, vr, vg, vb);
       }
     }
     pa.needsUpdate = true; ca.needsUpdate = true; b.mesh.geometry.computeVertexNormals();
@@ -249,14 +266,16 @@ function legend() {
 
 // ---------------------------------------------------------------- blood flow particles
 const PER = 30;
+let prk = new Float32Array(0); // each particle's fixed rank (0..1): it is drawn only while the local flow density exceeds it, so a starved vessel thins out
 let pu = new Float32Array(0), pa2 = new Float32Array(0), pb2 = new Float32Array(0), pSeg: number[] = [];
 const pGeo = new THREE.BufferGeometry();
 export const points = new THREE.Points(pGeo, new THREE.PointsMaterial({ color: 0x7a0f0f, size: 1.4, sizeAttenuation: true }));
+points.frustumCulled = false; // thinned-out particles are parked far off, which would stretch the bounds
 vesselGroup.add(points);
 export function initParticles() {
   const N = built.length * PER;
-  pu = new Float32Array(N); pa2 = new Float32Array(N); pb2 = new Float32Array(N); pSeg = [];
-  for (let i = 0; i < N; i++) { pu[i] = Math.random(); const r = Math.sqrt(Math.random()) * 0.8, th = Math.random() * 6.283; pa2[i] = r * Math.cos(th); pb2[i] = r * Math.sin(th); pSeg.push(Math.floor(i / PER)); }
+  pu = new Float32Array(N); prk = new Float32Array(N); pa2 = new Float32Array(N); pb2 = new Float32Array(N); pSeg = [];
+  for (let i = 0; i < N; i++) { pu[i] = Math.random(); prk[i] = Math.random(); const r = Math.sqrt(Math.random()) * 0.8, th = Math.random() * 6.283; pa2[i] = r * Math.cos(th); pb2[i] = r * Math.sin(th); pSeg.push(Math.floor(i / PER)); }
   pGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(N * 3), 3));
 }
 const bsearch = (xs: number[], x: number) => { let lo = 0, hi = xs.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (xs[m] <= x) lo = m; else hi = m; } return lo; };
@@ -265,9 +284,12 @@ export function stepParticles(dt: number) {
   for (let i = 0; i < pu.length; i++) {
     const b = built[pSeg[i]], r = A.cond.seg[b.seg.id], L = b.seg.length;
     let s = pu[i] * L, k = Math.min(r.s.length - 2, bsearch(r.s, s));
-    s += Math.min(0.03 * L, r.v[k] * (b.blocked[k] ? 0 : 1) * 1000 * dt * 0.5);
+    // TIMI-style cue: the particles thin out and slow where the vessel carries little of its resting flow, and stop beyond an occlusion
+    const dens = flowDensity(r.Q[k], restFlowAt(tree, b.seg, s), b.blocked[k] && !S.hide), spd = flowSpeedScale(dens);
+    s += Math.min(0.03 * L * spd, r.v[k] * 1000 * dt * 0.5 * spd);
     if (s >= L || !(s >= 0)) s = 0;
     pu[i] = s / L; k = Math.min(r.s.length - 2, bsearch(r.s, s));
+    if (prk[i] >= dens) { pos.setXYZ(i, 0, 1e5, 0); continue; }
     const w = (s - r.s[k]) / (r.s[k + 1] - r.s[k] || 1), R = (b.rad[k] * (1 - w) + b.rad[k + 1] * w) * S.exag;
     const p0 = b.ctr[k], p1 = b.ctr[k + 1], n0 = b.nrm[k], b0 = b.bin[k], o0 = b.out[k], lift = R * 0.6;
     pos.setXYZ(i, p0.x + (p1.x - p0.x) * w + o0.x * lift + (n0.x * pa2[i] + b0.x * pb2[i]) * R, p0.y + (p1.y - p0.y) * w + o0.y * lift + (n0.y * pa2[i] + b0.y * pb2[i]) * R, p0.z + (p1.z - p0.z) * w + o0.z * lift + (n0.z * pa2[i] + b0.z * pb2[i]) * R);
