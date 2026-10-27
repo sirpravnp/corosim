@@ -1153,6 +1153,8 @@ export class Simulation {
 
   /** Start again: the scenario last given to `reset()` (or the constructor), from the beginning. The only way out of death besides `reset()`. */
   restartPatient() { this.reset(this.lastReset.input, this.lastReset.opts); }
+  /** The patient description `restartPatient()` starts from (a copy). */
+  restartSpec(): PatientSpec { return JSON.parse(JSON.stringify(this.lastReset.input)) as PatientSpec; }
 
   /** The arrest part of `state()`. `status` is "none" until the patient first arrests. */
   arrestState() {
