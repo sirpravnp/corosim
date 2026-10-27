@@ -4,7 +4,7 @@ import type { StructuralReport } from "../src/physics/structural";
 import { LESIONS, defaults } from "../src/sim/structural";
 import { PATIENTS, O2_PER_G_HB } from "../src/config/structural";
 import { Simulation } from "../src/sim/simulation";
-import { BridgeSource } from "../src/sim/bridgeSource";
+import { LiveSource } from "../src/sim/liveSource";
 import type { BeatSummary, HemoNode, HemoNumbers, Saturations } from "../src/sim/hemoSource";
 import { createStubSource } from "../src/sim/stubSource";
 import { rightHeartCath, mixedVenous, wedgeFromLA } from "../src/sim/rightHeartCath";
@@ -84,12 +84,12 @@ describe("right-heart cath on structural lesions", () => {
   });
 });
 
-describe("right-heart cath through the bridge: RV infarct", () => {
-  const sim = new Simulation();
+describe("right-heart cath through the live source: RV infarct", () => {
+  const sim = new Simulation({}, { engine: "core" });
+  const bridge = new LiveSource(sim);
   sim.reset({ seed: 3, lesions: [{ artery: "RCA", occluded: true, position: 0.25 }] }, { settled: true });
   sim.warmup(40); sim.history = [];
-  const bridge = new BridgeSource(sim);
-  sim.run(40); bridge.refresh();
+  sim.run(40);
   const r = rightHeartCath(bridge)!;
   it("gives a low PAPi and RA/PCWP >= 0.8", () => {
     console.log("RV infarct PAPi", r.derived.papi.toFixed(2), "RA", r.numbers.cvp.toFixed(1), "PCWP", r.numbers.pcwp.toFixed(1), "RA/PCWP", (r.numbers.cvp / r.numbers.pcwp).toFixed(2));

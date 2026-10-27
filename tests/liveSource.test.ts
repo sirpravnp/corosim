@@ -23,8 +23,8 @@ const LAD = CASE_BY_ID.ladocc.scenario;
 
 describe("the source of a normal adult", () => {
   const { sim, src, n, sat } = patient();
-  it("is live, adult and not standalone, with the nodes of the contract", () => {
-    expect(src.kind).toBe("live"); expect(src.patientKind).toBe("adult"); expect(src.standalone).toBe(false);
+  it("is live, with the nodes of the contract", () => {
+    expect(src.kind).toBe("live");
     for (const nd of CATH_NODES) expect(src.nodes()).toContain(nd);
     expect(src.now()).toBeCloseTo(sim.t, 6);
   });
@@ -156,11 +156,11 @@ describe("beat-level signs on the live page", () => {
   });
 });
 
-describe("a patient the live source cannot represent", () => {
-  it("a neonate's structural fields are not applied to the adult core, which runs on (the page reads the bridge instead)", () => {
+describe("a spec that still names a newborn", () => {
+  it("runs as the adult (the Simulator has no newborn; the Structural page keeps them)", () => {
     const sim = new Simulation({}, { engine: "core" });
-    sim.reset({ seed: 3, kind: "neonate", heart: { vsd: { diameterMm: 5 } } }, { settled: true });
-    expect(sim.patientKind).toBe("neonate"); expect(sim.coreNote).toBe("");
+    sim.reset({ seed: 3, kind: "neonate" } as PatientSpec, { settled: true });
+    expect(sim.coreNote).toBe("");
     sim.warmup(10);
     const n = new LiveSource(sim).numbers();
     expect(n.map).toBeGreaterThan(70); // a plain adult

@@ -163,8 +163,7 @@ export const loopsPanel: PanelDef = {
         note.textContent =
           (fitted ? `Dotted lines are estimates fitted to the ${shown.length} beats shown, not measurements` +
             (espvr ? `: ESPVR slope ${espvr.slope.toFixed(2)} mmHg/ml, V0 ${espvr.v0.toFixed(0)} ml` : "") + ". "
-            : "Points mark the live beat's end-systole (amber) and end-diastole (green). Lines are drawn only when the beats shown differ enough to fit. ") +
-          (src.kind === "bridge" ? "Bridge: volumes do not vary with RR." : "");
+            : "Points mark the live beat's end-systole (amber) and end-diastole (green). Lines are drawn only when the beats shown differ enough to fit. ");
       } else {
         note.textContent = chs.length > 1 ? "Reference lines are shown for one ventricle at a time." : "Reference lines are drawn for the ventricles only.";
       }

@@ -7,13 +7,13 @@
  *   the same keys `sim.sites` / `sim.sev` use, so no mapping is needed). Tissue O2 is NOT blood saturation, so it has its
  *   own scale: relative to the patient's normal, rel = (bed - floor) / (normal - floor) clamped to 0..1, drawn with the
  *   same blue-to-red colours (rel 0 = fully ischemic floor = blue, rel 1 = normal = red). While the value is the
- *   ischemia-derived placeholder, normal = BRIDGE.bedOxygen.base and floor = base - slope (severity 1). When E2/E3
+ *   ischemia-derived placeholder, normal = LIVE_SOURCE.bedOxygen.base and floor = base - slope (severity 1). When E2/E3
  *   supply real per-bed values, pass their own normal and floor to `o2Frame`. Each ventricular vertex mixes its nearest
  *   beds by the weights the ischemia painting already uses.
  * - Before the bridge's first solve every value is NaN: grey, with a "waiting" legend note.
  */
 import { SAT_RANGE, legendGradient, satColor } from "../structural/heartView";
-import { BRIDGE } from "../config/bridge";
+import { LIVE_SOURCE } from "../config/liveSource";
 import type { Saturations } from "./hemoSource";
 import type * as THREE from "three";
 
@@ -35,7 +35,7 @@ export function tissueRelative(f: O2Frame, t: number): number {
   return Math.min(1, Math.max(0, (t - f.floor) / (f.normal - f.floor)));
 }
 
-export function o2Frame(s: Saturations, normal = BRIDGE.bedOxygen.base, floor = BRIDGE.bedOxygen.base - BRIDGE.bedOxygen.slope): O2Frame {
+export function o2Frame(s: Saturations, normal = LIVE_SOURCE.bedOxygen.base, floor = LIVE_SOURCE.bedOxygen.base - LIVE_SOURCE.bedOxygen.slope): O2Frame {
   const arterial = Number.isFinite(s.preductal) ? s.preductal : s.node?.AO ?? NaN;
   return { ready: Number.isFinite(arterial), arterial: Number.isFinite(arterial) ? arterial : NaN, bed: s.bed, source: s.bedSource, normal, floor };
 }

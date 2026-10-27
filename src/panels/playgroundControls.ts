@@ -27,8 +27,6 @@ export interface PlaygroundUi {
   slot(id: SlotId): HTMLElement;
   /** Show the state: every control takes its value from it. */
   sync(state: PlaygroundState, info: PlaygroundInfo): void;
-  /** Set the patient kind as the buttons do. */
-  setKind(kind: "adult" | "neonate"): void;
 }
 
 const R = PATIENT_RANGES;
@@ -41,8 +39,6 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEle
 }
 /** A group's tag: nothing when the group is simulated (the usual case), "not simulated" when it is only saved with the patient. */
 const badge = (m: FieldGroupInfo["modelled"]) => { const t = h("span", { className: `pg-tag pg-${m}`, textContent: m === "legacy" ? "on/off only" : "not simulated", title: m === "legacy" ? "Only the on/off switch changes this patient" : "Saved with the patient and in the share link, but it does not change the numbers yet" }); t.hidden = m === "yes"; return t; };
-/** The badge and note of a group for the patient kind on screen: an adult runs on the core engine, a neonate on the bridge, which reads less (`FieldGroupInfo.neonate`). */
-const modelledFor = (info: FieldGroupInfo, kind: "adult" | "neonate" | undefined) => (kind === "neonate" ? info.neonate ?? info.modelled : info.modelled);
 
 export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
   const syncs: ((st: PlaygroundState) => void)[] = [];
@@ -62,7 +58,7 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     box.append(h("summary", {}, h("h2", { textContent: title }), ...(info ? [tag] : [])), body);
     if (info) {
       body.append(note);
-      syncs.push((s) => { const m = modelledFor(info, s.kind); const b = badge(m); tag.className = b.className; tag.textContent = b.textContent; tag.title = b.title; tag.hidden = b.hidden; note.textContent = s.kind === "neonate" && info.neonateNote ? info.neonateNote : info.note; note.hidden = m === "yes"; });
+      syncs.push((s) => { const m = info.modelled; const b = badge(m); tag.className = b.className; tag.textContent = b.textContent; tag.title = b.title; tag.hidden = b.hidden; note.textContent = info.note; note.hidden = m === "yes"; });
     }
     return { box, body };
   }
@@ -101,21 +97,6 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     warnings,
   );
 
-  // ---- patient kind --------------------------------------------------------------------------------------------------
-  {
-    const { box, body } = group("Patient kind", GROUP_INFO.kind, true);
-    const row = h("div", { className: "row pg-first" });
-    const btns = (["adult", "neonate"] as const).map((k) => {
-      const b = h("button", { type: "button", textContent: k === "adult" ? "Adult" : "Neonate", id: `pg-kind-${k}` });
-      b.addEventListener("click", () => edit((s) => ({ ...s, kind: k })));
-      return [k, b] as const;
-    });
-    row.append(...btns.map(([, b]) => b));
-    body.append(row, h("p", { className: "note", textContent: "A neonate has no coronary tree: its coronary lesions and view are hidden, and any lesion in a link is dropped with a warning." }));
-    syncs.push((s) => { for (const [k, b] of btns) b.classList.toggle("on", (s.kind ?? "adult") === k); });
-    el.append(box);
-  }
-
   // ---- slots for the page's existing controls ------------------------------------------------------------------------
   for (const [id, title, cls, open] of [["coronary", "Coronary lesions", "pg-coronary", true], ["rhythm", "Rhythm and conduction", "", false]] as const) {
     const { box, body } = group(title, null, open, cls);
@@ -131,7 +112,7 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     sel.append(customOpt);
     for (const [g, label] of [["valve", "Valves"], ["congenital", "Congenital"]] as const) {
       const og = h("optgroup", { label });
-      for (const l of LESIONS.filter((x) => x.group === g)) og.append(h("option", { value: l.id, textContent: l.label }));
+      for (const l of LESIONS.filter((x) => x.group === g && x.patient === "adult")) og.append(h("option", { value: l.id, textContent: l.label }));
       sel.append(og);
     }
     const sliders = h("div", { className: "pg-sliders" }), teach = h("p", { className: "note" }), custom = h("p", { className: "note pg-json" });
@@ -139,7 +120,7 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     sel.addEventListener("change", () => {
       if (sel.value === CUSTOM) return;
       const def = LESION_BY_ID[sel.value]!;
-      edit((s) => ({ ...s, structural: { id: def.id, values: defaults(def) }, heart: undefined, kind: def.patient === "neonate" ? "neonate" : s.kind }));
+      edit((s) => ({ ...s, structural: { id: def.id, values: defaults(def) }, heart: undefined }));
     });
     let shown: string | null = null;
     syncs.push((s) => {
@@ -203,7 +184,7 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     const sub = (title: string, info: FieldGroupInfo) => {
       const tag = h("span"), note = h("p", { className: "note pg-note" });
       body.append(h("p", { className: "glabel pg-sub" }, title, " ", tag), note);
-      syncs.push((s) => { const m = modelledFor(info, s.kind); const b = badge(m); tag.className = b.className; tag.textContent = b.textContent; tag.title = b.title; tag.hidden = b.hidden; note.textContent = s.kind === "neonate" && info.neonateNote ? info.neonateNote : info.note; note.hidden = m === "yes"; });
+      syncs.push((s) => { const m = info.modelled; const b = badge(m); tag.className = b.className; tag.textContent = b.textContent; tag.title = b.title; tag.hidden = b.hidden; note.textContent = info.note; note.hidden = m === "yes"; });
     };
     /** A device's settings, shown only while it is switched on. */
     const settings = (on: (s: PlaygroundState) => boolean) => { const d = h("div", { className: "pg-dev" }); body.append(d); syncs.push((s) => { d.hidden = !on(s); }); return d; };
@@ -239,7 +220,6 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
   return {
     el,
     slot: (id) => slots[id],
-    setKind: (k) => edit((s) => ({ ...s, kind: k })),
     sync(state, info) {
       for (const f of syncs) f(state);
       preset.value = info.presetId ?? "";

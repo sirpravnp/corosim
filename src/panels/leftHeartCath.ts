@@ -95,7 +95,7 @@ export const leftHeartCathPanel: PanelDef = {
       resize() { lastKey = ""; },
       draw() {
         const n = src.numbers(), hb = recentHemodynamicBeats(src.beats(4 + SETTLE_BEATS)).beats, beat = hb[hb.length - 1]; // pull-back and gradients from the latest steady beat
-        if (beat !== lastBeat) { lastBeat = beat; cur = leftHeartCath(n, beat, src.patientKind ?? "adult"); lastKey = ""; }
+        if (beat !== lastBeat) { lastBeat = beat; cur = leftHeartCath(n, beat, "adult"); lastKey = ""; }
         const key = `${cur ? 1 : 0}|${n.co}|${c1.clientWidth}`;
         if (key === lastKey) return;
         lastKey = key;

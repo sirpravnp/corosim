@@ -7,9 +7,8 @@ import { Simulation } from "../sim/simulation";
 import { Scenario } from "../sim/scenario";
 import { decodePatient } from "../sim/llm";
 import type { PatientSpec } from "../sim/patient";
-import { BridgeSource } from "../sim/bridgeSource";
-import { createWorkerSolver } from "../sim/bridgeWorkerSolver";
-import { openHeartBridge } from "./heart";
+import type { LiveSource } from "../sim/liveSource";
+import { openHeartSource } from "./heart";
 import { rhcPanel } from "../panels/rightHeartCath";
 import { leftHeartCathPanel } from "../panels/leftHeartCath";
 import { Procedure } from "../config/management";
@@ -27,7 +26,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
 
 mountShell({ page: "cath", root: "../" }).ai.start();
-const sim = new Simulation({ seed: 1 });
+const sim = new Simulation({ seed: 1 }, { engine: "core" }); // the core engine: the angiogram and the heart-cath tabs read the same beat-by-beat heart
 const view = new AngioView($<HTMLCanvasElement>("ang"));
 let current: CathCase = CASES[0];
 let model!: AngioModel, report!: CathReport, wire!: WireModel;
@@ -44,7 +43,7 @@ function load(c: CathCase, fromLink = false, spec?: PatientSpec) {
   if (spec) sharedSpec = spec;
   sim.reset(c.scenario, { settled: true });
   sim.warmup(20);
-  newBridge(shared ? sharedSpec : undefined);
+  newSource();
   links.refresh();
   $("treatResult").textContent = "";
   view.opts.rot = c.view.rot; view.opts.tilt = c.view.tilt; view.opts.injection = c.view.injection;
@@ -113,22 +112,21 @@ function wireUi() {
 
 // ---------------------------------------------------------------- right- and left-heart cath tabs
 /**
- * The Simulator's two cath panels, mounted on a bridge over this page's own Simulation. A new patient gets a new bridge (an
- * old one would apply a late solve of the previous patient); until its first solve lands the panels say they are waiting.
- * The simulation is stepped (no ischemia clock) only while a heart tab is on screen, so the bridge has beats to replay.
+ * The Simulator's two cath panels, mounted on a live source over this page's own core-engine Simulation. A new patient gets a new
+ * source (the panels forget the previous patient's beats); until its first beats land the panels say they are waiting.
+ * The simulation is stepped without an ischemia clock (`minutes: 0`) every frame, so the heart beats.
  */
-const solver = createWorkerSolver();
-let bridge: BridgeSource | null = null;
+let source: LiveSource | null = null;
 const TABS = [
   { tab: $("tab-rhc"), body: $("tabpanel-rhc"), panel: rhcPanel.create() },
   { tab: $("tab-lhc"), body: $("tabpanel-lhc"), panel: leftHeartCathPanel.create() },
 ];
 let activeTab = 0, mounted = false;
-function newBridge(spec?: PatientSpec) {
-  bridge?.dispose();
-  bridge = openHeartBridge(sim, spec, solver);
-  if (!mounted) { TABS.forEach((t) => t.panel.mount(t.body, bridge!)); mounted = true; }
-  else TABS.forEach((t) => t.panel.setSource?.(bridge!));
+function newSource() {
+  source?.dispose();
+  source = openHeartSource(sim);
+  if (!mounted) { TABS.forEach((t) => t.panel.mount(t.body, source!)); mounted = true; }
+  else TABS.forEach((t) => t.panel.setSource?.(source!));
 }
 function selectTab(i: number, focus = false) {
   activeTab = i;
@@ -210,4 +208,4 @@ angleText();
 fromHash();
 const frame = (now: number) => { view.draw(now); heartFrame(now); requestAnimationFrame(frame); };
 requestAnimationFrame(frame);
-(window as unknown as { corosimCath: object }).corosimCath = { sim, load: (id: string) => { if (CASE_BY_ID[id]) load(CASE_BY_ID[id]); }, model: () => model, report: () => report, bridge: () => bridge };
+(window as unknown as { corosimCath: object }).corosimCath = { sim, load: (id: string) => { if (CASE_BY_ID[id]) load(CASE_BY_ID[id]); }, model: () => model, report: () => report, source: () => source };

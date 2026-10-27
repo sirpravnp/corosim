@@ -8,8 +8,9 @@ import { normalizePatient, PatientSpec } from "../src/sim/patient";
 const hashOf = (href: string) => href.slice(href.indexOf("#"));
 const link = (from: PageId, p: PatientSpec, to: string) => crossLinks(from, p, "../").find((l) => l.page === to);
 
-describe("structural <-> simulator and cath lab for every lesion", () => {
-  for (const l of LESIONS) {
+describe("structural <-> simulator and cath lab for every adult lesion", () => {
+  // newborn lessons have no Simulator or cath-lab patient: the Structural page leaves those two links out
+  for (const l of LESIONS.filter((x) => x.patient === "adult")) {
     it(l.id, () => {
       const hash = lesionHash(l.id, defaults(l));
       const spec = patientFromHash("structural", hash)!;
@@ -19,7 +20,6 @@ describe("structural <-> simulator and cath lab for every lesion", () => {
         expect(href.startsWith(`../${to}/#s=`)).toBe(true);
         const back = patientFromHash(to, hashOf(href))!;
         expect(back).toEqual(spec);
-        expect(back.kind).toBe(l.patient);
         // and back to structural: the same lesion and sliders
         const s = link(to, back, "structural")!;
         expect(s, `${l.id} from ${to}`).toBeDefined();
@@ -29,7 +29,7 @@ describe("structural <-> simulator and cath lab for every lesion", () => {
     });
   }
   it("non-default sliders survive the trip", () => {
-    for (const hash of ["#lesion=as&severity=0.5", "#lesion=vsd&diameter=7&pvri=12", "#lesion=tof&obstruction=0.6&spasm=0.8&vsd=6.5&svr=1.4&pvri=9", "#lesion=ebstein&severity=0.35&pfo=0&duct=0&pvri=15", "#lesion=tri-atresia&vsd=0&ps=0.55&asd=8&duct=1.5&pvri=4"]) {
+    for (const hash of ["#lesion=as&severity=0.5", "#lesion=asd&diameter=12"]) {
       const spec = patientFromLesionHash(hash);
       expect(hashOf(link("sim", spec, "structural")!.href), hash).toBe(hash);
     }
@@ -39,19 +39,20 @@ describe("structural <-> simulator and cath lab for every lesion", () => {
 describe("hash round trips", () => {
   const scenario = { lesions: [{ artery: "LAD", stenosis: 0.7 }, { artery: "RCA", occluded: true }], patient: { rhythm: "af" as const, bbb: "lbbb" as const }, exertion: true };
   it("sim -> cath -> sim keeps the whole patient, structural sections included", () => {
-    const p = joinPatient(scenario, { kind: "neonate", heart: patientFromLesionHash("#lesion=vsd&diameter=6").heart });
+    const p = joinPatient(scenario, { heart: patientFromLesionHash("#lesion=asd&diameter=12").heart });
     const toCath = patientFromHash("cath", hashOf(link("sim", p, "cath")!.href))!;
     expect(toCath).toEqual(p);
     expect(patientFromHash("sim", hashOf(link("cath", toCath, "sim")!.href))).toEqual(p);
   });
-  it("links preserve kind, and a Scenario-only patient stays a Scenario", () => {
-    expect(patientFromHash("sim", hashOf(link("cath", { kind: "neonate" }, "sim")!.href))!.kind).toBe("neonate");
+  it("a Scenario-only patient stays a Scenario", () => {
     expect(patientFromHash("sim", hashOf(link("cath", scenario, "sim")!.href))).toEqual(scenario);
   });
-  it("the spec in a link is still valid after normalising", () => {
-    for (const l of LESIONS) {
+  it("the spec in a link is still valid after normalising, and says nothing about a newborn", () => {
+    for (const l of LESIONS.filter((x) => x.patient === "adult")) {
       const spec = patientFromLesionHash(`#lesion=${l.id}`);
-      expect(normalizePatient(decodePatient(hashOf(link("structural", spec, "sim")!.href).slice(3))).spec.kind).toBe(l.patient);
+      const n = normalizePatient(decodePatient(hashOf(link("structural", spec, "sim")!.href).slice(3)));
+      expect(n.spec).not.toHaveProperty("kind");
+      expect(n.warnings.filter((w) => /kind|neonate/.test(w))).toEqual([]);
     }
   });
   it("pages without a patient hash give none", () => {
@@ -73,9 +74,9 @@ describe("which links appear", () => {
     expect(crossLinks("sim", { heart: {} }, "../").map((l) => l.page)).toEqual(["cath", "structural", "ekg", "echo"]);
     expect(crossLinks("sim", {}, "../").map((l) => l.page)).toEqual(["cath", "ekg", "echo"]);
   });
-  it("a heart that is no library lesion, or the wrong kind, gets no structural link", () => {
-    expect(lesionForHeart({ kind: "adult", heart: { vsd: { diameterMm: 5 }, pvri: 2 } })).toBeNull(); // the VSD lesson is a neonate's
-    expect(lesionForHeart({ kind: "neonate", heart: { vsd: { diameterMm: 5.3 }, pvri: 2, rvContractility: 3 } })).toBeNull();
+  it("a heart that is no library lesion, or only a newborn's, gets no structural link", () => {
+    expect(lesionForHeart({ heart: { vsd: { diameterMm: 5 }, pvri: 2 } })).toBeNull(); // the VSD lesson is a neonate's, and the Simulator has none
+    expect(lesionForHeart({ heart: { vsd: { diameterMm: 5.3 }, pvri: 2, rvContractility: 3 } })).toBeNull();
     expect(link("sim", { heart: { satLung: 0.5, lvSize: 2 } }, "structural")).toBeUndefined();
   });
   it("echo is a plain link and the ekg link is a preset, neither carrying the patient", () => {

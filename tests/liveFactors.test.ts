@@ -6,7 +6,6 @@ import { ElastanceChamber } from "../src/physics/core/chamber";
 import { defaultPr } from "../src/physics/core/fromModel";
 import type { Beat } from "../src/physics/ecg";
 import { ISCHEMIA, ischemiaFactors } from "../src/config/ischemia";
-import { BRIDGE } from "../src/config/bridge";
 
 const mean = (a: number[]) => a.reduce((s, x) => s + x, 0) / a.length;
 function sinus(hr: number, t0: number, t1: number): Beat[] {
@@ -26,9 +25,8 @@ const steady = (setup: (h: LiveHeart) => void, secs = 25) => {
 };
 
 describe("ischemia constants", () => {
-  it("are shared and unchanged from the bridge's validated values", () => {
+  it("are shared and unchanged from the validated values", () => {
     expect(ISCHEMIA).toMatchObject({ lvEesLoss: 1.25, rvEesLoss: 0.8, lvStiffGain: 1.5, rvStiffGain: 2 });
-    expect(Object.keys(BRIDGE)).not.toContain("lvEesLoss");
     expect(ischemiaFactors(0, 0)).toEqual({ lvEes: 1, rvEes: 1, lvStiffness: 1, rvStiffness: 1 });
     const f = ischemiaFactors(0.4, 0.5);
     expect(f.lvEes).toBeCloseTo(0.5, 12); expect(f.rvEes).toBeCloseTo(0.6, 12); expect(f.lvStiffness).toBeCloseTo(1.6, 12); expect(f.rvStiffness).toBeCloseTo(2, 12);

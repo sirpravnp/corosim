@@ -9,12 +9,10 @@ import { rhcPanel } from "../panels/rightHeartCath";
 import { leftHeartCathPanel } from "../panels/leftHeartCath";
 import { jvpPanel } from "../panels/jvp";
 import { oxygenPanel } from "../panels/oxygen";
-import { BridgeSource } from "../sim/bridgeSource";
 import { LiveSource } from "../sim/liveSource";
-import { createWorkerSolver } from "../sim/bridgeWorkerSolver";
 import type { Workspace } from "../panels/workspace";
 import type { HemoSource } from "../sim/hemoSource";
-import { $, S, sim, bridgeOpts, playClock, panelSource, setPanelSource } from "./state";
+import { $, S, sim, patientOpts, playClock, panelSource, setPanelSource } from "./state";
 import { controlsUi } from "./readouts";
 
 /** The workspace's "settling" note, shown while the core engine builds and warms up (panels have no beats yet). */
@@ -23,35 +21,27 @@ settlingNote.className = "ws-settling"; settlingNote.textContent = "Settling the
 export function settlingUi(on: boolean) { settlingNote.hidden = !on; }
 // ---------------------------------------------------------------- the panels' source (task P16)
 /**
- * The panels read the live core engine (`LiveSource`: beat-by-beat) for an adult patient the core can run. The bridge (a steady-state
- * solve of the structural engine replayed beat by beat, in a worker) stays for what the core does not represent yet: a neonate (the core
- * is the adult ACS patient) and any patient the core could not settle (`sim.coreNote`), and for the game's legacy engine.
+ * The panels read the live core engine (`LiveSource`: beat-by-beat). In the game, which runs the legacy engine, the source has no live
+ * heart and the panels are not shown.
  */
-export let bridge: BridgeSource | null = null;
 let liveSrc: LiveSource | null = null;
 let workspace: Workspace | null = null;
-const wantsBridge = () => sim.engine !== "core" || !!sim.coreNote || (bridgeOpts.patient?.kind ?? "adult") === "neonate";
-function chooseSource(): HemoSource {
-  if (wantsBridge()) { if (!bridge) { bridgeOpts.solver ??= createWorkerSolver(); bridge = new BridgeSource(sim, bridgeOpts); } return bridge; }
-  return (liveSrc ??= new LiveSource(sim));
-}
-/** Point the panels at the right source; the one not in use is released (the bridge would otherwise keep solving for nothing). */
+function chooseSource(): HemoSource { return (liveSrc ??= new LiveSource(sim)); }
+/** Point the panels at the source (kept for the workspace; the live source follows the Simulation's heart by itself). */
 function syncSource() {
   const next = chooseSource();
   if (next === panelSource) return;
   setPanelSource(next);
   workspace?.setSource(next);
-  if (next !== bridge && bridge) { bridge.dispose(); bridge = null; }
 }
 let patientTimer = 0;
 /** Hand the PatientSpec on screen to the core engine (a structural change rebuilds and settles the heart, about a second, so slider drags wait for a pause). */
 export function pushPatient(now = false) {
   clearTimeout(patientTimer);
-  const go = () => { sim.setPatient(bridgeOpts.patient ?? {}); syncSource(); };
+  const go = () => { sim.setPatient(patientOpts.patient ?? {}); syncSource(); };
   if (now) go(); else patientTimer = window.setTimeout(go, 200);
 }
-/** The panel workspace, below the main view (not in the game). Its source is the live core engine of this page's Simulation, or for a
- *  neonate the bridge, which solves in a worker so the 3D view and ECG keep running (tasks P2b, P16). */
+/** The panel workspace, below the main view (not in the game). Its source is the live core engine of this page's Simulation (task P16). */
 export function mountPanels() {
   const ws = $("workspace"); (ws.parentElement as HTMLElement).hidden = false;
   (ws.parentElement as HTMLElement).insertBefore(settlingNote, ws);
@@ -61,5 +51,4 @@ export function mountPanels() {
     clock: playClock, clinical: { scales: CLINICAL_SCALES, get: () => S.speed, set: (v) => { S.speed = v; controlsUi(); } }, // both clocks in the workspace bar
   });
   $("ts-l").style.display = $("ts-row").style.display = "none"; // the Lesion section's old time-scale buttons: now in the workspace bar
-  setInterval(syncSource, 500); // the core engine may give up on a patient (coreNote) or take one back
 }

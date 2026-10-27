@@ -69,7 +69,7 @@ export function deltaText(live: number, snap: number, digits: number, unit = "")
   return `${d > 0 ? "+" : "−"}${Math.abs(d).toFixed(digits)}${unit}`;
 }
 
-export function badgeText(kind: HemoSource["kind"]): string { return kind === "live" ? "live" : "steady state"; }
+export function badgeText(_kind: HemoSource["kind"]): string { return "live"; }
 
 function ectopyRows(e: NonNullable<ReturnType<typeof ectopyRow>>, snap: boolean): HTMLElement[] {
   const cell = (t: string) => { const td = document.createElement("td"); td.textContent = t; return td; };
@@ -123,7 +123,7 @@ export const numbersPanel: PanelDef = {
         if (key === last) return; // numbers change at beat rate; skip identical frames
         last = key;
         badge.textContent = badgeText(src.kind);
-        badge.title = src.kind === "live" ? "Beat-by-beat engine" : "Steady-state solve replayed";
+        badge.title = "Beat-by-beat engine";
         const lb = deltaBasis(n, sat), sb = snap ? deltaBasis(snap.numbers, snap.saturations) : null;
         const hr = document.createElement("tr");
         if (snap) {

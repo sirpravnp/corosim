@@ -1,7 +1,7 @@
 import type { Simulation } from "../sim/simulation";
 import type { PatientSpec } from "../sim/patient";
-import { BridgeSource } from "../sim/bridgeSource";
-import { syncSolver } from "../sim/bridgeSolver";
+import { Simulation as CoreSimulation } from "../sim/simulation";
+import { LiveSource } from "../sim/liveSource";
 import { rightHeartCath, type RightHeartCath } from "../sim/rightHeartCath";
 import { leftHeartCath } from "../sim/leftHeartCath";
 import { oxygenReadout } from "../sim/oxygenReadout";
@@ -13,21 +13,26 @@ import { PATIENTS } from "../config/structural";
 
 /**
  * The hemodynamic readings the MCP tools add (task P15): right- and left-heart cath, JVP, oxygen, PV-loop metrics. They read the
- * same `BridgeSource` the playground panels read, over the server's headless `Simulation` with the synchronous solver.
+ * same `LiveSource` the Simulator's panels read: the core engine's own beats.
  *
  * Output versions: every result carries `format: "corosim.<name>/<n>"`. Bump n when a field is renamed or changes unit.
  *
- * Patient: `Simulation` keeps only the normalised Scenario, not the PatientSpec fields (kind, heart, pericardium, fluids,
+ * Patient: `Simulation` keeps only the normalised Scenario, not the PatientSpec fields (heart, pericardium, fluids,
  * ventilation, devices). The tools remember them here, per Simulation, so the structural lesions survive between calls and
  * go into share links.
  *
- * Cost: a solve is up to ~13 `analyze` calls (hundreds of ms cold). The bridge is cached per Simulation and re-solved only when
- * the patient (Scenario or the remembered fields) changed, the simulation was reloaded, or the bridge's own input thresholds trip
- * as the simulation runs (HR, ischemia, MAP, SVR, CO). Reading twice in a row costs microseconds.
+ * Which engine: a server's patient may run on the legacy engine (the default) or the core engine. A core `Simulation` is read
+ * directly, so the readings follow it as it runs. A legacy one has no live heart, so it gets a private core twin: the same
+ * patient (Scenario plus the remembered fields) built on the core engine at its steady state and rebuilt when the patient
+ * changes or the simulation is reloaded. The twin is not stepped by the other tools, so it shows the patient settled, not mid-way
+ * through an evolving infarct.
+ *
+ * Cost: the twin's build and warm-up take a fraction of a second to a few seconds. It is cached per Simulation; reading twice in a
+ * row costs microseconds.
  */
 
 // ---------------------------------------------------------------- the remembered PatientSpec
-const EXTRA = ["kind", "heart", "pericardium", "septum", "fluids", "ventilation", "devices"] as const;
+const EXTRA = ["heart", "pericardium", "septum", "fluids", "ventilation", "devices"] as const;
 const extras = new WeakMap<Simulation, PatientSpec>();
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -63,41 +68,48 @@ export function patchPatient(sim: Simulation, patch: PatientSpec) {
 /** The whole current patient: the Scenario as the simulation holds it plus the remembered PatientSpec fields. What a share link encodes. */
 export function currentPatient(sim: Simulation): PatientSpec { return { ...(extras.get(sim) ?? {}), ...sim.scenario() }; }
 
-// ---------------------------------------------------------------- the cached bridge
+// ---------------------------------------------------------------- the cached live source
+/** Simulated seconds run before the first reading so the live source holds beats (no clinical time passes). */
+const WARMUP_S = 6, TWIN_WARMUP_S = 25;
 class Entry {
-  readonly bridge: BridgeSource;
-  private opts: { patient?: PatientSpec; solver: typeof syncSolver };
+  private host: Simulation | null = null;
+  private src: LiveSource | null = null;
   private key = ""; private lastT = 0; private dirty = true;
-  /** Wall-clock ms of the last re-solve, for the latency report. */
+  /** Wall-clock ms of the last rebuild, for the latency report. */
   lastSolveMs = 0; resolves = 0;
-  constructor(private sim: Simulation) {
-    this.opts = { patient: currentPatient(sim), solver: syncSolver };
-    this.bridge = new BridgeSource(sim, this.opts);
-  }
+  constructor(private sim: Simulation) {}
   markDirty() { this.dirty = true; }
-  /** Bring the bridge up to date with the patient; returns it. */
-  ready(): BridgeSource {
-    const { sim, bridge } = this, p = currentPatient(sim), key = JSON.stringify(p);
-    if (sim.t < this.lastT - 1e-6) this.dirty = true; // reloaded
-    if (key !== this.key) this.dirty = true;
-    if (this.dirty || bridge.beats(1).length === 0) {
-      const t0 = performance.now();
-      this.opts.patient = p;
-      const solves = bridge.solves;
-      if (bridge.beats(1).length === 0 || sim.t < this.lastT - 1e-6) sim.warmup(6); // beats to replay; no clinical time passes. The first beat solves.
-      if (bridge.solves === solves) { bridge.refresh(); sim.warmup(3); } // nothing solved on the way (a patient change with beats already held): the replayed beats must be the new waveform, which takes a beat to blend in
-      this.lastSolveMs = performance.now() - t0; this.resolves++;
-      this.key = key; this.dirty = false;
+  /** Bring the source up to date with the patient; returns it. */
+  ready(): LiveSource {
+    const { sim } = this;
+    if (sim.engine === "core") {
+      if (this.host !== sim || !this.src) { this.src?.dispose(); this.host = sim; this.src = new LiveSource(sim); this.resolves++; }
+      if (this.src.beats(1).length === 0) { const t0 = performance.now(); sim.warmup(WARMUP_S); this.lastSolveMs = performance.now() - t0; } // beats to read; no clinical time passes
+    } else {
+      const p = currentPatient(sim), key = JSON.stringify(p);
+      if (sim.t < this.lastT - 1e-6) this.dirty = true; // reloaded
+      if (key !== this.key) this.dirty = true;
+      if (this.dirty || !this.src || this.host === sim) {
+        const t0 = performance.now();
+        this.src?.dispose();
+        const twin = new CoreSimulation({}, { engine: "core" });
+        twin.reset(p, { settled: true });
+        twin.warmup(TWIN_WARMUP_S);
+        this.host = twin; this.src = new LiveSource(twin);
+        if (this.src.beats(1).length === 0) twin.warmup(WARMUP_S);
+        this.lastSolveMs = performance.now() - t0; this.resolves++;
+        this.key = key; this.dirty = false;
+      }
     }
     this.lastT = sim.t;
-    return bridge;
+    return this.src;
   }
 }
 const hemoCache = new WeakMap<Simulation, Entry>();
 function entry(sim: Simulation): Entry { let e = hemoCache.get(sim); if (!e) { e = new Entry(sim); hemoCache.set(sim, e); } return e; }
-/** The up-to-date bridge for this simulation (cached; see the file comment). */
-export function bridgeFor(sim: Simulation): BridgeSource { return entry(sim).ready(); }
-/** Re-solve counters of the cache, for tests and latency reports. */
+/** The up-to-date live source for this simulation (cached; see the file comment). */
+export function sourceFor(sim: Simulation): LiveSource { return entry(sim).ready(); }
+/** Rebuild counters of the cache, for tests and latency reports. */
 export function hemoStats(sim: Simulation) { const e = hemoCache.get(sim); return { resolves: e?.resolves ?? 0, lastSolveMs: e ? +e.lastSolveMs.toFixed(0) : 0 }; }
 
 // ---------------------------------------------------------------- output helpers
@@ -105,13 +117,10 @@ const fin = Number.isFinite;
 /** Round; null for NaN/Infinity so the JSON says "no value" rather than 0. */
 const r = (x: number | undefined, d = 1): number | null => (x !== undefined && fin(x) ? +x.toFixed(d) : null);
 const pct = (x: number | undefined): number | null => (x !== undefined && fin(x) ? +(x * 100).toFixed(1) : null);
-const trouble = (src: BridgeSource) => fin(src.numbers().map) ? null : "No solve yet (the simulation has produced no beat).";
-const header = (name: string, src: BridgeSource) => ({
+const trouble = (src: LiveSource) => fin(src.numbers().map) ? null : "No beat yet (the simulation has produced none).";
+const header = (name: string, _src: LiveSource) => ({
   format: `corosim.${name}/1`,
-  patientKind: src.patientKind,
-  source: src.standalone
-    ? "Structural engine solved on the patient's own baseline (a non-adult patient is not tied to the adult monitor)."
-    : "Structural engine solved and calibrated to the monitor's MAP and cardiac output (a steady-state solve replayed, not beat-by-beat physiology).",
+  source: "Core engine, beat by beat: readings are averages over the last few steady beats (premature beats are left out of the beat-shape values).",
 });
 
 // ---------------------------------------------------------------- heart cath
@@ -139,16 +148,15 @@ function rightSide(c: RightHeartCath) {
 
 /** Right- and left-heart cath of the current patient. */
 export function heartCath(sim: Simulation, side: "both" | "right" | "left" = "both") {
-  const src = bridgeFor(sim), bad = trouble(src);
+  const src = sourceFor(sim), bad = trouble(src);
   if (bad) return { ...header("heart_cath", src), error: bad };
-  const kind = src.patientKind;
   const out: Record<string, unknown> = { ...header("heart_cath", src), units: "mmHg, L/min, Wood units, cm2, saturation in percent", note: "Fick and thermodilution disagree with a shunt or tricuspid regurgitation; Qp:Qs comes from oximetry." };
   if (side !== "left") { const rc = rightHeartCath(src); out.right = rc ? rightSide(rc) : null; }
   if (side !== "right") {
-    const l = leftHeartCath(src.numbers(), src.beats(1)[0], kind);
+    const l = leftHeartCath(src.numbers(), src.beats(1)[0], "adult");
     if (!l) out.left = null;
     else {
-      const normal = PATIENTS[kind].valveAreas;
+      const normal = PATIENTS.adult.valveAreas;
       out.left = {
         hrBpm: r(l.hr, 0), coLmin: r(l.co, 2),
         lvMmHg: { systolic: r(l.lv.systolic), lvedp: r(l.lv.lvedp) },
@@ -156,8 +164,8 @@ export function heartCath(sim: Simulation, side: "both" | "right" | "left" = "bo
         aorticGradientMmHg: { peakToPeak: r(l.gradient.peakToPeak), mean: r(l.gradient.mean), peakInstantaneous: r(l.gradient.peakInstant) },
         mitral: { meanGradientMmHg: r(l.mitral.meanGradient), wedgeMeanMmHg: r(l.mitral.wedgeMean) },
         valveAreasCm2: { aorticGorlin: r(l.area.aorticGorlin, 2), aorticHakki: r(l.area.aorticHakki, 2), mitralGorlin: r(l.area.mitralGorlin, 2), mitralEngine: r(l.area.mitralEngine, 2), mitralHakki: r(l.area.mitralHakki, 2) },
-        normalAreasCm2: { aortic: normal.av, mitral: normal.mv, for: kind },
-        grade: { aortic: l.severity.aortic, mitral: l.severity.mitral, basis: `area as a fraction of the ${kind} normal valve (not adult cm2 cut-offs); adult aortic also uses the mean gradient` },
+        normalAreasCm2: { aortic: normal.av, mitral: normal.mv, for: "adult" },
+        grade: { aortic: l.severity.aortic, mitral: l.severity.mitral, basis: "area as a fraction of the normal adult valve; aortic also uses the mean gradient" },
         ejectionTimeS: r(l.sep, 3), fillingTimeS: r(l.dfp, 3),
       };
     }
@@ -168,7 +176,7 @@ export function heartCath(sim: Simulation, side: "both" | "right" | "left" = "bo
 // ---------------------------------------------------------------- JVP
 const waveOut = (w: { t: number; p: number } | null) => (w ? { tS: r(w.t, 3), mmHg: r(w.p) } : null);
 export function jvp(sim: Simulation) {
-  const src = bridgeFor(sim), beat = src.beats(1)[0];
+  const src = sourceFor(sim), beat = src.beats(1)[0];
   if (!beat) return { ...header("jvp", src), error: "No beat yet." };
   const j: JvpResult = analyzeJvp({ p: beat.pressure.RA, t: beat.time, atrial: beat.atrial, rr: beat.rr });
   const present = (["a", "c", "x", "v", "y"] as const).filter((k) => j[k]);
@@ -186,7 +194,7 @@ export function jvp(sim: Simulation) {
 
 // ---------------------------------------------------------------- oxygen
 export function oxygen(sim: Simulation) {
-  const src = bridgeFor(sim), o = oxygenReadout(src.saturations(), src.numbers(), src.devices());
+  const src = sourceFor(sim), o = oxygenReadout(src.saturations(), src.numbers(), src.devices());
   if (!o.ready) return { ...header("oxygen", src), error: "No solve yet." };
   const s = src.saturations();
   return {
@@ -203,11 +211,11 @@ export function oxygen(sim: Simulation) {
 
 // ---------------------------------------------------------------- loop metrics (E1)
 export function loopMetricsReport(sim: Simulation) {
-  const src = bridgeFor(sim), beat = src.beats(1)[0], n = src.numbers();
+  const src = sourceFor(sim), beat = src.beats(1)[0], n = src.numbers();
   if (!beat) return { ...header("loop_metrics", src), error: "No beat yet." };
-  const kind = src.patientKind, lvSize = (currentPatient(sim).heart?.lvSize ?? 1);
-  const v0 = buildModel({ patient: kind, lvSize }).chambers[7]!.v0; // index 7 = LV (structural.ts node order)
-  const massG = ENERGETICS.lvMassG * (PATIENTS[kind].weightKg / PATIENTS.adult.weightKg);
+  const lvSize = (currentPatient(sim).heart?.lvSize ?? 1);
+  const v0 = buildModel({ patient: "adult", lvSize }).chambers[7]!.v0; // index 7 = LV (structural.ts node order)
+  const massG = ENERGETICS.lvMassG;
   const { p, v } = beat.loops.LV;
   const m = loopMetrics(p, v, { v0, hr: n.hr, t: beat.time, massG });
   return {

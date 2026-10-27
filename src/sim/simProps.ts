@@ -44,7 +44,7 @@ export function propsToScene(p: Props): Props {
 export interface SimProps { props: Props; sat: ReturnType<typeof satMap> }
 /** Spec to props, in the heart frame. A patient with no `heart` section is the normal heart. */
 export function propsForPatient(patient: PatientSpec | undefined): SimProps {
-  const spec: StructuralSpec = { ...(patient?.heart ?? {}), patient: patient?.kind ?? "adult" };
+  const spec: StructuralSpec = { ...(patient?.heart ?? {}), patient: "adult" };
   const report = analyze(spec, { waveform: false });
   return { props: buildProps(spec, report, {}, gradeValves(spec, report)), sat: satMap(report) };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Simulation } from "../src/sim/simulation";
-import { BridgeSource } from "../src/sim/bridgeSource";
+import { LiveSource } from "../src/sim/liveSource";
 import { createStubSource } from "../src/sim/stubSource";
 import { OXYGEN_PANEL } from "../src/config/oxygenPanel";
 import { patientFromLesionHash } from "../src/sim/structural";
@@ -9,13 +9,14 @@ import type { Scenario } from "../src/sim/scenario";
 import { oxygenRows } from "../src/panels/oxygen";
 import { ductalDifference, ecmoReturnSat, extractionRatio, oxygenReadout, plethFromPressure, teachingCues } from "../src/sim/oxygenReadout";
 
-/** A bridge over a settled patient with the synchronous solver, run long enough for a solve to land. */
+/** A live source over a settled core-engine patient, run long enough for beats to land. */
 function bridge(patient?: PatientSpec, sc: Scenario = {}) {
-  const sim = new Simulation(); sim.reset({ seed: 3, ...sc }, { settled: true }); sim.warmup(40); sim.history = [];
-  const b = new BridgeSource(sim, { patient }); sim.run(10); b.refresh();
+  const sim = new Simulation({}, { engine: "core" }); const b = new LiveSource(sim);
+  sim.reset({ seed: 3, ...sc, ...patient }, { settled: true }); sim.warmup(40); sim.history = [];
+  sim.run(10);
   return b;
 }
-const read = (b: BridgeSource) => oxygenReadout(b.saturations(), b.numbers(), b.devices());
+const read = (b: LiveSource) => oxygenReadout(b.saturations(), b.numbers(), b.devices());
 
 describe("pure derivations", () => {
   it("extraction is VO2/DO2 and NaN when undefined", () => {
@@ -75,15 +76,15 @@ describe("pure derivations", () => {
     expect(rows2.find(r => r.label === "ECMO return SaO₂")!.value).toBe("99%");
     expect(rows2.find(r => r.label === "Lactate")!.value).toBe("2.1 mmol/L");
   });
-  it("is not ready before the first solve", () => {
-    const sim = new Simulation(); sim.reset({ seed: 3 }, { settled: true }); sim.run(3);
-    const r = read(new BridgeSource(sim, { solver: { solve: () => new Promise(() => {}) } }));
+  it("is not ready before the first beat", () => {
+    const sim = new Simulation({}, { engine: "core", deferCore: true }); sim.reset({ seed: 3 }); // the core engine is still being built: no live heart yet
+    const r = read(new LiveSource(sim));
     expect(r.ready).toBe(false);
     expect(r.cues).toEqual([]);
   });
 });
 
-describe("through the bridge's sync solver", () => {
+describe("through the live source", () => {
   it("normal patient: no cues, no differential, values equal the source's", () => {
     const b = bridge(), r = read(b), s = b.saturations();
     expect(r.ready).toBe(true);
@@ -103,8 +104,8 @@ describe("through the bridge's sync solver", () => {
     expect(r.svo2).toBeLessThan(OXYGEN_PANEL.svo2Low);
     expect(r.cues.some(c => /low mixed venous saturation: delivery not meeting demand/i.test(c))).toBe(true);
   });
-  it("PDA with high pulmonary resistance: post-ductal below pre-ductal, with the explanation", () => {
-    const r = read(bridge(patientFromLesionHash("#lesion=pda&diameter=6&pvri=25")));
+  it("an adult's large PDA with Eisenmenger resistance: post-ductal below pre-ductal, with the explanation", () => {
+    const r = read(bridge(patientFromLesionHash("#lesion=pda&diameter=10&pvri=60")));
     console.log("pda", { pre: r.pre, post: r.post, diff: r.diff.points, svo2: r.svo2, spo2: r.spo2, cues: r.cues });
     expect(r.diff.significant).toBe(true);
     expect(r.post).toBeLessThan(r.pre);

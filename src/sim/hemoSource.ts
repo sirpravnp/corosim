@@ -1,6 +1,6 @@
 /**
- * What every hemodynamic panel reads (docs/HEMODYNAMICS_CORE.md §4G). Panels never touch an engine: the bridge over
- * today's engines (task P2) and the core engine (task P16) both implement this, so panels survive the swap.
+ * What every hemodynamic panel reads (docs/HEMODYNAMICS_CORE.md §4G). Panels never touch an engine: the core engine's
+ * `LiveSource` (task P16) implements this.
  *
  * Pull, not push: a panel asks for what it draws when it draws. Trace buffers are kept by the source, so a panel opened
  * late still shows the last seconds. Types only.
@@ -53,7 +53,7 @@ export interface HemoNumbers {
   /**
    * Premature beats and the beats the beat-shape readouts above were taken from (hemoBeats.ts; MAP, CO, SVR, PVR and Qp:Qs average every beat instead): `fraction` of the beats of the window that were
    * premature, `beats` the number averaged, `used` which rule selected them ("steady": not premature, not cut short, not within 3 beats
-   * after one; else the non-premature ones; else all). Absent when the source does not select beats (the steady-state bridge).
+   * after one; else the non-premature ones; else all). Absent when the source does not select beats.
    */
   ectopy?: { fraction: number; beats: number; used: "steady" | "non-premature" | "all" };
 }
@@ -95,14 +95,6 @@ export interface HemoSource {
   devices(): readonly DeviceConsole[];
   /** Called after each completed beat; returns an unsubscribe function. */
   onBeat(cb: (b: BeatSummary) => void): () => void;
-  /** Whether the numbers come from a steady-state solve replayed (bridge) or a live beat-by-beat engine. */
-  readonly kind: "bridge" | "live";
-  /**
-   * True when the numbers are the patient's own baseline solve and are NOT tied to the ACS monitor (a neonate, or any
-   * patient whose baseline is not the adult one the ACS model represents). On such a patient the monitor (ACS, adult) is not
-   * meaningful next to these numbers. Absent means false.
-   */
-  readonly standalone?: boolean;
-  /** Baseline physiology of the patient behind the numbers (valves are graded against its own normal areas). Absent means "adult". */
-  readonly patientKind?: "adult" | "neonate";
+  /** The numbers come from a live beat-by-beat engine (the core engine). */
+  readonly kind: "live";
 }
