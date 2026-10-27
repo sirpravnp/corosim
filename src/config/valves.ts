@@ -61,11 +61,12 @@ export const VALVE_IN_VALVE_EOA = 0.8;
 
 /**
  * Prosthetic valve grading, from the ASE 2009 prosthetic guideline (Zoghbi et al., JASE 2009;22:975): a mean gradient that is normal,
- * suggests ("possible") stenosis, or is significant. Aortic < 20 / 20 to 35 / > 35 mmHg; mitral < 5 / 5 to 10 / > 10. Tricuspid uses
- * 6 and 10, pulmonary 15 and 25 [assumed]. "Possible" is graded moderate and "significant" severe.
+ * suggests ("possible") stenosis, or is significant. Aortic < 20 / 20 to 35 / > 35 mmHg; mitral < 5 / 5 to 10 / > 10. Tricuspid (ASE: 6)
+ * uses 3.5 and 5 and pulmonary 15 and 25 [assumed]: this model's right atrium fills at rest through the whole beat, so even a
+ * 0.7 cm² valve reads 4 mmHg, which the thresholds follow. "Possible" is graded moderate and "significant" severe.
  */
 export const PROSTHESIS_GRADIENT: Record<ValveKey, { moderate: number; severe: number }> = {
-  av: { moderate: 20, severe: 35 }, mv: { moderate: 5, severe: 10 }, tv: { moderate: 6, severe: 10 }, pv: { moderate: 15, severe: 25 },
+  av: { moderate: 20, severe: 35 }, mv: { moderate: 5, severe: 10 }, tv: { moderate: 3.5, severe: 5 }, pv: { moderate: 15, severe: 25 },
 };
 /**
  * Prosthesis-patient mismatch, by EOA indexed to body surface area (cm²/m²): aortic moderate 0.65 to 0.85, severe < 0.65 (VARC-3,
