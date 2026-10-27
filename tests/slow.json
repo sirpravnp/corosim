@@ -35,5 +35,6 @@
   "tests/structuralProps.test.ts",
   "tests/thorax.test.ts",
   "tests/valves.test.ts",
-  "tests/valvesSim.test.ts"
+  "tests/valvesSim.test.ts",
+  "tests/vitalsAgree.test.ts"
 ]

@@ -5,6 +5,7 @@
  */
 import type { BeatSummary, Chamber, DeviceConsole, HemoNode, HemoNumbers, HemoSource, Saturations, Series } from "./hemoSource";
 
+import { vitalsOf } from "./vitals";
 const NODES: readonly HemoNode[] = ["SVC", "IVC", "RA", "RV", "PA", "PV", "LA", "LV", "AO", "DAO"];
 const CHAMBERS: readonly Chamber[] = ["RA", "RV", "LA", "LV"];
 const HR = 70;
@@ -63,6 +64,7 @@ export function createStubSource(clock: () => number = () => performance.now() /
     },
     beats: (count = 1) => Array.from({ length: Math.max(1, count) }, () => beat),
     numbers: () => numbers,
+    vitals: () => vitalsOf(numbers),
     saturations: () => sats,
     devices: (): readonly DeviceConsole[] => [],
     onBeat: () => () => {},
