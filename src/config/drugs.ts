@@ -14,7 +14,7 @@
 
 export const DRUG_NAMES = [
   "norepinephrine", "epinephrine", "dobutamine", "milrinone", "vasopressin", "phenylephrine",
-  "nitroglycerin", "nitroprusside", "betaBlocker", "furosemide",
+  "nitroglycerin", "nitroprusside", "betaBlocker", "furosemide", "diltiazem",
 ] as const;
 export type DrugName = (typeof DRUG_NAMES)[number];
 
@@ -35,6 +35,7 @@ export const KINETICS: Record<DrugName, { on: number; off: number }> = {
   nitroprusside: { on: 0.7, off: 2 }, // half-life ~2 min: titrates in seconds-minutes
   betaBlocker: { on: 8, off: 180 }, // IV metoprolol: effect in minutes, half-life 3-4 h
   furosemide: { on: 8, off: 90 }, // IV: onset 5 min, peak 30 min, duration 2-3 h
+  diltiazem: { on: 4, off: 120 }, // IV bolus: rate slowing within minutes, effect 1-3 h
 };
 
 /**
@@ -44,7 +45,7 @@ export const KINETICS: Record<DrugName, { on: number; off: number }> = {
  * vasopressin 0.04 U/min, phenylephrine 1 ug/kg/min, nitroglycerin 200 ug/min, nitroprusside 3 ug/kg/min, furosemide 80 mg IV; the
  * beta-blocker's dose is the fraction of beta-1 receptors blocked.
  */
-export interface ReceptorProfile { a1?: number; b1?: number; b2?: number; v1?: number; pde3?: number; noVen?: number; noArt?: number; block?: number; loop?: number }
+export interface ReceptorProfile { a1?: number; b1?: number; b2?: number; v1?: number; pde3?: number; noVen?: number; noArt?: number; block?: number; loop?: number; ccb?: number }
 export const PROFILES: Record<DrugName, ReceptorProfile> = {
   norepinephrine: { a1: 1, b1: 0.4 }, // alpha-1 >> beta-1, almost no beta-2
   epinephrine: { a1: 0.5, b1: 0.9, b2: 0.6 }, // beta at low dose, alpha added with dose
@@ -56,6 +57,7 @@ export const PROFILES: Record<DrugName, ReceptorProfile> = {
   nitroprusside: { noVen: 1.5, noArt: 3 }, // arterial and venous, arterial more
   betaBlocker: { block: 1 },
   furosemide: { loop: 1 },
+  diltiazem: { ccb: 1 }, // non-dihydropyridine calcium channel blocker: AV node, myocardium and arterioles
 };
 
 /**
@@ -69,7 +71,14 @@ export const RECEPTOR = {
   b2: { art: -0.25, ven: -0.05 },
   b1: { ees: 0.5, relax: -0.2, hr: 0.2 }, // inotropy, lusitropy, chronotropy of full beta-1 drive (before any blockade)
   pde3: { ees: 0.3, relax: -0.25, art: -0.3, ven: -0.1, hr: 0.04 }, // inodilator
+  ccb: { ees: -0.5, relax: 0.05, art: -0.2, ven: 0 }, // diltiazem: negative inotropy and arteriolar dilation at a full dose
 };
+
+/**
+ * AV-nodal slowing: the ventricular response in atrial fibrillation is multiplied by (1 − `betaBlock`·blockade)(1 − `ccb`·ccb), floored at `floor`. Beta
+ * blockade and a calcium channel blocker both slow the node, and together more than either (and with more hypotension and bradycardia). [assumed]
+ */
+export const AV_NODE = { betaBlock: 0.4, ccb: 0.5, floor: 0.35 };
 
 /**
  * NO/cGMP vasodilation: a Hill curve of the drive in each bed, response = max · d^n / (d^n + EC50^n). The veins have the lower EC50, so

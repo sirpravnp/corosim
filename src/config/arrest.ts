@@ -16,6 +16,19 @@
 export const ARREST = {
   /** Seconds of (CPR-extended) no flow after which the patient is declared dead. Near-certain irreversible injury by about 10 min. [lit] */
   deathAfterNoFlowS: 600,
+
+  /**
+   * Death in a perfusing patient: refractory shock. Pressure held below `map` for `seconds` kills (the arrest machine's no-flow clock only
+   * counts the pulseless); above it the count runs back down at `recoverRate` seconds per second. [assumed]
+   */
+  /**
+   * Coronary perfusion pressure (aortic diastolic minus right atrial, mmHg) during an arrest. Flow into a bed with no pressure behind it does not
+   * save the heart or brain, so the no-flow clock credits output only as far as the pressure is there: none at `min`, all of it at `full`.
+   * Paradis 1990: a CPP of 15 or more predicted ROSC. The model's compressions give more CPP than a real chest does, so the full line is set above 15. [lit / assumed]
+   */
+  cpp: { min: 10, full: 40, tauS: 6 },
+
+  shockDeath: { map: 40, seconds: 240, recoverRate: 1 },
   /** Irreversible injury begins after about 4 min of no flow. [lit] */
   injuryOnsetNoFlowS: 240,
 
@@ -28,7 +41,7 @@ export const ARREST = {
   /** Output at which no-flow stops accumulating and starts to recover. [assumed] */
   noFlowRecoverOutput: 0.5,
   /** Output scale for no-flow credit: accumulation rate = 1 - output / this, so CPR at 0.3 halves it. [assumed] */
-  noFlowCreditRef: 0.6,
+  noFlowCreditRef: 0.8, // was 0.6: CPR at 30 % of normal output then runs the clock at 0.63 of real time, so CPR alone no longer holds a patient for 20 minutes [assumed]
   /** Smallest accumulation rate while output is below roscOutput. [assumed] */
   noFlowMinRate: 0.15,
   /** Seconds of no-flow recovered per second once output is at or above roscOutput. [assumed] */

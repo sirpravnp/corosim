@@ -91,6 +91,7 @@ add("support.milrinone", "support", num(0, 1, "Core engine only."));
 add("support.vasopressin", "support", num(0, 1, "Core engine only."));
 add("support.nitroprusside", "support", num(0, 1, "Core engine only."));
 add("support.furosemide", "support", num(0, 1, "Core engine only."));
+add("support.diltiazem", "support", num(0, 1, "Core engine only: slows the AV node (atrial fibrillation), weakens contraction, dilates arterioles."));
 add("support.pacing", "support", bool(), ["m_pace"]);
 add("support.paceRate", "support", num(40, 120), ["pacerate"]);
 add("support.iabp", "support", bool("Intra-aortic balloon pump (the legacy switch; devices.iabp is the same pump with settings, and the page's one switch edits both)."), ["m_iabp"]);

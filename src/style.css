@@ -53,7 +53,7 @@ body {
   font: 15px/1.5 var(--font-ui);
 }
 
-#quiz[hidden] { display: none; }
+#cases[hidden] { display: none; }
 
 /* Layout */
 main { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 24px; margin-top: 20px; align-items: start; }
@@ -63,7 +63,7 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 24px; ma
   main > aside { display: contents; }
   main > section { order: 0; }
   aside > * { order: 1; }
-  #quiz { order: -1; }
+  #cases { order: -1; }
 }
 main > section, aside { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
 
@@ -141,51 +141,43 @@ button.primary.on { background: var(--accent); border-color: var(--accent); colo
 button:disabled, button:disabled:hover { color: var(--muted); background: var(--panel); border-color: var(--rule-light); cursor: not-allowed; }
 .note { margin: 10px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
 
-/* Game panel: which block shows follows the phase on the section */
-#quiz .q-live, #quiz .q-play, #quiz .q-treat, #quiz .q-reveal { display: none; }
-#quiz:not([data-phase="idle"]) .q-live, #quiz[data-phase="play"] .q-play, #quiz[data-phase="treat"] .q-treat, #quiz[data-phase="reveal"] .q-reveal { display: block; }
-#quiz:not([data-phase="idle"]) .row.q-live { display: flex; }
-
-/* The game's front door: a card over the blurred page */
-#qgate { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: color-mix(in srgb, var(--bg) 55%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
-#qgate[hidden] { display: none; }
+/* Cases: the panel in the rail, the front door, and the prompt */
+#cases .c-over, #cases .c-live { display: none; }
+#cases:not([data-phase="idle"]):not([data-phase="over"]) .c-live { display: flex; }
+#cases[data-phase="over"] .c-over { display: block; }
+#cases h3 { margin: 14px 0 4px; font: 600 12px/1.4 var(--font-ui); color: var(--muted); }
+.c-status { display: flex; justify-content: space-between; gap: 10px; font: 600 12px/1.4 var(--font-data); font-variant-numeric: tabular-nums; }
+.c-log { list-style: none; margin: 0; padding: 0; font-size: 13px; line-height: 1.45; }
+.c-log li { padding: 5px 0; border-top: 1px solid var(--rule-light); }
+.c-log li span { display: inline-block; min-width: 38px; margin-right: 8px; font: 600 11px/1.4 var(--font-data); color: var(--muted); }
+.c-log li.none { color: var(--muted); }
+#cgate, #cprompt { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: color-mix(in srgb, var(--bg) 55%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+#cprompt { z-index: 60; }
+#cgate[hidden], #cprompt[hidden] { display: none; }
 body.gated { overflow: hidden; }
 @supports not (backdrop-filter: blur(1px)) { body.gated main, body.gated .shell-head, body.gated .shell-foot { filter: blur(8px); } }
-.q-card { width: min(460px, 100%); padding: 24px 24px 20px; background: var(--panel); border: 1px solid var(--ink); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35); }
-.q-card h2 { margin: 0 0 10px; font: 600 13px/1 var(--font-ui); letter-spacing: 0; }
-.q-card p { margin: 0 0 12px; font-size: 14px; line-height: 1.5; }
-.q-card .q-day { font: 600 13px/1.5 var(--font-data); }
-.q-card .q-done { font-size: 13px; }
-.q-card .row { margin: 4px 0 14px; }
-.q-card .row button { padding: 11px 16px; font-size: 13px; }
-.q-plain { font-size: 12px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
-.q-strip { display: flex; gap: 4px; align-items: flex-end; height: 30px; margin: 0 0 6px; }
-.q-strip i { flex: 1; background: var(--bar-track); }
-.q-strip i.on { background: var(--accent); }
-.q-strip i.here { outline: 1px solid var(--ink); outline-offset: 1px; }
-.q-card .q-streak { margin-bottom: 10px; font: 600 12px/1.5 var(--font-data); color: var(--muted); }
-.q-arch { display: flex; gap: 16px; margin: 0 0 12px; font-size: 12px; }
-.q-arch a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
-.q-arch a[hidden] { display: none; }
-.q-rv { display: flex; gap: 4px; }
-.q-rv button { padding: 5px 9px; font-size: 11px; }
-.q-plain:hover { color: var(--ink); }
-.q-status { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 4px; font: 600 12px/1.4 var(--font-data); font-variant-numeric: tabular-nums; color: var(--muted); }
-.q-status span:first-child { color: var(--ink); }
+.c-box { width: min(520px, 100%); max-height: calc(100vh - 40px); overflow: auto; padding: 24px 24px 20px; background: var(--panel); border: 1px solid var(--ink); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3); }
+.c-box h2 { margin: 0 0 10px; font: 600 15px/1.3 var(--font-ui); letter-spacing: 0; }
+.c-box p { margin: 0 0 12px; font-size: 14px; line-height: 1.5; }
+.c-box .row { margin: 4px 0 6px; }
+.c-box .row button { padding: 11px 16px; font-size: 13px; }
+.c-plain { font-size: 12px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+.c-plain:hover { color: var(--ink); }
+.c-tier { margin: 0 0 6px; font: 600 11px/1.4 var(--font-data); color: var(--muted); }
+.c-q { font-size: 15px; font-weight: 600; }
+#c_cards { display: grid; gap: 8px; margin: 0 0 14px; }
+.c-case { display: grid; gap: 3px; text-align: left; padding: 12px 14px; }
+.c-case b { font-size: 14px; }
+.c-case span { font-size: 12.5px; color: var(--muted); font-weight: 400; }
+.c-case em { font: 600 11px/1.4 var(--font-data); font-style: normal; color: var(--muted); }
+.c-case .tier { font: 600 11px/1.4 var(--font-data); font-style: normal; }
+.c-case .tier.easy { color: var(--ok); } .c-case .tier.medium { color: var(--warn); } .c-case .tier.hard { color: var(--bad); }
+#cp_opts { display: grid; gap: 8px; margin-top: 4px; }
+#cp_opts button { padding: 11px 14px; font-size: 13px; text-align: left; font-weight: 500; }
+body.case-run #lesionctl, body.case-run #lesionsec { display: none; }
 .q-result { margin: 6px 0 0; font-size: 14px; line-height: 1.45; font-weight: 700; }
 .q-result.vessel { color: var(--ok); } .q-result.territory { color: var(--warn); } .q-result.miss { color: var(--bad); }
 .q-result .pts { display: block; margin-top: 2px; font: 600 12px/1.5 var(--font-data); color: var(--muted); }
-#qshare.done, #qshare.done:hover { background: var(--panel); border-color: var(--rule); color: var(--muted); cursor: default; }
-.q-day { margin: 0 0 8px; font: 600 12px/1.5 var(--font-data); }
-.q-done { margin: 0 0 10px; color: var(--ink); }
-.q-call { display: flex; justify-content: space-between; gap: 8px; margin: 0 0 8px; font-size: 13px; }
-.q-call b { font: 600 12px/1.5 var(--font-data); text-align: right; }
-.q-hidden-note { display: none; margin: 0 0 4px; }
-body[data-game="play"] .q-hidden-note { display: block; }
-body.game #lesionctl, body[data-game="play"] #bedsfig, body[data-game="play"] tr.q-hide { display: none; }
-body.game #lesionsec .note:not(.q-hidden-note), body[data-game="treat"] #lesionsec, body[data-game="reveal"] #lesionsec { display: none; }
-body[data-game="play"] #manage, body.gated #manage { display: none; }
-body[data-game="treat"] #sec-assess, body.game #m_reset { display: none; } /* the assessment is the answer */
 
 /* Readouts */
 table.readout { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -283,11 +275,6 @@ details.fold > :not(summary):last-child { margin-bottom: 16px; }
 .ctl .row { margin-top: 0; }
 .ctl .row button { width: auto; flex: 1 1 0; }
 .ctl .val { white-space: nowrap; }
-.ctl > .game-only.row { grid-column: 2 / -1; }
-.game-only { display: none; }
-body.game .game-only { display: flex; }
-body.game .sim-only { display: none; }
-#gamefluid .val { flex: 0 0 100%; text-align: right; }
 #sec-assess .row { margin-top: 10px; }
 #sec-treat .row { gap: 6px; }
 
@@ -299,7 +286,6 @@ a.askbtn span { margin-left: 5px; }
 
 /* Playground mode (task P12): the page's patient editor; groups reuse the folds */
 #pgentry[hidden], #pgmount[hidden] { display: none; }
-body.game #pgentry { display: none; }
 .pg { display: grid; gap: 10px; padding: 14px 14px 16px; background: var(--panel); border: 1px solid var(--sh-line); border-radius: 8px; }
 .pg[hidden] { display: none; }
 .pg > * { margin: 0; min-width: 0; }
@@ -339,8 +325,7 @@ body.game #pgentry { display: none; }
 #dock .pg { padding: 0; border: 0; background: transparent; border-radius: 0; }
 #dock .dock-tabs { margin-bottom: 14px; }
 #dock .dtab { padding: 8px 4px; font-size: 12px; }
-/* the game keeps the dock to what it plays with: treatment (once the lesion is shown) and the display */
-body.game #dock .dtab:not([data-tab="support"]), body[data-game="play"] #dock .dtab[data-tab="support"], body.gated #dock .dtab[data-tab="support"] { display: none; }
+#manage .tabs { margin-bottom: 10px; }
 
 /* Arrest (C8): the ACLS panel at the top of the Support tab, the ROSC banner and the death overlay in the 3D view */
 .acls { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--bad); border-radius: 8px; background: var(--panel); }
