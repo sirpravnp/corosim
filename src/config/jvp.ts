@@ -18,7 +18,7 @@ export const JVP = {
   tcloseDelay: 0.03,
   /** An a wave is the pressure peak within this long after an atrial activation, s. [assumed] */
   aWindow: 0.2,
-  /** The a-wave search starts this long before the activation (mechanical onset can lead the recorded activation, as in the bridge's waveform), s. [assumed] */
+  /** The a-wave search starts this long before the activation (mechanical onset can lead the recorded activation, as in a replayed waveform), s. [assumed] */
   aLead: 0.05,
   /** Smallest rise above the lowest pressure from `aLead` before the activation to the peak that counts as an a wave, mmHg. [assumed] */
   aMinRise: 0.5,

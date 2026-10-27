@@ -13,15 +13,6 @@ const FONT = "11px ui-monospace, Menlo, monospace";
 const SVG_NS = "http://www.w3.org/2000/svg";
 /** Neck drawing: cm above the sternal angle that fit, and pixels per cm in the 120x220 viewBox. */
 const CM_TOP = 16, PX_PER_CM = 8, Y_ANGLE = 150;
-const AF_NOTE = "Atrial fibrillation in the newborn view: this waveform comes from a steady-state solve, so an a wave is still drawn; the description follows the rhythm (no a wave).";
-
-/** The bridge keeps the atrial kick in AF: when the source is the bridge and recent beats have no atrial activation (not PVCs), say so. */
-export function bridgeAfNote(kind: HemoSource["kind"], beats: readonly BeatSummary[]): string | null {
-  if (kind !== "bridge") return null;
-  const last = beats.slice(-3);
-  return last.length >= 3 && last.every(b => !b.pvc && b.atrial.length === 0) ? AF_NOTE : null;
-}
-
 /** RA pressure at a time within the beat (linear), wrapping at the beat's end. */
 export function pressureAt(beat: Pick<BeatSummary, "time" | "rr"> & { ra: ArrayLike<number> }, phase: number): number {
   const { time, ra, rr } = beat, n = Math.min(time.length, ra.length);
@@ -159,11 +150,10 @@ export const jvpPanel: PanelDef = {
         const got = analyze();
         const label = got ? `${fmt(got.res.heightCm, 1)} cm` : DASH;
         const text = got ? jvpWords(got.res.classes) : "waiting for first solve";
-        const nt = bridgeAfNote(src.kind, src.beats(3)) ?? "";
-        if (label + text + nt !== key) {
-          key = label + text + nt;
+        if (label + text !== key) {
+          key = label + text;
           height.textContent = label; words.textContent = text;
-          note.textContent = nt; note.hidden = !nt;
+          note.textContent = ""; note.hidden = true;
         }
         let phase = 0;
         if (got) {

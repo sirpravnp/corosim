@@ -21,9 +21,7 @@
  * JVP height (cm above the sternal angle, patient at 45 degrees) = mean RA (mmHg) · 1.36 cm H2O/mmHg − 5 cm (the sternal angle
  * is about 5 cm above the mid right atrium). Range about −5 .. +20 cm; 1.8 cm at a mean RA of 5 mmHg.
  *
- * Limits: the bridge (task P2; the page's source for a neonate) replays a steady-state solve and its RA waveform keeps the atrial
- * kick in AF, so the waveform still shows an a peak there while `atrial` is empty; classification follows the events, the drawing
- * does not. The core engine drives the page for an adult (task P16) and has no atrial kick in AF.
+ * Limits: the core engine drives the page (task P16) and has no atrial kick in AF, so `atrial` is empty and no a wave is drawn there.
  */
 import { JVP, type JvpConfig } from "../config/jvp";
 

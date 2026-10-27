@@ -28,7 +28,7 @@ export interface CrossLink {
 }
 
 /** The PatientSpec fields that are not part of a Scenario (src/sim/patient.ts); a page that only holds a Scenario keeps them aside. */
-const EXTRA = ["kind", "heart", "pericardium", "septum", "fluids", "ventilation", "devices"] as const;
+const EXTRA = ["heart", "pericardium", "septum", "fluids", "ventilation", "devices"] as const;
 
 /** A scenario plus the structural sections of the spec the page was opened with (the simulator and cath lab keep the two apart). */
 export function joinPatient(scenario: Scenario, shared?: PatientSpec | null): PatientSpec {
@@ -77,13 +77,13 @@ export const LESION_MATCH_TOLERANCE = 0.02;
 /**
  * The library lesion, and slider values, whose heart is this patient's, or null. A lesion's sliders each set their own fields,
  * so each is fitted alone over its grid (the others at default) and the result is accepted only if the whole heart then matches
- * within LESION_MATCH_TOLERANCE. The patient's `kind` must equal the lesion's: an adult with a VSD is not the neonatal VSD lesson.
+ * within LESION_MATCH_TOLERANCE. Only adult lessons can match: the Simulator has no newborn, so an adult with a VSD is not the neonatal VSD lesson.
  */
 export function lesionForHeart(patient: PatientSpec): { id: LesionDef["id"]; values: Record<string, number>; hash: string } | null {
-  const heart = patient.heart ?? {}, kind = patient.kind ?? "adult";
+  const heart = patient.heart ?? {};
   let best: { d: LesionDef; values: Record<string, number>; dist: number } | null = null;
   for (const d of LESIONS) {
-    if (d.patient !== kind) continue;
+    if (d.patient !== "adult") continue; // the Simulator has adult patients only; a newborn lesson has no Simulator patient
     const values = defaults(d);
     for (const p of d.params) {
       let bv = values[p.key], bd = Infinity;
@@ -112,7 +112,7 @@ function presetForArtery(a: string): string | null {
 }
 /** The EKG preset closest to the patient: a large pericardial effusion's electrical alternans (above `ALTERNANS.thresholdMl`) first, then an occluded artery's STEMI, then the rhythm or bundle branch block, else normal sinus. */
 export function ekgPresetFor(patient: PatientSpec): string {
-  if (alternansAmplitude(patient.pericardium?.effusionMl, patient.pericardium?.open) > 0 && (patient.kind ?? "adult") === "adult") return ALTERNANS.presetId; // a large effusion: electrical alternans (B4)
+  if (alternansAmplitude(patient.pericardium?.effusionMl, patient.pericardium?.open) > 0) return ALTERNANS.presetId; // a large effusion: electrical alternans (B4)
   for (const l of patient.lesions ?? []) if (l.occluded) { const p = presetForArtery(String(l.artery).toUpperCase()); if (p) return p; }
   const pt = patient.patient;
   if (pt?.rhythm === "af") return "af";
@@ -133,8 +133,7 @@ export function crossLinks(from: PageId, patient: PatientSpec, root: string): Cr
   const s = encodePatient(patient);
   if (from !== "sim") out.push({ page: "sim", label: "Open in simulator", href: `${root}sim/#s=${s}`, note: "The same patient, including any structural heart.", carries: true });
   if (from !== "cath") {
-    const note = patient.kind === "neonate" ? "The same patient; the heart-cath tabs show it (a newborn has no coronary angiogram)." : "The same patient: angiogram, pressure wire and heart-cath tabs.";
-    out.push({ page: "cath", label: "Open in cath lab", href: `${root}cath/#s=${s}`, note, carries: true });
+    out.push({ page: "cath", label: "Open in cath lab", href: `${root}cath/#s=${s}`, note: "The same patient: angiogram, pressure wire and heart-cath tabs.", carries: true });
   }
   if (from !== "structural") {
     const fit = patient.heart ? lesionForHeart(patient) : null; // a patient with no heart section has nothing for that page to show

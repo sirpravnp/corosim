@@ -18,7 +18,7 @@ const log = (...a: unknown[]) => { if (process.env.CORE_VERBOSE) console.log(...
 type Imp = NonNullable<FromModelOptions["impella"]>;
 const LV = NODES.indexOf("LV");
 
-/** Cardiogenic-shock baseline: LV Ees cut and the LV stiffened, as the ischemia mapping of src/config/bridge.ts does. */
+/** Cardiogenic-shock baseline: LV Ees cut and the LV stiffened, as the ischemia mapping of src/config/ischemia.ts does. */
 const SHOCK: StructuralSpec = { lvEes: 0.35, lvStiffness: 1.6 };
 
 /** PVA from an LV loop (E1: src/physics/loopMetrics.ts): stroke work, potential energy at the maximum-P/(V - V0) point, PVA = SW + PE. */

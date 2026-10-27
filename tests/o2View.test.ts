@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
-import { BRIDGE } from "../src/config/bridge";
+import { LIVE_SOURCE } from "../src/config/liveSource";
 import { o2Frame, o2Legend, myocardiumO2Color, tissueO2, tissueRelative, vesselO2Color } from "../src/sim/o2View";
 import { SAT_RANGE, legendGradient, satColor } from "../src/structural/heartView";
 import type { Saturations } from "../src/sim/hemoSource";
@@ -33,7 +33,7 @@ describe("O2 sat view colours", () => {
     expect(vesselO2Color(f, new THREE.Color()).r).toBeGreaterThan(vesselO2Color(f, new THREE.Color()).b);
   });
   it("an occluded LAD territory is blue and the other beds stay red (floor = placeholder at severity 1)", () => {
-    const { base, slope } = BRIDGE.bedOxygen;
+    const { base, slope } = LIVE_SOURCE.bedOxygen;
     const f = o2Frame(sats({ bed: { "LAD#0": base - slope, "LAD#end": base - slope, "RCA#0": base } }));
     const m = new THREE.Color(0x884444);
     const lad = myocardiumO2Color(f, ["LAD#0", "LAD#end"], [0.5, 0.5], 1, m, new THREE.Color());

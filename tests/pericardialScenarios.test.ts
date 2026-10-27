@@ -125,7 +125,6 @@ describe("tamponade (preset)", () => {
     expect(alternansAmplitude(300, true)).toBe(0);
     expect(ekgPresetFor({ pericardium: { effusionMl: 200 } })).toBe("nsr");
     expect(ekgPresetFor({ pericardium: { effusionMl: 400, open: true } })).toBe("nsr");
-    expect(ekgPresetFor({ kind: "neonate", pericardium: { effusionMl: 400 } })).toBe("nsr");
     const small = ward({ pericardium: { effusionMl: 150 } }, 10); small.run(3);
     expect(small.ecg().electricalAlternans).toBe(0);
     expect(small.stream.beats.every((b) => b.alt === undefined)).toBe(true);

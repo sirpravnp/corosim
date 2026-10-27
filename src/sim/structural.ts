@@ -163,13 +163,13 @@ export function parseLesionHash(hash: string): { id: LesionId; values: Record<st
   return { id: d.id, values };
 }
 /**
- * A structural-page `#lesion=...` hash as a PatientSpec: `kind` from the lesion's patient, `heart` from `def.build(values)` (slider
+ * A structural-page `#lesion=...` hash as a PatientSpec: `heart` from `def.build(values)` (slider
  * values at their defaults unless the hash sets them) without the `patient` and `hr` fields, which the spec carries elsewhere.
  */
 export function patientFromLesionHash(hash: string): PatientSpec {
   const { id, values } = parseLesionHash(hash), d = LESION_BY_ID[id]!;
   const { patient: _p, hr: _h, ...heart } = d.build({ ...defaults(d), ...values });
-  return { kind: d.patient, heart };
+  return { heart };
 }
 /** The hash that opens `id` with `values`, leaving out sliders at their defaults. */
 export function lesionHash(id: LesionId, values: Record<string, number>): string {

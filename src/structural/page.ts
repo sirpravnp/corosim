@@ -23,7 +23,7 @@ let def: LesionDef = LESIONS[0];
 let values: Record<string, number> = defaults(def);
 let result!: StructuralFindings;
 /** "Open in…" links: the lesion on screen with its slider values, as a PatientSpec. */
-const links = mountCrossLinks($("xlinks"), "structural", "../", () => patientFromLesionHash(lesionHash(def.id, values)));
+const links = mountCrossLinks($("xlinks"), "structural", "../", () => patientFromLesionHash(lesionHash(def.id, values)), { skip: () => (def.patient === "adult" ? [] : ["sim", "cath"]) }); // a newborn lesson has no Simulator or cath-lab patient
 let heart: StructuralHeartView | null = null;
 try { heart = new StructuralHeartView($("view3d")); $("satbar").style.background = legendGradient(); } catch { $("view3d").textContent = "3D view needs WebGL."; document.querySelectorAll<HTMLElement>(".views button, #cut").forEach((el) => ((el as HTMLButtonElement | HTMLInputElement).disabled = true)); }
 

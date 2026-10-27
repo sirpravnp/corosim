@@ -16,7 +16,7 @@ const OLD: Scenario[] = [
 describe("encodePatient / decodePatient", () => {
   it("round-trips a full PatientSpec", () => {
     const p: PatientSpec = {
-      lesions: [{ artery: "LAD", stenosis: 0.8 }], seed: 3, kind: "neonate",
+      lesions: [{ artery: "LAD", stenosis: 0.8 }], seed: 3,
       heart: { vsd: { diameterMm: 5 }, pvri: 2, valves: { mv: { reg: 0.3 } } },
       pericardium: { effusionMl: 300, effusionRateMlMin: 5, stiffness: 1.5 },
       fluids: { given: [{ kind: "blood", ml: 500, atMin: 10, overMin: 20 }], capillaryLeak: 0.2 },
@@ -41,19 +41,18 @@ describe("encodePatient / decodePatient", () => {
     expect(decodePatient(code)).toEqual(OLD[2]);
   });
   it("the LLM reference mentions every new field", () => {
-    for (const k of ["kind", "heart", "pericardium", "fluids", "ventilation", "devices", "effusionMl", "peep", "ecmo"]) expect(SCENARIO_REFERENCE).toContain(`"${k}"`);
+    for (const k of ["heart", "pericardium", "fluids", "ventilation", "devices", "effusionMl", "peep", "ecmo"]) expect(SCENARIO_REFERENCE).toContain(`"${k}"`);
   });
 });
 
 describe("normalizePatient", () => {
   it("a plain Scenario passes through with normalizeScenario's warnings", () => {
     const r = normalizePatient({ bloodLoss: 0.9, lesions: [{ artery: "nonsense" }] });
-    expect(r.spec.kind).toBeUndefined();
     expect(r.warnings.length).toBeGreaterThanOrEqual(2);
     expect(r.scenario.bloodLoss).toBe(0.6);
   });
   it("accepts in-range values unchanged, with no warnings", () => {
-    const p: PatientSpec = { kind: "adult", pericardium: { effusionMl: 500, open: false }, fluids: { given: [{ kind: "crystalloid", ml: 1000 }], legRaise: true }, ventilation: { mode: "positive", peep: 10, tidalMlKg: 6 }, devices: { impella: { model: "5.5", level: 9, position: "deep" }, ecmo: { flowLpm: 7, fio2: 1 } }, heart: { asd: { diameterMm: 12 } } };
+    const p: PatientSpec = { pericardium: { effusionMl: 500, open: false }, fluids: { given: [{ kind: "crystalloid", ml: 1000 }], legRaise: true }, ventilation: { mode: "positive", peep: 10, tidalMlKg: 6 }, devices: { impella: { model: "5.5", level: 9, position: "deep" }, ecmo: { flowLpm: 7, fio2: 1 } }, heart: { asd: { diameterMm: 12 } } };
     const r = normalizePatient(p);
     expect(r.warnings).toEqual([]);
     expect(r.spec).toEqual(p);
@@ -71,7 +70,7 @@ describe("normalizePatient", () => {
   it("drops invalid values with a warning and never throws", () => {
     const bad = { kind: "child", pericardium: { effusionMl: NaN, stiffness: "2" }, fluids: { given: [{ kind: "wine", ml: 100 }, { kind: "blood" }, 5], hemorrhageMlMin: Infinity }, ventilation: { mode: "cpap", peep: null }, devices: { iabp: { ratio: 4 }, impella: "on" }, heart: 3 } as unknown as PatientSpec;
     const r = normalizePatient(bad);
-    expect(r.spec.kind).toBeUndefined();
+    expect(r.spec).not.toHaveProperty("kind");
     expect(r.spec.pericardium).toBeUndefined();
     expect(r.spec.fluids).toBeUndefined();
     expect(r.spec.ventilation).toBeUndefined();
@@ -79,6 +78,13 @@ describe("normalizePatient", () => {
     expect(r.spec.devices).toEqual({ iabp: {} });
     expect(r.warnings.length).toBeGreaterThanOrEqual(10);
     for (const junk of [null, 5, "x", []] as unknown[]) expect(() => normalizePatient({ pericardium: junk, devices: junk, fluids: junk, ventilation: junk, heart: junk } as PatientSpec)).not.toThrow();
+  });
+  it("kind: a newborn is no longer simulated, so an old link or call opens as the adult with a warning", () => {
+    const r = normalizePatient({ kind: "neonate", heart: { vsd: { diameterMm: 5 } } } as PatientSpec);
+    expect(r.spec).not.toHaveProperty("kind");
+    expect(r.spec.heart).toEqual({ vsd: { diameterMm: 5 } });
+    expect(r.warnings.some((w) => /neonate.*no longer simulated/.test(w))).toBe(true);
+    expect(normalizePatient({ kind: "adult" } as PatientSpec).warnings).toEqual([]);
   });
   it("uses the structural engine's clamping for the heart and strips patient and hr", () => {
     const r = normalizePatient({ heart: { pvri: 500, vsd: { diameterMm: 90 }, valves: { av: { open: 3 } }, patient: "neonate", hr: 150, bogus: 1 } as never });
@@ -118,26 +124,24 @@ describe("effectiveDevices", () => {
 });
 
 describe("patientFromLesionHash", () => {
-  it("an adult valve lesion: kind adult, heart from the lesion", () => {
-    expect(patientFromLesionHash("#lesion=as&severity=0.5")).toEqual({ kind: "adult", heart: { valves: { av: { open: 1 - 0.85 * 0.5 } } } });
+  it("an adult valve lesion: heart from the lesion", () => {
+    expect(patientFromLesionHash("#lesion=as&severity=0.5")).toEqual({ heart: { valves: { av: { open: 1 - 0.85 * 0.5 } } } });
   });
-  it("a neonate lesion: kind neonate, patient and hr left out, defaults filled in", () => {
+  it("a neonate lesson: patient and hr left out, defaults filled in", () => {
     const p = patientFromLesionHash("#lesion=vsd&diameter=7");
-    expect(p.kind).toBe("neonate");
     expect(p.heart).toEqual({ pvri: 2, vsd: { diameterMm: 7 } });
   });
   it("tetralogy with a spell", () => {
     const p = patientFromLesionHash("#lesion=tof&spasm=0.8");
-    expect(p.kind).toBe("neonate");
     expect(p.heart?.tof).toMatchObject({ spasm: 0.8, vsdMm: 8 });
     expect(p.heart?.svrScale).toBe(1);
   });
   it("normal and unknown hashes give a normal adult heart; every lesion yields a valid, warning-free spec", () => {
-    expect(patientFromLesionHash("#lesion=normal")).toEqual({ kind: "adult", heart: {} });
-    expect(patientFromLesionHash("#lesion=constructor")).toEqual({ kind: "adult", heart: {} });
+    expect(patientFromLesionHash("#lesion=normal")).toEqual({ heart: {} });
+    expect(patientFromLesionHash("#lesion=constructor")).toEqual({ heart: {} });
     for (const l of LESIONS) {
       const p = patientFromLesionHash(`#lesion=${l.id}`);
-      expect(p.kind).toBe(l.patient);
+      expect(p).not.toHaveProperty("kind");
       expect(normalizePatient(p).warnings).toEqual([]);
       expect(parseLesionHash(`#lesion=${l.id}`).id).toBe(l.id);
       expect(decodePatient(encodePatient(p))).toEqual(JSON.parse(JSON.stringify(p)));

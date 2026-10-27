@@ -1,7 +1,7 @@
 // Constants of the Simulator page's live HemoSource (src/sim/liveSource.ts, task P16). Teaching choices, all [assumed].
 
 export const LIVE_SOURCE = {
-  /** `numbers()` and `saturations()` average the beats completed in the last this many seconds, as a bedside monitor does (the 10 s of `Simulation.hemo` and the 15 s of the bridge's MAP window are of the same order). [assumed] */
+  /** `numbers()` and `saturations()` average the beats completed in the last this many seconds, as a bedside monitor does (the 10 s of `Simulation.hemo` is of the same order). [assumed] */
   numbersWindowS: 8,
   /** ... but never fewer than this many beats, so a slow heart (complete heart block at 40/min) still averages. [assumed] */
   minBeats: 3,
@@ -15,4 +15,6 @@ export const LIVE_SOURCE = {
   deviceEveryS: 0.1,
   /** Length (s) of the waveforms a console draws (Impella placement signal, IABP arterial trace). [assumed] */
   deviceTraceS: 6,
+  /** Bed oxygenation placeholder: tissue O2 = base - slope x ischemia severity (until tasks E2/E3). [assumed] */
+  bedOxygen: { base: 0.75, slope: 0.45 },
 };

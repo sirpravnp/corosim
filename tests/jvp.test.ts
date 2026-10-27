@@ -4,7 +4,7 @@ import { buildModel, volumeOffsetFor, type StructuralSpec } from "../src/physics
 import { fromModel, type FromModelOptions } from "../src/physics/core/fromModel";
 import { createEngine } from "../src/physics/core/engine";
 import { LESIONS, defaults } from "../src/sim/structural";
-import { bridgeAfNote, pressureAt } from "../src/panels/jvp";
+import { pressureAt } from "../src/panels/jvp";
 import { createStubSource } from "../src/sim/stubSource";
 
 /** Sum of Gaussian bumps on a baseline, sampled every 2 ms over rr seconds. */
@@ -175,14 +175,6 @@ describe("JVP panel helpers", () => {
     const b = { time: Float32Array.from([0, 0.5]), ra: Float32Array.from([0, 10]), rr: 1 };
     expect(pressureAt(b, 0.25)).toBeCloseTo(5, 6);
     expect(pressureAt(b, 1.25)).toBeCloseTo(5, 6);
-  });
-  it("AF footnote only for the bridge with no atrial events on consecutive beats", () => {
-    const beat = createStubSource().beats(1)[0];
-    const noA = { ...beat, atrial: new Float32Array(0), pvc: false };
-    expect(bridgeAfNote("bridge", [noA, noA, noA])).toMatch(/steady-state solve/);
-    expect(bridgeAfNote("live", [noA, noA, noA])).toBeNull();
-    expect(bridgeAfNote("bridge", [noA])).toBeNull();
-    expect(bridgeAfNote("bridge", [beat, beat, beat])).toBeNull();
   });
   it("stub beat analyses without throwing", () => {
     const b = createStubSource().beats(1)[0];

@@ -10,7 +10,7 @@ export interface Panel {
   readonly title: string;
   /** Build the panel's DOM inside `el`. Called once. */
   mount(el: HTMLElement, source: HemoSource): void;
-  /** The source changed (a new patient, or the switch from bridge to live engine). */
+  /** The source changed (a new patient). */
   setSource?(source: HemoSource): void;
   /** Container size changed. */
   resize?(): void;

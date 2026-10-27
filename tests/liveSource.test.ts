@@ -23,8 +23,8 @@ const LAD = CASE_BY_ID.ladocc.scenario;
 
 describe("the source of a normal adult", () => {
   const { sim, src, n, sat } = patient();
-  it("is live, adult and not standalone, with the nodes of the contract", () => {
-    expect(src.kind).toBe("live"); expect(src.patientKind).toBe("adult"); expect(src.standalone).toBe(false);
+  it("is live, with the nodes of the contract", () => {
+    expect(src.kind).toBe("live");
     for (const nd of CATH_NODES) expect(src.nodes()).toContain(nd);
     expect(src.now()).toBeCloseTo(sim.t, 6);
   });
@@ -47,7 +47,7 @@ describe("the source of a normal adult", () => {
     expect(Math.abs(n.cvp - h.cvp)).toBeLessThan(0.7); expect(Math.abs(n.pcwp - h.pcwp)).toBeLessThan(1);
     expect(Math.abs(n.co - sim.rolling(8).cardiacOutput)).toBeLessThan(0.5);
   });
-  it("has normal saturations from the bridge's oxygen model, finite everywhere", () => {
+  it("has normal saturations from the oxygen model, finite everywhere", () => {
     expect(sat.spo2).toBeGreaterThan(0.95); expect(sat.preductal).toBeCloseTo(sat.postductal, 2);
     expect(sat.svo2).toBeGreaterThan(0.62); expect(sat.svo2).toBeLessThan(0.8);
     expect(sat.do2).toBeGreaterThan(800); expect(sat.do2).toBeLessThan(1200);
@@ -156,11 +156,11 @@ describe("beat-level signs on the live page", () => {
   });
 });
 
-describe("a patient the live source cannot represent", () => {
-  it("a neonate's structural fields are not applied to the adult core, which runs on (the page reads the bridge instead)", () => {
+describe("a spec that still names a newborn", () => {
+  it("runs as the adult (the Simulator has no newborn; the Structural page keeps them)", () => {
     const sim = new Simulation({}, { engine: "core" });
-    sim.reset({ seed: 3, kind: "neonate", heart: { vsd: { diameterMm: 5 } } }, { settled: true });
-    expect(sim.patientKind).toBe("neonate"); expect(sim.coreNote).toBe("");
+    sim.reset({ seed: 3, kind: "neonate" } as PatientSpec, { settled: true });
+    expect(sim.coreNote).toBe("");
     sim.warmup(10);
     const n = new LiveSource(sim).numbers();
     expect(n.map).toBeGreaterThan(70); // a plain adult
