@@ -73,6 +73,7 @@ describe("MCP schema parity", () => {
   it("valve interventions are a tool, and the actions the page has map to tools that exist", () => {
     const names = TOOLS.map((t) => t.name);
     expect(names).toContain("corosim_valve");
+    expect(names).toContain("corosim_arrest");
     for (const [id, a] of Object.entries(ACTIONS)) if (a.tool) expect(names, id).toContain(a.tool);
   });
   it("every field of the spec sections the engine reads is accepted by normalizePatient without a warning", () => {

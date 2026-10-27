@@ -13,8 +13,10 @@ import { CustomEkg, TERRITORIES, buildCustom, encodeCustom } from "../ekg/custom
 import { patientProperties, displaySchema } from "../sim/registry";
 import { intervene } from "../sim/valves";
 import type { Intervention } from "../sim/valves";
-import { narrateCase, narrateNewPatient, narrateChange, narrateRun, narrateTreat, narrateValve, features } from "../sim/narrate";
+import { narrateCase, narrateNewPatient, narrateChange, narrateRun, narrateTreat, narrateValve, narrateArrest, features } from "../sim/narrate";
 import { vitalsOf, snapshot } from "./narration";
+import { simRhythmId } from "../physics/rhythmSource";
+import type { ArrestDrug } from "../sim/arrest";
 
 /**
  * Tool definitions in one place, as plain JSON Schema. The MCP server, the HTTP/OpenAPI adapter and the
@@ -72,12 +74,19 @@ function beatTable(beats: BeatRecord[], max: number) {
   };
 }
 
+/** The arrest block and the dead flag at the top level of the result (also inside `state`); `arrest` is absent on the legacy engine. */
+function arrestView(sim: Simulation) {
+  const st = sim.state() as unknown as { arrest?: unknown; dead?: boolean };
+  return { ...(st.arrest ? { arrest: st.arrest } : {}), dead: st.dead === true };
+}
+
 /** What a clinician at the bedside would have: monitor, 12-lead ECG, and where the guidelines stand. */
 function bedside(sim: Simulation) {
   const a = sim.assessment();
   return {
     scenario: sim.scenario(), // also what the in-chat viewer replays
     state: sim.state(),
+    ...arrestView(sim),
     ecg: sim.ecg(),
     ...(sim.devices() ? { devices: sim.devices() } : {}), // core engine: Impella and IABP consoles (see sim/coreDevices.ts)
     assessment: { problems: a.issues.map((i) => i.text), harmful: a.warnings.map((w) => w.text), guidelineNextSteps: a.steps.map((x) => ({ step: x.text, why: x.why })) },
@@ -105,12 +114,13 @@ function runReport(ctx: ToolContext, seconds: number, beatsMode: string, maxBeat
 export const TOOLS: ToolDef[] = [
   {
     name: "corosim_get_schema", title: "Describe the scenario format", readOnly: true,
-    description: `Return the Scenario JSON schema, valid artery ids for the current anatomy, units and what every knob does. Call this first when you are asked to build a patient. Not for showing a rhythm or EKG pattern (AF, flutter, SVT, blocks, VT, torsades, VF, STEMI mimics, electrolytes): use corosim_ekg_show, which draws any of them. ${NOT_CLINICAL}`,
+    description: `Return the Scenario JSON schema, valid artery ids for the current anatomy, units and what every knob does. Call this first when you are asked to build a patient. To put a library rhythm on the patient (flutter, SVT, blocks, VT, VF...) so its hemodynamics follow, set patient.rhythm (every corosim_ekg_list id works); to only see a tracing, use corosim_ekg_show. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: {} },
     run({ sim }) {
       return {
         reference: SCENARIO_REFERENCE, schema: patientSchema,
-        ekg: "The patient makes only the rhythms its coronary physiology causes (ischemic ST change, PVCs, AV block, AF if given). To show or teach any other rhythm or 12-lead pattern (flutter, SVT, WPW, VT, polymorphic VT, torsades, VF, long QT, hyperkalemia, Brugada, pericarditis, de Winter, Wellens...), call corosim_ekg_show (a preset, or custom for anything else): it does not touch this patient.",
+        ekg: "The patient runs its own sinus or AF rhythm plus whatever its coronary physiology causes, and any rhythm of the EKG library through patient.rhythm (flutter, SVT, junctional, AV blocks, VT, torsades, VF, asystole, paced; ids from corosim_ekg_list) with the hemodynamics that follow, on the core engine. Use corosim_adjust { patch: { patient: { rhythm } } } when the rhythm's effect on the patient matters. To only show or teach a tracing (any rhythm or 12-lead pattern, STEMI mimics, electrolytes, custom tracings), call corosim_ekg_show: it does not touch this patient and its result offers to apply a library rhythm to the patient.",
+        arrest: "Cardiac arrest (core engine): set patient.rhythm to vf-coarse, vt-mono or asystole with corosim_adjust, then run the resuscitation with corosim_arrest (cpr, shock, drug, restart). state.arrest and state.dead (also at the top level of corosim_get_state and corosim_show) report it.",
         arteriesInCurrentAnatomy: buildTree(sim.n.anatomy).segments.map((s) => ({ id: s.id, name: s.name, supplies: `${(s.subMass * 100).toFixed(0)}% of myocardium` })),
         referenceAdult: { hr: 72, strokeVolumeMl: 70, mapMmHg: 90, bp: "120/72" },
         howItWorks: "Pressure of each beat is sensed by baroreceptors; a fast vagal arm (~0.6 s) and a slow sympathetic arm (~2 s) change heart rate, contractility and resistance. Respiration gates vagal tone (RSA). Noise in tone makes every beat different. Coronary lesions cause ischemia over ~20 s, which causes AV block, ectopy and pump failure; pressure then feeds back on coronary perfusion.",
@@ -119,7 +129,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "corosim_set_scenario", title: "Build a patient", readOnly: false,
-    description: `Replace the current patient with this scenario, then run a warm-up so the reflexes have settled. Returns the monitor, the 12-lead ECG, the guideline assessment and a grounded explanation, plus warnings listing anything that was clamped or dropped (read them: they tell you what actually ran). Use settled=false to watch an occlusion develop from a healthy start. The warm-up does not advance the infarct clock; corosim_run and corosim_adjust do (2 clinical minutes per simulated second), so a closed artery loses muscle as you run it. Not for showing a rhythm or EKG pattern (AF, flutter, SVT, blocks, VT, torsades, VF, STEMI mimics, electrolytes): use corosim_ekg_show, which draws any of them. ${NOT_CLINICAL}`,
+    description: `Replace the current patient with this scenario, then run a warm-up so the reflexes have settled. Returns the monitor, the 12-lead ECG, the guideline assessment and a grounded explanation, plus warnings listing anything that was clamped or dropped (read them: they tell you what actually ran). Use settled=false to watch an occlusion develop from a healthy start. The warm-up does not advance the infarct clock; corosim_run and corosim_adjust do (2 clinical minutes per simulated second), so a closed artery loses muscle as you run it. To put a library rhythm on the patient (flutter, SVT, blocks, VT, VF...) so its hemodynamics follow, set patient.rhythm (every corosim_ekg_list id works); to only see a tracing, use corosim_ekg_show. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: { scenario: patientSchema, engine: { enum: ["legacy", "core"], description: "Hemodynamic engine for this patient. Omit to keep the current one (a new server starts on legacy). 'core' is the beat-by-beat engine and adds the Impella and IABP consoles (devices) to every report; slower." }, settled: { type: "boolean", description: "Start with ischemia already at its steady value (default true). False = ischemia develops over ~20 s." }, warmupSeconds: { type: "number", minimum: 0, maximum: 300, description: "Simulated seconds to run before returning (default 45)." } } },
     run({ sim }, a) {
       if (a.engine !== undefined && a.engine !== "legacy" && a.engine !== "core") throw new Error("engine must be legacy or core.");
@@ -133,7 +143,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "corosim_adjust", title: "Change the patient while it runs", readOnly: false,
-    description: `Apply a change to the running patient (give a drug, start a hemorrhage, occlude an artery) and optionally run on to watch the response. Fields you leave out are unchanged; drug and volume changes ramp in over ~10 s like a real bolus. Returns the response time course. ${NOT_CLINICAL}`,
+    description: `Apply a change to the running patient (give a drug, start a hemorrhage, occlude an artery) and optionally run on to watch the response. Fields you leave out are unchanged; drug and volume changes ramp in over ~10 s like a real bolus. Returns the response time course. Set patch.patient.rhythm to any library rhythm (corosim_ekg_list ids) to run it on the patient with its hemodynamics, including vf-coarse, vt-mono and asystole to start an arrest for teaching (then corosim_arrest). ${NOT_CLINICAL}`,
     inputSchema: { type: "object", required: ["patch"], properties: { patch: patientSchema, runSeconds: { type: "number", minimum: 0, maximum: 600, description: "Simulated seconds to run after the change (default 60)." } } },
     run(ctx, a) {
       const before = snapshot(ctx.sim), secs = num(a.runSeconds, 60, 0, 600);
@@ -155,7 +165,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "corosim_get_state", title: "Current hemodynamic state", readOnly: true,
-    description: `The patient right now, as at the bedside: monitor (10 s rolling vitals), 12-lead ECG ST levels by lead, rhythm, ventricle and infarct size, support running, ischemic beds, FFR, and the guideline assessment (problems, anything harmful being done, next steps in order). Does not advance time. Read this first. ${NOT_CLINICAL}`,
+    description: `The patient right now, as at the bedside: monitor (10 s rolling vitals), 12-lead ECG ST levels by lead, rhythm, cardiac arrest status (arrest block and dead, core engine), ventricle and infarct size, support running, ischemic beds, FFR, and the guideline assessment (problems, anything harmful being done, next steps in order). Does not advance time. Read this first. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: {} },
     run({ sim }) { return { warnings: sim.warnings, ...bedside(sim) }; },
   },
@@ -205,6 +215,58 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "corosim_arrest", title: "Cardiac arrest: CPR, shock, drugs, restart", readOnly: false,
+    description: `Run a resuscitation on the patient (core engine). Start an arrest for teaching with corosim_adjust { patch: { patient: { rhythm: "vf-coarse" } } } (or "vt-mono" for pulseless VT, "asystole"); the patient is then in cardiac arrest with no flow and a clock running toward irreversible injury and death. Then act with this tool: action cpr (on true or false, optional rate per min, depthCm, quality 0..1: chest compressions give roughly a quarter of normal output and good CPR matters), shock (joules, default 200; sync false to defibrillate VF or pulseless VT, sync true to cardiovert a perfusing tachyarrhythmia; a shock can fail, can be repeated, and an unsynchronized shock on a perfusing rhythm can induce VF), drug (epinephrine 1 mg, amiodarone 300 then 150 mg, lidocaine 100 mg, or dose in mg), restart (after death, or to start the same patient again). Each call runs on (runSeconds, default 10) and returns narrative, ok and note (false with a note when the action cannot be done, e.g. CPR on a patient with a pulse), the arrest block (status none/arrest/rosc/dead, rhythm class, seconds of no flow, irreversible injury, CPR, last shock, drugs), dead, warnings, and the monitor. Without an arrest the same shock, drug and CPR calls are refused with a note. The legacy engine has no arrest: it returns ok false with a note (corosim_set_scenario engine "core"). Show it with corosim_show. ${NOT_CLINICAL}`,
+    inputSchema: {
+      type: "object", required: ["action"],
+      properties: {
+        action: { enum: ["cpr", "shock", "drug", "restart"] },
+        on: { type: "boolean", description: "cpr: start (true, default) or stop (false) compressions." },
+        rate: { type: "number", minimum: 60, maximum: 160, description: "cpr: compressions per minute (guideline 100 to 120)." },
+        depthCm: { type: "number", minimum: 2, maximum: 8, description: "cpr: compression depth, cm (guideline 5 to 6)." },
+        quality: { type: "number", minimum: 0, maximum: 1, description: "cpr: overall quality 0..1 (recoil, minimal pauses)." },
+        joules: { type: "number", minimum: 1, maximum: 360, description: "shock: energy, J (default 200 biphasic)." },
+        sync: { type: "boolean", description: "shock: synchronized cardioversion (a perfusing tachyarrhythmia) instead of defibrillation. Default false." },
+        drug: { enum: ["epinephrine", "amiodarone", "lidocaine"], description: "drug: which one." },
+        dose: { type: "number", minimum: 0, maximum: 1000, description: "drug: mg (a standard dose if omitted)." },
+        runSeconds: { type: "number", minimum: 0, maximum: 300, description: "Simulated seconds to run after the action (default 10; restart 10)." },
+      },
+    },
+    run(ctx, a) {
+      const { sim } = ctx, action = String(a.action);
+      if (!["cpr", "shock", "drug", "restart"].includes(action)) throw new Error("action must be cpr, shock, drug or restart.");
+      const opt = (k: string) => (typeof a[k] === "number" && Number.isFinite(a[k]) ? (a[k] as number) : undefined);
+      const before = vitalsOf(sim);
+      let did = "", ok = true, note: string | undefined, shock: Record<string, unknown> | undefined;
+      if (action === "cpr") {
+        const on = a.on !== false;
+        const r = sim.setCpr({ on, ...(opt("rate") !== undefined ? { rate: opt("rate")! } : {}), ...(opt("depthCm") !== undefined ? { depthCm: opt("depthCm")! } : {}), ...(opt("quality") !== undefined ? { quality: opt("quality")! } : {}) });
+        ({ ok, note } = r); did = on ? "chest compressions started" : "chest compressions stopped";
+      } else if (action === "shock") {
+        const joules = Math.round(num(a.joules, 200, 1, 360)), sync = a.sync === true;
+        const r = sim.shock({ joules, sync });
+        ok = r.discharged; note = r.note; shock = { joules, sync, discharged: r.discharged, success: r.success, rhythmAfter: r.rhythm };
+        did = `a ${joules} J ${sync ? "synchronized " : ""}shock ${r.discharged ? (r.success ? "converted the rhythm" : "did not convert the rhythm") : "was not delivered"}`;
+        if (!ok) did = "the shock";
+      } else if (action === "drug") {
+        const drug = String(a.drug) as ArrestDrug;
+        if (!["epinephrine", "amiodarone", "lidocaine"].includes(drug)) throw new Error("drug must be epinephrine, amiodarone or lidocaine.");
+        const r = sim.giveDrug(drug, opt("dose"));
+        ({ ok, note } = r); did = `${drug}${opt("dose") !== undefined ? ` ${opt("dose")} mg` : ""} given`;
+        if (!ok) did = drug;
+      } else {
+        sim.restartPatient();
+        rememberPatient(sim, sim.restartSpec());
+        did = "the patient was restarted from the beginning of the same case";
+      }
+      const secs = ok ? num(a.runSeconds, 10, 0, 300) : 0;
+      const rep = runReport(ctx, secs || 0.02, "none", 0);
+      const now = vitalsOf(sim), st = sim.state() as unknown as { arrest?: unknown; dead?: boolean };
+      const warnings = [...(note && !ok ? [note] : []), ...sim.warnings];
+      return { narrative: narrateArrest(did, ok, note, now), ok, ...(note ? { note } : {}), action, ...(shock ? { shock } : {}), arrest: st.arrest ?? null, dead: st.dead === true, ...rep, warnings };
+    },
+  },
+  {
     name: "corosim_describe_case", title: "The case in plain sentences", readOnly: true,
     description: `The current patient as a short case description, the way someone would read it out while building it on the website: the coronary lesions, valve disease and prostheses, rhythm, support devices, pericardium, bleeding and electrolytes, then where the monitor stands now (rhythm and rate, pressure, shock, ischemia and infarct). Returns narrative (one or two sentences) and the list of findings behind it. Does not advance time or change the patient. Every tool that changes the patient (corosim_set_scenario, corosim_adjust, corosim_run, corosim_treat, corosim_valve) also returns a narrative of what changed and why. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: {} },
@@ -238,7 +300,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "corosim_show", title: "Show the patient in the chat", readOnly: true, viewer: true,
-    description: `Display the patient visually, right here in the chat: an interactive 3D heart (ischemic wall darkened, infarct darker, narrowing marked), a live 12-lead ECG and a bedside monitor with the guideline next steps. Call this whenever the user wants to see, show, view, visualize or look at the patient, the heart or the ECG. Does not advance time. The optional display fields choose the camera view (the chat viewer applies the view; the website page has the rest: coloring, heart style, labels, flow, valves, posterior leads). For a rhythm strip or EKG pattern on its own, use corosim_ekg_show instead. ${NOT_CLINICAL}`,
+    description: `Display the patient visually, right here in the chat: an interactive 3D heart (ischemic wall darkened, infarct darker, narrowing marked), a live 12-lead ECG and a bedside monitor with the guideline next steps. Call this whenever the user wants to see, show, view, visualize or look at the patient, the heart or the ECG. Does not advance time. Shows arrest and death on the monitor. The optional display fields choose the camera view (the chat viewer applies the view; the website page has the rest: coloring, heart style, labels, flow, valves, posterior leads). For a rhythm strip or EKG pattern on its own, use corosim_ekg_show instead. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: { display: displaySchema() } },
     run({ sim }, a) {
       const display = a.display && typeof a.display === "object" && !Array.isArray(a.display) ? (a.display as Record<string, unknown>) : undefined;
@@ -279,7 +341,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "corosim_ekg_list", title: "EKG library", readOnly: true, stateless: true,
-    description: `List the simulated 12-lead EKG presets by category: sinus rhythms, atrial fibrillation and flutter, junctional and re-entrant rhythms (SVT, WPW), AV blocks (first degree, Wenckebach, Mobitz II, 2:1, complete), bundle branch and fascicular blocks, ventricular rhythms (PVCs, AIVR, monomorphic and polymorphic VT, torsades, VF, asystole, paced), acute coronary patterns (anterior, inferior, lateral and posterior STEMI, hyperacute T, de Winter, Wellens, NSTEMI, aVR elevation, Sgarbossa) and STEMI mimics (pericarditis, early repolarization, LVH, Brugada, Takotsubo, PE, LV aneurysm, hyperkalemia, hypothermia). Does not touch the patient. ${NOT_CLINICAL}`,
+    description: `List the simulated 12-lead EKG presets by category: sinus rhythms, atrial fibrillation and flutter, junctional and re-entrant rhythms (SVT, WPW), AV blocks (first degree, Wenckebach, Mobitz II, 2:1, complete), bundle branch and fascicular blocks, ventricular rhythms (PVCs, AIVR, monomorphic and polymorphic VT, torsades, VF, asystole, paced), acute coronary patterns (anterior, inferior, lateral and posterior STEMI, hyperacute T, de Winter, Wellens, NSTEMI, aVR elevation, Sgarbossa) and STEMI mimics (pericarditis, early repolarization, LVH, Brugada, Takotsubo, PE, LV aneurysm, hyperkalemia, hypothermia). Does not touch the patient; the same ids are the rhythms the patient can run (corosim_adjust patch.patient.rhythm). ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: {} },
     run() {
       return { categories: CATEGORIES.map((c) => ({ category: c, presets: PRESETS.filter((p) => p.category === c).map((p) => ({ id: p.id, name: p.name })) })), use: "Show one with corosim_ekg_show { preset: id }; add quiz: true to hide the answer. For anything not listed, build it with corosim_ekg_show { custom: {...} }." };
@@ -287,7 +349,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "corosim_ekg_show", title: "Show any EKG rhythm or 12-lead pattern", readOnly: true, stateless: true, viewer: "ekg",
-    description: `Show any heart rhythm or EKG pattern (arrhythmia, block, ischemia, STEMI mimic, electrolyte or drug effect) as a simulated 12-lead right here in the chat. Use this for any request to see, draw, show or practise a rhythm or EKG: torsades, VT, VF, flutter, SVT, heart block, hyperkalemia and so on. It displays the tracing writing itself on paper, and a 3D heart with every lead drawn as an axis through it and the heart's electrical vector moving in real time, so the learner sees why each lead looks as it does. Returns the measurements (rates, PR, QRS, QTc, axis, ST by lead) taken from the waveform, so you can check what was drawn, and the teaching notes. Either name a library preset (an id from corosim_ekg_list or a common name: "afib", "torsades", "de winter", "inferior stemi"), or build any other tracing with custom: a rhythm, its conduction and what the complexes look like by territory (e.g. sinus 110 with LBBB and 3 mm inferior ST elevation; AF at 180 with a delta wave; Wenckebach 3:2 with anterior Q waves), optionally starting from a preset with custom.base. It does not change the patient (use corosim_show for that). quiz: true hides the name on screen and returns the answer as answerKey: do not reveal it until the learner has read the tracing and committed. ${NOT_CLINICAL}`,
+    description: `Show any heart rhythm or EKG pattern (arrhythmia, block, ischemia, STEMI mimic, electrolyte or drug effect) as a simulated 12-lead right here in the chat. Use this for any request to see, draw, show or practise a rhythm or EKG: torsades, VT, VF, flutter, SVT, heart block, hyperkalemia and so on. It displays the tracing writing itself on paper, and a 3D heart with every lead drawn as an axis through it and the heart's electrical vector moving in real time, so the learner sees why each lead looks as it does. Returns the measurements (rates, PR, QRS, QTc, axis, ST by lead) taken from the waveform, so you can check what was drawn, and the teaching notes. Either name a library preset (an id from corosim_ekg_list or a common name: "afib", "torsades", "de winter", "inferior stemi"), or build any other tracing with custom: a rhythm, its conduction and what the complexes look like by territory (e.g. sinus 110 with LBBB and 3 mm inferior ST elevation; AF at 180 with a delta wave; Wenckebach 3:2 with anterior Q waves), optionally starting from a preset with custom.base. It does not change the patient; the library presets are the same rhythms the patient can run, and the result's applyToPatient says how to put this one on the patient (corosim_adjust patient.rhythm) when its effect on blood pressure or output matters (use corosim_show to see the patient). quiz: true hides the name on screen and returns the answer as answerKey: do not reveal it until the learner has read the tracing and committed. ${NOT_CLINICAL}`,
     inputSchema: {
       type: "object", properties: {
         preset: { type: "string", description: "Preset id or common name. Omit with quiz: true for a random tracing, or use custom instead." },
@@ -367,6 +429,7 @@ export const TOOLS: ToolDef[] = [
           ? "A simulated 12-lead is displayed with its name hidden. Ask the learner to read it in order (rate, rhythm, axis, intervals, P/QRS/ST/T) and commit to an answer before revealing answerKey."
           : "The 12-lead and the 3D lead view are displayed in the chat. Describe what to notice briefly; do not paste a link.",
         ...(quiz ? { answerKey: tracing } : { tracing }),
+        ...(!custom && simRhythmId(p.id) ? { applyToPatient: { offer: `To see what ${p.name} does to the patient's blood pressure and output, apply it to the patient.`, tool: "corosim_adjust", args: { patch: { patient: { rhythm: simRhythmId(p.id) } } } } } : {}),
         link: custom ? `${root}/ekg/#c=${encodeCustom(custom)}` : `${root}/ekg/#p=${p.id}`,
       };
     },
