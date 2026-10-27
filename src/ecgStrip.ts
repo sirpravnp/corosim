@@ -1,5 +1,5 @@
-import { AF, ALL_LEADS, LeadName, Rhythm, Vec3 } from "./config/ecg";
-import { Beat, sampleLeadsVec, stLevelVec } from "./physics/ecg";
+import { AF, ALL_LEADS, LeadName, Rhythm, ST, Vec3 } from "./config/ecg";
+import { Beat, heartVector, projectLeads, stLevelVec } from "./physics/ecg";
 import { BeatStream } from "./physics/beatStream";
 
 const FS = 250, WIN = 2.5, N = Math.round(FS * WIN);
@@ -11,7 +11,8 @@ const SANS = "-apple-system, Helvetica, Arial, sans-serif";
  * Sweeping 12-lead ECG on standard paper (25 mm/s, 10 mm/mV).
  * Each frame the caller supplies the current injury vector, T-wave boost and rhythm; the P waves and QRS
  * complexes come from the simulation's shared beat stream, generated a little ahead of the sweep, so the
- * ECG and the beat-by-beat pressure are the same beats.
+ * ECG and the beat-by-beat pressure are the same beats. A rhythm from the EKG library (B2) is drawn with the library's own
+ * complexes (each beat carries its painter) and baseline (flutter waves, fibrillation), with the coronary model's ST injury on top.
  */
 export class EcgStrip {
   posterior = false;
@@ -37,19 +38,37 @@ export class EcgStrip {
     const n = Math.floor(this.acc);
     this.acc -= n;
     for (let k = 0; k < n; k++) {
-      const s = sampleLeadsVec(this.t, this.beats, injury, tBoost, this.fWave);
+      const s = this.sample(this.t);
       for (const l of ALL_LEADS) this.ring[l][this.idx % N] = s[l];
       this.idx++; this.t += 1 / FS;
     }
   }
 
+  /** Heart vector (mV) at time t: the coronary model's beats, the library rhythm's beats (their own painter, with this frame's injury) and baseline. */
+  vector(t: number): Vec3 {
+    const base = this.stream.baseline(t);
+    const v = heartVector(t, this.beats, this.injury, this.tBoost, base || this.stream.libraryRhythm ? 0 : this.fWave);
+    if (base) { v[0] += base[0]; v[1] += base[1]; v[2] += base[2]; }
+    for (const b of this.beats) {
+      if (!b.ekg) continue;
+      const dt = t - b.t;
+      if (dt < -0.6 || dt > 1.0) continue;
+      const p = b.ekg.painter, m = p.morph, inj0 = m.injury, tb0 = m.tBoost;
+      m.injury = this.injury; m.tBoost = tb0 + this.tBoost;
+      p.vector(dt, b.alt !== undefined ? { ...b.ekg.beat, alt: b.alt } : b.ekg.beat, v);
+      m.injury = inj0; m.tBoost = tb0;
+    }
+    return v;
+  }
+  private sample(t: number): Record<LeadName, number> { return projectLeads(this.vector(t)); }
+
   /** Measured ventricular and atrial rates (bpm), last PR (s, null if not conducting) and recent ectopy. */
   rhythm(): { hr: number; atrial: number; pr: number | null; pvc: boolean } {
     const past = this.beats.filter((b) => b.t <= this.t && b.t > this.t - 10); // recent beats only, so a change of rhythm reads within seconds
     const rate = (xs: Beat[]) => (xs.length > 1 ? (60 * (xs.length - 1)) / (xs[xs.length - 1].t - xs[0].t) : 0);
-    const qrs = past.filter((b) => !b.pOnly).slice(-5); // every ventricular complex, PVCs included
-    const atria = past.filter((b) => !b.noP && !b.pvc).slice(-4);
-    const conducted = past.filter((b) => !b.pOnly && !b.noP && !b.pvc);
+    const qrs = past.filter((b) => !b.pOnly && !b.silent).slice(-5); // every ventricular complex, PVCs included (not the silent ticks of VF or asystole)
+    const atria = past.filter((b) => !b.noP && !b.pvc && (b.pOnly || !b.silent)).slice(-4); // flutter waves count
+    const conducted = past.filter((b) => !b.pOnly && !b.noP && !b.pvc && !b.silent);
     const last = conducted[conducted.length - 1];
     return { hr: rate(qrs), atrial: rate(atria), pr: last && last.t > this.t - 4 ? last.pr ?? 0.16 : null, pvc: past.some((b) => b.pvc && b.t > this.t - 10) };
   }
@@ -57,11 +76,16 @@ export class EcgStrip {
   /** ST level (mm) in every lead, measured on the latest completed sinus beat. */
   st(): Record<LeadName, number> {
     // In AV dissociation a P wave can land on the baseline or the J+60 point; measure a beat clear of them.
-    const pPeaks = this.beats.filter((x) => !x.noP).map((x) => x.t - (x.pr ?? 0.16));
+    const pPeaks = this.beats.filter((x) => !x.noP && !x.silent).map((x) => x.t - (x.pr ?? 0.16));
     const clear = (b: Beat) => pPeaks.every((p) => Math.abs(p - (b.t - 0.07)) > 0.07 && Math.abs(p - (b.t + 0.11)) > 0.07);
-    const done = this.beats.filter((b) => !b.pvc && !b.pOnly && b.t < this.t - 0.3);
+    const done = this.beats.filter((b) => !b.pvc && !b.pOnly && !b.silent && b.t < this.t - 0.3 && (!b.ekg || b.ekg.beat.kind === "sv"));
     const b = [...done].reverse().find(clear) ?? done[done.length - 1];
     const out = {} as Record<LeadName, number>;
+    if (b?.ekg) { // a library rhythm's beat: measured on what the strip draws (baseline before the QRS, J + 60 ms)
+      const back = (b.ekg.painter.morph.bbb === "lbbb" ? 0.11 : 0.07) * b.ekg.painter.morph.qrsWide, base = this.sample(b.t - back), at = this.sample(b.t + ST.measureAt);
+      for (const l of ALL_LEADS) out[l] = (at[l] - base[l]) * 10;
+      return out;
+    }
     for (const l of ALL_LEADS) out[l] = b ? stLevelVec(l, b, this.beats, this.injury, this.tBoost) * 10 : 0;
     return out;
   }

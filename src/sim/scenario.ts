@@ -2,6 +2,8 @@ import { Variant, TYPICAL, buildTree } from "../anatomy/tree";
 import { Lesion } from "../physics/network";
 import { AutonomicControls, defaultControls } from "../physics/autonomic";
 import { Patient, HEALTHY } from "../physics/rhythm";
+import { simRhythmId } from "../physics/rhythmSource";
+import type { Rhythm } from "../config/ecg";
 import { Support, noSupport } from "../physics/support";
 import { SUPPORT } from "../config/management";
 
@@ -26,8 +28,13 @@ export interface Scenario {
     vasopressor?: number; // −1 (strong vasodilator) .. +1 (strong alpha agonist, e.g. phenylephrine)
   };
   autonomic?: Partial<Pick<AutonomicControls, "baroreflexGain" | "respRate" | "respDepth" | "setPointShift">> & { noise?: number };
-  /** What the patient brought with them. */
-  patient?: { rhythm?: "sinus" | "af"; bbb?: "none" | "rbbb" | "lbbb" };
+  /**
+   * What the patient brought with them. `rhythm`: "sinus" or "af" (the coronary model's own: rate and conduction follow the
+   * ischemia and the reflexes), or the id of any EKG-library rhythm of the Simulator's categories (physics/rhythmSource.ts
+   * `SIM_RHYTHMS`: "flutter-21", "svt", "vt-mono", "vf-coarse", "chb", "paced"...; "nsr" means "sinus"). Library rhythms run on the
+   * core engine only; the legacy engine runs sinus instead and warns.
+   */
+  patient?: { rhythm?: Rhythm; bbb?: "none" | "rbbb" | "lbbb" };
   /** Hemodynamic support the team is giving (the app's management panel). Atropine lives in `drugs`. */
   support?: SupportSpec;
   /** Seed for every random process; the same scenario and seed give the same beats. */
@@ -140,7 +147,7 @@ export function normalizeScenario(input: Scenario = {}, base?: Normalized["scena
     if (a.noise !== undefined) autonomic.noiseScale = clamp(num(a.noise) ? a.noise : 1, 0, 3);
   }
   const patient: Patient = { ...(base?.patient ?? HEALTHY) };
-  if (input.patient?.rhythm !== undefined) { if (input.patient.rhythm === "af" || input.patient.rhythm === "sinus") patient.rhythm = input.patient.rhythm; else warnings.push(`patient.rhythm="${input.patient.rhythm}" is not sinus|af; ignored`); }
+  if (input.patient?.rhythm !== undefined) { const id = typeof input.patient.rhythm === "string" ? simRhythmId(input.patient.rhythm) : null; if (id) patient.rhythm = id; else warnings.push(`patient.rhythm="${input.patient.rhythm}" is not sinus, af or a Simulator rhythm of the EKG library; ignored`); }
   if (input.patient?.bbb !== undefined) { if (["none", "rbbb", "lbbb"].includes(input.patient.bbb)) patient.bbb = input.patient.bbb; else warnings.push(`patient.bbb="${input.patient.bbb}" is not none|rbbb|lbbb; ignored`); }
 
   const support: Support = { ...(base?.support ?? noSupport()), atropine: false };

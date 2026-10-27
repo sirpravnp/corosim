@@ -4,6 +4,7 @@ import { CIRC } from "../physics/circulation";
 import { ischemicBurden } from "../physics/ecgLink";
 import { EcgStrip } from "../ecgStrip";
 import { RhythmState } from "../physics/rhythm";
+import { libraryRhythm } from "../physics/rhythmSource";
 import { tree, A, sites, circ, $, V, S, sim, sev, PHYS, ecg, rstate } from "./state";
 import { manageUi } from "./manage";
 import { gameUi } from "./gameUi";
@@ -38,6 +39,8 @@ export function controlsUi() {
 export const rhythmLabel = (r: ReturnType<EcgStrip["rhythm"]>, rs: RhythmState | null) => {
   const deg = rs?.avDegree ?? 0, bbb = rs?.bbb ?? "none";
   const tail = (bbb === "rbbb" ? ", right bundle branch block" : bbb === "lbbb" ? ", left bundle branch block" : "") + (r.pvc ? ", PVCs" : "");
+  const lib = libraryRhythm(rs?.rhythm); // B2: a rhythm from the EKG library is named as the library names it
+  if (lib) return lib.name + (r.pvc && !lib.spec.rhythm.kind.startsWith("v") ? ", PVCs" : "");
   if (rs?.rhythm === "af") return (deg === 3 ? "Atrial fibrillation with complete heart block, junctional escape" : deg >= 1 ? "Atrial fibrillation, slow ventricular response" : "Atrial fibrillation") + tail;
   const sinus = r.atrial < 60 ? "Sinus bradycardia" : r.atrial > 100 ? "Sinus tachycardia" : "Sinus rhythm";
   return (deg === 3 ? "Complete heart block, junctional escape"

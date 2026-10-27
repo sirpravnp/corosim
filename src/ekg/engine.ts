@@ -130,12 +130,12 @@ export class RhythmGenerator {
   private rng: () => number;
   private tP: number; private tV: number; private n = 0; private sv = 0; private ang = 0;
   private seg = 0; private segEnd: number; private runStart = 0; // torsades: sinus (0) or run (1), and when it ends
-  private rateAt: (t: number) => number;
+  private t0: number; private rateAt: (t: number) => number;
   constructor(private spec: EkgSpec, seed: number, opts: GeneratorOptions = {}) {
     this.rng = mulberry32(seed);
     const t0 = opts.t0 ?? 0;
     this.tP = t0 + 0.25; this.tV = t0 + 0.45; this.segEnd = t0 + 6;
-    this.rateAt = opts.rate ?? (() => 1);
+    this.t0 = t0; this.rateAt = opts.rate ?? (() => 1);
   }
   private jit(x: number) { return 1 + x * (2 * this.rng() - 1); }
 
@@ -251,7 +251,7 @@ export class RhythmGenerator {
   baseline(t: number): Vec3 {
     const s = this.spec.rhythm;
     if (s.kind === "af") return fWaves(t, s.fMv ?? 0.06);
-    if (s.kind === "flutter") { const cyc = 60 / (s.atrial ?? 300), f = 0.16 * sawtooth((((t - 0.45 + 0.12) / cyc) % 1 + 1) % 1); return scale(norm(FLUTTER_VEC), f); }
+    if (s.kind === "flutter") { const cyc = 60 / (s.atrial ?? 300), f = 0.16 * sawtooth((((t - this.t0 - 0.45 + 0.12) / cyc) % 1 + 1) % 1); return scale(norm(FLUTTER_VEC), f); }
     if (s.kind === "vf") {
       // Chaotic: a few incommensurate rhythms near 5 Hz, phase-wandering, along a slowly turning axis.
       const d = norm([Math.sin(0.71 * t), Math.cos(0.53 * t + 1), Math.sin(0.37 * t + 2)]);

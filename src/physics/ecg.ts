@@ -1,3 +1,4 @@
+import type { BeatPainter, EBeat } from "../ekg/engine";
 import { AF, ALL_LEADS, BBB, Bbb, LEAD_AXES, LeadName, RHYTHM, ST, TERRITORY, T_CENTER, T_WIDTH, Vec3, WAVES } from "../config/ecg";
 
 export type Territory = keyof typeof TERRITORY;
@@ -22,6 +23,19 @@ export interface Beat {
   noP?: boolean; // ventricular complex with no preceding P (junctional escape, or atrial fibrillation)
   bbb?: Bbb; // conducted with a bundle branch block
   alt?: number; // QRS amplitude x for this beat (electrical alternans: 1 + a, 1 - a on alternate beats); absent = 1
+  // ---- rhythms from the EKG library in the Simulator (task B2, physics/rhythmSource.ts); absent on the coronary model's own beats
+  /** Where the beat started: sinus node, an atrial focus or circuit (AF, flutter, MAT), the AV junction (escape, AV re-entry), the ventricles, or a pacemaker. Absent: sinus, or as the flags say. */
+  origin?: "sinus" | "atrial" | "junctional" | "ventricular" | "paced";
+  /** Ventricular activation strength for the hemodynamic engine (1 = normal; 0 = no contraction). Absent: the PVC and potentiation rule of the live heart. */
+  strength?: number;
+  /** Strength of this beat's atrial contraction (flutter: weak). Absent: 1. */
+  atrialStrength?: number;
+  /** Retrograde atrial activation this many s after the R peak (junctional rhythm, AV nodal re-entry): the atria contract against closed AV valves. */
+  retroP?: number;
+  /** No electrical complex: a timing tick that closes a hemodynamic record while the ventricles do not contract (VF, asystole), or a mechanical event the ECG draws as baseline (flutter waves). Not drawn, not counted in the rate. */
+  silent?: boolean;
+  /** Drawn by the EKG engine's painter (the library rhythm's morphology) instead of the coronary model's waves. */
+  ekg?: { beat: EBeat; painter: BeatPainter };
 }
 
 const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -106,15 +120,31 @@ export function fWaves(t: number, amplitude: number): Vec3 {
 export const territoryInjury = (territory: Territory, severity: number): Vec3 =>
   TERRITORY[territory].map((c) => c * ST.fullScaleMv * severity) as unknown as Vec3;
 
-/** Voltage (mV) of all 15 leads at time t for an arbitrary injury vector (mV), hyperacute T boost and f-wave amplitude. */
-export function sampleLeadsVec(t: number, beats: Beat[], injury: Vec3, tBoost: number, fWave = 0): Record<LeadName, number> {
+/**
+ * Heart vector (mV) at time t of the coronary model's beats, for an arbitrary injury vector (mV), hyperacute T boost and f-wave
+ * amplitude. Beats drawn by the EKG engine's painter (`ekg`) and silent ticks are left out: the strip adds those (ecgStrip.ts).
+ */
+export function heartVector(t: number, beats: Beat[], injury: Vec3, tBoost: number, fWave = 0): [number, number, number] {
   const v: [number, number, number] = fWaves(t, fWave) as [number, number, number];
   for (const b of beats) {
     const dt = t - b.t;
-    if (dt < -0.5 || dt > 0.8) continue;
+    if (dt < -0.5 || dt > 0.8 || b.ekg || b.silent) continue;
     const bv = beatVector(dt, b, injury, tBoost);
     v[0] += bv[0]; v[1] += bv[1]; v[2] += bv[2];
   }
+  return v;
+}
+
+/** Project a heart vector (mV) onto all 15 leads. */
+export function projectLeads(v: Vec3): Record<LeadName, number> {
+  const out = {} as Record<LeadName, number>;
+  for (const l of ALL_LEADS) out[l] = dot(LEAD_AXES[l], v);
+  return out;
+}
+
+/** Voltage (mV) of all 15 leads at time t for an arbitrary injury vector (mV), hyperacute T boost and f-wave amplitude. */
+export function sampleLeadsVec(t: number, beats: Beat[], injury: Vec3, tBoost: number, fWave = 0): Record<LeadName, number> {
+  const v = heartVector(t, beats, injury, tBoost, fWave);
   const out = {} as Record<LeadName, number>;
   for (const l of ALL_LEADS) out[l] = dot(LEAD_AXES[l], v);
   return out;

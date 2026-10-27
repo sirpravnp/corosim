@@ -82,7 +82,11 @@ export const AF = {
   fWaveHz: 6.5, // ~390/min
   slowedBy: [1, 0.78, 0.58, 0] as const, // ventricular response × this at AV-node ischemia degree 0..2; degree 3 is a regular escape
 };
-export type Rhythm = "sinus" | "af";
+/**
+ * The patient's rhythm: "sinus" and "af" are the coronary model's own (rate and conduction from the ischemia and the reflexes);
+ * any other value is the id of an EKG-library rhythm the Simulator runs (core engine only, physics/rhythmSource.ts `SIM_RHYTHMS`).
+ */
+export type Rhythm = "sinus" | "af" | (string & {});
 
 export const RHYTHM = {
   baseHr: 72,

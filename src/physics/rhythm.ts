@@ -93,6 +93,16 @@ export class Conduction {
   constructor(seed = 1, t0 = 0.4) { this.rng = mulberry32(seed); this.nextP = t0 - CONDUCTION.basePr; this.nextEscape = t0; this.nextAf = t0; }
 
   /**
+   * Take over from another rhythm source (an EKG-library rhythm, rhythmSource.ts) whose beats run up to `t`, the last ventricular
+   * one at `lastR`: no beat of this pacemaker falls before `t` (its clocks were stopped meanwhile and would otherwise catch up).
+   */
+  resync(t: number, lastR = -Infinity) {
+    this.nextP = Math.max(this.nextP, t - CONDUCTION.basePr + 0.25);
+    this.nextEscape = Math.max(this.nextEscape, t + 0.25); this.nextAf = Math.max(this.nextAf, t + 0.25);
+    this.lastR = Math.max(this.lastR, lastR);
+  }
+
+  /**
    * `mod` lets a closed-loop autonomic model set each cycle: it scales the sinus rate at each P wave (and, in
    * atrial fibrillation, the AV node's mean response) and replaces the default uniform ±hrv noise. Omitted, the
    * rhythm is open-loop.

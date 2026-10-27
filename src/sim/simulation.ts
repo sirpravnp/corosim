@@ -16,6 +16,7 @@ import { Support, supportedRhythm } from "../physics/support";
 import { Drugs, DrugDoses, DrugEffects } from "../physics/core/drugs";
 import type { DrugName } from "../config/drugs";
 import { BeatStream } from "../physics/beatStream";
+import { isLibraryRhythm, libraryRhythm, libraryVentricularRate } from "../physics/rhythmSource";
 import { Ectopy, weightedBurden, ectopyState } from "../physics/ectopy";
 import { BeatHemodynamics } from "../physics/beatHemo";
 import { Autonomic, AUTONOMIC, AutonomicEffects } from "../physics/autonomic";
@@ -58,8 +59,8 @@ const MAX_HISTORY = 20000; // beats kept for metrics (~3 h at 70 bpm)
 export type EngineKind = "legacy" | "core";
 const NODE = (name: string) => NODES.indexOf(name as (typeof NODES)[number]);
 const NEUTRAL_FX: AutonomicEffects = { sympathetic: AUTONOMIC.restSympathetic, vagal: AUTONOMIC.restVagal, hrScale: 1, contractility: 1, resistance: 1, preloadResp: 1, vascular: AUTONOMIC.restSympathetic, afferent: 0, respPhase: 0 };
-/** Ventricular rate the rhythm implies, bpm (the warm-up rate of the live heart; atrial fibrillation conducts at its own rate). */
-const ventRate = (r: RhythmState) => (r.avDegree === 3 ? r.escapeRate : r.rhythm === "af" ? r.afRate : r.avDegree === 2 ? r.sinusRate * 0.75 : r.sinusRate);
+/** Ventricular rate the rhythm implies, bpm (the warm-up rate of the live heart; atrial fibrillation conducts at its own rate; an EKG-library rhythm at its own mean rate, 0 in VF and asystole). */
+const ventRate = (r: RhythmState) => (isLibraryRhythm(r.rhythm) ? libraryVentricularRate(r.rhythm) : r.avDegree === 3 ? r.escapeRate : r.rhythm === "af" ? r.afRate : r.avDegree === 2 ? r.sinusRate * 0.75 : r.sinusRate);
 
 /**
  * The whole model with no DOM and no renderer: anatomy → coronary network → ischemia and infarction → rhythm →
@@ -184,7 +185,7 @@ export class Simulation {
     this.job = null; this.building = null; this.jobWarm = 0;
     this.live = undefined; this.fluidModel = undefined; this.liveSeen = false;
     this.n = scenario; this.warnings = warnings;
-    this.support = { ...scenario.support }; this.patient = { ...scenario.patient }; this.grafts = [];
+    this.support = { ...scenario.support }; this.patient = this.ownPatient(scenario.patient); this.grafts = [];
     if (this.engine === "core") { this.readPatient(input); this.fluidSpec = normalizePatient(input).spec.fluids ?? {}; }
     this.t = 0; this.clinicalMinutes = 0; this.ischemicMinutes = 0; this.treated = untreated(); this.history = []; this.beatCount = 0;
     for (const k of Object.keys(this.sev)) delete this.sev[k];
@@ -295,10 +296,17 @@ export class Simulation {
     if (this.engine === "core" && patch.devices) this.patchDevices(patch);
     if (this.engine === "core" && patch.fluids !== undefined) this.patchFluids(patch);
     if (this.engine === "core" && (patch.heart || patch.pericardium || patch.septum !== undefined || patch.ventilation)) this.patchStructure(patch);
-    if (patch.patient) this.patient = { ...scenario.patient };
+    if (patch.patient) this.patient = this.ownPatient(scenario.patient);
     if (this.stream.ectopy) this.stream.ectopy.tendency = scenario.ectopyTendency;
     this.autonomic.controls = { ...scenario.autonomic };
     if (anatomyChanged) { this.grafts = []; this.rebuildAnatomy(); } else this.resolveCoronaries(true);
+  }
+
+  /** The patient as this engine can run it: EKG-library rhythms (B2) run on the core engine only; the legacy engine runs sinus and warns. */
+  private ownPatient(p: Patient): Patient {
+    if (this.engine === "core" || !isLibraryRhythm(p.rhythm)) return { ...p };
+    this.warnings = [...this.warnings, `patient.rhythm "${p.rhythm}" runs on the core engine only; the legacy engine runs sinus rhythm.`];
+    return { ...p, rhythm: "sinus" };
   }
 
   /** Bypass grafts change the network; they belong to the anatomy they were sewn on. */
@@ -336,6 +344,7 @@ export class Simulation {
     // core: the drugs act through `pk` (receptor level), so what `circulation()` and the rhythm read from the old multipliers is switched off; devices stay
     const fx = this.engine === "core" ? this.pk.effects() : null, csup = fx ? { ...sup, fluids: 0, norepi: 0, dobutamine: 0, nitro: 0 } : sup;
     this.rstate = supportedRhythm(rhythmState(this.sites, this.sev, g, this.patient), csup, fx ?? undefined);
+    if (isLibraryRhythm(this.rstate.rhythm)) this.rstate = { ...this.rstate, avDegree: 0, bbb: this.patient.bbb }; // B2: a library rhythm brings its own conduction (ischemic AV block and pacing are not laid over it)
     const c = circulation(this.sites, this.sev, this.rstate, csup, this.scar, 1); // the baroreflex is dynamic here
     this.base = c;
     this.circ = this.live && this.liveSeen ? this.coreCirc(c) : c;
@@ -599,7 +608,8 @@ export class Simulation {
     const th = this.thorax();
     const breathing = th ? { ...th.params } : null;
     if (th && breathing) th.set({ mode: "off", offsetMmHg: Thorax.meanChest(breathing) });
-    this.warmHr = Math.max(20, ventRate(this.rstate));
+    const vr = ventRate(this.rstate);
+    this.warmHr = vr > 0 ? Math.max(20, vr) : CIRC.baseRate; // VF or asystole: settle the heart that was beating a moment before (B2)
     yield* live.warmSteps(this.warmHr);
     if (th && breathing) th.set({ mode: breathing.mode, offsetMmHg: 0 });
     this.live = live; this.building = null;
@@ -762,10 +772,12 @@ export class Simulation {
     sm.sbp += (lb.systolic - sm.sbp) * a(tau); sm.dbp += (lb.diastolic - sm.dbp) * a(tau);
     this.liveSeen = true;
     this.diastolicBeat(lb, a(2));
+    const silent = lb.strength === 0; // a timing tick of VF or asystole (B2): time without a beat
     const rec: BeatRecord = {
-      n: this.beatCount++, t: +(lb.t - this.delta).toFixed(3), interval: +lb.interval.toFixed(4), hr: 60 / lb.interval,
+      n: this.beatCount++, t: +(lb.t - this.delta).toFixed(3), interval: +lb.interval.toFixed(4), hr: silent ? 0 : 60 / lb.interval,
       sbp: lb.systolic, dbp: lb.diastolic, map: lb.map, sv: lb.strokeVolume, pvc: lb.pvc, atrialKick: lb.atrialKick,
       sympathetic: fx.sympathetic, vagal: fx.vagal, afferent: fx.afferent, respPhase: fx.respPhase,
+      ...(silent ? { silent } : {}),
     };
     this.history.push(rec);
     if (this.history.length > MAX_HISTORY) this.history.splice(0, this.history.length - MAX_HISTORY);
@@ -1023,8 +1035,8 @@ export class Simulation {
     const cond = this.analysis.cond, rs = this.rstate, c = this.circ;
     const beds = cond.terminals.map((x) => ({ bed: x.key, artery: x.segId, massPct: +(x.mass * 100).toFixed(1), flowRatio: +x.ratio.toFixed(2), ischemia: +(this.sev[x.key] ?? 0).toFixed(2), infarcted: +(this.scar[x.key] ?? 0).toFixed(2) }));
     const compromised = beds.filter((b) => b.ischemia > 0.05 || b.infarcted > 0.05).sort((a, b) => b.ischemia * b.massPct - a.ischemia * a.massPct);
-    const af = rs.rhythm === "af";
-    const label = (af ? (rs.avDegree === 3 ? "atrial fibrillation with complete heart block, junctional escape" : "atrial fibrillation")
+    const af = rs.rhythm === "af", lib = libraryRhythm(rs.rhythm);
+    const label = lib ? lib.name + (rs.bbb !== "none" && !lib.spec.morph?.bbb && lib.spec.rhythm.kind !== "ventricular" && lib.spec.rhythm.kind !== "vf" && lib.spec.rhythm.kind !== "asystole" && lib.spec.rhythm.kind !== "torsades" ? (rs.bbb === "rbbb" ? ", right bundle branch block" : ", left bundle branch block") : "") : (af ? (rs.avDegree === 3 ? "atrial fibrillation with complete heart block, junctional escape" : "atrial fibrillation")
       : rs.avDegree === 3 ? "complete heart block, junctional escape" : rs.avDegree === 2 ? "Mobitz I (Wenckebach)" : rs.avDegree === 1 ? "first-degree AV block" : "sinus")
       + (rs.bbb === "rbbb" ? ", right bundle branch block" : rs.bbb === "lbbb" ? ", left bundle branch block" : "") + (this.paced() ? ", paced" : "");
     return {
@@ -1034,7 +1046,7 @@ export class Simulation {
       rolling10s: { hr: r0(roll.hr), sbp: r0(roll.sbp), dbp: r0(roll.dbp), map: r0(roll.map), sv: r0(roll.sv), cardiacOutput: Number.isFinite(roll.cardiacOutput) ? +roll.cardiacOutput.toFixed(1) : null },
       meanArterialPressure: Math.round(this.map),
       coronaryPerfusionPressure: Math.round(this.perfusion),
-      rhythm: { label, sinusRate: Math.round(rs.sinusRate), avBlock: rs.avDegree, pvcSeverity: +rs.pvcSeverity.toFixed(2), baseline: { ...this.patient }, ...ectopyState(this.stream.ectopy, this.t) },
+      rhythm: { label, ...(lib ? { library: lib.id, ventricularRate: Math.round(ventRate(rs)) } : {}), sinusRate: Math.round(rs.sinusRate), avBlock: lib ? 0 : rs.avDegree, pvcSeverity: +rs.pvcSeverity.toFixed(2), baseline: { ...this.patient }, ...ectopyState(this.stream.ectopy, this.t) },
       treatment: {
         ischemicMinutes: Math.round(this.ischemicMinutes),
         stent: this.treated.stent, lysis: this.treated.lysed, grafted: this.treated.grafts.length > 0,
@@ -1058,18 +1070,20 @@ export class Simulation {
     const beat: Beat = { t: 10, rr: last ? last.interval : 60 / CIRC.baseRate, pvc: false, pr: rs.pr, bbb: rs.bbb === "none" ? undefined : rs.bbb, noP: rs.rhythm === "af" };
     const g = globalSeverity(ischemicBurden(this.sites, this.sev)), inj = injuryVector(this.sites, this.sev, this.transmural);
     const st = Object.fromEntries(ALL_LEADS.map((l) => [l, Math.round(stLevelVec(l, beat, [beat], inj, ST.tBoost * g) * 100) / 10])) as Record<LeadName, number>;
-    const recent = this.history.filter((b) => b.t > this.t - 10);
+    const recent = this.history.filter((b) => b.t > this.t - 10), lib = libraryRhythm(rs.rhythm), lr = lib?.spec.rhythm, real = recent.filter((b) => !b.silent);
+    const libPr = lr?.kind === "sinus" && (lr.av ?? "normal") !== "complete" && lr.av !== "wenckebach" ? Math.round((lr.pr ?? 0.16) * 1000) : null;
+    const libBbb = lib?.spec.morph?.bbb ?? rs.bbb, wideV = lr && (lr.kind === "ventricular" || lr.kind === "torsades");
     return {
       stMm: st,
       stElevation: ALL_LEADS.filter((l) => st[l] >= 1),
       meetsStemiCriteria: meetsStElevation(st),
       stDepression: ALL_LEADS.filter((l) => st[l] <= -1),
       rhythm: this.state().rhythm.label,
-      ventricularRate: recent.length ? Math.round(recent.reduce((a, b) => a + b.hr, 0) / recent.length) : null,
+      ventricularRate: lr?.kind === "vf" || lr?.kind === "asystole" ? 0 : real.length ? Math.round(real.reduce((a, b) => a + b.hr, 0) / real.length) : null,
       pvcsLast10s: recent.filter((b) => b.pvc).length,
-      prMs: rs.rhythm === "af" || rs.avDegree === 3 ? null : Math.round(rs.pr * 1000),
+      prMs: lib ? libPr : rs.rhythm === "af" || rs.avDegree === 3 ? null : Math.round(rs.pr * 1000),
       electricalAlternans: alternansAmplitude(this.sac()?.effusionMl, this.periSpec?.open), // QRS alternates 1 +/- this on alternate beats (large pericardial effusion); 0 = none
-      qrs: rs.bbb === "lbbb" ? "wide, left bundle branch block" : rs.bbb === "rbbb" ? "wide, right bundle branch block" : "narrow",
+      qrs: lr?.kind === "vf" ? "none (fibrillation)" : lr?.kind === "asystole" ? "none" : wideV ? (lr.kind === "ventricular" && lr.paced ? "wide, paced" : "wide, ventricular") : (lib ? libBbb : rs.bbb) === "lbbb" ? "wide, left bundle branch block" : (lib ? libBbb : rs.bbb) === "rbbb" ? "wide, right bundle branch block" : "narrow",
       ischemia: this.ischemiaPattern(),
       note: "ST in mm at J+60 ms; V7–V9 are posterior leads. Subendocardial (demand) ischemia gives non-localizing ST depression; transmural ischemia gives localizing ST elevation. No Q waves or T-wave inversion are modelled.",
     };
