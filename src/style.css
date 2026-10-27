@@ -167,7 +167,6 @@ body.gated { overflow: hidden; }
 body[data-game="play"] .q-hidden-note { display: block; }
 body.game #lesionctl, body[data-game="play"] #bedsfig, body[data-game="play"] tr.q-hide { display: none; }
 body.game #lesionsec .note:not(.q-hidden-note), body[data-game="treat"] #lesionsec, body[data-game="reveal"] #lesionsec { display: none; }
-body.game #anatomy, body.game #patient, body.game #volume { opacity: 0.45; pointer-events: none; }
 body[data-game="play"] #manage, body.gated #manage { display: none; }
 body[data-game="treat"] #manage .tab[data-tab="assess"], body.game #m_reset { display: none; } /* the assessment is the answer */
 
@@ -281,3 +280,17 @@ body.game #pgentry { display: none; }
 .pg-note { margin-top: 6px; }
 .pg-body details.fold { padding: 0; border: 0; }
 .ctl > [hidden] { display: none; }
+
+/* Settings dock: one tabbed panel for every control (Patient · Rhythm · Coronary · Valves · Support · Display) */
+.dpane { display: none; min-width: 0; }
+#dock[data-tab="patient"] .dpane[data-pane="patient"], #dock[data-tab="rhythm"] .dpane[data-pane="rhythm"], #dock[data-tab="coronary"] .dpane[data-pane="coronary"],
+#dock[data-tab="valves"] .dpane[data-pane="valves"], #dock[data-tab="support"] .dpane[data-pane="support"], #dock[data-tab="display"] .dpane[data-pane="display"] { display: grid; gap: 14px; }
+.dpane > * { min-width: 0; margin: 0; }
+.dpane .glabel:first-child { margin-top: 0; }
+#dock .pg { padding: 0; border: 0; background: transparent; border-radius: 0; }
+#dock .dock-tabs { margin-bottom: 14px; }
+#dock .dtab { padding: 8px 4px; font-size: 12px; }
+#manage .tabs { margin-bottom: 10px; }
+/* the game keeps the dock to what it plays with: treatment (once the lesion is shown) and the display */
+body.game #dock .dtab:not([data-tab="support"]):not([data-tab="display"]), body[data-game="play"] #dock .dtab[data-tab="support"], body.gated #dock .dtab[data-tab="support"] { display: none; }
+body.game #volume, body.game #dpane-support { display: none; }

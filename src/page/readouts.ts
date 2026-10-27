@@ -7,6 +7,7 @@ import { RhythmState } from "../physics/rhythm";
 import { libraryRhythm } from "../physics/rhythmSource";
 import { tree, A, sites, circ, $, V, S, sim, sev, PHYS, ecg, rstate } from "./state";
 import { manageUi } from "./manage";
+import { dockUi } from "./dock";
 import { gameUi } from "./gameUi";
 
 export function controlsUi() {
@@ -19,13 +20,6 @@ export function controlsUi() {
   $("propsbtn").classList.toggle("on", S.props);
   for (const m of ["real", "anat", "pressure", "velocity", "wss", "o2"]) $("m_" + m).classList.toggle("on", S.mode === m);
   for (const s of [1, 3, 6]) $("s" + s).classList.toggle("on", S.speed === s);
-  // the folded sections carry their state in the header
-  $("patientsum").textContent = `${S.rhythm === "af" ? "Atrial fibrillation" : "Sinus"} · ${S.bbb === "none" ? "normal conduction" : S.bbb.toUpperCase()}`;
-  const DOM = { right: "Right-dominant", co: "Co-dominant", left: "Left-dominant" }, LMP = { bifurcation: "bifurcation", trifurcation: "ramus", absent: "absent left main" }, LADC = { normal: "LAD to apex", short: "short LAD", wrap: "wrapping LAD" };
-  $("anatomysum").textContent = `${DOM[V.dominance]} · ${LMP[V.lm]} · ${LADC[V.ladCourse]} · SA node from ${V.saNodeFrom}`;
-  const MODE = { real: "Anatomic", anat: "Territory", pressure: "Pressure", velocity: "Velocity", wss: "Wall shear", o2: "O₂ sat" };
-  $("volumesum").textContent = volumeSummary();
-  $("displaysum").textContent = `${MODE[S.mode]} · ${S.heart === "solid" ? "solid" : S.heart === "ghost" ? "see-through" : "no"} heart · ${S.exag}×${S.flow ? " · flow" : ""}${S.props ? " · valves and defects" : ""}${S.posterior ? " · V7–V9" : ""}`;
   for (const r of ["sinus", "af"]) $("r_" + r).classList.toggle("on", S.rhythm === r);
   for (const b of ["none", "rbbb", "lbbb"]) $("c_" + b).classList.toggle("on", S.bbb === b);
   $("postbtn").classList.toggle("on", S.posterior); $("stmap").classList.toggle("wide", S.posterior); ecg.posterior = S.posterior;
@@ -80,7 +74,7 @@ export function liveUi() {
     const txt = Math.abs(v) < 0.05 ? "0.0" : (v > 0 ? "+" : "−") + Math.abs(v).toFixed(1);
     return `<div><b>${l}</b><span class="${cls}">${txt}</span></div>`;
   }).join("");
-  gameUi();
+  gameUi(); dockUi();
   manageUi();
   if (S.hide) return; // the perfusion table names the starved beds
   const bySeg: Record<string, { ratio: number; mass: number; label: string; isch: number }> = {};
@@ -95,10 +89,8 @@ export function liveUi() {
   }).join("");
 }
 
-const volumeSummary = () => [PHYS.bl > 0 ? `${PHYS.bl}% blood lost` : PHYS.bl < 0 ? `${-PHYS.bl}% volume overload` : "normal volume", PHYS.bb ? `beta blocker ${PHYS.bb}%` : ""].filter(Boolean).join(" · ");
 export function physUi() {
   $("blv").textContent = PHYS.bl === 0 ? "normal" : PHYS.bl > 0 ? `${PHYS.bl}% lost` : `${-PHYS.bl}% overload`;
   $("bbv").textContent = PHYS.bb ? PHYS.bb + "%" : "none";
   for (const k of Object.keys(PHYS) as (keyof typeof PHYS)[]) $<HTMLInputElement>(k).value = String(PHYS[k]);
-  $("volumesum").textContent = volumeSummary();
 }

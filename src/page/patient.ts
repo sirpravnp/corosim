@@ -3,13 +3,13 @@ import { createPlaygroundUi } from "../panels/playgroundControls";
 import { decodePatient, encodePatient } from "../sim/llm";
 import { buildPlaygroundSpec, hasPlaygroundFields, stateOfSpec, withDevice } from "../sim/playground";
 import { PRESET_BY_ID } from "../sim/presets";
-import type { SlotId } from "../panels/playgroundControls";
 import type { PlaygroundState } from "../sim/playground";
 import type { PatientSpec } from "../sim/patient";
 import { $, sim, T, on, inGame, patientOpts } from "./state";
 import { propsView } from "./scene";
 import { loadScenario } from "./model";
 import { pushPatient } from "./workspace";
+import { mountDock } from "./dock";
 
 /**
  * One PatientSpec drives the page. The Scenario part lives in `sim` and its existing controls; the rest is `pg`, edited by the
@@ -17,8 +17,6 @@ import { pushPatient } from "./workspace";
  * Scenario to the Simulation (when a load changes it), the whole spec to the core engine (`patientOpts.patient`), the props view, and the share link in the address bar (`#s=`).
  */
 let pgOn = false, pg: PlaygroundState = {}, pgPreset: string | null = null, pgSticky: string[] = [], pgSig = "";
-const PG_MOVES: { slot: SlotId; from: string; skip: string }[] = [{ slot: "coronary", from: "lesionsec", skip: "H2" }, { slot: "rhythm", from: "patient", skip: "SUMMARY" }, { slot: "drugs", from: "volume", skip: "SUMMARY" }];
-const pgMoved = new Map<string, Element[]>();
 let pgUi: ReturnType<typeof createPlaygroundUi>;
 /** The playground state of the patient on screen: the spec of a link plus the support switches as they are now. */
 function pgFromLive(): PlaygroundState {
@@ -35,19 +33,13 @@ function pgApply(refresh: boolean) {
   pgSig = JSON.stringify([sim.scenario(), pg]);
   pgUi.sync(pg, { warnings: [...new Set([...pgSticky, ...built.warnings])], link: location.href, presetId: pgPreset });
 }
-/** Show or hide the playground; its groups hold the page's own controls while it is on. */
+/** Turn the patient editing on or off (the dock's controls are always in place; this starts and stops following the state into the link). */
 export function pgShow(on: boolean) {
   if (on === pgOn) return;
   pgOn = on;
-  $("pgmount").hidden = !on; $("pg_on").classList.toggle("on", on); $("pg_off").classList.toggle("on", !on);
+  $("pg_on").classList.toggle("on", on); $("pg_off").classList.toggle("on", !on);
   $("pg_on").setAttribute("aria-pressed", String(on)); $("pg_off").setAttribute("aria-pressed", String(!on));
-  for (const m of PG_MOVES) {
-    const from = $(m.from);
-    if (on) { const kids = [...from.children].filter((c) => c.tagName !== m.skip); pgMoved.set(m.from, kids); pgUi.slot(m.slot).append(...kids); }
-    else from.append(...(pgMoved.get(m.from) ?? []));
-    from.hidden = on;
-  }
-  if (on) { pg = pgFromLive(); pgPreset = null; pgSticky = []; pgUi.el.hidden = false; pgApply(false); }
+  if (on) { pg = pgFromLive(); pgPreset = null; pgSticky = []; pgApply(false); }
 }
 /** Make `spec` the patient: its Scenario to the Simulation, the rest into the controls, then everything follows. */
 export function pgAdopt(spec: PatientSpec, presetId: string | null = null) {
@@ -70,7 +62,7 @@ export function openShared() {
     const w = loadScenario(spec); pushPatient(true); if (w.length) console.warn("CoroSim: the shared patient was adjusted:", w.join("; ")); }
   catch (e) { console.warn("CoroSim: could not open the shared patient", e); }
 }
-/** Build the playground's controls and start watching the existing controls for changes to the patient. */
+/** Build the patient controls into the settings dock and start watching the existing controls for changes to the patient. */
 export function initPatient() {
   pgUi = createPlaygroundUi({
     getState: () => pg,
@@ -81,7 +73,7 @@ export function initPatient() {
     loadPreset(id) { const p = PRESET_BY_ID[id]; if (p) pgAdopt(p.spec, id); },
     exit: () => pgShow(false),
   });
-  $("pgmount").append(pgUi.el);
+  mountDock(pgUi.mounts);
   // The existing controls (lesions, rhythm, drugs, support) change the Scenario inside the Simulation: pick that up for the link.
   setInterval(() => {
     if (!pgOn || inGame) return;
