@@ -64,6 +64,12 @@ function setValve(s: PlaygroundState, k: ValveKey, v: NonNullable<HeartSpec["val
   if (v) valves[k] = v; else delete valves[k];
   return withHeart(s, { ...heart, valves });
 }
+/** Set one native severity (0..1) of a valve, keeping the other and the rest of the heart; both at 0 is a normal valve. */
+export function setValveSeverity(s: PlaygroundState, k: ValveKey, key: "stenosis" | "regurgitation", v: number): PlaygroundState {
+  const sev = severityOf(k, heartOf(s).valves?.[k]);
+  sev[key] = v;
+  return setValve(s, k, sev.stenosis === 0 && sev.regurgitation === 0 ? null : nativeLesion(k, sev));
+}
 /** The 0..1 severity sliders a native valve stands for (the inverse of `nativeLesion`). */
 export const severityOf = (k: ValveKey, v: { open?: number; reg?: number } | undefined) =>
   ({ stenosis: unit((1 - (v?.open ?? 1)) / STENOSIS_SPAN[k]), regurgitation: unit((v?.reg ?? 0) / (REGURG_AREA_FRAC[k] * PATIENTS.adult.valveAreas[k])) });
@@ -114,11 +120,7 @@ export function buildValves(c: ValvesCtx) {
       fields.push(path);
       const id = c.ctlId(), val = h("span", { className: "val" }), input = h("input", { id, type: "range", min: "0", max: "1", step: "0.05" });
       sec.append(h("label", { htmlFor: id }, label + " ", val), input);
-      input.addEventListener("input", () => edit((s) => {
-        const cur = heartOf(s).valves?.[k], sev = severityOf(k, cur);
-        sev[key] = Number(input.value);
-        return setValve(s, k, sev.stenosis === 0 && sev.regurgitation === 0 ? null : nativeLesion(k, sev));
-      }));
+      input.addEventListener("input", () => edit((s) => setValveSeverity(s, k, key, Number(input.value))));
       syncs.push((s) => {
         const cur = heartOf(s).valves?.[k], v = severityOf(k, cur)[key], pro = !!cur?.prosthesis;
         if (document.activeElement !== input) input.value = String(+v.toFixed(2));
