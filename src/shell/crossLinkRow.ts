@@ -11,10 +11,10 @@ export interface CrossLinkRow { refresh(): void; repoint(): void }
  * `refresh()` rebuilds the row itself (after the patient's heart changes which links apply). With `hidden` true (the game: a link
  * would show the culprit) the row is empty and hidden. `skip` leaves out pages the host already links elsewhere.
  */
-export function mountCrossLinks(el: HTMLElement, from: PageId, root: string, patient: () => PatientSpec | null, opts: { skip?: PageId[]; hidden?: () => boolean } = {}): CrossLinkRow {
+export function mountCrossLinks(el: HTMLElement, from: PageId, root: string, patient: () => PatientSpec | null, opts: { skip?: PageId[] | (() => PageId[]); hidden?: () => boolean } = {}): CrossLinkRow {
   const build = (): CrossLink[] => {
-    const p = patient();
-    return !p || opts.hidden?.() ? [] : crossLinks(from, p, root).filter((l) => !opts.skip?.includes(l.page));
+    const p = patient(), skip = typeof opts.skip === "function" ? opts.skip() : opts.skip;
+    return !p || opts.hidden?.() ? [] : crossLinks(from, p, root).filter((l) => !skip?.includes(l.page));
   };
   function refresh() {
     const links = build();

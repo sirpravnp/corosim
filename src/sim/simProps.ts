@@ -14,9 +14,8 @@ import { gradeValves } from "./structural";
  *
  * Report: `analyze` of the patient's `heart` spec on its own (no waveform, no MAP calibration), then `gradeValves` and
  * `buildProps` against the default heart morph, because the Simulator draws the default (normal-shaped) heart and the props
- * must sit inside it, not inside the reshaped heart the structural page draws. This is not the bridge's calibrated report:
- * a lesion's anatomy and jets do not depend on the ACS state, and the bridge re-solves as ischemia moves, which would rebuild
- * the props for nothing. It is computed once when the patient changes, in a worker (src/sim/propsWorker.ts).
+ * must sit inside it, not inside the reshaped heart the structural page draws. This is not a calibrated report:
+ * a lesion's anatomy and jets do not depend on the ACS state, and re-solving as ischemia moves would rebuild the props for nothing. It is computed once when the patient changes, in a worker (src/sim/propsWorker.ts).
  *
  * Frame: props are built in the heart frame (x left, y toward the base, z anterior, mm), the frame of `meshHeart`. The
  * Simulator draws the heart with `rotateHeart` on every vertex (apex tilted left and anterior), and so did the structural page
@@ -44,7 +43,7 @@ export function propsToScene(p: Props): Props {
 export interface SimProps { props: Props; sat: ReturnType<typeof satMap> }
 /** Spec to props, in the heart frame. A patient with no `heart` section is the normal heart. */
 export function propsForPatient(patient: PatientSpec | undefined): SimProps {
-  const spec: StructuralSpec = { ...(patient?.heart ?? {}), patient: patient?.kind ?? "adult" };
+  const spec: StructuralSpec = { ...(patient?.heart ?? {}), patient: "adult" };
   const report = analyze(spec, { waveform: false });
   return { props: buildProps(spec, report, {}, gradeValves(spec, report)), sat: satMap(report) };
 }

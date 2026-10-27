@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Simulation } from "../src/sim/simulation";
-import { BridgeSource } from "../src/sim/bridgeSource";
+import { LiveSource } from "../src/sim/liveSource";
+import { recentHemodynamicBeats, SETTLE_BEATS } from "../src/sim/hemoBeats";
 import { analyze, buildModel } from "../src/physics/structural";
 import type { StructuralReport, StructuralSpec } from "../src/physics/structural";
 import { LESIONS } from "../src/sim/structural";
@@ -119,12 +120,13 @@ describe("waiting state", () => {
   it("returns null without a beat", () => { expect(leftHeartCath({} as HemoNumbers, undefined)).toBeNull(); });
 });
 
-describe("through the bridge", () => {
-  const settled = (sc = {}) => { const s = new Simulation(); s.reset({ seed: 3, ...sc }, { settled: true }); s.warmup(40); s.history = []; return s; };
+describe("through the live source", () => {
+  const settled = (sc = {}) => { const s = new Simulation({}, { engine: "core" }); s.reset({ seed: 3, ...sc }, { settled: true }); s.warmup(40); s.history = []; return s; };
   const through = (sc = {}) => {
-    const sim = settled(sc), bridge = new BridgeSource(sim);
-    sim.run(20); bridge.refresh();
-    return leftHeartCath(bridge.numbers(), bridge.beats(1)[0])!;
+    const sim = settled(sc), bridge = new LiveSource(sim);
+    sim.run(20);
+    const hb = recentHemodynamicBeats(bridge.beats(4 + SETTLE_BEATS)).beats; // the latest steady beat, as the panel reads it
+    return leftHeartCath(bridge.numbers(), hb[hb.length - 1])!;
   };
   it("LVEDP rises after an LAD occlusion", () => {
     const normal = through(), lad = through({ lesions: [{ artery: "LAD", occluded: true, position: 0.2 }] });

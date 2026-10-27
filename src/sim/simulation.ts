@@ -145,9 +145,7 @@ export class Simulation {
   private septumSpec = false;
   private hasSac = false; private hasThorax = false; private hasSeptum = false; // what the live heart was built with
   private appliedEffusion = NaN; // the spec's effusion as last handed to a running sac
-  /** The kind of the PatientSpec the core engine was given. It runs the adult ACS patient whatever the kind: a neonate's structural fields are not applied to it (the bridge solves a neonate on its own baseline). */
-  patientKind: "adult" | "neonate" = "adult";
-  /** Why the core engine runs a plain adult instead of the patient specified (its structural fields would not settle); "" when it runs the patient as specified. Pages fall back to the bridge when this is set. */
+  /** Why the core engine runs a plain adult instead of the patient specified (its structural fields would not settle); "" when it runs the patient as specified. */
   coreNote = "";
   /** Per-beat aortic measurements of the diastole (valve closed) and the IABP console numbers, see `onDiastoleSample` / `handleLiveBeat`. */
   private dia = { t: NaN, aoT: 0, aoSum: 0, dT: 0, dSum: 0, peak: -Infinity, sys: -Infinity, closed: false, opened: false, balloon: 0, fill: 0 };
@@ -211,21 +209,19 @@ export class Simulation {
    * The PatientSpec fields the core engine reads (task P16), from a spec. Devices: `effectiveDevices` folds the legacy booleans into
    * the defaults (Impella CP, P6, correct position; IABP 1:1, correct timing, 40 ml); a `devices.impella` / `devices.iabp` also
    * switches that device on; `devices.ecmo` / `devices.impellaRp` are on by being present. Structural heart, pericardium and
-   * ventilation are built into the heart (`initCore`); the core runs the adult ACS patient, so for `kind: "neonate"` they are left
-   * out (the bridge solves a neonate on its own baseline).
+   * ventilation are built into the heart (`initCore`).
    */
   private readPatient(input: PatientSpec) {
-    const np = normalizePatient(input).spec, adult = (np.kind ?? "adult") === "adult";
+    const np = normalizePatient(input).spec;
     const d = effectiveDevices({ support: input.support, devices: np.devices });
     this.devSpec = { impella: d.impella && { ...d.impella }, iabp: d.iabp && { ...d.iabp }, ecmo: d.ecmo && { ...d.ecmo }, impellaRp: d.impellaRp && { ...d.impellaRp } };
     if (d.impella) this.support.impella = true;
     if (d.iabp) this.support.iabp = true;
-    this.patientKind = np.kind ?? "adult";
-    this.heartSpec = adult && np.heart ? JSON.parse(JSON.stringify(np.heart)) : {};
-    this.periSpec = adult && np.pericardium ? { ...np.pericardium } : undefined;
+    this.heartSpec = np.heart ? JSON.parse(JSON.stringify(np.heart)) : {};
+    this.periSpec = np.pericardium ? { ...np.pericardium } : undefined;
     if (this.periSpec) { delete this.periSpec.drainMl; if (!Object.keys(this.periSpec).length) this.periSpec = undefined; } // an action, not a state: a spec in force never carries it
-    this.septumSpec = adult && !!np.septum;
-    this.ventSpec = adult && np.ventilation ? { ...np.ventilation } : undefined;
+    this.septumSpec = !!np.septum;
+    this.ventSpec = np.ventilation ? { ...np.ventilation } : undefined;
   }
 
   /**
@@ -245,7 +241,7 @@ export class Simulation {
     else this.pushPatient();
   }
 
-  /** A patch of `heart`, `pericardium`, `septum`, `ventilation` or `kind` merged into the patient in force (objects field by field, anything else replaced), as `apply` takes it. */
+  /** A patch of `heart`, `pericardium`, `septum` or `ventilation` merged into the patient in force (objects field by field, anything else replaced), as `apply` takes it. */
   private patchStructure(patch: PatientSpec) {
     const merge = (base: unknown, add: unknown): unknown => {
       if (!add || typeof add !== "object" || Array.isArray(add) || !base || typeof base !== "object" || Array.isArray(base)) return add;
@@ -253,8 +249,8 @@ export class Simulation {
       for (const [k, v] of Object.entries(add)) out[k] = v === undefined ? out[k] : merge(out[k], v);
       return out;
     };
-    const kind = patch.kind ?? this.patientKind, adult = kind === "adult", cur = { heart: this.heartSpec, pericardium: this.periSpec, ventilation: this.ventSpec };
-    const np = normalizePatient({ kind, heart: merge(cur.heart, patch.heart) as HeartSpec, pericardium: merge(cur.pericardium, patch.pericardium) as PericardiumSpec, septum: patch.septum ?? this.septumSpec, ventilation: merge(cur.ventilation, patch.ventilation) as VentilationSpec }).spec;
+    const cur = { heart: this.heartSpec, pericardium: this.periSpec, ventilation: this.ventSpec };
+    const np = normalizePatient({ heart: merge(cur.heart, patch.heart) as HeartSpec, pericardium: merge(cur.pericardium, patch.pericardium) as PericardiumSpec, septum: patch.septum ?? this.septumSpec, ventilation: merge(cur.ventilation, patch.ventilation) as VentilationSpec }).spec;
     // pericardiocentesis: `drainMl` comes off the effusion in force (the sac's, which includes what has accumulated since the spec was set), then it is forgotten
     const drain = np.pericardium?.drainMl ?? 0;
     if (np.pericardium) {
@@ -263,11 +259,10 @@ export class Simulation {
       else if (drain > 0) np.pericardium.effusionMl = Math.max(0, (patch.pericardium?.effusionMl !== undefined ? np.pericardium.effusionMl ?? 0 : this.sac()?.effusionMl ?? cur.pericardium?.effusionMl ?? 0) - drain);
       if (np.pericardium && !Object.keys(np.pericardium).length) delete np.pericardium;
     }
-    this.patientKind = kind;
-    this.heartSpec = adult && np.heart ? JSON.parse(JSON.stringify(np.heart)) : {};
-    this.periSpec = adult ? np.pericardium : undefined;
-    this.septumSpec = adult && !!np.septum;
-    this.ventSpec = adult ? np.ventilation : undefined;
+    this.heartSpec = np.heart ? JSON.parse(JSON.stringify(np.heart)) : {};
+    this.periSpec = np.pericardium;
+    this.septumSpec = !!np.septum;
+    this.ventSpec = np.ventilation;
     if (this.structureSig(true) !== this.builtSig) this.initCore(); else this.pushPatient();
   }
 
@@ -299,7 +294,7 @@ export class Simulation {
     if (patch.support) this.support = { ...scenario.support, atropine: this.support.atropine };
     if (this.engine === "core" && patch.devices) this.patchDevices(patch);
     if (this.engine === "core" && patch.fluids !== undefined) this.patchFluids(patch);
-    if (this.engine === "core" && (patch.heart || patch.pericardium || patch.septum !== undefined || patch.ventilation || patch.kind)) this.patchStructure(patch);
+    if (this.engine === "core" && (patch.heart || patch.pericardium || patch.septum !== undefined || patch.ventilation)) this.patchStructure(patch);
     if (patch.patient) this.patient = { ...scenario.patient };
     if (this.stream.ectopy) this.stream.ectopy.tendency = scenario.ectopyTendency;
     this.autonomic.controls = { ...scenario.autonomic };
@@ -395,7 +390,7 @@ export class Simulation {
 
   /**
    * Fall of the pulmonary venous saturation caused by the lung water now (C3), a fraction: 0 with the legacy engine and with dry lungs.
-   * The oxygen solves take it off `satLung` (`LiveSource.saturations`, and the bridge's spec for the panels and the MCP oxygen tool).
+   * The oxygen solves take it off `satLung` (`LiveSource.saturations`, which the panels and the MCP oxygen tool read).
    */
   lungSatDrop(): number { return this.fluidModel ? this.fluidModel.satDrop : 0; }
 
@@ -503,7 +498,7 @@ export class Simulation {
   /**
    * Build the live heart for the patient (and settle it). The spec's structural heart, pericardium, ventilation, ECMO and Impella RP
    * go into the build (`buildCore`); if the core cannot settle that patient (it throws, or the settled beat has no finite pressure) it
-   * runs a plain adult instead and `coreNote` says why, so a page can fall back to the bridge for the patient it cannot represent.
+   * runs a plain adult instead and `coreNote` says why.
    */
   private initCore(warmup = 0) {
     this.jobWarm = Math.max(this.jobWarm, warmup);

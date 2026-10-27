@@ -1,5 +1,4 @@
-// How ischemia acts on the ventricles of the structural/core engines. Shared by the bridge HemoSource (src/sim/bridgeSource.ts)
-// and the ACS simulation on the core engine (src/sim/simulation.ts, engine "core"). Values were validated in the bridge (P2)
+// How ischemia acts on the ventricles of the structural/core engines. Used by the ACS simulation on the core engine (src/sim/simulation.ts, engine "core"). Values were first validated against the structural engine (P2)
 // and are unchanged. [assumed] = a teaching/engineering choice.
 
 export const ISCHEMIA = {

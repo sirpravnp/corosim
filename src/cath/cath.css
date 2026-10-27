@@ -114,7 +114,7 @@ main > * { min-width: 0; }
 .fine { margin: 6px 0 0; font-size: 12px; color: var(--muted); max-width: 110ch; }
 .fine a { color: var(--muted); }
 
-/* Right- and left-heart cath tabs: the Simulator's panels, on a bridge over this page's patient */
+/* Right- and left-heart cath tabs: the Simulator's panels, on a live source over this page's patient */
 .heart { grid-column: 2 / -1; display: grid; gap: 12px; align-content: start; }
 .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--sh-line); }
 .tabs [role=tab] { border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom-color: transparent; color: var(--muted); }

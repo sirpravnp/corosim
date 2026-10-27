@@ -73,8 +73,14 @@ export function systolicOnset(lv: ArrayLike<number>, t: ArrayLike<number>): numb
   if (n < 3) return 0;
   const dp = new Float64Array(n);
   for (let i = 1; i < n - 1; i++) dp[i] = (lv[i + 1] - lv[i - 1]) / Math.max(1e-9, t[i + 1] - t[i - 1]);
+  // The steepest rise is searched on the upstroke only, up to the first sample at 90 % of the beat's pressure range: a live beat can step
+  // or ripple later in systole (a valve or reflex event) and a sharper rise there would be taken for the onset.
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < n; i++) { if (lv[i] < lo) lo = lv[i]; if (lv[i] > hi) hi = lv[i]; }
+  let top = 1;
+  while (top < n - 1 && lv[top] < lo + 0.9 * (hi - lo)) top++;
   let im = 1;
-  for (let i = 1; i < n - 1; i++) if (dp[i] > dp[im]) im = i;
+  for (let i = 1; i <= top && i < n - 1; i++) if (dp[i] > dp[im]) im = i;
   const lim = ONSET_FRACTION * dp[im];
   let i = im;
   while (i > 0 && dp[i] > lim) i--;

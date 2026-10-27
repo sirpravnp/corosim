@@ -14,7 +14,6 @@ import { Simulation } from "../sim/simulation";
 import { PlayClock } from "../panels/timeControl";
 import { Case, Point, TreatRecord } from "../game";
 import type { PatientSpec } from "../sim/patient";
-import type { BridgeSolver } from "../sim/bridgeSolver";
 import type { HemoSource } from "../sim/hemoSource";
 
 export const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -95,8 +94,8 @@ export const setInGame = (v: boolean) => { inGame = v; };
 // The reflexes themselves are not shown or controlled here: they are the physiology, and show up in rate and pressure.
 export const PHYS_REST = { bl: 0, bb: 0 };
 export const PHYS = { ...PHYS_REST };
-/** The whole PatientSpec on screen (the structural fields the Scenario does not carry): read by the bridge at each solve and handed to the core engine (`sim.setPatient`). */
-export const bridgeOpts: { patient?: PatientSpec; solver?: BridgeSolver } = {};
+/** The whole PatientSpec on screen (the structural fields the Scenario does not carry), handed to the core engine (`sim.setPatient`) and the props view. */
+export const patientOpts: { patient?: PatientSpec } = {};
 
 export const ecg = new EcgStrip($<HTMLCanvasElement>("ecg"), sim.stream);
 /** Pause, slow motion and step-one-beat for the Simulator page (task P13); scales heartbeat time only, never the game. */
@@ -104,6 +103,6 @@ export const playClock = new PlayClock();
 export let rstate: RhythmState | null = sim.rstate, circ: Circulation | null = sim.circ;
 /** Re-read the rhythm and circulation state from the simulation (once per frame). */
 export const takeRC = () => { rstate = sim.rstate; circ = sim.circ; };
-/** What the 3D view's O2 mode and the panels read from: the live core engine or the bridge (workspace.ts `syncSource`). */
+/** What the 3D view's O2 mode and the panels read from: the live core engine (workspace.ts `syncSource`). */
 export let panelSource: HemoSource | null = null;
 export const setPanelSource = (s: HemoSource | null) => { panelSource = s; };

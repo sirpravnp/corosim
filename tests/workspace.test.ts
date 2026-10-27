@@ -60,8 +60,8 @@ describe("layout", () => {
 describe("stub source", () => {
   let t = 100;
   const src = createStubSource(() => t);
-  it("is a bridge with plausible normal values", () => {
-    expect(src.kind).toBe("bridge");
+  it("is a live source with plausible normal values", () => {
+    expect(src.kind).toBe("live");
     const n = src.numbers();
     expect([n.map, n.co, n.cvp, n.pcwp]).toEqual([90, 5, 4, 8]);
     expect(n.diastolic).toBeLessThan(n.map);
@@ -100,7 +100,6 @@ describe("numbers panel rows", () => {
     expect(r2["PA s/d (mean)"]).toBe(DASH);
   });
   it("badge names the source kind", () => {
-    expect(badgeText("bridge")).toBe("steady state");
     expect(badgeText("live")).toBe("live");
   });
 });

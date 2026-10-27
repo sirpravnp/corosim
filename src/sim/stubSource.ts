@@ -1,6 +1,6 @@
 /**
- * A HemoSource with fixed plausible normal-adult values, for tests of panels and the workspace. The Simulator page no
- * longer uses it: it runs the bridge (src/sim/bridgeSource.ts) over its Simulation. Not physics: it gives panels
+ * A HemoSource with fixed plausible normal-adult values, for tests of panels and the workspace. The Simulator page does not
+ * use it: it reads the core engine through `LiveSource`. Not physics: it gives panels
  * something to draw. Traces are a synthetic pulse wave per node; beats() is one synthetic beat.
  */
 import type { BeatSummary, Chamber, DeviceConsole, HemoNode, HemoNumbers, HemoSource, Saturations, Series } from "./hemoSource";
@@ -46,7 +46,7 @@ export function createStubSource(clock: () => number = () => performance.now() /
     valves: { AV: valve, MV: valve, TV: valve, PV: valve },
   };
   return {
-    kind: "bridge",
+    kind: "live",
     now,
     nodes: () => NODES,
     trace(nodeName, seconds, opts): Series {

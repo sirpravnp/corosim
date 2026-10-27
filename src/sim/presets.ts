@@ -3,9 +3,9 @@ import type { PatientSpec } from "./patient";
 /**
  * Playground presets (task P12): whole patients as PatientSpec data. Pure data, no behaviour; the playground loads one into
  * every control and every panel, and `tests/playground.test.ts` checks that each normalises, round-trips through a share link
- * and gives a converging bridge solve.
+ * and settles on the core engine.
  *
- * What the page's engines read (task P16): the coronary scenario, `kind`, and for an adult on the core engine the structural `heart`,
+ * What the page's engines read (task P16): the coronary scenario and the structural `heart`,
  * pericardium, ventilation and every device setting. Parts that are only stored in the spec are named in `stored` so the picker can say so (none now:
  * fluids are modelled by the core engine, task C2).
  */
@@ -56,14 +56,6 @@ export const PRESETS: Preset[] = [
   {
     id: "severe-as", label: "Severe aortic stenosis", blurb: "Aortic valve at 20% of its normal opening: a high left ventricular pressure against a normal aortic pressure.",
     spec: { heart: { valves: { av: { open: 0.2 } } } },
-  },
-  {
-    id: "vsd-neonate", label: "VSD, neonate", blurb: "A 5 mm ventricular septal defect with falling pulmonary resistance: left-to-right shunt and pulmonary overcirculation.",
-    spec: { kind: "neonate", heart: { pvri: 2, vsd: { diameterMm: 5 } } },
-  },
-  {
-    id: "tof", label: "Tetralogy of Fallot", blurb: "A large VSD with right ventricular outflow obstruction: right-to-left shunt and cyanosis.",
-    spec: { kind: "neonate", heart: { pvri: 5, tof: { vsdMm: 8, rvotFrac: 0.15, spasm: 0 } } },
   },
   {
     id: "hemorrhage-fluids", label: "Hemorrhage with fluids", blurb: "Class III blood loss (30%), bleeding controlled, then 1 L of crystalloid from minute 5 over 10 minutes. About a quarter of it stays in the vessels; the water goes to the interstitium and Hb falls.",

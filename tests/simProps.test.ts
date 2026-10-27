@@ -5,14 +5,14 @@ import { heartSdfMorph } from "../src/anatomy/heartSurface";
 import type { V3 } from "../src/anatomy/curve";
 import type { PatientSpec } from "../src/sim/patient";
 
-const vsd: PatientSpec = { kind: "adult", heart: { vsd: { diameterMm: 8 } } };
-const severeAs: PatientSpec = { kind: "adult", heart: { valves: { av: { open: 0.2 } } } };
+const vsd: PatientSpec = { heart: { vsd: { diameterMm: 8 } } };
+const severeAs: PatientSpec = { heart: { valves: { av: { open: 0.2 } } } };
 const tris = (t: { indices: number[] }) => t.indices.length / 3;
 const av = (p: PatientSpec | undefined) => propsForPatient(p).props.valves.find((v) => v.name === "AV")!;
 
 describe("spec to props for the simulator's heart", () => {
   it("a normal heart (no heart section) has valve annuli, no jets, no holes", () => {
-    const { props } = propsForPatient({ kind: "adult" });
+    const { props } = propsForPatient({});
     expect(props.valves.map((v) => v.name).sort()).toEqual(["AV", "MV", "PVL", "TV"]);
     for (const v of props.valves) { expect(v.open).toBe(1); expect(tris(v.tri)).toBeGreaterThan(0); }
     expect(props.jets).toEqual([]);
@@ -20,7 +20,7 @@ describe("spec to props for the simulator's heart", () => {
     expect(propsForPatient(undefined).props.jets).toEqual([]);
   });
   it("a VSD cuts a hole in the septum and has a jet across it", () => {
-    const n = propsForPatient({ kind: "adult" }).props, { props } = propsForPatient(vsd);
+    const n = propsForPatient({}).props, { props } = propsForPatient(vsd);
     expect(tris(props.septum)).toBeLessThan(tris(n.septum));
     const jet = props.jets.find((j) => j.label === "VSD jet")!;
     expect(jet).toBeTruthy();
@@ -28,7 +28,7 @@ describe("spec to props for the simulator's heart", () => {
     expect(heartSdfMorph(jet.from, {})).toBeLessThan(0.5); // starts inside the drawn heart
   });
   it("severe aortic stenosis narrows the aortic annulus's opening and gives a stenosis jet, the other valves unchanged", () => {
-    const normal = av({ kind: "adult" }), sev = av(severeAs), n = propsForPatient({ kind: "adult" }).props, s = propsForPatient(severeAs).props;
+    const normal = av({}), sev = av(severeAs), n = propsForPatient({}).props, s = propsForPatient(severeAs).props;
     expect(normal.open).toBe(1);
     expect(sev.open).toBeLessThan(0.5);
     expect(tris(sev.tri)).toBeGreaterThan(tris(normal.tri)); // leaflets fill the rest of the ring

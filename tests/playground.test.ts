@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { Simulation } from "../src/sim/simulation";
-import { BridgeSource } from "../src/sim/bridgeSource";
+import { LiveSource } from "../src/sim/liveSource";
 import { decodePatient, encodePatient } from "../src/sim/llm";
 import { normalizePatient } from "../src/sim/patient";
 import { PRESETS } from "../src/sim/presets";
@@ -12,14 +12,14 @@ describe("spec builder", () => {
   it("a normal adult is the Scenario alone, with the device switches off", () => {
     const { spec, warnings } = buildPlaygroundSpec({ seed: 3 }, {});
     expect(warnings).toEqual([]);
-    expect(spec.kind).toBeUndefined(); expect(spec.heart).toBeUndefined(); expect(spec.devices).toBeUndefined();
+    expect(spec).not.toHaveProperty("kind"); expect(spec.heart).toBeUndefined(); expect(spec.devices).toBeUndefined();
     expect(spec.support).toMatchObject({ impella: false, iabp: false });
     expect(spec.seed).toBe(3);
   });
   it("a lesion pick builds heart without patient and hr; the picker wins over a stored heart", () => {
     expect(heartOfPick({ id: "mr", values: { severity: 1 } })?.valves?.mv?.reg).toBeGreaterThan(0.3);
-    const { spec } = buildPlaygroundSpec({}, { structural: { id: "vsd", values: { diameter: 6 } }, heart: { valves: { av: { open: 0.5 } } }, kind: "neonate" });
-    expect(spec.heart).toMatchObject({ vsd: { diameterMm: 6 }, pvri: 2 });
+    const { spec } = buildPlaygroundSpec({}, { structural: { id: "asd", values: { diameter: 6 } }, heart: { valves: { av: { open: 0.5 } } } });
+    expect(spec.heart).toMatchObject({ asd: { diameterMm: 6 } });
     expect(spec.heart).not.toHaveProperty("patient"); expect(spec.heart).not.toHaveProperty("hr"); expect(spec.heart?.valves).toBeUndefined();
     expect(buildPlaygroundSpec({}, { structural: { id: "normal", values: {} } }).spec.heart).toBeUndefined();
   });
@@ -61,7 +61,7 @@ describe("spec builder", () => {
     expect(warnings.join(";")).toMatch(/peep clamped/); expect(warnings.join(";")).toMatch(/effusionMl clamped/);
   });
   it("is pure: the inputs are not changed", () => {
-    const sc = { lesions: [{ artery: "LAD", stenosis: 0.8 }], support: { impella: true } }, st = { kind: "neonate" as const, devices: { iabp: { ratio: 2 as const } } };
+    const sc = { lesions: [{ artery: "LAD", stenosis: 0.8 }], support: { impella: true } }, st = { devices: { iabp: { ratio: 2 as const } } };
     const a = JSON.stringify([sc, st]);
     buildPlaygroundSpec(sc, st);
     expect(JSON.stringify([sc, st])).toBe(a);
@@ -71,35 +71,25 @@ describe("spec builder", () => {
     expect(st.devices?.iabp).toMatchObject({ ratio: 1, volumeMl: 40 });
     const { spec } = buildPlaygroundSpec({ support: { iabp: true } }, st);
     expect(spec.pericardium).toEqual({ effusionMl: 100 }); expect(spec.support?.iabp).toBe(true);
-    expect(hasPlaygroundFields({ lesions: [] })).toBe(false); expect(hasPlaygroundFields({ kind: "adult" })).toBe(true);
+    expect(hasPlaygroundFields({ lesions: [] })).toBe(false); expect(hasPlaygroundFields({ heart: {} })).toBe(true);
   });
-  it("says which groups the engines read (P16, C2: an adult's core engine reads every group; a neonate's bridge reads kind and heart)", () => {
-    for (const g of ["kind", "heart", "pericardium", "fluids", "ventilation", "impella", "iabp", "ecmo", "impellaRp"]) expect(GROUP_INFO[g].modelled).toBe("yes");
-    for (const g of ["pericardium", "fluids", "ventilation", "impella", "iabp", "ecmo", "impellaRp"]) { expect(GROUP_INFO[g].neonate).toBe("no"); expect(GROUP_INFO[g].neonateNote).toBeTruthy(); }
-    for (const g of ["kind", "heart"]) expect(GROUP_INFO[g].neonate).toBeUndefined();
+  it("says which groups the engines read (P16, C2: the core engine reads every group)", () => {
+    for (const g of ["heart", "pericardium", "fluids", "ventilation", "impella", "iabp", "ecmo", "impellaRp"]) expect(GROUP_INFO[g].modelled).toBe("yes");
+    expect(GROUP_INFO).not.toHaveProperty("kind");
   });
 });
 
-describe("neonates have no coronary view", () => {
-  it("a neonate drops coronary lesions with a warning, whatever the scenario carries", () => {
-    const { spec, warnings } = buildPlaygroundSpec({ lesions: [{ artery: "LAD", occluded: true }, { artery: "RCA", stenosis: 0.7 }] }, { kind: "neonate", heart: { vsd: { diameterMm: 5 } } });
-    expect(spec.kind).toBe("neonate"); expect(spec.lesions).toBeUndefined();
-    expect(warnings.join(";")).toMatch(/neonate has no coronary tree: 2 coronary lesions were dropped/);
-    expect(spec.heart).toEqual({ vsd: { diameterMm: 5 } });
+describe("no newborn in the Simulator", () => {
+  it("the presets are all adults, and a spec that says neonate opens as an adult with a warning", () => {
+    expect(PRESETS.filter((p) => JSON.stringify(p.spec).includes("neonate"))).toEqual([]);
+    expect(PRESETS.map((p) => p.id)).not.toContain("vsd-neonate");
+    const n = normalizePatient({ kind: "neonate", lesions: [{ artery: "LAD", occluded: true }] } as never);
+    expect(n.spec).not.toHaveProperty("kind"); expect(n.spec.lesions).toHaveLength(1);
+    expect(n.warnings.join(";")).toMatch(/neonate/);
   });
-  it("an adult keeps them and no warning is made", () => {
-    const { spec, warnings } = buildPlaygroundSpec({ lesions: [{ artery: "LAD", occluded: true }] }, { kind: "adult" });
+  it("coronary lesions are always kept", () => {
+    const { spec, warnings } = buildPlaygroundSpec({ lesions: [{ artery: "LAD", occluded: true }] }, {});
     expect(spec.lesions).toHaveLength(1); expect(warnings).toEqual([]);
-  });
-  it("every neonate preset carries no coronary lesion, and adding one gets it dropped with a warning", () => {
-    const neonates = PRESETS.filter((p) => p.spec.kind === "neonate");
-    expect(neonates.length).toBeGreaterThanOrEqual(2);
-    for (const p of neonates) {
-      expect(p.spec.lesions ?? []).toEqual([]);
-      const withLesion = { ...p.spec, lesions: [{ artery: "LAD", occluded: true }] };
-      const { spec, warnings } = buildPlaygroundSpec(withLesion, stateOfSpec(withLesion));
-      expect(spec.lesions).toBeUndefined(); expect(warnings.some((w) => /neonate has no coronary tree/.test(w))).toBe(true);
-    }
   });
 });
 
@@ -107,7 +97,7 @@ describe("presets", () => {
   it("has the required patients, with unique ids", () => {
     const ids = PRESETS.map((p) => p.id);
     expect(new Set(ids).size).toBe(ids.length);
-    for (const id of ["anterior-stemi", "inferior-stemi-rv", "stemi-mr", "shock-impella", "tamponade", "severe-as", "vsd-neonate", "tof", "hemorrhage-fluids", "va-ecmo-poor-lv"]) expect(ids).toContain(id);
+    for (const id of ["anterior-stemi", "inferior-stemi-rv", "stemi-mr", "shock-impella", "tamponade", "severe-as", "hemorrhage-fluids", "va-ecmo-poor-lv"]) expect(ids).toContain(id);
   });
   it("the ischemic MR preset sets heart.valves.mv.reg on top of the LAD occlusion", () => {
     const p = PRESETS.find((x) => x.id === "stemi-mr")!.spec;
@@ -124,25 +114,17 @@ describe("presets", () => {
       // loading the built spec into the controls and building again changes nothing
       expect(buildPlaygroundSpec(back, stateOfSpec(back)).spec).toEqual(built.spec);
     });
-    it(`${p.id}: the bridge solve converges (sync solver)`, () => {
+    it(`${p.id}: the core engine settles it and the live source reads finite numbers`, () => {
       const built = buildPlaygroundSpec(p.spec, stateOfSpec(p.spec)).spec;
-      const sim = new Simulation(); sim.reset({ seed: 3, ...built }, { settled: true }); sim.warmup(30);
-      const bridge = new BridgeSource(sim, { patient: built });
+      const sim = new Simulation({}, { engine: "core" }); sim.reset({ seed: 3, ...built }, { settled: true });
+      const src = new LiveSource(sim);
       const t0 = performance.now();
-      bridge.refresh();
-      const ms = performance.now() - t0, n = bridge.numbers();
-      expect(bridge.solves).toBe(1);
-      expect(ms).toBeLessThan(10_000);
+      sim.warmup(30);
+      const ms = performance.now() - t0, n = src.numbers();
+      expect(sim.coreNote).toBe("");
+      expect(ms).toBeLessThan(30_000);
       for (const v of [n.map, n.co, n.cvp, n.pcwp, n.hr, n.systolic, n.diastolic]) expect(Number.isFinite(v)).toBe(true);
       expect(n.co).toBeGreaterThan(0);
-      if (built.kind === "neonate") { // the adult monitor does not describe a neonate: a standalone solve (P2e), in neonatal ranges
-        expect(bridge.standalone).toBe(true);
-        expect(bridge.analyzeCalls).toBe(1);
-        expect(n.co).toBeLessThan(2); expect(n.map).toBeGreaterThan(25); expect(n.map).toBeLessThan(100); expect(n.cvp).toBeLessThan(15);
-      } else {
-        expect(Math.abs(bridge.calibrationError)).toBeLessThan(5);
-        expect(bridge.analyzeCalls).toBeLessThan(40);
-      }
     });
   }
 });

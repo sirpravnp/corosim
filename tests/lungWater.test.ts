@@ -82,6 +82,6 @@ describe("in the core simulation", () => {
     expect(100 * (s0 - sat.spo2)).toBeGreaterThan(2); expect(100 * (s0 - sat.spo2)).toBeLessThan(8);
     expect(s.circ.congestion).toBeGreaterThan(0.5); expect(Math.abs(f.conservation)).toBeLessThan(1);
     const o = oxygen(s) as { satPct?: { spo2: number | null } };
-    expect(o.satPct!.spo2!).toBeLessThan(100 * s0 - 1.5); // the steady-state bridge reads the lowered pulmonary venous saturation too
+    expect(o.satPct!.spo2!).toBeLessThan(100 * s0 - 1.5); // the MCP tool reads the lowered pulmonary venous saturation too
   }, 180_000);
 });

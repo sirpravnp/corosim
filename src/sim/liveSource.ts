@@ -1,7 +1,6 @@
 import type { BeatSummary, Chamber, DeviceConsole, HemoNode, HemoNumbers, HemoSource, Saturations, Series } from "./hemoSource";
 import type { Simulation } from "./simulation";
 import type { DevicesReadout } from "./coreDevices";
-import { bedOxygen } from "./bridgeSource";
 import { NODES as ALL_NODES, CATH_NODES as NODES, solveOxygen, type Model } from "../physics/structural";
 import { oxygenatorSat, type Ecmo } from "../physics/core/devices/ecmo";
 import type { RotaryPump } from "../physics/core/devices/pump";
@@ -11,6 +10,16 @@ import { PATIENTS, O2_PER_G_HB } from "../config/structural";
 import { LIVE_SOURCE as CFG } from "../config/liveSource";
 
 const CHAMBERS: readonly Chamber[] = ["RA", "RV", "LA", "LV"];
+
+/**
+ * Per-bed tissue oxygenation placeholder until tasks E2/E3: 0.75 - 0.45 x the bed's ischemia (`LIVE_SOURCE.bedOxygen`), for the ischemia sites
+ * (not the nodal ones). The O2 view reads it through `saturations().bed`.
+ */
+export function bedOxygen(sim: Simulation): Record<string, number> {
+  const bed: Record<string, number> = {}, B = CFG.bedOxygen;
+  for (const s of sim.sites) if (!/^(SAN|AVN)#/.test(s.key)) bed[s.key] = Math.min(1, Math.max(0, B.base - B.slope * (sim.sev[s.key] ?? 0)));
+  return bed;
+}
 const IDX = (n: string) => (ALL_NODES as readonly string[]).indexOf(n);
 const empty = (): Series => ({ t: new Float32Array(0), v: new Float32Array(0) });
 const NaNs = <T extends string>(keys: readonly T[]) => Object.fromEntries(keys.map((k) => [k, NaN])) as Record<T, number>;
@@ -23,8 +32,7 @@ const NO_NUMBERS: HemoNumbers = {
 interface Rec { lb: LiveBeat; rr: number; end: number; summary: BeatSummary | null }
 
 /**
- * `HemoSource` over the core engine's live heart (task P16, docs/HEMODYNAMICS_CORE.md §4G). Where the bridge (bridgeSource.ts) replays a
- * steady-state solve, every beat here is the engine's own: a premature beat is small and the next one large, atrial fibrillation has
+ * `HemoSource` over the core engine's live heart (task P16, docs/HEMODYNAMICS_CORE.md §4G). Every beat here is the engine's own: a premature beat is small and the next one large, atrial fibrillation has
  * no atrial event and a beat-to-beat stroke volume, heart block has two atrial events per beat and cannon waves in the right atrium,
  * an Impella or a balloon pump shapes the aortic trace. `kind` is "live". The source reads `sim.live` (the core-engine `Simulation`
  * keeps it current, rebuilds it when the patient's structure changes and steps it) and never steps anything itself.
@@ -47,11 +55,11 @@ interface Rec { lb: LiveBeat; rr: number; end: number; summary: BeatSummary | nu
  * diastolic = mean over the beats of the aortic mean, maximum and minimum (an IABP's augmented diastolic peak is a systolic maximum
  * of that beat if it exceeds the ejection peak, as a monitor reads it); EF = (EDV - ESV) / EDV.
  *
- * Saturations. The same oxygen model as the bridge (`solveOxygen`, physics/structural.ts), fed with the forward and backward
+ * Saturations. The oxygen model (`solveOxygen`, physics/structural.ts), fed with the forward and backward
  * volumes through every element over the same window instead of one steady-state beat: an Impella and an Impella RP are streams
  * between their nodes, an ECMO circuit the extra stream into the descending aorta through its oxygenator (`oxygenatorSat`), so
  * differential hypoxemia (upper body from the lungs, lower body from the circuit) appears. SpO2 = pre-ductal = AO; DO2, VO2 and the
- * per-bed tissue oxygenation placeholder as the bridge's (`bedOxygen`). Recomputed once per completed beat.
+ * per-bed tissue oxygenation placeholder (`bedOxygen`). Recomputed once per completed beat.
  *
  * Devices. `sim.devices()` as DeviceConsoles: Impella (flow, speed, current, placement signal, suction; the placement trace of the
  * last seconds), IABP (settings, balloon, augmentation; the arterial trace), ECMO (flow, speed, sweep, FiO2, suction, return
@@ -59,8 +67,6 @@ interface Rec { lb: LiveBeat; rr: number; end: number; summary: BeatSummary | nu
  */
 export class LiveSource implements HemoSource {
   readonly kind = "live" as const;
-  readonly standalone = false;
-  readonly patientKind = "adult" as const;
 
   private heart: LiveHeart | null = null;
   private off: (() => void) | null = null;

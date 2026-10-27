@@ -14,7 +14,6 @@ export const SCENARIO_REFERENCE = `Scenario JSON (all fields optional; omitted =
   "autonomic": { "baroreflexGain": 0 (denervated) .. 1 (normal) .. 4, "respRate": 4..40, "respDepth": 0..2, "setPointShift": -30..60 mmHg, "noise": 0..3 },
   "seed": integer,
   (PatientSpec additions, all optional:)
-  "kind": "adult|neonate",
   "heart": { "valves": { "av|mv|tv|pv": { "open": 0..1 (1 = normal orifice), "reg": 0..10 (regurgitant orifice, cm2) } }, "pda|asd|vsd|bt": { "diameterMm": 0..40 }, "tof": { "vsdMm", "rvotFrac": 0..1, "spasm": 0..1 }, "pvri": 0.2..60 (WU.m2), "svrScale": 0.1..5, "satLung": 0.3..1, "volumeMl": -1000..5000, "lvSize|laSize|rvSize|raSize": 0.05..4, "rvContractility": 0.2..5 },
   "pericardium": { "effusionMl": 0..2000, "effusionRateMlMin": 0..100, "stiffness": 0.2..10 (1 normal), "open": false, "drainMl": 0..2000 (pericardiocentesis: ml removed now, an action in a patch, never stored) },
   "septum": false   (true = ventricular interdependence: a failing right ventricle bows the septum into the left),

@@ -1,5 +1,4 @@
 [
-  "tests/bridgeSource.test.ts",
   "tests/cathHeart.test.ts",
   "tests/coronaryCoupling.test.ts",
   "tests/drugs.test.ts",

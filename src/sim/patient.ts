@@ -10,8 +10,6 @@ import type { StructuralSpec } from "../physics/structural";
  * PatientSpec and every old link still means the same patient. Encoding and normalisation live below (task P1); engines read it in P2/A7.
  */
 export interface PatientSpec extends Scenario {
-  /** Baseline physiology the engines are designed around (src/config/structural.ts). Neonates have no coronary view. */
-  kind?: "adult" | "neonate";
   /** Valves, septal defects, ductus, shunts and chamber sizes, as the structural engine takes them. */
   heart?: HeartSpec;
   pericardium?: PericardiumSpec;
@@ -108,7 +106,8 @@ const isObj = (x: unknown): x is Record<string, unknown> => typeof x === "object
 export function normalizePatient(input: PatientSpec = {}): NormalizedPatient {
   const n = normalizeScenario(input), warnings = [...n.warnings];
   const spec: PatientSpec = { ...input };
-  for (const k of ["kind", "heart", "pericardium", "septum", "fluids", "ventilation", "devices"] as const) delete spec[k];
+  for (const k of ["heart", "pericardium", "septum", "fluids", "ventilation", "devices"] as const) delete spec[k];
+  delete (spec as Record<string, unknown>).kind;
 
   const num = (o: Record<string, unknown>, k: string, path: string, [lo, hi]: readonly [number, number]): number | undefined => {
     const v = o[k]; if (v === undefined) return undefined;
@@ -133,8 +132,9 @@ export function normalizePatient(input: PatientSpec = {}): NormalizedPatient {
   const compact = <T extends object>(o: T): T | undefined => { const r = Object.fromEntries(Object.entries(o).filter(([, x]) => x !== undefined)); return Object.keys(r).length ? (r as T) : undefined; };
   const R = PATIENT_RANGES;
 
-  const kind = oneOf(input as Record<string, unknown>, "kind", "", ["adult", "neonate"] as const);
-  if (kind) spec.kind = kind;
+  // Neonates left the Simulator (they stay on the Structural page): an old link or call that says so opens as the adult.
+  const kindIn = (input as Record<string, unknown>).kind;
+  if (kindIn !== undefined && kindIn !== "adult") warnings.push(kindIn === "neonate" ? "kind \"neonate\" is no longer simulated here (newborn lesions are on the Structural page); the patient is an adult" : "kind is not used; dropped");
 
   // heart: the structural engine's own clamping decides the ranges; anything it changes or unsets is reported
   const heart = section(input.heart, "heart");
@@ -151,7 +151,7 @@ export function normalizePatient(input: PatientSpec = {}): NormalizedPatient {
       else if (typeof a !== "number" && b === undefined && a !== undefined) warnings.push(`${path} is not a number or object as expected; dropped`);
     };
     diff(kept, out, "heart");
-    delete out.patient; delete out.hr; // those come from kind and the rhythm
+    delete out.patient; delete out.hr; // those come from the adult baseline and the rhythm
     const h = compact(out); if (h) spec.heart = h as HeartSpec;
   }
 

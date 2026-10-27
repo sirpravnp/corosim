@@ -6,7 +6,7 @@ import { mountShell } from "../shell/shell";
 import { joinPatient } from "../sim/crossLinks";
 import { mountCrossLinks } from "../shell/crossLinkRow";
 import { dayKey, parseDay } from "../game";
-import { $, sim, G, inGame, setInGame, bridgeOpts } from "./state";
+import { $, sim, G, inGame, setInGame, patientOpts } from "./state";
 import { gameUi } from "./gameUi";
 import { adoptSimState, loadScenario } from "./model";
 
@@ -17,7 +17,7 @@ let cathBase = "./cath/";
 /** The shared header and footer; its AI control runs the tools on the patient on screen (see runForAi). */
 export let shell: ReturnType<typeof mountShell>;
 /** The patient on screen: the simulator's scenario plus the structural sections of a shared link (heart, kind), which the Simulation does not keep. */
-const currentPatient = () => joinPatient(sim.scenario(), bridgeOpts.patient);
+const currentPatient = () => joinPatient(sim.scenario(), patientOpts.patient);
 export function cathLinkUi() {
   const a = shell.menuLink("cath")!, b = $("openCath") as HTMLAnchorElement; // the page menu's link and the Reperfuse tab's
   const point = () => { a.href = b.href = inGame ? cathBase : `${cathBase}#s=${encodePatient(currentPatient())}`; };
