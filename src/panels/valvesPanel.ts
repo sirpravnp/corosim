@@ -1,7 +1,7 @@
 /**
  * The Valves tab's per-valve controls (C4, docs/VALVES.md): stenosis and regurgitation severity for each native valve (several at once),
  * a prosthesis section per valve, the interventions (`intervene`), and a readout line per valve. DOM only; the logic is in src/sim/valves.ts.
- * Everything edits the playground state's `heart` (the pick of a single lesion is dropped), which the page applies to the core engine.
+ * Everything edits the playground state's `heart` (the Preset menu only fills it; `valvePreset` names where it started), which the page applies to the core engine.
  */
 import { DEFAULT_PROSTHESIS_SIZE, PROSTHESIS_SIZE, REGURG_AREA_FRAC, STENOSIS_SPAN, VALVE_KEYS } from "../config/valves";
 import type { ProsthesisKind, ValveKey } from "../config/valves";
@@ -51,9 +51,9 @@ const ACTIONS: Record<ValveKey, { label: string; title: string; iv: Intervention
   ],
 };
 const unit = (x: number) => Math.min(1, Math.max(0, x));
-const heartOf = (s: PlaygroundState): HeartSpec => (s.structural ? heartOfPick(s.structural) : s.heart) ?? {};
+export const heartOf = (s: PlaygroundState): HeartSpec => (s.structural ? heartOfPick(s.structural) : s.heart) ?? {};
 /** The state with `heart` as the structural heart (a lesion pick is dropped: its values are in the heart now). */
-function withHeart(s: PlaygroundState, heart: HeartSpec): PlaygroundState {
+export function withHeart(s: PlaygroundState, heart: HeartSpec): PlaygroundState {
   const valves = Object.fromEntries(Object.entries(heart.valves ?? {}).filter(([, v]) => v));
   const next: HeartSpec = { ...heart };
   if (Object.keys(valves).length) next.valves = valves; else delete next.valves;
@@ -63,6 +63,12 @@ function setValve(s: PlaygroundState, k: ValveKey, v: NonNullable<HeartSpec["val
   const heart = heartOf(s), valves = { ...(heart.valves ?? {}) };
   if (v) valves[k] = v; else delete valves[k];
   return withHeart(s, { ...heart, valves });
+}
+/** Set one native severity (0..1) of a valve, keeping the other and the rest of the heart; both at 0 is a normal valve. */
+export function setValveSeverity(s: PlaygroundState, k: ValveKey, key: "stenosis" | "regurgitation", v: number): PlaygroundState {
+  const sev = severityOf(k, heartOf(s).valves?.[k]);
+  sev[key] = v;
+  return setValve(s, k, sev.stenosis === 0 && sev.regurgitation === 0 ? null : nativeLesion(k, sev));
 }
 /** The 0..1 severity sliders a native valve stands for (the inverse of `nativeLesion`). */
 export const severityOf = (k: ValveKey, v: { open?: number; reg?: number } | undefined) =>
@@ -114,11 +120,7 @@ export function buildValves(c: ValvesCtx) {
       fields.push(path);
       const id = c.ctlId(), val = h("span", { className: "val" }), input = h("input", { id, type: "range", min: "0", max: "1", step: "0.05" });
       sec.append(h("label", { htmlFor: id }, label + " ", val), input);
-      input.addEventListener("input", () => edit((s) => {
-        const cur = heartOf(s).valves?.[k], sev = severityOf(k, cur);
-        sev[key] = Number(input.value);
-        return setValve(s, k, sev.stenosis === 0 && sev.regurgitation === 0 ? null : nativeLesion(k, sev));
-      }));
+      input.addEventListener("input", () => edit((s) => setValveSeverity(s, k, key, Number(input.value))));
       syncs.push((s) => {
         const cur = heartOf(s).valves?.[k], v = severityOf(k, cur)[key], pro = !!cur?.prosthesis;
         if (document.activeElement !== input) input.value = String(+v.toFixed(2));

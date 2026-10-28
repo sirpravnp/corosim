@@ -1,13 +1,14 @@
 // ---------------------------------------------------------------- playground mode (task P12)
 import { createPlaygroundUi } from "../panels/playgroundControls";
 import { decodePatient, encodePatient } from "../sim/llm";
-import { buildPlaygroundSpec, hasPlaygroundFields, patchDevice, stateOfSpec, withDevice } from "../sim/playground";
+import { buildPlaygroundSpec, hasPlaygroundFields, patchDevice, patchSection, stateOfSpec, withDevice } from "../sim/playground";
 import { PRESET_BY_ID } from "../sim/presets";
 import type { PlaygroundState } from "../sim/playground";
 import type { PatientSpec } from "../sim/patient";
 import { $, sim, T, on, inCases, patientOpts } from "./state";
+import { hooks } from "./manage";
 import { propsView } from "./scene";
-import { loadScenario } from "./model";
+import { loadScenario, setPhys } from "./model";
 import { pushPatient } from "./workspace";
 import { mountDock } from "./dock";
 
@@ -31,7 +32,7 @@ function pgApply(refresh: boolean) {
   if (refresh) pushPatient();
   if (!inCases) try { window.history.replaceState(null, "", `${location.pathname}${location.search}#s=${encodePatient(spec)}`); } catch { /* sandboxed frame: the link field still shows it */ } // a case keeps its patient out of the address bar
   pgSig = JSON.stringify([sim.scenario(), pg]);
-  pgUi.sync(pg, { warnings: [...new Set([...pgSticky, ...built.warnings])], link: location.href, presetId: pgPreset });
+  pgUi.sync(pg, { warnings: [...new Set([...pgSticky, ...built.warnings])], link: location.href, presetId: pgPreset, scenario: sim.scenario() });
 }
 /** Turn the patient editing on or off (the dock's controls are always in place; this starts and stops following the state into the link). */
 export function pgShow(on: boolean) {
@@ -83,8 +84,20 @@ export function initPatient() {
     loadPreset(id) { const p = PRESET_BY_ID[id]; if (p) pgAdopt(p.spec, id); },
     exit: () => pgShow(false),
     legacy: () => false,
+    scenario: () => sim.scenario(),
+    // the Advanced group's fields live in the Scenario: the Simulation takes the change, then the spec and the link follow
+    patch(p) { sim.apply(p); pgApply(false); },
+    reseed(seed) { pgAdopt({ ...buildPlaygroundSpec(sim.scenario(), pg).spec, seed }, null); },
   });
   mountDock(pgUi.mounts);
+  // The Support tab's one switch per device edits `devices.*`; the legacy `support.iabp` / `support.impella` follow in pgApply.
+  hooks.device = (id, isOn) => { if (!pgOn) pgShow(true); pg = withDevice(pg, id, isOn); pgPreset = null; pgSticky = []; pgApply(true); };
+  // Reset treatment: the devices, the boluses and the beta blocker go; the insult (blood loss, hemorrhage) stays
+  hooks.resetTreatment = () => {
+    let next: PlaygroundState = { ...pg, devices: undefined };
+    next = patchSection(next, "fluids", { given: undefined });
+    pg = next; pgPreset = null; setPhys({ bb: 0 }); pgApply(true);
+  };
   // The existing controls (lesions, rhythm, drugs, support) change the Scenario inside the Simulation: pick that up for the link.
   setInterval(() => {
     if (!pgOn || inCases) return;
