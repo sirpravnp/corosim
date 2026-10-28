@@ -17,6 +17,11 @@ export interface VolumeExchangeParams {
 export class VolumeExchange implements Element, Tunable<VolumeExchangeParams> {
   readonly params: VolumeExchangeParams = { rate: 0 };
   /**
+   * Whether a loss is held to what the `from` nodes can give (see `flow`). The simulation turns it off during its reflex warm-up, whose
+   * build can start with an empty circulation (a heavy bleed at build) that the old rule settled; the running patient always has it.
+   */
+  capLoss = true;
+  /**
    * `lossWeight(node, volume)` (ml) is each `from` node's share of a loss; the default is its volume. A bleed drains the blood that
    * is under pressure, not the unstressed volume of a vein, so the ACS simulation passes the stressed volume (A7b). A bolus always
    * divides by the volume of the `into` nodes.
@@ -30,7 +35,7 @@ export class VolumeExchange implements Element, Tunable<VolumeExchangeParams> {
     let tot = 0;
     const weight = (n: NodeId) => Math.max(q > 0 ? ctx.V[n] : this.lossWeight(n, ctx.V[n]), 0);
     for (const n of nodes) tot += weight(n);
-    if (q < 0) {
+    if (q < 0 && this.capLoss) {
       // a loss can only take blood that is there to take: at most the weighted (stressed) volume per `LOSS_TAU_S`, so the nodes empty
       // towards their weight's zero (the unstressed volume) and never below it, however much the caller asks for
       const lossRate = Math.min(-q, tot / LOSS_TAU_S);
@@ -40,7 +45,7 @@ export class VolumeExchange implements Element, Tunable<VolumeExchangeParams> {
     }
     for (const n of nodes) {
       const w = tot > 1e-9 ? weight(n) / tot : 1 / nodes.length;
-      out.flow(OUTSIDE, n, q * w);
+      if (q > 0) out.flow(OUTSIDE, n, q * w); else out.flow(n, OUTSIDE, -q * w);
     }
   }
 }
