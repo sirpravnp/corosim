@@ -62,6 +62,16 @@ describe("lethal scenarios die at every clock speed", () => {
       expect(Math.abs(r.sim.arrestState().arrestS - r.deathMin! * 60)).toBeLessThan(20);
     }, TIMEOUT);
   }
+  for (const speed of [1, 6]) {
+    it(`tamponade, 300 ml and accumulating 30 ml/min @${speed}x: PEA within minutes, the sac never past 2 L, death on the no-flow clock`, () => {
+      const r = trial({ pericardium: { effusionMl: 300, effusionRateMlMin: 30 } }, speed, { maxClinMin: 120, maxSimS: 1200 }); log(`tamponade @${speed}x`, r);
+      bounded(r, 1200);
+      expect(r.cause).toBe("noFlow");
+      expect(r.arrestMin!).toBeLessThan(15);
+      expect(r.deathMin! - r.arrestMin!).toBeLessThan(1.2 * ARREST.deathAfterNoFlowS / 60);
+      expect(r.sim.pericardium()!.effusionMl).toBeLessThan(2000 + 1);
+    }, TIMEOUT);
+  }
   it("VF with good CPR and nothing else @6x: CPR buys time, but death still comes within half an hour", () => {
     const r = trial({ patient: { rhythm: "vf-coarse" } }, 6, { maxClinMin: 60, maxSimS: 2000, act: (s, t, m) => { if (t > 1 && !m.cpr) { m.cpr = true; s.startCpr(); } } }); log("VF+CPR @6x", r);
     bounded(r, 2000);
