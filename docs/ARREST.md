@@ -91,13 +91,21 @@ What the trials show (tests/deathTrials.test.ts asserts the first rows at 1x, 3x
 
 | Scenario | Arrest | Death | Notes |
 |---|---|---|---|
-| Healthy heart, hemorrhage 200 ml/min | about 11 (PEA) | about 21 (no flow) | same at 1x, 3x, 6x |
-| Anterior STEMI + hemorrhage 100 ml/min (the reported case) | about 25 (PEA) | about 35 (no flow) | was: engine hang, or alive for a clinical day |
-| Untreated VF | at once | 9.8 (no flow) | |
-| VF with good CPR only | at once | about 15 | CPR buys time |
-| Asystole | at once | 9.8 | |
-| Treated: STEMI + bleed, bleed stopped + 2 L blood at MAP < 55 | none | alive | |
+| Healthy heart, hemorrhage 200 ml/min | 11 (PEA) | 21 (no flow) | same at 1x, 3x, 6x |
+| Anterior STEMI + hemorrhage 100 ml/min (the reported case) | 25 (PEA) | 35 (no flow) | 1x, 3x, 6x; was: engine hang, or alive for a clinical day |
+| Healthy heart, hemorrhage 40 ml/min | 69 (PEA) | 79 (no flow) | 1x and 6x |
+| Anterior STEMI + bloodLoss 0.45 | at once (PEA, MAP about 0-50 with no pulse pressure) | 13 (VF during the PEA) | 1x, 3x, 6x; starts from the empty build, see above |
+| Untreated VF / asystole | at once | 9.8 (no flow) | 1x and 6x |
+| VF with good CPR only | at once | 15 | CPR buys time |
+| Tamponade 800 ml + 50 ml/min | at once (PEA) | 10 | |
+| Tamponade 300 ml + 30 ml/min | 2.7 (PEA at about 380 ml) | 12.7 | 1x and 6x; was alive at 6x with 14 L in the sac |
+| vt-poly preset (225/min) | 6 (pulseless VT: pulse pressure about 5 mmHg) | 26 | |
+| STEMI + vasodilator + bloodLoss 0.2 | at once (pseudo-PEA: sinus 180, 48/42, 1.6 L/min) | 100 at 1x (VF after a ROSC); alive with MAP 53 at 6 h at 6x | outcome after ROSC is stochastic |
+| Treated: STEMI + bleed, bleed stopped + 2 L blood at MAP < 55 | none | alive | 1x and 6x |
+| Treated: exsanguination, bleed stopped + 2.5 L blood at MAP < 50 | none | alive | |
+| Treated: bloodLoss 0.45 + STEMI, 2 L blood | at once | alive (ROSC, MAP 84) | |
 | Treated: VF, CPR + 200 J shocks | ROSC | alive | |
+| Treated: tamponade drained 700 ml at MAP < 50 | none | alive | |
 
 What does **not** kill in the model, and should be reviewed (reported, not changed):
 
@@ -110,7 +118,6 @@ What does **not** kill in the model, and should be reviewed (reported, not chang
   shock autopsy series), so this is on the optimistic side.
 - **Complete heart block with a 32/min wide escape**: MAP about 72 for 24 h in an otherwise normal heart; tolerable for hours is
   plausible, but the escape's unreliability (pauses, asystole) is not modelled.
-- **Sustained VT presets** (vt-mono 172/min: MAP about 83 for 24 h; vt-poly 225/min: MAP about 64 for hours): the preset is a fixed
-  rhythm that neither degenerates to VF nor terminates, and polymorphic VT sustained for hours with a pulse is not realistic.
-  An induced ischemic VT episode follows the arrhythmia model instead.
-- **Tamponade of 800 ml accumulating 50 ml/min**: PEA at once (acute 800 ml is a lot), death 10 min later.
+- **The vt-mono preset** (172/min): MAP about 83 for 24 h. A preset is a fixed rhythm that neither degenerates to VF nor terminates.
+  An induced ischemic VT episode (arrhythmia model) at 200/min dropped MAP to about 70 and ended by itself within seconds of
+  heartbeats on seed 3 (the episode course is in heartbeat seconds; the clinical clock now runs in real time while it lasts).
