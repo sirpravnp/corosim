@@ -35,7 +35,7 @@ import type { Pericardium } from "../physics/core/pericardium";
 import { Thorax } from "../physics/core/thorax";
 import type { FromModelOptions } from "../physics/core/fromModel";
 import { THORAX } from "../config/thorax";
-import { alternansAmplitude } from "../config/pericardium";
+import { alternansAmplitude, PERICARDIUM } from "../config/pericardium";
 import { IABP } from "../config/devices";
 import { SwitchableImpella, DevicesReadout } from "./coreDevices";
 import { PatientSpec, DeviceSpec, HeartSpec, PericardiumSpec, FluidSpec, VentilationSpec, normalizePatient, effectiveDevices, DEFAULT_IMPELLA, DEFAULT_IABP } from "./patient";
@@ -429,6 +429,8 @@ export class Simulation {
       // a critical patient's clock runs in real time (at most one clinical second per simulated second), whatever the speed, and a dead one's stops
       if (m > 0 && this.dead) m = 0;
       else if (m > 0 && this.realTimeWhenCritical && (this.critical || this.volumeLag() > ARREST_SIM.critical.volumeLagMl)) m = Math.min(m, h / 60); // nor may it run ahead of the volume the heart can be given or drained
+      const fill = this.realTimeWhenCritical && this.sac() ? this.periSpec?.effusionRateMlMin ?? 0 : 0;
+      if (m > 0 && fill > 0) m = Math.min(m, (PERICARDIUM.maxFillMlPerS * h) / fill); // nor fill the pericardium faster than the heart can follow
       this.sub(h, m); used += m; left -= h;
     }
     return used;
@@ -824,7 +826,7 @@ export class Simulation {
     this.pushDevices();
     this.pushInputs();
     const sac = this.sac(), pe = this.periSpec;
-    if (sac && pe) sac.set({ effusionRateMlS: h > 0 ? ((pe.effusionRateMlMin ?? 0) * minutes) / h : 0 }); // ml per clinical minute, on the clinical minutes this sub-step stands for
+    if (sac && pe) sac.set({ effusionRateMlS: h > 0 && sac.effusionMl < PERICARDIUM.maxEffusionMl ? ((pe.effusionRateMlMin ?? 0) * minutes) / h : 0 }); // stops at the sac's limit // ml per clinical minute, on the clinical minutes this sub-step stands for
     const th = this.thorax();
     if (th && this.ventSpec && (this.ventSpec.mode ?? "spontaneous") === "spontaneous") { th.set({ depth: this.autonomic.controls.respDepth }); th.setPhase(this.autonomic.phase, live.engine.t + dt); } // the pleural swing runs with the respiratory sinus arrhythmia of the baroreflex loop
     const q = Math.max(-ACS_CORE.maxVolumeRate, Math.min(ACS_CORE.maxVolumeRate, (this.targetVolume() - this.volApplied) / dt)); // ml/s, so the circulation holds the (ramped) volume
@@ -1151,8 +1153,8 @@ export class Simulation {
 
   /** The pressure half of the pulse check (ARREST_SIM.pulsePressure): MAP or systolic under the line for `holdS` loses the pulse; both back over the higher line for `holdS` restores it. */
   private pressureTick(h: number) {
-    const P = ARREST_SIM.pulsePressure, map = this.map, sbp = this.sm.sbp;
-    const flip = this.noPulse ? map >= P.mapAbove && sbp >= P.sbpAbove : !(map >= P.mapBelow && sbp >= P.sbpBelow); // a non-finite pressure counts as none
+    const P = ARREST_SIM.pulsePressure, map = this.map, sbp = this.sm.sbp, pp = sbp - this.sm.dbp, device = this.sm.dev > P.deviceLpm;
+    const flip = this.noPulse ? map >= P.mapAbove && sbp >= P.sbpAbove && (device || pp >= P.ppAbove) : !(map >= P.mapBelow && sbp >= P.sbpBelow && (device || pp >= P.ppBelow)); // a non-finite pressure counts as none
     this.pulseTimer = flip ? this.pulseTimer + h : 0;
     if (this.pulseTimer >= P.holdS) { this.noPulse = !this.noPulse; this.pulseTimer = 0; }
   }

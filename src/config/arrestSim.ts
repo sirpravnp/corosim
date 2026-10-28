@@ -21,9 +21,12 @@ export const ARREST_SIM = {
    * has held for `holdS` (hysteresis, so a pressure hovering at the line does not flicker in and out of arrest). A carotid pulse is
    * usually lost at a systolic of about 50-60 mmHg; pseudo-PEA (pressure on an arterial line, no palpable pulse) is typically a systolic
    * under 50-60. The lines here are set a little lower so a patient in deep shock is still "perfusing" (and dies on the shock clock) and
-   * only a circulation that has really failed is called PEA. [assumed; direction: AHA 2020 ACLS, pseudo-PEA literature]
+   * only a circulation that has really failed is called PEA. A pulse pressure (systolic - diastolic) under `ppBelow` is no pulse either
+   * (back at `ppAbove`): a heart that no longer ejects leaves a static circulation whose pressure can sit at any level (a tamponade
+   * at a fast clock showed MAP ~ the pericardial pressure, 40-140 mmHg, with a 1 mmHg pulse). That rule is skipped while a device
+   * carries more than `deviceLpm` L/min (VA-ECMO and a full Impella flatten the pulse of a perfused patient). [assumed; direction: AHA 2020 ACLS, pseudo-PEA literature]
    */
-  pulsePressure: { mapBelow: 25, sbpBelow: 45, mapAbove: 30, sbpAbove: 55, holdS: 3 },
+  pulsePressure: { mapBelow: 25, sbpBelow: 45, mapAbove: 30, sbpAbove: 55, holdS: 3, ppBelow: 5, ppAbove: 10, deviceLpm: 0.5 },
   /**
    * The clinical clock while the patient is critical (in arrest, pulseless, or with MAP below `enterMap`, the refractory-shock line):
    * it runs in real time, one clinical second per simulated second, whatever the speed setting, so the death clocks (which count
