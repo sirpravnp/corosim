@@ -31,11 +31,15 @@ The rule now (`Simulation.step`, so the page, the MCP tools and the tests all ge
 
 - While the patient is **critical** the clinical clock runs in **real time**: at most one clinical second per simulated second, whatever
   the speed button or the `minutes` a caller passes. Critical = in arrest (machine status `arrest`), or pulseless by the pressure check
-  below, or MAP < 40 mmHg (the refractory-shock line), and it ends once the arrest is over and MAP is back at 45 or more.
+  below, or in a sustained VT or VF episode of the arrhythmia model, or MAP < 40 mmHg (the refractory-shock line), and it ends once
+  none of these holds and MAP is back at 45 or more.
 - The clock is also held to real time while the engine's blood volume lags the fluid compartments by more than 150 ml. The heart is
   given or drained blood at no more than `ACS_CORE.maxVolumeRate` (120 ml per simulated second); at a fast clock a bleed would
   otherwise run far ahead of the pressure it causes, and the same bleed would crash the patient later the faster the clock (it did: the
   STEMI + 100 ml/min bleed arrested at 32 clinical minutes at 1x, 102 at 3x and 203 at 6x; now 25 at every speed).
+- An accumulating pericardial effusion never fills the sac faster than 20 ml per simulated second (`PERICARDIUM.maxFillMlPerS`; the
+  clock is slowed to keep it there), and it stops at 2 L (`PERICARDIUM.maxEffusionMl`). At 6x a 30 ml/min effusion used to pour in
+  360 ml per simulated second and fill the sac to 14 L.
 - So all death clocks count clinical seconds: 10 minutes of no flow is 600 simulated seconds and 10 clinical minutes, and the arrest
   panel's timers match the clinical clock (to the warm-up, which counts arrest time but no clinical time).
 - A dead patient's clock stops. `step()` returns the clinical minutes that actually passed; the page hands those to its order clock
@@ -53,11 +57,14 @@ The rule now (`Simulation.step`, so the page, the MCP tools and the tests all ge
 | No flow | 600 clinical s of no-flow (CPR earns credit by its output and the coronary perfusion pressure) | `ARREST.deathAfterNoFlowS`, sim/arrest.ts |
 | Refractory shock (with a pulse) | MAP < 40 mmHg for 240 clinical s (the count runs back down above it) | `ARREST.shockDeath`, `shockDeathStep` |
 | Pulseless, by flow | native output (less CPR) < 20 % of the patient's own | `ARREST_SIM.pulselessOutput` |
-| Pulseless, by pressure (new) | MAP < 25 or systolic < 45 mmHg for 3 s; a pulse again at MAP >= 30 and systolic >= 55 for 3 s | `ARREST_SIM.pulsePressure` |
+| Pulseless, by pressure (new) | MAP < 25, or systolic < 45, or pulse pressure < 5 mmHg, for 3 s; a pulse again at MAP >= 30, systolic >= 55 and pulse pressure >= 10 for 3 s. The pulse-pressure rule is skipped while a device carries more than 0.5 L/min (VA-ECMO, Impella) | `ARREST_SIM.pulsePressure` |
 
 The pressure check is new. An emptied circulation can keep a stroke volume moving at no pressure (the bled-out patient showed MAP
 -0.4, systolic 0 and an output of 2 L/min, 53 % of normal, and was called "perfusing" for ever). Now an organized rhythm without the
-pressure to feel a pulse is PEA (pulseless VT above 100/min) and the arrest clock runs. The lines sit below the shock line, so a patient
+pressure to feel a pulse is PEA (pulseless VT above 100/min) and the arrest clock runs. A heart that has stopped ejecting can also
+leave a static circulation at a high pressure (a tamponade sat at MAP 40-140 mmHg, the pericardial pressure, with a 1 mmHg pulse), so a
+pulse pressure under 5 mmHg is no pulse either. A sinus tachycardia of 180 with 48/42 mmHg (output 1.6 L/min) is called PEA by this
+rule: pseudo-PEA, which ACLS treats as PEA. The lines sit below the shock line, so a patient
 in deep shock with a pulse still dies on the shock clock and only a circulation that has really failed is PEA. They are assumed
 (a carotid pulse is usually lost somewhere around a systolic of 50-60 mmHg; pseudo-PEA is a measurable pressure without a palpable
 pulse), not taken from a study: **not checked**.
