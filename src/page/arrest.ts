@@ -60,6 +60,16 @@ export function arrestUi() {
   document.body.dataset.arrest = status;
   $("arrest").hidden = status === "none";
   $("arrestDead").hidden = !dead;
+  // the clinical clock runs in real time while the patient is critical (Simulation.critical): say so, so a slow clock is not taken for a frozen one
+  $("clockCritical").hidden = !(core && !dead && sim.critical && sim.realTimeWhenCritical);
+  if (dead) {
+    $("a_deadAt").textContent = sim.deathCause === "shock"
+      ? `Died of refractory shock: the mean arterial pressure stayed below ${ARREST.shockDeath.map} mmHg for ${clock(ARREST.shockDeath.seconds)}.`
+      : st ? `Declared dead ${clock(st.arrestS)} into the arrest, after ${clock(st.noFlowS)} of no flow (irreversible injury ${Math.round(st.injury * 100)}%).` : "";
+    $("a_deadMsg").textContent = inCases ? "The patient died: the case is over." : "The readouts are frozen. Restart the patient to begin again.";
+    $<HTMLButtonElement>("arrestRestart").hidden = inCases;
+    if (inCases) arrestLoss.lost = true;
+  }
   if (!st || !a || status === "none") { $("arrestRosc").hidden = true; lastStatus = "none"; return; }
   if (status !== lastStatus) {
     if (lastStatus === "none" && status === "arrest") { lastNote = ""; setDockTab("support"); } // bring the ACLS panel forward when the arrest begins
@@ -91,10 +101,4 @@ export function arrestUi() {
   }
   $("a_amio").textContent = a.drugs.some((x) => x.drug === "amiodarone") ? "Amiodarone 150 mg" : "Amiodarone 300 mg";
   $("a_note").textContent = lastNote;
-  if (dead) {
-    $("a_deadAt").textContent = `Declared dead ${clock(st.arrestS)} into the arrest, after ${clock(st.noFlowS)} of no flow (irreversible injury ${Math.round(st.injury * 100)}%).`;
-    $("a_deadMsg").textContent = inCases ? "The patient died: the case is over." : "The readouts are frozen. Restart the patient to begin again.";
-    $<HTMLButtonElement>("arrestRestart").hidden = inCases;
-    if (inCases) arrestLoss.lost = true;
-  }
 }
