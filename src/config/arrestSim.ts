@@ -28,7 +28,9 @@ export const ARREST_SIM = {
    */
   pulsePressure: { mapBelow: 25, sbpBelow: 45, mapAbove: 30, sbpAbove: 55, holdS: 3, ppBelow: 5, ppAbove: 10, deviceLpm: 0.5 },
   /**
-   * The clinical clock while the patient is critical (in arrest, pulseless, or with MAP below `enterMap`, the refractory-shock line):
+   * The clinical clock while the patient is critical (in arrest, pulseless, in a sustained VT or VF episode of the arrhythmia model, or
+   * with MAP below `enterMap`, the refractory-shock line; an episode lasts clinical minutes, so at 2 minutes per second a "sustained" VT
+   * of 7 minutes flashed past in 3 seconds of heartbeats):
    * it runs in real time, one clinical second per simulated second, whatever the speed setting, so the death clocks (which count
    * simulated seconds) count clinical seconds and a speed button cannot turn 4 minutes of profound shock into 8 hours. Critical ends
    * once the arrest is over and MAP is back at or above `exitMap` (hysteresis). `maxWaitS` caps the simulated seconds a timed wait

@@ -1159,9 +1159,10 @@ export class Simulation {
     if (this.pulseTimer >= P.holdS) { this.noPulse = !this.noPulse; this.pulseTimer = 0; }
   }
 
-  /** Whether the patient is critical now (ARREST_SIM.critical): in arrest or pulseless, or MAP under the shock line (back out only at `exitMap`). */
+  /** Whether the patient is critical now (ARREST_SIM.critical): in arrest or pulseless, in a sustained VT or VF episode, or MAP under the shock line (back out only at `exitMap`). */
   private criticalTick() {
-    const C = ARREST_SIM.critical, arrested = this.arrest?.status === "arrest" || this.noPulse;
+    const C = ARREST_SIM.critical, k = this.arrhythmia?.current?.kind;
+    const arrested = this.arrest?.status === "arrest" || this.noPulse || k === "mono" || k === "poly" || k === "vf"; // a running VT plays out in real heartbeats, not compressed into seconds
     this.critical = !this.dead && (arrested || (this.critical ? !(this.map >= C.exitMap) : !(this.map >= C.enterMap)));
   }
 
