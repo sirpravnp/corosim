@@ -78,8 +78,9 @@ add("patient.bbb", "rhythm", en(["none", "rbbb", "lbbb"], "Pre-existing bundle b
 add("seed", "patient", { type: "integer", description: "Random seed. The same scenario and seed reproduce the same beats." }, ["pg:seed"]);
 add("ectopyTendency", "patient", num(0, 3, "Teaching override of the patient's tendency to ischemic PVCs (core engine): a multiplier on the susceptibility the seed gives. 0 = never any PVC, 1 = as the seed has it (default), 3 = very ectopy-prone."), ["pg:ectopyTendency"]);
 add("arrhythmiaTendency", "patient", num(0, 3, "Teaching override of the patient's tendency to ventricular tachycardia, ventricular fibrillation and reperfusion AIVR (core engine): a multiplier on the susceptibility the seed gives. 0 = never any (and ends one that is running), 1 = as the seed has it (default)."), ["pg:arrhythmiaTendency"]);
-add("electrolytes.potassium", "patient", num(2, 7.5, "Serum potassium in mmol/l (core engine); hypo- and hyperkalaemia raise the VT/VF hazard and the PVCs. Default 4.2."), ["pg:electrolytes.potassium"]);
-add("electrolytes.magnesium", "patient", num(0.2, 3, "Serum magnesium in mmol/l (core engine); hypomagnesaemia raises the VT/VF hazard and the PVCs. Default 0.9."), ["pg:electrolytes.magnesium"]);
+add("electrolytes.potassium", "patient", num(2, 8.5, "Serum potassium in mmol/l (core engine). High: peaked T from 5, flat P, long PR and wide QRS from about 6.5, bradycardia and AV block from 7, a sine wave near 8.5. Low: flat T, U waves, ST depression. Both raise the VT/VF hazard and the PVCs. Default 4.2."), ["pg:electrolytes.potassium"]);
+add("electrolytes.magnesium", "patient", num(0.2, 3, "Serum magnesium in mmol/l (core engine); low raises the VT/VF hazard and the PVCs, and slightly lengthens the QT. Default 0.9."), ["pg:electrolytes.magnesium"]);
+add("electrolytes.calcium", "patient", num(1.2, 3.6, "Total serum calcium in mmol/l (core engine). Low lengthens the QT (and raises the VT/VF hazard), high shortens it. Default 2.4."), ["pg:electrolytes.calcium"]);
 
 // ---- support (the management panel) --------------------------------------------------------------------------------------
 add("support.fluids", "support", num(0, 3, "Litres of IV fluid given (the legacy dial; the page's IV bolus is fluids.given). Helps a right-ventricular infarct; congests the lungs of a failing left ventricle."));

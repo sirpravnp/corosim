@@ -67,6 +67,8 @@ export const arrhythmiaCourse = (min: number) =>
 export const potassiumFactor = (k: number) => { const P = A.potassium; return Math.exp(P.lowGain * Math.max(0, P.lowFrom - k)) * Math.exp(P.highGain * Math.max(0, k - P.highFrom)); };
 /** Hazard multiplier of serum magnesium (mmol/l): 1 above `lowFrom`, rising below it. */
 export const magnesiumFactor = (mg: number) => Math.exp(A.magnesium.lowGain * Math.max(0, A.magnesium.lowFrom - mg));
+/** Hazard multiplier of serum calcium (mmol/l): 1 above `lowFrom`, rising below it (a long QT). */
+export const calciumFactor = (ca: number) => Math.exp(A.calcium.lowGain * Math.max(0, A.calcium.lowFrom - ca));
 
 /** Inputs of `Arrhythmia.update` from the rest of the model. */
 export interface ArrhythmiaInputs {
@@ -85,7 +87,7 @@ export class Arrhythmia implements RunTrigger {
   readonly susceptibility: number;
   /** Teaching override (`arrhythmiaTendency`, 0..3): multiplies every hazard; 0 = no VT, VF or AIVR ever (PVCs still come). */
   tendency: number;
-  private k = A.potassium.normal; private mg = A.magnesium.normal;
+  private k = A.potassium.normal; private mg = A.magnesium.normal; private ca = A.calcium.normal;
   /** Clinical minutes this model has run, the scar's age (minutes above the floor) and the inputs last given. */
   minutes = 0; scarAge = 0;
   private inp: Required<ArrhythmiaInputs> = { map: 90, scar: 0, sinusRate: 75, sinus: true };
@@ -114,13 +116,16 @@ export class Arrhythmia implements RunTrigger {
   get magnesium() { return this.mg; }
   set magnesium(v: number) { this.mg = Math.min(A.magnesium.max, Math.max(A.magnesium.min, v)); this.ectopy.magnesium = magnesiumFactor(this.mg); }
 
+  /** Serum calcium, mmol/l (a long QT raises the VT/VF hazard). */
+  get calcium() { return this.ca; }
+  set calcium(v: number) { this.ca = Math.min(A.calcium.max, Math.max(A.calcium.min, v)); }
   /** Back to a heart with no arrhythmia and no history (the patient, tendency and electrolytes stay). */
   reset() { this.pending = null; this.episode = null; this.cut = undefined; this.minutes = this.scarAge = 0; this.log.length = 0; }
 
   /** Multiplier from the patient, the tone, the drugs and the electrolytes. */
   gain(): number {
     const t = this.ectopy.tone, s = t.sympathetic * (1 - t.betaBlock);
-    return this.susceptibility * this.tendency * Math.exp(A.sympatheticGain * (s - A.restSympathetic)) * (1 + A.drugGain * t.drugDrive) * potassiumFactor(this.k) * magnesiumFactor(this.mg);
+    return this.susceptibility * this.tendency * Math.exp(A.sympatheticGain * (s - A.restSympathetic)) * (1 + A.drugGain * t.drugDrive) * potassiumFactor(this.k) * magnesiumFactor(this.mg) * calciumFactor(this.ca);
   }
   /** Hazards now, per clinical minute: ischemic, reperfusion and scar initiating events, and AIVR. */
   hazards(): { ischemia: number; reperfusion: number; scar: number; aivr: number } {
@@ -285,7 +290,7 @@ export class Arrhythmia implements RunTrigger {
       last: last ? { ...last, label: RUN_LABEL[last.kind] } : null,
       counts: { nsvt: count("nsvt"), mono: count("mono"), poly: count("poly"), vf: count("vf"), aivr: count("aivr") },
       hazardPerHour: { ischemia: +(h.ischemia * 60).toFixed(4), reperfusion: +(h.reperfusion * 60).toFixed(4), scar: +(h.scar * 60).toFixed(6), aivr: +(h.aivr * 60).toFixed(4) },
-      potassium: this.k, magnesium: this.mg,
+      potassium: this.k, magnesium: this.mg, calcium: this.ca,
     };
   }
 }

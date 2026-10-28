@@ -1,4 +1,5 @@
 import type { BeatPainter, EBeat } from "../ekg/engine";
+import type { LyteMorph } from "./electrolytes";
 import { AF, ALL_LEADS, BBB, Bbb, LEAD_AXES, LeadName, RHYTHM, ST, TERRITORY, T_CENTER, T_WIDTH, Vec3, WAVES } from "../config/ecg";
 
 export type Territory = keyof typeof TERRITORY;
@@ -22,6 +23,7 @@ export interface Beat {
   pOnly?: boolean; // atrial depolarization that did not conduct (AV block)
   noP?: boolean; // ventricular complex with no preceding P (junctional escape, or atrial fibrillation)
   bbb?: Bbb; // conducted with a bundle branch block
+  lyte?: LyteMorph; // serum electrolytes change the waves of this beat (physics/electrolytes.ts); absent = normal
   alt?: number; // QRS amplitude x for this beat (electrical alternans: 1 + a, 1 - a on alternate beats); absent = 1
   // ---- rhythms from the EKG library in the Simulator (task B2, physics/rhythmSource.ts); absent on the coronary model's own beats
   /** Where the beat started: sinus node, an atrial focus or circuit (AF, flutter, MAT), the AV junction (escape, AV re-entry), the ventricles, or a pacemaker. Absent: sinus, or as the flags say. */
@@ -80,9 +82,10 @@ function beatVector(dt: number, beat: Beat, injury: Vec3, tBoost: number): Vec3 
     add(WAVES.T.v, -0.8 * gauss(dt, 0.28, 0.07));
     return out;
   }
-  if (!beat.noP) add(WAVES.P.v, gauss(dt, -(beat.pr ?? -WAVES.P.t), WAVES.P.w));
+  const Ly = beat.lyte;
+  if (!beat.noP) add(WAVES.P.v, (Ly?.pAmp ?? 1) * gauss(dt, -(beat.pr ?? -WAVES.P.t), WAVES.P.w * (Ly?.pWide ?? 1)));
   if (beat.pOnly) return out;
-  const tc = T_CENTER(beat.rr), tw = T_WIDTH(beat.rr), bbb = beat.bbb ?? "none", A = beat.alt ?? 1;
+  const tc = T_CENTER(beat.rr) * (Ly?.qtScale ?? 1), tw = T_WIDTH(beat.rr) * (Ly?.tWidth ?? 1), bbb = beat.bbb ?? "none", A = beat.alt ?? 1, tA = Ly?.tAmp ?? 1, qw = Ly?.qrsWide ?? 1;
   // Injury current flows during the ST segment (J point → end of T); a block's discordant ST shares the window.
   const win = sigmoid((dt - ST.jPoint) / ST.edge) - sigmoid((dt - (tc + 2 * tw)) / ST.edge);
   if (bbb === "lbbb") {
@@ -93,10 +96,12 @@ function beatVector(dt: number, beat: Beat, injury: Vec3, tBoost: number): Vec3 
     add(L.t, (1 + tBoost) * gauss(dt, tc + 0.03, tw * 1.2));
     add(L.st, win);
   } else {
-    add(WAVES.Q.v, A * gauss(dt, WAVES.Q.t, WAVES.Q.w));
-    add(WAVES.R.v, A * gauss(dt, WAVES.R.t, WAVES.R.w));
-    add(WAVES.S.v, A * gauss(dt, WAVES.S.t, WAVES.S.w));
-    add(WAVES.T.v, (1 + tBoost) * gauss(dt, tc, tw));
+    add(WAVES.Q.v, A * gauss(dt, WAVES.Q.t, WAVES.Q.w * qw));
+    add(WAVES.R.v, A * gauss(dt, WAVES.R.t, WAVES.R.w * qw));
+    add(WAVES.S.v, A * gauss(dt, WAVES.S.t * qw, WAVES.S.w * qw));
+    add(WAVES.T.v, (1 + tBoost) * tA * gauss(dt, tc, tw));
+    if (Ly && Ly.stDep > 0) add(WAVES.T.v, -Ly.stDep * win);
+    if (Ly && Ly.uAmp > 0) add(WAVES.T.v, Ly.uAmp * gauss(dt, tc + 2.4 * tw + 0.05, 0.045));
     if (bbb === "rbbb") {
       // The right ventricle depolarizes late through muscle: a terminal rightward-anterior wave after the normal QRS.
       const R = BBB.rbbb;

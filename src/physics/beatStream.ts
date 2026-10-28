@@ -27,6 +27,8 @@ export class BeatStream {
   private delivered = new WeakSet<Beat>();
   /** Electrical alternans: QRS amplitude of the conducted beats generated from now on alternates 1 + a, 1 - a (0 = none; a pericardial effusion sets it, B4). */
   alternans = 0;
+  /** How serum electrolytes change the waves of the patient's own beats generated from now on (null = normal); library rhythms draw their own morphology. */
+  lyte: import("./electrolytes").LyteMorph | null = null;
   private altCount = 0;
   /** The library rhythm running (null: the coronary model's own), and from when each source ran (for `baseline`). */
   private library: LibraryRhythm | null = null;
@@ -66,6 +68,7 @@ export class BeatStream {
         this.beats = this.beats.filter((b) => b.t <= cut + 1e-9 || this.delivered.has(b));
         this.horizon = Math.max(from, cut);
       }
+      if (this.lyte) for (const b of fresh) if (!b.silent && !b.ekg) b.lyte = this.lyte;
       if (this.alternans > 0) for (const b of fresh) if (!b.pOnly && !b.pvc && !b.silent) b.alt = this.altCount++ % 2 ? 1 - this.alternans : 1 + this.alternans;
       for (const b of fresh) if (!b.pOnly && !b.silent && b.t > this.lastV) this.lastV = b.t;
       this.beats.push(...fresh);

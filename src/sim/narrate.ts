@@ -118,10 +118,12 @@ export function features(spec: PatientSpec): Features {
   else if (loss !== undefined && loss < -0.005) put("bloodLoss", `volume overload (${pct(-loss)} above normal blood volume)`, "more preload and congestion");
   const hem = num(getPath(s, "fluids.hemorrhageMlMin"));
   if (hem && hem > 0) put("hemorrhage", `active hemorrhage at ${r1(hem)} ml/min`, "the volume keeps falling");
-  const k = num(getPath(s, "electrolytes.potassium")), mg = num(getPath(s, "electrolytes.magnesium"));
-  if (k !== undefined && k < 3.5) put("potassium", `hypokalemia (K ${r1(k)} mmol/l)`, "raises the VT/VF hazard and the ectopy");
-  else if (k !== undefined && k > 5.5) put("potassium", `hyperkalemia (K ${r1(k)} mmol/l)`, "raises the VT/VF hazard and the ectopy");
-  if (mg !== undefined && mg < 0.7) put("magnesium", `hypomagnesemia (Mg ${r1(mg)} mmol/l)`, "raises the VT/VF hazard and the ectopy");
+  const k = num(getPath(s, "electrolytes.potassium")), mg = num(getPath(s, "electrolytes.magnesium")), ca = num(getPath(s, "electrolytes.calcium"));
+  if (k !== undefined && k < 3.5) put("potassium", `hypokalemia (K ${r1(k)} mmol/l)`, "flattens the T waves, brings out U waves and ST depression, and raises the VT/VF hazard and the ectopy");
+  else if (k !== undefined && k > 5.5) put("potassium", `hyperkalemia (K ${r1(k)} mmol/l)`, k > 6.5 ? "peaks the T waves, flattens the P waves, lengthens the PR, widens the QRS and slows the rate, with a high risk of VF" : "peaks the T waves and raises the VT/VF hazard and the ectopy");
+  if (mg !== undefined && mg < 0.7) put("magnesium", `hypomagnesemia (Mg ${r1(mg)} mmol/l)`, "slightly lengthens the QT and raises the VT/VF hazard and the ectopy");
+  if (ca !== undefined && ca < 2.1) put("calcium", `hypocalcemia (Ca ${r1(ca)} mmol/l)`, "lengthens the QT and raises the VT/VF hazard");
+  else if (ca !== undefined && ca > 2.7) put("calcium", `hypercalcemia (Ca ${r1(ca)} mmol/l)`, "shortens the QT");
 
   const bb = num(getPath(s, "drugs.betaBlocker")), at = num(getPath(s, "drugs.atropine")), vp = num(getPath(s, "drugs.vasopressor"));
   if (bb && bb > 0.02) put("betaBlocker", `a beta blocker (${pct(bb)} of the beta effect blocked)`, "a slower rate and weaker contraction");
@@ -223,7 +225,7 @@ function removedText(key: string, text: string): string {
 /** Paths (or prefixes ending in ".") that each feature phrases; a changed field under one of them is not narrated a second time. */
 const OWNS: Record<string, string[]> = {
   lesion: ["lesions"], anatomy: ["anatomy."], exertion: ["exertion"], rhythm: ["patient.rhythm"], bbb: ["patient.bbb"], bloodLoss: ["bloodLoss"],
-  hemorrhage: ["fluids.hemorrhageMlMin"], potassium: ["electrolytes.potassium"], magnesium: ["electrolytes.magnesium"], betaBlocker: ["drugs.betaBlocker"],
+  hemorrhage: ["fluids.hemorrhageMlMin"], potassium: ["electrolytes.potassium"], magnesium: ["electrolytes.magnesium"], calcium: ["electrolytes.calcium"], betaBlocker: ["drugs.betaBlocker"],
   atropine: ["drugs.atropine", "support.atropine"], vasopressor: ["drugs.vasopressor"], pacing: ["support.pacing", "support.paceRate"],
   iabp: ["support.iabp", "devices.iabp."], impella: ["support.impella", "devices.impella."], impellaRp: ["devices.impellaRp."], ecmo: ["devices.ecmo."],
   ventilation: ["ventilation.mode", "ventilation.peep"], effusion: ["pericardium.effusionMl", "pericardium.effusionRateMlMin"], septum: ["septum"],

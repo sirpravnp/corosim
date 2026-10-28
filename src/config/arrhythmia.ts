@@ -81,12 +81,17 @@ export const ARRHYTHMIA = {
    * K <= 3.5 against 7.4% (Nordrehaug 1983, PMID 6651995). Gains set so K 3.2 gives about 1.9 and 5.5 about 3.4. The same multiplier goes to
    * the ectopy model's potassium hook (B3a). [curve assumed]
    */
-  potassium: { normal: 4.2, lowFrom: 4.0, lowGain: 0.8, highFrom: 4.8, highGain: 1.73, min: 2.0, max: 7.5 },
+  potassium: { normal: 4.2, lowFrom: 4.0, lowGain: 0.8, highFrom: 4.8, highGain: 1.73, min: 2.0, max: 8.5 },
   /**
    * Serum magnesium (mmol/l): hazard x exp(lowGain x max(0, lowFrom - Mg)); IV magnesium lowered PVC and run counts after MI (Thiele 2000,
    * PMID 10907229). [curve assumed: Mg 0.5 gives about 1.6] Also passed to the ectopy model's magnesium hook.
    */
   magnesium: { normal: 0.9, lowFrom: 0.8, lowGain: 1.5, min: 0.2, max: 3 },
+  /**
+   * Total calcium (mmol/l): hazard x exp(lowGain x max(0, lowFrom - Ca)); a low calcium prolongs the QT (config/electrolytes.ts) and so the risk of torsades. Hypercalcemia
+   * shortens it and is not given a hazard. [curve assumed: Ca 1.5 gives about 2]
+   */
+  calcium: { normal: 2.4, lowFrom: 2.1, lowGain: 1.2, min: 1.2, max: 3.6 },
   /**
    * What an initiating event becomes (weights, normalized). Ischemia: mostly non-sustained runs, VF next; sustained monomorphic VT is
    * less common than VF early in infarction (GUSTO-I: sustained VT/VF 10.2% over the stay; Newby 1998, PMID 9843464; non-sustained VT

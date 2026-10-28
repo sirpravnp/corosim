@@ -51,8 +51,11 @@ export interface Scenario {
    * `ectopyTendency`), 1 = as the seed has it (default).
    */
   arrhythmiaTendency?: number;
-  /** Serum electrolytes, mmol/l (core engine): potassium (2..7.5, default 4.2) and magnesium (0.2..3, default 0.9); low or high values raise the VT/VF hazard and the PVCs. */
-  electrolytes?: { potassium?: number; magnesium?: number };
+  /**
+   * Serum electrolytes, mmol/l (core engine): potassium (2..8.5, default 4.2), magnesium (0.2..3, default 0.9) and total calcium (1.2..3.6, default 2.4). They change the ECG (peaked T, flat P, wide QRS,
+   * U waves, long or short QT), the PR interval, the rate and AV conduction on the patient's own rhythm, and raise the VT/VF hazard and the PVCs.
+   */
+  electrolytes?: { potassium?: number; magnesium?: number; calcium?: number };
 }
 
 export interface LesionSpec {
@@ -94,7 +97,7 @@ export interface Normalized {
     support: Support; // atropine here is always false: it is derived from drugs.atropine
     ectopyTendency: number;
     arrhythmiaTendency: number;
-    electrolytes: { potassium: number; magnesium: number };
+    electrolytes: { potassium: number; magnesium: number; calcium: number };
   };
   warnings: string[];
 }
@@ -198,8 +201,8 @@ export function normalizeScenario(input: Scenario = {}, base?: Normalized["scena
     if (!num(input.arrhythmiaTendency)) warnings.push("arrhythmiaTendency is not a number; ignored");
     else { arrhythmiaTendency = clamp(input.arrhythmiaTendency, 0, 3); if (arrhythmiaTendency !== input.arrhythmiaTendency) warnings.push(`arrhythmiaTendency clamped to ${arrhythmiaTendency} (range 0..3)`); }
   }
-  const electrolytes = { ...(base?.electrolytes ?? { potassium: ARRHYTHMIA.potassium.normal, magnesium: ARRHYTHMIA.magnesium.normal }) };
-  for (const [k, R] of [["potassium", ARRHYTHMIA.potassium], ["magnesium", ARRHYTHMIA.magnesium]] as const) {
+  const electrolytes = { ...(base?.electrolytes ?? { potassium: ARRHYTHMIA.potassium.normal, magnesium: ARRHYTHMIA.magnesium.normal, calcium: ARRHYTHMIA.calcium.normal }) };
+  for (const [k, R] of [["potassium", ARRHYTHMIA.potassium], ["magnesium", ARRHYTHMIA.magnesium], ["calcium", ARRHYTHMIA.calcium]] as const) {
     const v = input.electrolytes?.[k];
     if (v === undefined) continue;
     if (!num(v)) { warnings.push(`electrolytes.${k} is not a number; ignored`); continue; }
@@ -227,7 +230,7 @@ export function toScenario(n: Normalized["scenario"]): Scenario {
     seed: n.seed,
     ...(n.ectopyTendency !== 1 ? { ectopyTendency: n.ectopyTendency } : {}), // only when set: the plain spec stays as it was
     ...(n.arrhythmiaTendency !== 1 ? { arrhythmiaTendency: n.arrhythmiaTendency } : {}),
-    ...(n.electrolytes.potassium !== ARRHYTHMIA.potassium.normal || n.electrolytes.magnesium !== ARRHYTHMIA.magnesium.normal ? { electrolytes: { ...n.electrolytes } } : {}),
+    ...(n.electrolytes.potassium !== ARRHYTHMIA.potassium.normal || n.electrolytes.magnesium !== ARRHYTHMIA.magnesium.normal || n.electrolytes.calcium !== ARRHYTHMIA.calcium.normal ? { electrolytes: { ...n.electrolytes } } : {}),
   };
 }
 

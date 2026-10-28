@@ -219,7 +219,7 @@ describe("scenario fields and engines", () => {
     expect(normalizeScenario({}).scenario.arrhythmiaTendency).toBe(1);
     const n = normalizeScenario({ arrhythmiaTendency: 9, electrolytes: { potassium: 9, magnesium: 0.5 } });
     expect(n.scenario.arrhythmiaTendency).toBe(3);
-    expect(n.scenario.electrolytes).toEqual({ potassium: ARRHYTHMIA.potassium.max, magnesium: 0.5 });
+    expect(n.scenario.electrolytes).toEqual({ potassium: ARRHYTHMIA.potassium.max, magnesium: 0.5, calcium: ARRHYTHMIA.calcium.normal });
     expect(n.warnings.some((w) => w.includes("arrhythmiaTendency"))).toBe(true);
     expect(n.warnings.some((w) => w.includes("electrolytes.potassium"))).toBe(true);
     const plain = toScenario(normalizeScenario({}).scenario);

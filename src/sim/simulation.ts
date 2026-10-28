@@ -36,6 +36,7 @@ import { Thorax } from "../physics/core/thorax";
 import type { FromModelOptions } from "../physics/core/fromModel";
 import { THORAX } from "../config/thorax";
 import { alternansAmplitude } from "../config/pericardium";
+import { LyteEffects, electrolyteEffects, withElectrolytes } from "../physics/electrolytes";
 import { IABP } from "../config/devices";
 import { SwitchableImpella, DevicesReadout } from "./coreDevices";
 import { PatientSpec, DeviceSpec, HeartSpec, PericardiumSpec, FluidSpec, VentilationSpec, normalizePatient, effectiveDevices, DEFAULT_IMPELLA, DEFAULT_IABP } from "./patient";
@@ -132,6 +133,8 @@ export class Simulation {
   dead = false;
   /** Why the patient died: the arrest machine's no-flow clock, or refractory shock (pressure held very low). Null while alive. */
   deathCause: "noFlow" | "shock" | null = null;
+  /** What serum potassium, calcium and magnesium do to the waves, the PR, the rate and the block (physics/electrolytes.ts). */
+  private lyte: LyteEffects = electrolyteEffects(4.2, 2.4, 0.9);
   private shockS = 0; // seconds the pressure has been below the shock-death line
   private arrestRng: Rng = createRng(1);
   private shockNoArrest: ShockRecord | null = null;
@@ -229,7 +232,7 @@ export class Simulation {
       const e = new Ectopy(scenario.seed, scenario.ectopyTendency); // B3a; the legacy engine keeps the old PVC rule
       this.stream.ectopy = e;
       this.arrhythmia = this.stream.arrhythmia = new Arrhythmia(scenario.seed, e, scenario.arrhythmiaTendency); // B3b
-      this.arrhythmia.potassium = scenario.electrolytes.potassium; this.arrhythmia.magnesium = scenario.electrolytes.magnesium;
+      this.arrhythmia.potassium = scenario.electrolytes.potassium; this.arrhythmia.magnesium = scenario.electrolytes.magnesium; this.arrhythmia.calcium = scenario.electrolytes.calcium;
     }
     this.beatHemo = new BeatHemodynamics();
     this.autonomic = new Autonomic(scenario.seed, this.engine === "core" ? { ...AUTONOMIC, ...AUTONOMIC_CORE } : AUTONOMIC);
@@ -334,7 +337,7 @@ export class Simulation {
     if (this.stream.ectopy) this.stream.ectopy.tendency = scenario.ectopyTendency;
     if (this.arrhythmia) {
       this.arrhythmia.tendency = scenario.arrhythmiaTendency;
-      this.arrhythmia.potassium = scenario.electrolytes.potassium; this.arrhythmia.magnesium = scenario.electrolytes.magnesium;
+      this.arrhythmia.potassium = scenario.electrolytes.potassium; this.arrhythmia.magnesium = scenario.electrolytes.magnesium; this.arrhythmia.calcium = scenario.electrolytes.calcium;
       if (patch.patient?.rhythm !== undefined || scenario.arrhythmiaTendency === 0) this.arrhythmia.terminate(this.t); // setting the rhythm (or forbidding arrhythmias) ends a running VT or VF: the teacher's override until B4 brings the shock
     }
     this.autonomic.controls = { ...scenario.autonomic };
@@ -383,6 +386,8 @@ export class Simulation {
     // core: the drugs act through `pk` (receptor level), so what `circulation()` and the rhythm read from the old multipliers is switched off; devices stay
     const fx = this.engine === "core" ? this.pk.effects() : null, csup = fx ? { ...sup, fluids: 0, norepi: 0, dobutamine: 0, nitro: 0 } : sup;
     this.rstate = supportedRhythm(rhythmState(this.sites, this.sev, g, this.patient), csup, fx ?? undefined);
+    this.lyte = electrolyteEffects(this.n.electrolytes.potassium, this.n.electrolytes.calcium, this.n.electrolytes.magnesium);
+    if (this.engine === "core" && !isLibraryRhythm(this.rstate.rhythm)) this.rstate = withElectrolytes(this.rstate, this.lyte); // a library rhythm keeps its own rate and conduction
     if (isLibraryRhythm(this.rstate.rhythm)) this.rstate = { ...this.rstate, avDegree: 0, bbb: this.patient.bbb }; // B2: a library rhythm brings its own conduction (ischemic AV block and pacing are not laid over it)
     const c = circulation(this.sites, this.sev, this.rstate, csup, this.scar, 1); // the baroreflex is dynamic here
     this.base = c;
@@ -472,6 +477,7 @@ export class Simulation {
     ctl.vagalBlock = Math.max(this.drug.atropine, this.support.atropine ? 1 : 0);
     ctl.volumeDeficit = Math.max(0, this.fluidModel ? 1 - this.fluidModel.bloodVolume / this.bv0 : this.bloodLoss); // core: the blood volume short of the patient's own, whatever its cause or refill
     this.autonomic.step(h);
+    this.stream.lyte = this.engine === "core" ? this.lyte.morph : null;
     this.stream.alternans = alternansAmplitude(this.sac()?.effusionMl, this.periSpec?.open);
     this.stream.ectopy?.update(minutes, weightedBurden(this.sites, this.sev, this.transmural), { sympathetic: this.fx.sympathetic, betaBlock: ctl.betaBlock, drugDrive: this.pk.effects().ectopyDrive });
     if (this.arrhythmia) {
@@ -1281,6 +1287,7 @@ export class Simulation {
     const libBbb = lib?.spec.morph?.bbb ?? rs.bbb, wideV = lr && (lr.kind === "ventricular" || lr.kind === "torsades");
     return {
       stMm: st,
+      electrolyteFindings: this.engine === "core" ? this.lyte.findings : [], // what the serum potassium, calcium and magnesium do to the tracing
       stElevation: ALL_LEADS.filter((l) => st[l] >= 1),
       meetsStemiCriteria: meetsStElevation(st),
       stDepression: ALL_LEADS.filter((l) => st[l] <= -1),

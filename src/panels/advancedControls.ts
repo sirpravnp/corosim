@@ -46,15 +46,16 @@ export function buildAdvanced(c: AdvancedCtx): HTMLDetailsElement {
     c.scenarioSyncs.push((sc) => { const v = read(sc) ?? dflt; if (document.activeElement !== input) input.value = String(v); val.textContent = fmt(v); input.disabled = core && !!c.legacy?.(); });
   }
   const aut = (key: "baroreflexGain" | "respRate" | "respDepth" | "setPointShift" | "noise") => (sc: Scenario, v: number): PatientSpec => ({ autonomic: { ...sc.autonomic, [key]: v } });
-  const lyte = (key: "potassium" | "magnesium") => (sc: Scenario, v: number): PatientSpec => ({ electrolytes: { potassium: ARRHYTHMIA.potassium.normal, magnesium: ARRHYTHMIA.magnesium.normal, ...sc.electrolytes, [key]: v } });
+  const lyte = (key: "potassium" | "magnesium" | "calcium") => (sc: Scenario, v: number): PatientSpec => ({ electrolytes: { potassium: ARRHYTHMIA.potassium.normal, magnesium: ARRHYTHMIA.magnesium.normal, calcium: ARRHYTHMIA.calcium.normal, ...sc.electrolytes, [key]: v } });
 
   slider("autonomic.baroreflexGain", "Baroreflex gain", 0, 4, 0.1, 1, "×", (s) => s.autonomic?.baroreflexGain, aut("baroreflexGain"));
   slider("autonomic.respRate", "Respiratory rate", 4, 40, 1, D.respRate, " /min", (s) => s.autonomic?.respRate, aut("respRate"));
   slider("autonomic.respDepth", "Breath depth", 0, 2, 0.1, D.respDepth, "", (s) => s.autonomic?.respDepth, aut("respDepth"));
   slider("autonomic.setPointShift", "Baroreceptor set point", -30, 60, 1, 0, " mmHg", (s) => s.autonomic?.setPointShift, aut("setPointShift"));
   slider("autonomic.noise", "Physiological noise", 0, 3, 0.1, 1, "×", (s) => s.autonomic?.noise, aut("noise"));
-  slider("electrolytes.potassium", "Potassium", 2, 7.5, 0.1, ARRHYTHMIA.potassium.normal, " mmol/l", (s) => s.electrolytes?.potassium, lyte("potassium"), true);
+  slider("electrolytes.potassium", "Potassium", 2, 8.5, 0.1, ARRHYTHMIA.potassium.normal, " mmol/l", (s) => s.electrolytes?.potassium, lyte("potassium"), true);
   slider("electrolytes.magnesium", "Magnesium", 0.2, 3, 0.05, ARRHYTHMIA.magnesium.normal, " mmol/l", (s) => s.electrolytes?.magnesium, lyte("magnesium"), true);
+  slider("electrolytes.calcium", "Calcium", 1.2, 3.6, 0.05, ARRHYTHMIA.calcium.normal, " mmol/l", (s) => s.electrolytes?.calcium, lyte("calcium"), true);
   slider("ectopyTendency", "Ectopy tendency", 0, 3, 0.1, 1, "×", (s) => s.ectopyTendency, (_s, v) => ({ ectopyTendency: v }), true);
   slider("arrhythmiaTendency", "Arrhythmia tendency", 0, 3, 0.1, 1, "×", (s) => s.arrhythmiaTendency, (_s, v) => ({ arrhythmiaTendency: v }), true);
 
@@ -71,7 +72,7 @@ export function buildAdvanced(c: AdvancedCtx): HTMLDetailsElement {
   const reset = h("button", { type: "button", id: "pg-advreset", textContent: "Reset advanced", title: "Put every advanced slider back to its default (the seed is kept)" });
   reset.addEventListener("click", () => c.patch({
     autonomic: { baroreflexGain: 1, respRate: D.respRate, respDepth: D.respDepth, setPointShift: 0, noise: 1 },
-    electrolytes: { potassium: ARRHYTHMIA.potassium.normal, magnesium: ARRHYTHMIA.magnesium.normal }, ectopyTendency: 1, arrhythmiaTendency: 1,
+    electrolytes: { potassium: ARRHYTHMIA.potassium.normal, magnesium: ARRHYTHMIA.magnesium.normal, calcium: ARRHYTHMIA.calcium.normal }, ectopyTendency: 1, arrhythmiaTendency: 1,
   }));
   body.append(h("div", { className: "row" }, reset));
   return box;
