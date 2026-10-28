@@ -54,6 +54,15 @@ export const FLUIDS = {
   /** A bolus without a duration is run in over this many minutes (a litre through a pressure bag takes 5-10). [assumed] */
   bolusMin: 5,
 
+  // ---- hemorrhage limits -------------------------------------------------------------------------------------------
+  /**
+   * A bleed cannot drain the vessels empty: the bleeding rate tapers to nothing as the blood volume falls from `taperFrom` to `floor`
+   * (fractions of the resting blood volume). Death comes long before (a loss over about 40-50 % is class IV, lethal untreated; the
+   * pressure-based pulse check and the arrest / shock clocks of the simulation end it), so the floor is a numerical guard that keeps
+   * the compartments positive and finite, not a survival rule. The same floor caps a sudden `bleed(ml)`. [assumed]
+   */
+  hemorrhage: { floor: 0.2, taperFrom: 0.3 },
+
   // ---- capillary leak (sepsis) -------------------------------------------------------------------------------------
   /** Leak factor L (0..1) raises the filtration coefficient to Kf·(1 + kfGain·L), lowers the reflection coefficient to σ·(1 − sigmaLoss·L) and raises the escape of protein to the interstitium by (1 + proteinGain·L). [assumed, direction from Levick and Michel; endothelial glycocalyx damage] */
   leak: { kfGain: 3, sigmaLoss: 0.5, proteinGain: 6 },
