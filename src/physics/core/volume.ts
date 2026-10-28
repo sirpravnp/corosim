@@ -1,7 +1,7 @@
 import { OUTSIDE, type Ctx, type Element, type NodeId, type Rates, type Tunable } from "./types";
 
 /** Time constant (s) of the fastest possible drain of what a loss may take (see `flow`). Far above any rate the simulation asks for while there is blood to lose. */
-const LOSS_TAU_S = 1;
+const LOSS_TAU_S = 0.25;
 
 export interface VolumeExchangeParams {
   /** ml/s of blood given (+) or lost (−). */
@@ -35,7 +35,7 @@ export class VolumeExchange implements Element, Tunable<VolumeExchangeParams> {
       // towards their weight's zero (the unstressed volume) and never below it, however much the caller asks for
       const lossRate = Math.min(-q, tot / LOSS_TAU_S);
       if (!(lossRate > 0)) return;
-      for (const n of nodes) out.flow(n, OUTSIDE, (lossRate * weight(n)) / tot);
+      for (const n of nodes) { const w = weight(n) / tot; out.flow(n, OUTSIDE, lossRate * w); } // the same arithmetic as before the cap, so nothing moves while it does not bind
       return;
     }
     for (const n of nodes) {
