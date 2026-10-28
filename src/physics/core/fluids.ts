@@ -182,8 +182,9 @@ export class FluidCompartments {
   /** Whole blood lost at once, ml (negative: whole blood of the patient's own composition given back). */
   bleed(ml: number) {
     const y = this.y, vb = y[VP] + y[VR];
-    if (vb <= 0) return;
-    const f = Math.min(ml / vb, 1), p = y[VP] * f, r = y[VR] * f;
+    if (vb <= 0 || !Number.isFinite(ml)) return;
+    const floor = FLUIDS.hemorrhage.floor * this.v0.blood; // a loss stops at the floor (FLUIDS.hemorrhage); blood given back (ml < 0) is not limited
+    const f = ml > 0 ? Math.min(ml, Math.max(0, vb - floor)) / vb : ml / vb, p = y[VP] * f, r = y[VR] * f;
     y[MP] -= y[MP] * f; y[MC] -= y[MC] * f; y[VP] -= p; y[VR] -= r; y[LOST] += p + r;
   }
 
@@ -237,9 +238,18 @@ export class FluidCompartments {
     return { jv, lymph, escape, urine: this.urineOf(y[VP] + y[VR]), piP, piI, pi, pc, ci: y[MI] / vi, jvL, lymphL, piL, pcL };
   }
 
+  /** Bleeding rate (ml/min) at blood volume `vb`: the set rate, tapering to nothing between `FLUIDS.hemorrhage.taperFrom` and `floor` of the resting volume. */
+  private hemorrhageRate(vb: number): number {
+    const H = FLUIDS.hemorrhage, v0 = this.v0.blood, rate = Math.max(this.hemorrhage, 0);
+    if (!(rate > 0)) return 0;
+    return rate * Math.min(1, Math.max(0, (vb - H.floor * v0) / ((H.taperFrom - H.floor) * v0)));
+  }
+  /** The bleeding rate in force now, ml/min (the set rate, tapered near the floor). */
+  get hemorrhageNow(): number { return this.hemorrhageRate(this.y[VP] + this.y[VR]); }
+
   /** d(state)/dt at `y` with the infusion rates `inf` (ml/min per kind), clinical minutes. */
   private deriv(y: Float64Array, inf: Record<FluidKind, number>, out: Float64Array) {
-    const F = FLUIDS, f = this.flows(y), vb = Math.max(y[VP] + y[VR], 1), hemP = (this.hemorrhage * y[VP]) / vb, hemR = (this.hemorrhage * y[VR]) / vb;
+    const F = FLUIDS, f = this.flows(y), vb = Math.max(y[VP] + y[VR], 1), hem = this.hemorrhageRate(y[VP] + y[VR]), hemP = (hem * Math.max(y[VP], 0)) / vb, hemR = (hem * Math.max(y[VR], 0)) / vb;
     const bloodP = inf.blood * (1 - F.bloodHct), bloodR = inf.blood * F.bloodHct, vp = Math.max(y[VP], 1), m0 = this.u0;
     const give = inf.crystalloid + inf.colloid + inf.albumin + inf.blood;
     out[VP] = inf.crystalloid + inf.colloid + inf.albumin + bloodP - f.jv + f.lymph - f.jvL + f.lymphL - hemP - f.urine + m0;
@@ -256,8 +266,9 @@ export class FluidCompartments {
   advance(minutes: number) {
     if (!(minutes > 0)) return;
     const n = Math.max(1, Math.ceil(minutes / FLUIDS.maxStepMin)), h = minutes / n;
-    const k1 = new Float64Array(N), k2 = new Float64Array(N), k3 = new Float64Array(N), k4 = new Float64Array(N), t = new Float64Array(N);
+    const k1 = new Float64Array(N), k2 = new Float64Array(N), k3 = new Float64Array(N), k4 = new Float64Array(N), t = new Float64Array(N), prev = new Float64Array(N);
     for (let i = 0; i < n; i++) {
+      prev.set(this.y);
       const inf = this.infusion(this.time, this.time + h);
       this.deriv(this.y, inf, k1);
       for (let j = 0; j < N; j++) t[j] = this.y[j] + 0.5 * h * k1[j];
@@ -267,6 +278,10 @@ export class FluidCompartments {
       for (let j = 0; j < N; j++) t[j] = this.y[j] + h * k3[j];
       this.deriv(t, inf, k4);
       for (let j = 0; j < N; j++) this.y[j] += (h / 6) * (k1[j] + 2 * k2[j] + 2 * k3[j] + k4[j]);
+      // volumes and protein masses cannot go below zero; a step that came out non-finite is undone (the state stays where it was, never NaN)
+      let finite = true;
+      for (let j = 0; j < N; j++) { if (!Number.isFinite(this.y[j])) finite = false; else if (j <= MC && this.y[j] < 0) this.y[j] = 0; }
+      if (!finite) this.y.set(prev);
       this.time += h;
     }
   }

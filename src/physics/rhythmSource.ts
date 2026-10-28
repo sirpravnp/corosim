@@ -106,7 +106,8 @@ export class LibraryRhythm {
   private rateScale(t: number, follows: "sinus" | "af"): number {
     const s = this.state, m = this.mod;
     const own = s ? (follows === "sinus" ? s.sinusRate / RHYTHM.baseHr : s.afRate / AF.baseRate) : 1;
-    return own * (m ? m.rate(t) : 1);
+    const r = own * (m ? m.rate(t) : 1);
+    return Number.isFinite(r) && r > 0.05 ? Math.min(r, 6) : 1; // a broken input upstream (NaN, zero) must not stall or flood the generator
   }
 
   /** Continuous activity between beats (flutter sawtooth, fibrillatory waves, VF), mV. */

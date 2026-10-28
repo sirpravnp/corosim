@@ -33,8 +33,9 @@ export function frame(now: number) {
   const minutes = dt * S.speed * INFARCT.minutesPerSecond; // the clinical clock
   arrestSync(); // a rhythm the arrest machine changed (shock, ROSC) becomes the page's own
   sim.speed = S.speed; sim.patient = { rhythm: S.rhythm, bbb: S.bbb }; sim.support = T.support; sim.treated = T.treated; // shared: an AI's treatment and the panel's are one record
-  sim.step(dt, { minutes });
-  if (minutes > 0) manageStep(minutes, ischemicBurden(sites, sev));
+  sim.realTimeWhenCritical = K.phase !== "run"; // a case keeps its own compressed clock (src/cases); elsewhere a critical patient's clock runs in real time
+  const used = sim.step(dt, { minutes }); // the clinical minutes that passed: fewer than asked while the patient is critical
+  if (used > 0) manageStep(used, ischemicBurden(sites, sev));
   if (sim.analysis !== A) { takeAnalysis(); for (const b of built) b.blocked = blockedFlags(b.seg); shapeVessels(); } // perfusion pressure or demand moved
   takeRC();
   const fx = sim.ecgInputs();

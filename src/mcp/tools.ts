@@ -103,9 +103,9 @@ function clinicalMetrics(beats: BeatRecord[], seconds: number, autonomic: boolea
 }
 
 function runReport(ctx: ToolContext, seconds: number, beatsMode: string, maxBeats: number, autonomic = false) {
-  const { sim } = ctx, from = sim.t, beats = sim.run(seconds);
+  const { sim } = ctx, from = sim.t, c0 = sim.clinicalMinutes, beats = sim.run(seconds);
   const out: Record<string, unknown> = {
-    ranFromS: round(from), ranToS: round(sim.t), metrics: clinicalMetrics(beats, seconds, autonomic),
+    ranFromS: round(from), ranToS: round(sim.t), clinicalMinutesRun: round(sim.clinicalMinutes - c0), metrics: clinicalMetrics(beats, seconds, autonomic),
     timeCourse: trend(beats, from, sim.t), ...bedside(sim),
   };
   if (beatsMode === "all") out.beats = beatTable(beats, maxBeats);
@@ -157,7 +157,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "corosim_run", title: "Advance the simulation", readOnly: false,
-    description: `Run the current patient forward (the infarct clock runs: 2 clinical minutes per second) and return rate, pressures, stroke volume and ectopy, a time course, the monitor, ECG and guideline assessment at the end, and optionally the individual beats. ${NOT_CLINICAL}`,
+    description: `Run the current patient forward (the infarct clock runs: 2 clinical minutes per second, but only one clinical second per second while the patient is critical: in arrest, pulseless or MAP under 40; state.criticalTime says so) and return rate, pressures, stroke volume and ectopy, a time course, the monitor, ECG and guideline assessment at the end, and optionally the individual beats. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: { seconds: { type: "number", minimum: 1, maximum: 900, description: "Simulated seconds (default 60)." }, beats: { enum: ["none", "all"], description: "'all' adds a beat-by-beat table (decimated to maxBeats)." }, maxBeats: { type: "integer", minimum: 5, maximum: 500, description: "Row cap for the beat table (default 120)." }, autonomic: { type: "boolean", description: "Also return heart-rate variability and baroreflex-sensitivity statistics. Only for autonomic-physiology questions." } } },
     run(ctx, a) {
       const before = vitalsOf(ctx.sim), secs = num(a.seconds, 60, 1, 900);
