@@ -38,7 +38,7 @@ export const ECPELLA: CaseDef = {
   tier: "hard",
   blurb: "A witnessed collapse in VF, a quick ROSC and a STEMI. Where does he go, and what keeps him alive?",
   card: {
-    presents: "58-year-old man who collapsed at home. His daughter, a medical student, started CPR at once. EMS found VF and polymorphic VT, shocked him and gave amiodarone and lidocaine. He is back in the ED with CPR in progress. ROSC comes quickly, and the post-ROSC 12-lead shows an anterolateral STEMI.",
+    presents: "62-year-old man who collapsed at home. His wife, a nurse, started CPR at once. EMS found VF and polymorphic VT, shocked him and gave amiodarone and lidocaine. He is back in the ED with CPR in progress. ROSC comes quickly, and the post-ROSC 12-lead shows an anterolateral STEMI.",
     pmh: "Hypertension, hyperlipidemia. Southeast Asian man. No known coronary disease.",
     info: ["The post-ROSC ECG shows anterolateral ST elevation: a proximal LAD occlusion.", "After ROSC his pressure holds, but his ventricle is stunned (ejection fraction about 0.3, high filling pressure) and ventricular ectopy is frequent."],
   },
@@ -91,14 +91,14 @@ export const ECPELLA: CaseDef = {
         options: [
           { label: "Mechanical support first: VA-ECMO with an Impella CP (ECPELLA), then revascularize", points: 25, correct: true, why: "The Impella vents the left ventricle while ECMO carries the circulation, which is what lets a fibrillating, ischemic heart rest and lets the operator open the artery on a perfused patient.", outcome: { flags: ["deviceChosen", "mcs", "vented"], patch: BOTH, reveal: ["VA-ECMO is running at 4 L/min and the Impella CP is unloading the LV."] } },
           { label: "VA-ECMO alone", points: 5, correct: false, why: "VA-ECMO restores flow, but in VF the left ventricle cannot eject. It distends against the ECMO afterload, the aortic valve stays shut and pulmonary edema follows. It needs a vent.", outcome: { flags: ["deviceChosen", "mcs", "ecmoOnly"], patch: ECMO, reveal: ["VA-ECMO is running at 4 L/min. Perfusion is back, but the LV is not ejecting."] } },
-          { label: "Proceed straight to PCI of the LAD", points: -25, correct: false, why: "Opening the artery is the cure, but he has no circulation to carry him through the procedure. Revascularization on compressions alone ends in refractory shock before the stent is in. Support first, then the artery.", outcome: { flags: ["unsupportedPci"], reveal: ["The operator crosses the lesion while compressions continue. The pressure is poor and falling."] } },
+          { label: "Proceed straight to PCI of the LAD", points: -25, correct: false, why: "Opening the artery is the cure, but he has no circulation to carry him through the procedure. Revascularization on compressions alone ends in refractory shock before the stent is in. Support first, then the artery.", outcome: { flags: ["unsupportedPci"], reveal: ["The operator crosses the lesion on compressions alone."] } },
           { label: "Intra-aortic balloon pump", points: -10, correct: false, why: "A balloon pump needs a rhythm and a native output to augment. It does nothing in VF.", outcome: { flags: ["iabpOnly"], reveal: ["The balloon pump has nothing to augment. VF continues and flow is still CPR-only."] } },
           { label: "More shocks and another amiodarone bolus", points: -5, correct: false, why: "Drugs and shocks do not fix an electrical storm that comes from an occluded artery.", outcome: { reveal: ["VF persists."] } },
         ],
       },
     },
     // Straight to PCI with no support: the consequence is visible, then final
-    { id: "unsupportedWorse", requires: ["unsupportedPci"], forbids: ["deviceChosen", "unsupportedWorse"], when: () => true, forS: UNSUPPORTED_MID_S, outcome: { flags: ["unsupportedWorse"], reveal: ["Compressions cannot keep a perfusion pressure. The pressure is falling and the operator cannot hold the wire."] } },
+    { id: "unsupportedWorse", requires: ["unsupportedPci"], forbids: ["deviceChosen", "unsupportedWorse"], when: () => true, forS: UNSUPPORTED_MID_S, outcome: { flags: ["unsupportedWorse"], reveal: ["Compressions cannot hold a perfusion pressure through the procedure; the pressure stays around fifty."] } },
     { id: "unsupportedDeath", requires: ["unsupportedPci"], forbids: ["deviceChosen"], when: () => true, forS: UNSUPPORTED_DEATH_S, outcome: { end: "fail", reveal: ["He cannot be resuscitated without support and dies in refractory shock before the LAD is opened."] } },
 
     // ---- A complication of ECMO alone: LV distension
