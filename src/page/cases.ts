@@ -50,6 +50,7 @@ function carry(t: Tick) {
     if (p.patient?.rhythm) S.rhythm = p.patient.rhythm; // the frame loop hands S.rhythm to the simulation
   }
   arrestSync();
+  if (t.cpr !== undefined) { if (t.cpr) sim.startCpr(); else sim.stopCpr(); arrestSync(); }
   for (const o of t.orders) if (o === "pci") orderProcedure("pci");
   for (const sh of t.shocks) {
     const r = sim.shock({ joules: sh.joules, sync: sh.sync });
