@@ -206,9 +206,12 @@ export class LiveSource implements HemoSource {
     const map = wf((r) => r.lb.p.AO.mean), cvp = w((r) => r.lb.p.RA.mean), pam = w((r) => r.lb.p.PA.mean), pcwp = w((r) => r.lb.p.LA.mean);
     const mapF = map, cvpF = wf((r) => r.lb.p.RA.mean), pamF = wf((r) => r.lb.p.PA.mean), pcwpF = wf((r) => r.lb.p.LA.mean); // resistances use pressures from the same beats as their flow
     const ef = (c: "LV" | "RV") => w((r) => (r.lb.v[c].max > 0 ? (r.lb.edv[c] - r.lb.esv[c]) / r.lb.edv[c] : NaN));
+    const sbp = w((r) => r.lb.p.AO.max), dbp = w((r) => r.lb.p.AO.min);
     return {
       hr: (60 * all.filter((r) => r.lb.strength !== 0).length) / Tall, // the rate counts every beat, premature ones included; not the silent ticks of VF or asystole (B2)
-      map, systolic: w((r) => r.lb.p.AO.max), diastolic: w((r) => r.lb.p.AO.min), cvp,
+      // The mean over the flow window (30 s with ectopy) lags a pressure that is falling fast, so it can read above the systolic of the steadier
+      // recent beats (a crash: 34/28 with a mean of 65). A mean pressure lies between the diastolic and the systolic: keep the shown one there.
+      map: Number.isFinite(map) && Number.isFinite(sbp) && Number.isFinite(dbp) ? Math.min(Math.max(map, dbp), sbp) : map, systolic: sbp, diastolic: dbp, cvp,
       pa: { systolic: w((r) => r.lb.p.PA.max), diastolic: w((r) => r.lb.p.PA.min), mean: pam }, pcwp,
       lvedp: w((r) => r.lb.p.LV.end), rvedp: w((r) => r.lb.p.RV.end),
       co: qs, ci: qs / PATIENTS.adult.bsa, svr: qs > 0 ? (mapF - cvpF) / qs : NaN, pvr: qp > 0 ? (pamF - pcwpF) / qp : NaN,
