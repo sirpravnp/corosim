@@ -329,18 +329,56 @@ a.askbtn span { margin-left: 5px; }
 #manage .tabs { margin-bottom: 10px; }
 
 /* Arrest (C8): the ACLS panel at the top of the Support tab, the ROSC banner and the death overlay in the 3D view */
-.acls { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--bad); border-radius: 8px; background: var(--panel); }
+/* ACLS console (the arrest panel): a call to action first, the clocks, then three cards: compressions, the defibrillator, the drugs. Large targets: it is used under time pressure. */
+.acls { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--bad); border-radius: 8px; background: var(--panel); }
 .acls[hidden] { display: none; }
 .acls[data-status="rosc"] { border-color: var(--ok); }
 .acls[data-status="dead"] { border-color: var(--muted); opacity: 0.8; }
 .acls > * { min-width: 0; margin: 0; }
-.acls-state { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font-weight: 600; color: var(--bad); }
-.acls[data-status="rosc"] .acls-state { color: var(--ok); }
-.acls-state .val { font: 500 12px/1.3 var(--font-data); color: var(--ink); }
-.acls-times { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; font-size: 13px; }
-.acls-times b { font: 600 13px/1.2 var(--font-data); font-variant-numeric: tabular-nums; text-align: right; }
-.acls .ctl button:disabled { opacity: 0.45; }
-.acls .ctl select { width: 100%; font-size: 12px; }
+.acls-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.acls-chip { padding: 4px 9px; border-radius: 4px; font: 700 11px/1.2 var(--font-ui); letter-spacing: 0.08em; text-transform: uppercase; background: var(--bad); color: #fff; }
+.acls[data-status="rosc"] .acls-chip { background: var(--ok); color: var(--bg); }
+.acls[data-status="dead"] .acls-chip { background: var(--muted); color: var(--bg); }
+.acls-rhythm { font: 600 13px/1.3 var(--font-ui); }
+.acls-call { padding: 7px 10px; border-left: 3px solid var(--rule); background: var(--stage-2); font: 600 13px/1.35 var(--font-ui); }
+.acls-call.go { border-left-color: var(--bad); }
+.acls-tiles { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 6px; }
+.acls-tiles > div { display: grid; gap: 1px; padding: 6px 8px; border: 1px solid var(--rule-light); border-radius: 6px; }
+.acls-tiles span, .acls-cycle span { font: 600 10px/1.2 var(--font-ui); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.acls-tiles b, .acls-cycle b { font: 600 17px/1.1 var(--font-data); font-variant-numeric: tabular-nums; }
+.acls-bar { position: relative; display: block; height: 4px; margin-top: 3px; background: var(--bar-track); border-radius: 2px; }
+.acls-bar u { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--ok); border-radius: 2px; text-decoration: none; }
+.acls-bar::after { content: ""; position: absolute; left: 40%; top: -2px; bottom: -2px; width: 1px; background: var(--muted); } /* injury begins at 4:00 of 10:00 */
+.acls-cycle { display: flex; align-items: baseline; justify-content: space-between; padding: 4px 10px; border: 1px dashed var(--rule-light); border-radius: 6px; }
+.acls-cycle b { font-size: 15px; }
+.acls-cycle.now { border-color: var(--warn); color: var(--warn); } .acls-cycle.now b { color: var(--warn); }
+.acls-card { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--rule-light); border-radius: 6px; }
+.acls button { font-weight: 600; }
+.acls button:disabled { opacity: 0.45; }
+.acls-big { width: 100%; padding: 11px 12px; font-size: 14px; }
+.acls-big.on { background: var(--bad); border-color: var(--bad); color: #fff; }
+.acls-out { font: 500 11px/1.3 var(--font-data); color: var(--muted); text-align: center; }
+.acls-tech summary { cursor: pointer; font: 600 11px/1.4 var(--font-ui); color: var(--muted); }
+.acls-tech .ctl { margin-top: 8px; }
+.acls-row { display: flex; gap: 6px; }
+.acls-seg { display: flex; flex: 1; }
+.acls-seg button { flex: 1; padding: 8px 4px; font-size: 12px; border-radius: 0; margin-left: -1px; }
+.acls-seg button:first-child { margin-left: 0; border-radius: 6px 0 0 6px; } .acls-seg button:last-child { border-radius: 0 6px 6px 0; }
+.acls-seg button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); position: relative; }
+.acls-sync { padding: 8px 10px; font-size: 12px; white-space: nowrap; }
+.acls-sync.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.acls-shock { width: 100%; padding: 13px 12px; font-size: 15px; letter-spacing: 0.06em; text-transform: uppercase; background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.acls-shock:hover:not(:disabled) { filter: brightness(1.12); background: var(--accent); }
+.acls-last { font: 500 12px/1.4 var(--font-data); color: var(--muted); }
+.acls-last.ok { color: var(--ok); } .acls-last.miss { color: var(--warn); }
+.acls-drug { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto); align-items: center; gap: 8px; }
+.acls-drug button { padding: 8px 10px; font-size: 12.5px; text-align: left; }
+.acls-drug button.due { border-color: var(--warn); color: var(--warn); }
+.acls-drug > span { font: 500 11px/1.3 var(--font-data); color: var(--muted); text-align: right; }
+.acls-drug > span.due { color: var(--warn); font-weight: 600; }
+.acls .ctl { grid-template-columns: minmax(0, 1fr) 104px 84px; }
+.acls .ctl .val { white-space: nowrap; font-size: 11px; }
+@media (min-height: 780px) and (min-width: 960px) { #arrest.acls:not([hidden]) { position: sticky; top: 8px; z-index: 4; } } /* it stays in reach while the rest of the rail scrolls */
 .arrest-banner { position: absolute; left: 10px; right: 10px; top: 10px; z-index: 5; display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 10px 12px; border: 1px solid var(--ok); border-radius: 8px; background: var(--panel); font-size: 13px; }
 .arrest-banner[hidden], .arrest-dead[hidden] { display: none; }
 .arrest-banner button { flex: none; padding: 6px 10px; font-size: 12px; }
@@ -350,9 +388,6 @@ a.askbtn span { margin-left: 5px; }
 .arrest-dead-card p { margin: 0 0 10px; font-size: 13px; }
 .arrest-dead-card button { padding: 10px 18px; font-size: 13px; }
 body.dead #hr, body.dead #rhythm { opacity: 0.6; }
-.acls .ctl { grid-template-columns: minmax(0, 1fr) 104px 84px; }
-.acls .ctl .val { white-space: nowrap; font-size: 11px; }
-
 /* Support > Drugs > "More drugs": a collapsed sub-group of the core engine's receptor-level drugs */
 .sup-more { margin: 8px 0 0; border-top: 1px dashed var(--sh-line); padding-top: 6px; }
 .sup-more > summary { cursor: pointer; font: 600 12px/1.4 var(--font-data); color: var(--muted); list-style: none; display: flex; gap: 8px; align-items: baseline; min-width: 0; }
