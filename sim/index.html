@@ -268,6 +268,17 @@
             <span>Nitroglycerin</span><button id="m_nitro">Off</button><span class="val"></span>
             <span>Atropine</span><button id="m_atropine">Off</button><span class="val"></span>
           </div>
+          <details class="sup-more" id="more-drugs">
+            <summary>More drugs <span class="sum" id="sum-more-drugs"></span></summary>
+            <p class="note" id="more-drugs-note">Receptor-level drugs of the core engine: epinephrine (beta and alpha), milrinone (inodilator), vasopressin (non-adrenergic pressor), nitroprusside (arterial and venous dilator), furosemide (diuretic). Doses are fractions of the full effect.</p>
+            <div class="ctl">
+              <label for="epi">Epinephrine</label><input id="epi" type="range" min="0" max="100" value="0"><span class="val" id="epiv"></span>
+              <label for="mil">Milrinone</label><input id="mil" type="range" min="0" max="100" value="0"><span class="val" id="milv"></span>
+              <label for="vaso">Vasopressin</label><input id="vaso" type="range" min="0" max="100" value="0"><span class="val" id="vasov"></span>
+              <label for="nitp">Nitroprusside</label><input id="nitp" type="range" min="0" max="100" value="0"><span class="val" id="nitpv"></span>
+              <label for="furo">Furosemide</label><input id="furo" type="range" min="0" max="100" value="0"><span class="val" id="furov"></span>
+            </div>
+          </details>
         </details>
         <details class="fold sup-sec" id="sec-devices">
           <summary><h2>Devices</h2><span class="sum" id="sum-devices"></span><button type="button" class="sec-info" data-info="devices" aria-label="About Devices" aria-expanded="false">i</button></summary>

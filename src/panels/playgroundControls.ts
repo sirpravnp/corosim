@@ -14,6 +14,9 @@ import { LESIONS, LESION_BY_ID } from "../sim/structural";
 import type { LesionId } from "../sim/structural";
 import { buildValves, heartOf } from "./valvesPanel";
 import { buildBaseline, buildDefects, hasShunt } from "./heartDefects";
+import { buildAdvanced } from "./advancedControls";
+import type { Scenario } from "../sim/scenario";
+import type { PatientSpec } from "../sim/patient";
 
 export interface PlaygroundHost {
   getState(): PlaygroundState;
@@ -23,8 +26,12 @@ export interface PlaygroundHost {
   exit(): void;
   /** True when the page runs the legacy engine (the game): the per-valve controls are disabled. */
   legacy?(): boolean;
+  /** The live Scenario (autonomic, electrolytes, tendencies, seed: the fields the Advanced group edits), a change to it, and a new seed (starts the patient over). */
+  scenario?(): Scenario;
+  patch?(p: PatientSpec): void;
+  reseed?(seed: number): void;
 }
-export interface PlaygroundInfo { warnings: readonly string[]; link: string; presetId: string | null }
+export interface PlaygroundInfo { warnings: readonly string[]; link: string; presetId: string | null; scenario?: Scenario }
 export type MountId = "patient" | "valves" | "pericardium" | "volume" | "ventilation" | "iabp" | "impella" | "ecmo";
 export interface PlaygroundUi {
   /** The containers for the settings dock's tabs. */
@@ -176,6 +183,14 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
   {
     const body = mounts.volume;
     slider(body, "fluids.hemorrhageMlMin", "Ongoing hemorrhage", R.hemorrhageMlMin[0], 200, 5, (s) => s.fluids?.hemorrhageMlMin, 0, (v) => (v ? `${v} ml/min` : "none"), (s, v) => patchSection(s, "fluids", { hemorrhageMlMin: v || undefined }));
+    slider(body, "fluids.capillaryLeak", "Capillary leak", R.capillaryLeak[0], R.capillaryLeak[1], 0.05, (s) => s.fluids?.capillaryLeak, 0, (v) => (v ? `${Math.round(v * 100)}%` : "none"), (s, v) => patchSection(s, "fluids", { capillaryLeak: v || undefined }));
+    {
+      fields.push("fluids.legRaise");
+      const lid = ctlId(), lb = h("button", { id: lid, type: "button", textContent: "Off", title: "Passive leg raise: shifts blood from the legs to the chest, a reversible fluid challenge" });
+      lb.addEventListener("click", () => edit((s) => patchSection(s, "fluids", { legRaise: !s.fluids?.legRaise || undefined })));
+      body.append(h("label", { htmlFor: lid, textContent: "Passive leg raise" }), lb, h("span", { className: "val" }));
+      syncs.push((s) => { const on = !!s.fluids?.legRaise; lb.classList.toggle("on", on); lb.setAttribute("aria-pressed", String(on)); lb.textContent = on ? "On" : "Off"; });
+    }
     // IV bolus: the kind of the next dose, quick volumes that add up, and the total given
     const KINDS: readonly (readonly [FluidKind, string])[] = [["crystalloid", "Crystalloid"], ["colloid", "Colloid"], ["albumin", "Albumin"], ["blood", "Blood"]];
     let kind: FluidKind = "crystalloid";
@@ -226,11 +241,15 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     buildBaseline({ body, ...valvesCtx });
     mounts.patient.append(box);
   }
+  // ---- Patient tab, last: the Advanced group (fields that were chat-only), collapsed ----------------------------------------
+  const scenarioSyncs: ((sc: Scenario) => void)[] = [];
+  mounts.patient.append(buildAdvanced({ h, ctlId, fields, scenarioSyncs, scenario: () => host.scenario?.() ?? {}, patch: (p) => host.patch?.(p), reseed: (n) => host.reseed?.(n), legacy: host.legacy }));
 
   return {
     mounts, fields,
     sync(state, info) {
       for (const f of syncs) f(state);
+      for (const f of scenarioSyncs) f(info.scenario ?? {});
       preset.value = info.presetId ?? "";
       const p = info.presetId ? PRESET_BY_ID[info.presetId] : undefined;
       presetNote.textContent = p ? `${p.blurb}${p.stored ? ` Not simulated yet: ${p.stored}.` : ""}` : "";

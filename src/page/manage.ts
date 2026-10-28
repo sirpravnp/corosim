@@ -66,6 +66,10 @@ export function setTab(t: string) {
   if (d) d.open = true;
 }
 
+/** The "More drugs" sliders (core engine only): control id, the Support key, the name in the summary. */
+export const MORE_DRUGS = [["epi", "epi", "epinephrine"], ["mil", "milrinone", "milrinone"], ["vaso", "vasopressin", "vasopressin"], ["nitp", "nitroprusside", "nitroprusside"], ["furo", "furosemide", "furosemide"]] as const;
+
+const MORE_NOTE = "Receptor-level drugs of the core engine: epinephrine (beta and alpha), milrinone (inodilator), vasopressin (non-adrenergic pressor), nitroprusside (arterial and venous dilator), furosemide (diuretic). Doses are fractions of the full effect.";
 const lastText = new Map<string, string>();
 const setText = (id: string, v: string) => { if (lastText.get(id) === v) return; lastText.set(id, v); $(id).textContent = v; };
 const join = (parts: (string | false | undefined | null | 0)[]) => parts.filter(Boolean).join(" · ") || "none";
@@ -81,8 +85,9 @@ function volumeGiven(): string {
 /** The line in the header of each section: what is on, read from the live state, so a change made from chat shows too. */
 function summaries() {
   const sp = T.support, spec = patientOpts.patient, dev = spec?.devices, fl = spec?.fluids, vent = spec?.ventilation;
-  setText("sum-volume", join([PHYS.bl > 0 && `blood loss ${PHYS.bl}%`, PHYS.bl < 0 && `overload ${-PHYS.bl}%`, !!fl?.hemorrhageMlMin && `bleeding ${fl.hemorrhageMlMin} ml/min`, volumeGiven()]));
-  setText("sum-drugs", join([sp.norepi > 0 && `norepinephrine ${pct(sp.norepi)}`, sp.dobutamine > 0 && `dobutamine ${pct(sp.dobutamine)}`, PHYS.bb > 0 && `beta blocker ${PHYS.bb}%`, sp.nitro > 0 && "nitroglycerin", sp.atropine && "atropine"]));
+  setText("sum-volume", join([PHYS.bl > 0 && `blood loss ${PHYS.bl}%`, PHYS.bl < 0 && `overload ${-PHYS.bl}%`, !!fl?.hemorrhageMlMin && `bleeding ${fl.hemorrhageMlMin} ml/min`, !!fl?.capillaryLeak && `capillary leak ${pct(fl.capillaryLeak)}`, !!fl?.legRaise && "leg raise", volumeGiven()]));
+  setText("sum-drugs", join([sp.norepi > 0 && `norepinephrine ${pct(sp.norepi)}`, sp.dobutamine > 0 && `dobutamine ${pct(sp.dobutamine)}`, PHYS.bb > 0 && `beta blocker ${PHYS.bb}%`, sp.nitro > 0 && "nitroglycerin", sp.atropine && "atropine", ...(sim.engine === "core" ? MORE_DRUGS.map(([, k, name]) => sp[k] > 0 && `${name} ${pct(sp[k])}`) : [])]));
+  setText("sum-more-drugs", sim.engine === "core" ? join(MORE_DRUGS.map(([, k, name]) => sp[k] > 0 && `${name} ${pct(sp[k])}`)) : "");
   const im = { ...DEFAULT_IMPELLA, ...dev?.impella }, ia = { ...DEFAULT_IABP, ...dev?.iabp };
   setText("sum-devices", join([sp.iabp && `IABP 1:${ia.ratio}`, sp.impella && (spec ? `Impella ${im.model} P${im.level}` : "Impella"), !!dev?.ecmo && `ECMO ${(dev.ecmo.flowLpm ?? 3).toFixed(1)} L/min`, sp.pacing && `pacing ${sp.paceRate}`]));
   setText("sum-vent", vent && (vent.mode === "positive" || vent.peep) ? join([vent.mode === "positive" ? "positive pressure" : "spontaneous", !!vent.peep && `PEEP ${vent.peep}`, !!vent.tidalMlKg && `${vent.tidalMlKg} ml/kg`]) : "none");
@@ -102,6 +107,9 @@ export function manageUi() {
   $("dobv").textContent = sp.dobutamine ? Math.round(sp.dobutamine * 100) + "%" : "off";
   onOff("m_nitro", sp.nitro > 0); onOff("m_atropine", sp.atropine); onOff("m_pace", sp.pacing); onOff("m_iabp", sp.iabp); onOff("m_impella", sp.impella);
   onOff("m_ecmo", !!patientOpts.patient?.devices?.ecmo);
+  const core = sim.engine === "core";
+  for (const [id, k] of MORE_DRUGS) { $(id + "v").textContent = sp[k] ? Math.round(sp[k] * 100) + "%" : "off"; const r = $<HTMLInputElement>(id); r.disabled = !core; if (document.activeElement !== r) r.value = String(Math.round(sp[k] * 100)); }
+  $("more-drugs-note").textContent = core ? MORE_NOTE : "These drugs are modelled on the core engine only; this engine ignores them.";
   $("pacev").textContent = sp.paceRate + " bpm";
   $("manage").classList.toggle("pacing", sp.pacing);
   const total = $("fluidv"); if (total) total.textContent = volumeGiven() || "none";
@@ -146,6 +154,7 @@ export function wireManage() {
   });
   range("nor", (v) => { T.support.norepi = v / 100; manageUi(); });
   range("dob", (v) => { T.support.dobutamine = v / 100; manageUi(); });
+  for (const [id, k] of MORE_DRUGS) range(id, (v) => { T.support[k] = v / 100; manageUi(); });
   range("pacerate", (v) => { T.support.paceRate = v; manageUi(); });
   on("m_nitro", toggle(() => { T.support.nitro = T.support.nitro ? 0 : 1; }));
   on("m_atropine", toggle(() => { T.support.atropine = !T.support.atropine; }));
@@ -167,7 +176,7 @@ export function wireManage() {
     clearTreatment(); manageSig = "";
     for (const k of Object.keys(sev)) delete sev[k];
     if (o) { S.lesionSeg = o.seg; S.pos = o.pos; S.ds = o.ds; S.occ = o.occ; $<HTMLSelectElement>("lseg").value = o.seg; $<HTMLInputElement>("pos").value = String(o.pos * 100); $<HTMLInputElement>("ds").value = String(o.ds * 100); }
-    $<HTMLInputElement>("nor").value = "0"; $<HTMLInputElement>("dob").value = "0"; $<HTMLInputElement>("pacerate").value = String(SUPPORT.paceDefault);
+    $<HTMLInputElement>("nor").value = "0"; $<HTMLInputElement>("dob").value = "0"; for (const [id] of MORE_DRUGS) $<HTMLInputElement>(id).value = "0"; $<HTMLInputElement>("pacerate").value = String(SUPPORT.paceDefault);
     hooks.resetTreatment?.(); // the Simulator: devices, boluses and the beta blocker are treatment too
     scheduleLesion(); buildGrafts(); manageUi();
   });
