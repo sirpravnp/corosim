@@ -44,8 +44,8 @@ const F: FieldSpec[] = [];
 const add = (path: string, tab: FieldTab, schema: Record<string, unknown>, controls: readonly string[] = [], target: FieldTarget = "patient") => { F.push({ path, tab, target, schema, controls }); };
 
 // ---- coronary anatomy and lesions --------------------------------------------------------------------------------
-add("anatomy.dominance", "coronary", en(["right", "co", "left"]), ["dom", "p_typ", "p_left"]);
-add("anatomy.lm", "coronary", en(["bifurcation", "trifurcation", "absent"], "Left-main pattern; trifurcation adds a ramus intermedius."), ["lm", "p_ramus", "p_abs"]);
+add("anatomy.dominance", "coronary", en(["right", "co", "left"]), ["dom", "anat"]);
+add("anatomy.lm", "coronary", en(["bifurcation", "trifurcation", "absent"], "Left-main pattern; trifurcation adds a ramus intermedius."), ["lm", "anat"]);
 add("anatomy.saNodeFrom", "coronary", en(["RCA", "LCx"]), ["san"]);
 add("anatomy.conusOstium", "coronary", en(["shared", "separate"]), ["conus"]);
 add("anatomy.ladCourse", "coronary", en(["normal", "short", "wrap"]), ["lad"]);
@@ -64,40 +64,40 @@ add("lesions", "coronary", {
 add("exertion", "coronary", bool("Moderate exertion: doubles myocardial oxygen demand."), ["exert"]);
 
 // ---- patient: volume, drugs, autonomic, rhythm -----------------------------------------------------------------------
-add("bloodLoss", "support", num(-0.3, 0.6, "Fraction of blood volume lost (0.15 = ATLS class II, 0.3 = class III). Negative = volume overload."), ["bl", "x_bleed"]);
+add("bloodLoss", "support", num(-0.3, 0.6, "Fraction of blood volume lost (0.15 = ATLS class II, 0.3 = class III). Negative = volume overload."), ["bl"]);
 add("drugs.betaBlocker", "support", num(0, 1, "Fraction of beta-adrenergic effect blocked."), ["bb"]);
 add("drugs.atropine", "support", num(0, 1, "Fraction of vagal effect on the sinus node blocked."), ["m_atropine"]);
 add("drugs.vasopressor", "support", num(-1, 1, "-1 strong vasodilator, +1 strong alpha-agonist (phenylephrine-like)."));
-add("autonomic.baroreflexGain", "patient", num(0, 4, "0 = denervated, 1 = normal, ≥2 = enough loop gain for a sustained ~0.1 Hz (Mayer-wave) oscillation."));
-add("autonomic.respRate", "patient", num(4, 40, "Breaths per minute (drives respiratory sinus arrhythmia)."));
-add("autonomic.respDepth", "patient", num(0, 2));
-add("autonomic.setPointShift", "patient", num(-30, 60, "mmHg added to the baroreceptor set point (chronic hypertension resets it upward)."));
-add("autonomic.noise", "patient", num(0, 3, "Scale of physiological noise. 0 = deterministic loop; 1 = normal."));
+add("autonomic.baroreflexGain", "patient", num(0, 4, "0 = denervated, 1 = normal, ≥2 = enough loop gain for a sustained ~0.1 Hz (Mayer-wave) oscillation."), ["pg:autonomic.baroreflexGain"]);
+add("autonomic.respRate", "patient", num(4, 40, "Breaths per minute (drives respiratory sinus arrhythmia)."), ["pg:autonomic.respRate"]);
+add("autonomic.respDepth", "patient", num(0, 2, "Breath depth (drives the size of respiratory sinus arrhythmia); 0 = none, 2 = deep breathing."), ["pg:autonomic.respDepth"]);
+add("autonomic.setPointShift", "patient", num(-30, 60, "mmHg added to the baroreceptor set point (chronic hypertension resets it upward)."), ["pg:autonomic.setPointShift"]);
+add("autonomic.noise", "patient", num(0, 3, "Scale of physiological noise. 0 = deterministic loop; 1 = normal."), ["pg:autonomic.noise"]);
 add("patient.rhythm", "rhythm", en([...new Set(["sinus", "af", ...SIM_RHYTHMS.map((p) => p.id)])], "Baseline rhythm. sinus and af (atrial fibrillation: no P waves, irregular, no atrial kick) are the coronary model's own; any other id is a rhythm of the EKG library (corosim_ekg_list lists them; \"nsr\" also means sinus): flutter, SVT, junctional, AV blocks, VT, torsades, VF, asystole, paced and so on. Library rhythms run on the core engine (VF and asystole give no flow)."), ["rhythmq", "rhythmsel"]);
 add("patient.bbb", "rhythm", en(["none", "rbbb", "lbbb"], "Pre-existing bundle branch block."), ["c_none", "c_rbbb", "c_lbbb"]);
-add("seed", "patient", { type: "integer", description: "Random seed. The same scenario and seed reproduce the same beats." });
-add("ectopyTendency", "patient", num(0, 3, "Teaching override of the patient's tendency to ischemic PVCs (core engine): a multiplier on the susceptibility the seed gives. 0 = never any PVC, 1 = as the seed has it (default), 3 = very ectopy-prone."));
-add("arrhythmiaTendency", "patient", num(0, 3, "Teaching override of the patient's tendency to ventricular tachycardia, ventricular fibrillation and reperfusion AIVR (core engine): a multiplier on the susceptibility the seed gives. 0 = never any (and ends one that is running), 1 = as the seed has it (default)."));
-add("electrolytes.potassium", "patient", num(2, 7.5, "Serum potassium in mmol/l (core engine); hypo- and hyperkalaemia raise the VT/VF hazard and the PVCs. Default 4.2."));
-add("electrolytes.magnesium", "patient", num(0.2, 3, "Serum magnesium in mmol/l (core engine); hypomagnesaemia raises the VT/VF hazard and the PVCs. Default 0.9."));
+add("seed", "patient", { type: "integer", description: "Random seed. The same scenario and seed reproduce the same beats." }, ["pg:seed"]);
+add("ectopyTendency", "patient", num(0, 3, "Teaching override of the patient's tendency to ischemic PVCs (core engine): a multiplier on the susceptibility the seed gives. 0 = never any PVC, 1 = as the seed has it (default), 3 = very ectopy-prone."), ["pg:ectopyTendency"]);
+add("arrhythmiaTendency", "patient", num(0, 3, "Teaching override of the patient's tendency to ventricular tachycardia, ventricular fibrillation and reperfusion AIVR (core engine): a multiplier on the susceptibility the seed gives. 0 = never any (and ends one that is running), 1 = as the seed has it (default)."), ["pg:arrhythmiaTendency"]);
+add("electrolytes.potassium", "patient", num(2, 7.5, "Serum potassium in mmol/l (core engine); hypo- and hyperkalaemia raise the VT/VF hazard and the PVCs. Default 4.2."), ["pg:electrolytes.potassium"]);
+add("electrolytes.magnesium", "patient", num(0.2, 3, "Serum magnesium in mmol/l (core engine); hypomagnesaemia raises the VT/VF hazard and the PVCs. Default 0.9."), ["pg:electrolytes.magnesium"]);
 
 // ---- support (the management panel) --------------------------------------------------------------------------------------
-add("support.fluids", "support", num(0, 3, "Litres of IV fluid given. Helps a right-ventricular infarct; congests the lungs of a failing left ventricle."), ["m_fluid"]);
+add("support.fluids", "support", num(0, 3, "Litres of IV fluid given (the legacy dial; the page's IV bolus is fluids.given). Helps a right-ventricular infarct; congests the lungs of a failing left ventricle."));
 add("support.norepinephrine", "support", num(0, 1), ["nor"]);
 add("support.dobutamine", "support", num(0, 1), ["dob"]);
 add("support.nitroglycerin", "support", num(0, 1), ["m_nitro"]);
-add("support.epinephrine", "support", num(0, 1, "Core engine only."));
-add("support.milrinone", "support", num(0, 1, "Core engine only."));
-add("support.vasopressin", "support", num(0, 1, "Core engine only."));
-add("support.nitroprusside", "support", num(0, 1, "Core engine only."));
-add("support.furosemide", "support", num(0, 1, "Core engine only."));
+add("support.epinephrine", "support", num(0, 1, "Core engine only."), ["epi"]);
+add("support.milrinone", "support", num(0, 1, "Core engine only."), ["mil"]);
+add("support.vasopressin", "support", num(0, 1, "Core engine only."), ["vaso"]);
+add("support.nitroprusside", "support", num(0, 1, "Core engine only."), ["nitp"]);
+add("support.furosemide", "support", num(0, 1, "Core engine only."), ["furo"]);
 add("support.diltiazem", "support", num(0, 1, "Core engine only: slows the AV node (atrial fibrillation), weakens contraction, dilates arterioles."));
 add("support.pacing", "support", bool(), ["m_pace"]);
 add("support.paceRate", "support", num(40, 120), ["pacerate"]);
-add("support.iabp", "support", bool("Intra-aortic balloon pump."), ["m_iabp"]);
-add("support.impella", "support", bool("Microaxial left-ventricular pump."), ["m_impella"]);
+add("support.iabp", "support", bool("Intra-aortic balloon pump (the legacy switch; devices.iabp is the same pump with settings, and the page's one switch edits both)."), ["m_iabp"]);
+add("support.impella", "support", bool("Microaxial left-ventricular pump (the legacy switch; devices.impella is the same pump with settings, and the page's one switch edits both)."), ["m_impella"]);
 
-// ---- structural heart (Valves tab) -----------------------------------------------------------------------------------
+// ---- structural heart (Valves tab; the baseline fields pvri, svrScale, satLung, rvContractility, tof and volumeMl are on the Patient tab) -----------------------------------------------------------------------------------
 const VALVES = [["av", "aortic", 19, 34], ["mv", "mitral", 25, 33], ["tv", "tricuspid", 27, 36], ["pv", "pulmonary", 19, 29]] as const;
 for (const [k, name, lo, hi] of VALVES) {
   add(`heart.valves.${k}.open`, "valves", num(0, 1, `${name[0].toUpperCase()}${name.slice(1)} valve opening as a fraction of normal (1 = normal, 0 = atretic). Ignored when a prosthesis is set.`), ["pg:heart"]);
@@ -115,15 +115,16 @@ for (const [k, name, lo, hi] of VALVES) {
   }, []);
 }
 for (const k of ["pda", "asd", "vsd", "bt"] as const) add(`heart.${k}`, "valves", { type: "object", description: { pda: "Patent ductus arteriosus.", asd: "Atrial septal defect.", vsd: "Ventricular septal defect.", bt: "Modified Blalock-Taussig shunt, aorta to pulmonary artery." }[k], properties: { diameterMm: num(0, 40) } }, ["pg:heart"]);
-add("heart.tof", "valves", { type: "object", description: "Tetralogy of Fallot.", properties: { vsdMm: num(0, 40), rvotFrac: num(0, 1, "Right ventricular outflow tract opening as a fraction of normal."), spasm: num(0, 1), override: num(0, 1), rvHypertrophy: num(0.2, 5) } }, ["pg:heart"]);
-add("heart.pvri", "valves", num(0.2, 60, "Pulmonary vascular resistance index, Wood units·m²."), ["pg:heart"]);
-add("heart.svrScale", "valves", num(0.1, 5, "Multiplies systemic vascular resistance."), ["pg:heart"]);
-add("heart.satLung", "valves", num(0.3, 1, "Saturation of blood leaving the lungs."), ["pg:heart"]);
-add("heart.volumeMl", "valves", num(-1000, 5000, "Extra blood volume given, ml."), ["pg:heart"]);
+add("heart.tof", "patient", { type: "object", description: "Tetralogy of Fallot.", properties: { vsdMm: num(0, 40), rvotFrac: num(0, 1, "Right ventricular outflow tract opening as a fraction of normal."), spasm: num(0, 1), override: num(0, 1), rvHypertrophy: num(0.2, 5) } }, ["pg:heart.tof"]);
+add("heart.pvri", "patient", num(0.2, 60, "Pulmonary vascular resistance index, Wood units·m²."), ["pg:heart.pvri"]);
+add("heart.svrScale", "patient", num(0.1, 5, "Multiplies systemic vascular resistance."), ["pg:heart.svrScale"]);
+add("heart.satLung", "patient", num(0.3, 1, "Saturation of blood leaving the lungs."), ["pg:heart.satLung"]);
+// (the baseline blood volume and the systemic fields are the patient's own, so they live in the Patient tab, not with the valves)
+add("heart.volumeMl", "patient", num(-1000, 5000, "Baseline blood volume: extra ml on the patient's normal (negative: less). Blood loss, hemorrhage and boluses act on top of it."), ["pg:heart.volumeMl"]);
 for (const k of ["lvSize", "laSize", "rvSize", "raSize"]) add(`heart.${k}`, "valves", num(0.05, 4, "Chamber volume as a multiple of normal."), ["pg:heart"]);
 for (const k of ["lvEes", "rvEes"]) add(`heart.${k}`, "valves", num(0.2, 5, "Multiplies the ventricle's end-systolic elastance (stunned or ischemic muscle)."), ["pg:heart"]);
 for (const k of ["lvStiffness", "rvStiffness"]) add(`heart.${k}`, "valves", num(0.2, 5, "Multiplies the ventricle's passive stiffness."), ["pg:heart"]);
-add("heart.rvContractility", "valves", num(0.2, 5, "Multiplies right ventricular contractility and stiffness."), ["pg:heart"]);
+add("heart.rvContractility", "patient", num(0.2, 5, "Multiplies right ventricular contractility and stiffness."), ["pg:heart.rvContractility"]);
 
 // ---- pericardium (its own tab) ----------------------------------------------------------------------------------------
 add("pericardium.effusionMl", "pericardium", num(0, 2000), ["pg:pericardium.effusionMl"]);
@@ -136,8 +137,8 @@ add("septum", "pericardium", bool("Ventricular interdependence through the septu
 // ---- fluids, ventilation, devices (Support tab) -----------------------------------------------------------------------
 add("fluids.given", "support", { type: "array", maxItems: 20, items: { type: "object", required: ["kind", "ml"], properties: { kind: en(["crystalloid", "colloid", "albumin", "blood"]), ml: num(0, 5000), atMin: num(0, 1440), overMin: num(0, 1440) } } }, ["pg:fluids.given"]);
 add("fluids.hemorrhageMlMin", "support", num(0, 500), ["pg:fluids.hemorrhageMlMin"]);
-add("fluids.capillaryLeak", "support", num(0, 1));
-add("fluids.legRaise", "support", bool());
+add("fluids.capillaryLeak", "support", num(0, 1, "Capillary leak (sepsis): scales the filtration coefficient up, so fluid leaves the vessels faster. 0 = none."), ["pg:fluids.capillaryLeak"]);
+add("fluids.legRaise", "support", bool("Passive leg raise in progress: shifts blood from the legs to the chest."), ["pg:fluids.legRaise"]);
 add("ventilation.mode", "support", en(["spontaneous", "positive"]), ["pg:ventilation.mode"]);
 add("ventilation.peep", "support", num(0, 25, "cmH2O"), ["pg:ventilation.peep"]);
 add("ventilation.tidalMlKg", "support", num(2, 15), ["pg:ventilation.tidalMlKg"]);
@@ -149,7 +150,7 @@ add("devices.iabp.ratio", "support", en([1, 2, 3]), ["pg:devices.iabp.ratio"]);
 add("devices.iabp.inflateMs", "support", num(-100, 100), ["pg:devices.iabp.inflateMs"]);
 add("devices.iabp.deflateMs", "support", num(-100, 100), ["pg:devices.iabp.deflateMs"]);
 add("devices.iabp.volumeMl", "support", num(0, 50));
-add("devices.ecmo.flowLpm", "support", num(0, 7), ["pg:devices.ecmo.flowLpm"]);
+add("devices.ecmo.flowLpm", "support", num(0, 7), ["m_ecmo", "pg:devices.ecmo.flowLpm"]);
 add("devices.ecmo.sweepLpm", "support", num(0, 10), ["pg:devices.ecmo.sweepLpm"]);
 add("devices.ecmo.fio2", "support", num(0.21, 1), ["pg:devices.ecmo.fio2"]);
 
@@ -179,7 +180,7 @@ export const ACTIONS: Record<string, { tool: string | null; why: string }> = {
   a_depth: { tool: null, why: "CPR depth, 3-8 cm (page-only)" }, a_quality: { tool: null, why: "CPR quality 0-100 % (page-only)" },
   a_joules: { tool: null, why: "shock energy 120/150/200 J (page-only)" }, a_sync: { tool: null, why: "synchronized (cardioversion) or unsynchronized shock (page-only)" }, a_shock: { tool: null, why: "deliver the shock (page-only)" },
   a_epi: { tool: null, why: "epinephrine 1 mg (page-only)" }, a_amio: { tool: null, why: "amiodarone 300 then 150 mg (page-only)" }, a_lido: { tool: null, why: "lidocaine 100 mg (page-only)" },
-  x_reset: { tool: "corosim_set_scenario", why: "reset the volume and drug sliders" }, openCath: { tool: "corosim_heart_cath", why: "the cath lab readings" },
+  openCath: { tool: "corosim_heart_cath", why: "the cath lab readings" },
 };
 
 // ---- the schema ---------------------------------------------------------------------------------------------------------------
@@ -187,9 +188,9 @@ export const ACTIONS: Record<string, { tool: string | null; why: string }> = {
 const GROUPS: Record<string, string> = {
   anatomy: "Coronary anatomy variant.",
   patient: "What the patient brought with them.",
-  support: "Hemodynamic support (as in the app's management panel). Atropine is drugs.atropine.",
+  support: "Hemodynamic support (as in the app's Support tab). Atropine is drugs.atropine.",
   devices: "Mechanical support with settings. support.iabp / support.impella (true) mean the defaults: IABP 1:1 at correct timing, 40 ml; Impella CP at P6, correct position.",
-  heart: "Structural heart as on the Valves tab: valves {av|mv|tv|pv: {open 0..1, reg cm2, prosthesis}}, pda|asd|vsd|bt {diameterMm}, tof, pvri, svrScale, satLung, volumeMl, chamber sizes, elastance and stiffness. Use corosim_valve to replace, dilate, clip or repair a valve.",
+  heart: "Structural heart as on the Valves tab: valves {av|mv|tv|pv: {open 0..1, reg cm2, prosthesis}}, pda|asd|vsd|bt {diameterMm}, tof, pvri, svrScale, satLung, volumeMl (baseline blood volume, on the Patient tab with pvri, svrScale, satLung, rvContractility and tof), chamber sizes, elastance and stiffness. Use corosim_valve to replace, dilate, clip or repair a valve.",
   "heart.valves": "Per valve: native opening and regurgitant orifice, or a prosthesis. Several valves can be abnormal at once.",
 };
 type Node = Record<string, unknown>;

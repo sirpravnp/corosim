@@ -247,15 +247,36 @@ details.fold > :not(summary):last-child { margin-bottom: 16px; }
 .tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-bottom: 12px; }
 .tabs h2 { grid-column: 1 / -1; margin: 0 0 6px; }
 .tab { padding: 7px 4px; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#manage .pane { display: none; }
-#manage[data-tab="support"] .pane[data-pane="support"], #manage[data-tab="revasc"] .pane[data-pane="revasc"], #manage[data-tab="assess"] .pane[data-pane="assess"] { display: block; }
-.ctl { display: grid; grid-template-columns: 1fr 104px 54px; align-items: center; gap: 7px 8px; font-size: 13px; }
+.ctl { display: grid; grid-template-columns: minmax(0, 1fr) 100px 84px; align-items: center; gap: 7px 8px; font-size: 13px; }
 .ctl label { margin: 0; font-size: 13px; }
 .ctl input[type="range"] { height: 18px; }
 .ctl button { width: 100%; padding: 6px 4px; font-size: 11px; }
 .ctl .val { font: 500 12px/1 var(--font-data); color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
 .ctl .pace-only { display: none; }
 #manage.pacing .ctl .pace-only { display: block; }
+
+/* The Support tab: six fixed sections, each a fold with a live one-line summary in its header; one row layout inside (label | control | value) */
+#manage.sup { display: grid; gap: 8px; }
+#manage .sup-sec { border-radius: 8px; min-width: 0; }
+#manage .sup-sec summary { gap: 8px; align-items: center; }
+#manage .sup-sec summary h2 { flex: none; font-size: 13px; }
+#manage .sup-sec .sum, #manage .sup-sec[open] .sum { display: block; flex: 1 1 0; min-width: 0; }
+#manage .sup-sec summary::after { margin-left: 0; }
+#manage .sec-info { flex: none; width: 20px; height: 20px; padding: 0; border-radius: 50%; font: italic 700 12px/1 var(--font-data); color: var(--muted); }
+#manage .sec-info.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+#manage .sup-info[hidden] { display: none; }
+#manage .sup-info { margin: 0 0 10px; }
+#manage .ctl { grid-template-columns: minmax(0, 1fr) 92px 68px; } /* narrow value column so long drug names (norepinephrine, nitroglycerin) get the room */
+.ctl-flat, .ctl .pg-dev:not([hidden]) { display: contents; }
+.ctl .ctl-wide { grid-column: 1 / -1; margin: 0; }
+.ctl label.ctl-sub { padding-left: 12px; color: var(--muted); }
+.ctl select { width: 100%; }
+.ctl button.dd-btn { padding: 6px 8px; font-size: 12px; }
+.ctl .row { margin-top: 0; }
+.ctl .row button { width: auto; flex: 1 1 0; }
+.ctl .val { white-space: nowrap; }
+#sec-assess .row { margin-top: 10px; }
+#sec-treat .row { gap: 6px; }
 
 
 /* Link beside the Reperfuse buttons that opens this patient in the cath lab */
@@ -293,6 +314,7 @@ a.askbtn span { margin-left: 5px; }
 .pg-prosthesis[hidden], .pg-ivresult[hidden] { display: none; }
 .pg-note { margin-top: 6px; }
 .pg-body details.fold { padding: 0; border: 0; }
+.pg-body [hidden], .pg > details[hidden] { display: none; }
 .ctl > [hidden] { display: none; }
 
 /* Settings dock: one tabbed panel for every control (Patient · Rhythm · Coronary · Valves · Support · Display) */
@@ -366,3 +388,12 @@ a.askbtn span { margin-left: 5px; }
 .arrest-dead-card p { margin: 0 0 10px; font-size: 13px; }
 .arrest-dead-card button { padding: 10px 18px; font-size: 13px; }
 body.dead #hr, body.dead #rhythm { opacity: 0.6; }
+/* Support > Drugs > "More drugs": a collapsed sub-group of the core engine's receptor-level drugs */
+.sup-more { margin: 8px 0 0; border-top: 1px dashed var(--sh-line); padding-top: 6px; }
+.sup-more > summary { cursor: pointer; font: 600 12px/1.4 var(--font-data); color: var(--muted); list-style: none; display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.sup-more > summary::-webkit-details-marker { display: none; }
+.sup-more > summary::before { content: "+"; font-weight: 700; }
+.sup-more[open] > summary::before { content: "−"; }
+.sup-more > summary .sum { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sup-more[open] > summary .sum { display: none; }
+.sup-more > .ctl { margin-top: 8px; }
