@@ -1,63 +1,109 @@
 import type { CaseDef } from "./engine";
 
 /**
- * Refractory VF/VT on arrival, an occluded proximal LAD, and a case that is won with mechanical support and PCI together:
- * ACLS alone does not hold, ECMO alone distends the left ventricle, and the arrhythmia only stops once the artery is open.
- * Based on a published case report of ECPELLA (VA-ECMO with an Impella CP) for refractory ischemic VF.
+ * A witnessed collapse in VF, a quick ROSC, and an anterolateral STEMI (proximal LAD occlusion) on the first 12-lead. The case is five decisions
+ * with time to watch the consequences between them: stabilize in the ED or go to the cath lab (an ED that keeps running ACLS re-arrests him);
+ * on the table he goes back into VF, and the question is what to do about it: mechanical support first (ECPELLA: VA-ECMO with an Impella CP),
+ * because opening the artery with no circulation is a death on the table; then PCI with support kept running; then keep the support after reperfusion.
+ * ECMO alone distends the left ventricle and needs a vent. Based on a published case report of ECPELLA for refractory ischemic VF.
  */
+// ---- pacing: case seconds, all in one place so the case is easy to tune. Dwells count from the state change that starts them (a flag, a rhythm).
+const QUICK_ROSC_S = 8;           // from the start to the first shock (it repeats until it converts)
+const POST_ROSC_DWELL_S = 30;     // perfusing after ROSC (ROSC itself is called ~10 s after conversion) before Decision 1
+const ED_REARREST_S = 30;         // an ED that keeps running ACLS: perfusing this long before he re-arrests into VF
+const ED_REARREST_EVERY_S = 60;   // ... and again this long after if he is still in the ED
+const DECISION1_REPEAT_S = 120;   // the cath lab prompt comes back this often
+const LAB_STABLE_S = 25;          // on the table, stable, before he goes back into VF
+const LAB_ARREST_DWELL_S = 18;    // in VF in the lab before Decision 2: the consequences show first
+const DECISION2_REPEAT_S = 60;    // the support prompt comes back this often after a wrong answer
+const UNSUPPORTED_MID_S = 12;     // straight to PCI with no support: when he visibly worsens
+const UNSUPPORTED_DEATH_S = 28;   // ... and when he dies, counted from the choice
+const ECMO_ALONE_S = 42;          // on ECMO alone before the LV distension prompt
+const ECPELLA_DWELL_S = 45;       // on full support in VF before Decision 3 (PCI)
+const DECISION3_REPEAT_S = 60;
+const RECOVERY_DWELL_S = 38;      // after reperfusion before Decision 4
+const STORM_S = 12;               // transient ROSC before VF recurs (until the artery is open)
+const STORM_EVERY_S = 25;
+
 // The circuit and the pump are built into the patient from the start, switched off: placing them is then a live change, not a rebuild.
 const ECMO = { devices: { ecmo: { flowLpm: 4 } } };
 const IMPELLA = { devices: { impella: { level: 6 } } };
 const BOTH = { devices: { ecmo: { flowLpm: 4 }, impella: { level: 6 } } }; // one `devices` object: spreading ECMO and IMPELLA together would keep only the second
+const VF = { patient: { rhythm: "vf-coarse" } };
+const SINUS = { patient: { rhythm: "sinus" } };
 
 export const ECPELLA: CaseDef = {
   id: "ecpella",
   title: "Collapse at home",
   tier: "hard",
-  blurb: "Refractory VF and polymorphic VT after a witnessed collapse.",
+  blurb: "A witnessed collapse in VF, a quick ROSC and a STEMI. Where does he go, and what keeps him alive?",
   card: {
-    presents: "58-year-old man who collapsed at home. His daughter, a medical student, started CPR at once. EMS found VF and polymorphic VT, gave at least six shocks, and ACLS is still running. There is transient ROSC, then VF again.",
+    presents: "62-year-old man who collapsed at home. His wife, a nurse, started CPR at once. EMS found VF and polymorphic VT, shocked him and gave amiodarone and lidocaine. He is back in the ED with CPR in progress. ROSC comes quickly, and the post-ROSC 12-lead shows an anterolateral STEMI.",
     pmh: "Hypertension, hyperlipidemia. Southeast Asian man. No known coronary disease.",
-    info: ["Amiodarone and lidocaine already given in the field; the rhythm is refractory to both.", "An ECG during a brief ROSC is the only 12-lead you will get."],
+    info: ["The post-ROSC ECG shows anterolateral ST elevation: a proximal LAD occlusion.", "After ROSC his pressure holds, but his ventricle is stunned (ejection fraction about 0.3, high filling pressure) and ventricular ectopy is frequent."],
   },
   start: { lesions: [{ artery: "LAD", occluded: true, position: 0.1 }], seed: 7, devices: { ecmo: { flowLpm: 0, sweepLpm: 3, fio2: 1 }, impella: { model: "CP", level: 0 } } },
   opening: { rhythm: "vf-coarse", cpr: true, drugs: [{ drug: "epinephrine", mg: 1 }, { drug: "amiodarone", mg: 300 }, { drug: "lidocaine", mg: 100 }] },
   stable: (p) => p.map >= 55 && !p.dead,
   points: { survive: 30, stable: 20, harm: 15 },
-  limitS: 1800,
+  limitS: 2400,
   musts: [
-    { flag: "ecmoCalled", label: "call for mechanical circulatory support early" },
+    { flag: "cathLab", label: "take him to the cath lab promptly after ROSC" },
+    { flag: "mcs", label: "start mechanical circulatory support (ECPELLA) before PCI" },
     { flag: "vented", label: "vent the left ventricle (Impella)" },
-    { flag: "pciOrdered", label: "take the patient to the cath lab for PCI" },
+    { flag: "pciOrdered", label: "do the PCI with support running" },
   ],
   checkpoints: [
-    // 1. Arrival: what now?
+    // ---- the team's hands: compressions go on at an arrest and off at ROSC
+    { id: "cprOff", when: (p) => p.arrest === "rosc" && p.cpr && p.rhythmClass === "perfusing", repeatAfterS: 5, outcome: { cpr: false } },
+    { id: "cprOn", when: (p) => p.arrest === "arrest" && !p.cpr, repeatAfterS: 5, outcome: { cpr: true } },
+
+    // ---- 1. The quick ROSC: shock until he converts
     {
-      id: "arrival", atS: 0, forbids: ["ecmoCalled"], repeatAfterS: 150,
+      id: "quickRosc", atS: QUICK_ROSC_S, forbids: ["rosc1"], repeatAfterS: 6,
+      outcome: { shock: { joules: 200, onSuccess: { patch: SINUS, flags: ["rosc1"], reveal: ["The shock converts him. A pulse returns. The 12-lead shows anterolateral ST elevation: a proximal LAD occlusion."] }, onFail: { reveal: ["The shock does not convert him. Compressions resume."] } } },
+    },
+
+    // ---- Decision 1: the ED or the cath lab (after the post-ROSC hemodynamics have played)
+    {
+      id: "disposition", requires: ["rosc1"], forbids: ["cathLab"], when: (p) => p.rhythmClass === "perfusing" && p.arrest !== "arrest", forS: POST_ROSC_DWELL_S, repeatAfterS: DECISION1_REPEAT_S,
       prompt: {
-        text: "VF and polymorphic VT keep coming back through every shock, amiodarone and lidocaine. CPR is in progress. What is your next step?",
+        text: "He has a pulse and his pressure is holding, but the ventricle is stunned (ejection fraction about 0.3, high filling pressure), ventricular ectopy is frequent and the 12-lead shows an anterolateral STEMI. What do you do?",
         options: [
-          { label: "Keep going with ACLS: another shock, another amiodarone dose", points: -5, correct: false, why: "Refractory VF will not respond to a seventh shock. Every minute of low-flow CPR costs brain and heart; mechanical support has to be started now.", outcome: { reveal: ["Another round of shocks and drugs. VF resumes within seconds of each brief ROSC."] } },
-          { label: "Activate the mechanical-support team: ECPR, interventional cardiology, CT surgery, ICU", points: 15, correct: true, why: "Refractory VF with a likely coronary cause is the indication for ECPR. The team has to be called while CPR continues.", outcome: { flags: ["ecmoCalled"], reveal: ["Interventional cardiology and CT surgery are on the way. They want to place VA-ECMO and an Impella while compressions continue."] } },
-          { label: "Give a bolus of sodium bicarbonate and calcium and keep compressing", points: -5, correct: false, why: "Neither treats refractory VF from an occluded artery. They delay the one thing that will.", outcome: { reveal: ["No change in the rhythm."] } },
+          { label: "Activate the cath lab and take him for emergent angiography", points: 15, correct: true, why: "A STEMI after ROSC needs immediate angiography. The artery is the cause of the arrest and it will cause the next one; every minute in the ED is a minute of ischemia.", outcome: { flags: ["cathLab"], reveal: ["The cath lab is activated. He is on the table within minutes, with the team and the devices on standby."] } },
+          { label: "Keep running ACLS in the ED: more amiodarone, a pressor, observe", points: -10, correct: false, why: "Drugs do not treat an occluded LAD. Stabilizing him in the ED only gives the ischemia time to re-arrest him.", outcome: { flags: ["edWorse"], reveal: ["Another amiodarone bolus and a pressor. The ectopy does not settle and the ST elevation does not change."] } },
+          { label: "Wait for the troponin and a CT of the head before deciding", points: -10, correct: false, why: "An ECG with ST elevation is enough. A troponin only confirms what the 12-lead shows, and the CT delays reperfusion.", outcome: { flags: ["edWorse"], reveal: ["He goes for a CT. The ectopy is increasing."] } },
         ],
       },
     },
-    // 2. Which device strategy
+    // An ED that keeps running ACLS: he goes back into VF, is shocked again, and the question comes back
+    { id: "edRearrest", requires: ["edWorse"], forbids: ["cathLab"], when: (p) => p.rhythmClass === "perfusing" && p.arrest === "rosc", forS: ED_REARREST_S, repeatAfterS: ED_REARREST_EVERY_S, outcome: { patch: VF, cpr: true, reveal: ["He re-arrests in the ED: VF again."] } },
+    { id: "edShock", requires: ["edWorse"], forbids: ["cathLab"], when: (p) => p.rhythmClass === "vf", repeatAfterS: 6, outcome: { shock: { joules: 200, onSuccess: { patch: SINUS, reveal: ["Shocked back to a perfusing rhythm. The STEMI is unchanged."] }, onFail: { reveal: ["No conversion. Compressions continue."] } } } },
+
+    // ---- In the lab: stable on the table, then back into VF
+    { id: "labArrest", requires: ["cathLab"], forbids: ["labArrested"], when: () => true, forS: LAB_STABLE_S, outcome: { patch: VF, cpr: true, flags: ["labArrested"], reveal: ["On the table, as the wire is about to cross, he goes into VF again. Compressions restart."] } },
+
+    // ---- Decision 2: what now?
     {
-      id: "device", requires: ["ecmoCalled"], forbids: ["deviceChosen"], repeatAfterS: 60,
+      id: "device", requires: ["labArrested"], forbids: ["deviceChosen", "unsupportedPci"], when: (p) => p.rhythmClass !== "perfusing", forS: LAB_ARREST_DWELL_S, repeatAfterS: DECISION2_REPEAT_S,
       prompt: {
-        text: "The team is ready. What do you want placed?",
+        text: "He is in VF in the lab, the LAD is occluded and compressions are the only flow. What now?",
         options: [
-          { label: "VA-ECMO alone", points: 5, correct: false, why: "VA-ECMO restores flow, but in VF the left ventricle cannot eject. It distends against the ECMO afterload, the aortic valve stays shut and pulmonary edema follows. It needs a vent.", outcome: { flags: ["deviceChosen", "ecmoOnly"], patch: ECMO, reveal: ["VA-ECMO is running at 4 L/min. Perfusion is back, but the LV is not ejecting."] } },
-          { label: "VA-ECMO with an Impella CP (ECPELLA)", points: 20, correct: true, why: "The Impella vents the left ventricle while ECMO carries the circulation, which is what lets a fibrillating, ischemic heart rest until the artery is open.", outcome: { flags: ["deviceChosen", "vented"], patch: BOTH, reveal: ["VA-ECMO is running at 4 L/min and the Impella CP is unloading the LV."] } },
+          { label: "Mechanical support first: VA-ECMO with an Impella CP (ECPELLA), then revascularize", points: 25, correct: true, why: "The Impella vents the left ventricle while ECMO carries the circulation, which is what lets a fibrillating, ischemic heart rest and lets the operator open the artery on a perfused patient.", outcome: { flags: ["deviceChosen", "mcs", "vented"], patch: BOTH, reveal: ["VA-ECMO is running at 4 L/min and the Impella CP is unloading the LV."] } },
+          { label: "VA-ECMO alone", points: 5, correct: false, why: "VA-ECMO restores flow, but in VF the left ventricle cannot eject. It distends against the ECMO afterload, the aortic valve stays shut and pulmonary edema follows. It needs a vent.", outcome: { flags: ["deviceChosen", "mcs", "ecmoOnly"], patch: ECMO, reveal: ["VA-ECMO is running at 4 L/min. Perfusion is back, but the LV is not ejecting."] } },
+          { label: "Proceed straight to PCI of the LAD", points: -25, correct: false, why: "Opening the artery is the cure, but he has no circulation to carry him through the procedure. Revascularization on compressions alone ends in refractory shock before the stent is in. Support first, then the artery.", outcome: { flags: ["unsupportedPci"], reveal: ["The operator crosses the lesion on compressions alone."] } },
           { label: "Intra-aortic balloon pump", points: -10, correct: false, why: "A balloon pump needs a rhythm and a native output to augment. It does nothing in VF.", outcome: { flags: ["iabpOnly"], reveal: ["The balloon pump has nothing to augment. VF continues and flow is still CPR-only."] } },
+          { label: "More shocks and another amiodarone bolus", points: -5, correct: false, why: "Drugs and shocks do not fix an electrical storm that comes from an occluded artery.", outcome: { reveal: ["VF persists."] } },
         ],
       },
     },
-    // 2b. Complication of ECMO alone: LV distension
+    // Straight to PCI with no support: the consequence is visible, then final
+    { id: "unsupportedWorse", requires: ["unsupportedPci"], forbids: ["deviceChosen", "unsupportedWorse"], when: () => true, forS: UNSUPPORTED_MID_S, outcome: { flags: ["unsupportedWorse"], reveal: ["Compressions cannot hold a perfusion pressure through the procedure; the pressure stays around fifty."] } },
+    { id: "unsupportedDeath", requires: ["unsupportedPci"], forbids: ["deviceChosen"], when: () => true, forS: UNSUPPORTED_DEATH_S, outcome: { end: "fail", reveal: ["He cannot be resuscitated without support and dies in refractory shock before the LAD is opened."] } },
+
+    // ---- A complication of ECMO alone: LV distension
     {
-      id: "distension", branch: true, requires: ["ecmoOnly"], forbids: ["vented"], when: (p) => p.ecmo, forS: 45, repeatAfterS: 60,
+      id: "distension", branch: true, requires: ["ecmoOnly"], forbids: ["vented"], when: (p) => p.ecmo, forS: ECMO_ALONE_S, repeatAfterS: 60,
       prompt: {
         text: "On ECMO alone the arterial line is non-pulsatile, the LV looks dilated on echo and the aortic valve is not opening. The lungs are filling. How do you vent the LV?",
         options: [
@@ -67,39 +113,41 @@ export const ECPELLA: CaseDef = {
         ],
       },
     },
-    // 3. Support is on, VF persists: the artery
+
+    // ---- Decision 3: on support, still in VF: the artery
     {
-      id: "artery", requires: ["vented"], forbids: ["pciOrdered"],
-      when: (p) => p.ecmo, forS: 20,
+      id: "artery", requires: ["vented"], forbids: ["pciOrdered"], when: (p) => p.ecmo, forS: ECPELLA_DWELL_S, repeatAfterS: DECISION3_REPEAT_S,
       prompt: {
-        text: "Flow is established and the patient is perfusing on support, but VF keeps recurring. The ECG shows anterior ST elevation. What now?",
+        text: "Flow is established and he is perfusing on ECMO and Impella, but he remains in VF. The LAD is still occluded. What now?",
         options: [
-          { label: "Emergency coronary angiography and PCI", points: 20, correct: true, why: "The VF is driven by an open ischemic territory. Support buys time; opening the artery is what ends the arrhythmia.", outcome: { flags: ["pciOrdered"], order: "pci", reveal: ["Proximal LAD occlusion on the angiogram. PCI is under way."] } },
-          { label: "More shocks and a second amiodarone bolus", points: -5, correct: false, why: "Drugs and shocks do not fix an electrical storm that comes from ischemia.", outcome: { reveal: ["VF persists."] } },
+          { label: "PCI of the proximal LAD with ECMO and Impella kept running", points: 20, correct: true, why: "The VF is driven by an open ischemic territory. Support buys time on the table; opening the artery is what ends the arrhythmia.", outcome: { flags: ["pciOrdered"], order: "pci", reveal: ["Proximal LAD occlusion on the angiogram. PCI is under way with ECMO and Impella running."] } },
+          { label: "Wean ECMO to test his rhythm before the PCI", points: -10, correct: false, why: "Support is what keeps him alive through the procedure. Taking it away before the artery is open returns him to compressions.", outcome: { reveal: ["The team holds off: flow is his only perfusion until the artery is open."] } },
           { label: "Systemic fibrinolysis", points: -10, correct: false, why: "Lysis is a poor choice after prolonged CPR and with cannulas in: bleeding risk is high and PCI is available.", outcome: { reveal: ["The team declines: bleeding risk after CPR and cannulation is too high."] } },
+          { label: "More shocks and a second amiodarone bolus", points: -5, correct: false, why: "Drugs and shocks do not fix an electrical storm that comes from ischemia.", outcome: { reveal: ["VF persists."] } },
         ],
       },
     },
     // The storm: transient ROSC, then VF again until the artery is open
     {
-      id: "storm", repeatAfterS: 25,
-      when: (p) => p.arrest === "rosc" && !p.pci, forS: 12,
-      outcome: { patch: { patient: { rhythm: "vf-coarse" } }, reveal: ["VF resumes."] },
+      id: "storm", requires: ["labArrested"], repeatAfterS: STORM_EVERY_S,
+      when: (p) => p.rhythmClass === "perfusing" && p.arrest === "rosc" && !p.pci, forS: STORM_S,
+      outcome: { patch: VF, reveal: ["VF resumes."] },
     },
     // PCI done: the storm ends
     {
       id: "reperfused", when: (p) => p.pci,
-      outcome: { patch: { patient: { rhythm: "sinus" } }, flags: ["reperfused"], reveal: ["Flow is restored in the LAD. VF and VT stop immediately. Pressor requirements remain high."] },
+      outcome: { patch: SINUS, flags: ["reperfused"], reveal: ["Flow is restored in the LAD. VF and VT stop immediately. The ventricle is stunned and he stays support-dependent."] },
     },
-    // 4. After reperfusion
+
+    // ---- Decision 4: after reperfusion, once the recovery has played
     {
-      id: "after", requires: ["reperfused"],
+      id: "after", requires: ["reperfused"], when: () => true, forS: RECOVERY_DWELL_S,
       prompt: {
-        text: "VF has stopped with PCI, but pressor requirements remain high. What are your next steps?",
+        text: "VF has stopped with PCI, but the ventricle is stunned (ejection fraction very low) and he is support-dependent. What are your next steps?",
         options: [
-          { label: "Decannulate now that the rhythm is back", points: -10, correct: false, why: "The myocardium is stunned and pressor needs are high. Taking support away now risks a return to shock.", outcome: { end: "fail", reveal: ["The patient decompensates after decannulation."] } },
+          { label: "Decannulate now that the rhythm is back", points: -10, correct: false, why: "The myocardium is stunned and he is support-dependent. Taking support away now risks a return to shock.", outcome: { end: "fail", reveal: ["The patient decompensates after decannulation."] } },
           { label: "Keep ECMO and Impella, admit to the cardiac ICU, and wean by echo and pressor needs", points: 20, correct: true, why: "ECMO and Impella stay until the ventricle recovers. The ICU team watches for the complications of support: bleeding, limb ischemia, abdominal compartment syndrome.", outcome: { end: "success", reveal: ["Admitted to the CTICU on ECMO and Impella, with a plan to wean."] } },
-          { label: "Send the patient to the ward on high-dose pressors", points: -15, correct: false, why: "A patient on mechanical support and high pressors belongs in a cardiac ICU.", outcome: { end: "fail", reveal: ["The patient is not safe for the ward."] } },
+          { label: "Send the patient to the ward on support", points: -15, correct: false, why: "A patient on mechanical support belongs in a cardiac ICU.", outcome: { end: "fail", reveal: ["The patient is not safe for the ward."] } },
         ],
       },
     },
