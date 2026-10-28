@@ -3,7 +3,7 @@
 // The panel lives at the top of the dock's Support tab and appears when the patient arrests; the overlay and the banner sit in the 3D view.
 import { ARREST } from "../config/arrest";
 import type { ArrestDrug, RhythmClass } from "../sim/arrest";
-import { $, S, sim, inCases, on, range, sel } from "./state";
+import { $, S, sim, inCases, on, range } from "./state";
 import { setDockTab } from "./dock";
 import { adoptSimState } from "./model";
 import { rhythmPickerUi } from "./rhythmPicker";
@@ -20,6 +20,8 @@ let lastNote = "";         // the result of the last action (a refusal, a shock)
 /** Set when the patient died on the cases page (the case runner ends the case). */
 export const arrestLoss = { lost: false };
 
+/** One ACLS cycle: two minutes of compressions between rhythm checks. */
+const CYCLE_S = 120;
 const num = (id: string) => +$<HTMLInputElement>(id).value;
 /** A rhythm the simulation changed (a shock converted it, ROSC) is the patient's now: take it over before the frame loop hands S.rhythm back to the simulation. */
 let seenRhythm: string = sim.patient?.rhythm ?? "sinus";
@@ -36,9 +38,12 @@ export function wireArrest() {
   on("a_cpr", () => act(sim.arrest?.cpr.on ? sim.stopCpr() : sim.startCpr(cprPatch())));
   for (const id of ["a_rate", "a_depth", "a_quality"]) range(id, () => { if (sim.arrest?.cpr.on) sim.setCpr(cprPatch()); arrestUi(); });
   on("a_sync", () => { sync = !sync; arrestUi(); });
-  sel("a_joules", () => arrestUi());
+  $("a_energy").addEventListener("click", (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-j]");
+    if (b) { $<HTMLInputElement>("a_joules").value = b.dataset.j!; arrestUi(); }
+  });
   on("a_shock", () => {
-    const r = sim.shock({ joules: +$<HTMLSelectElement>("a_joules").value, sync });
+    const r = sim.shock({ joules: +$<HTMLInputElement>("a_joules").value, sync });
     lastNote = r.note ?? (r.discharged ? (r.success ? "Shock delivered: the rhythm converted." : "Shock delivered: no conversion.") : "No shock delivered.");
     arrestSync(); arrestUi();
   });
@@ -67,27 +72,38 @@ export function arrestUi() {
     lastStatus = status;
   }
   $("arrest").dataset.status = status;
-  $("a_state").textContent = status === "arrest" ? "Cardiac arrest" : status === "rosc" ? "ROSC: pulse is back" : "Declared dead";
+  $("a_state").textContent = status === "arrest" ? "Cardiac arrest" : status === "rosc" ? "ROSC" : "Dead";
   const rc = st.rhythmClass;
-  $("a_rhythm").textContent = CLASS_LABEL[rc]; $("a_shockable").textContent = SHOCKABLE[rc];
+  $("a_rhythm").textContent = CLASS_LABEL[rc];
+  $("a_shockable").textContent = SHOCKABLE[rc]; $("a_shockable").classList.toggle("go", status === "arrest" && (rc === "vf" || rc === "pulselessVt"));
   $("a_arrestS").textContent = clock(st.arrestS);
-  $("a_noflow").textContent = `${clock(st.noFlowS)} of ${clock(ARREST.deathAfterNoFlowS)}`;
+  $("a_noflow").textContent = clock(st.noFlowS);
   $("a_noflow").style.color = st.noFlowS >= ARREST.injuryOnsetNoFlowS ? "var(--bad)" : st.noFlowS > 120 ? "var(--warn)" : "var(--ink)";
+  const bar = $("a_noflowbar"); bar.style.width = `${Math.min(100, (100 * st.noFlowS) / ARREST.deathAfterNoFlowS)}%`;
+  bar.style.background = st.noFlowS >= ARREST.injuryOnsetNoFlowS ? "var(--bad)" : st.noFlowS > 120 ? "var(--warn)" : "var(--ok)";
   $("a_injury").textContent = `${Math.round(st.injury * 100)}%`;
   $("a_injury").style.color = st.injury > 0.5 ? "var(--bad)" : st.injury > 0 ? "var(--warn)" : "var(--ink)";
-  $("a_cpr").classList.toggle("on", a.cpr.on); $("a_cpr").textContent = a.cpr.on ? "CPR on (stop)" : "Start CPR";
+  // the two-minute cycle: it restarts at the arrest and at every shock, and says when the rhythm is next checked
+  const ls = st.lastShock, cycleFrom = ls ? ls.tS : 0, into = (a.tS - cycleFrom) % CYCLE_S, left = CYCLE_S - into;
+  $("a_cycle").textContent = status === "arrest" ? clock(left) : "—";
+  $("a_cyclebox").classList.toggle("now", status === "arrest" && left <= 10);
+  const cprBtn = $("a_cpr"); cprBtn.classList.toggle("on", a.cpr.on); cprBtn.textContent = a.cpr.on ? "CPR running: stop" : "Start CPR";
   $("a_ratev").textContent = `${num("a_rate")}/min`; $("a_depthv").textContent = `${num("a_depth")} cm`; $("a_qualityv").textContent = `${num("a_quality")}%`;
-  $("a_output").textContent = a.cpr.on ? `${Math.round(st.cpr.output * 100)}% of normal` : "off";
-  $("a_sync").classList.toggle("on", sync); $("a_sync").textContent = sync ? "On" : "Off";
+  $("a_output").textContent = a.cpr.on ? `${Math.round(st.cpr.output * 100)}% of normal output` : "no compressions: no flow";
+  for (const b of document.querySelectorAll<HTMLButtonElement>("#a_energy button")) b.classList.toggle("on", b.dataset.j === $<HTMLInputElement>("a_joules").value);
+  const syncBtn = $("a_sync"); syncBtn.classList.toggle("on", sync); syncBtn.textContent = sync ? "Sync on" : "Sync off"; syncBtn.setAttribute("aria-pressed", String(sync));
   $("a_shock").textContent = sync ? "Cardiovert" : "Shock";
   for (const id of ["a_cpr", "a_shock", "a_epi", "a_amio", "a_lido"]) $<HTMLButtonElement>(id).disabled = dead;
   $("a_shocks").textContent = String(st.shocks);
-  const ls = st.lastShock;
-  $("a_last").textContent = ls ? `${ls.joules} J${ls.sync ? " sync" : ""}, ${clock(a.tS - ls.tS)} ago: ${ls.success ? "converted" : "no conversion"}` : "none yet";
+  const lastEl = $("a_last");
+  lastEl.textContent = ls ? `${ls.joules} J${ls.sync ? " sync" : ""}, ${clock(a.tS - ls.tS)} ago: ${ls.success ? "converted" : "no conversion"}` : "No shocks yet";
+  lastEl.parentElement!.classList.toggle("ok", !!ls?.success); lastEl.parentElement!.classList.toggle("miss", !!ls && !ls.success);
   for (const d of DRUGS) {
     const s = since(d), n = a.drugs.filter((x) => x.drug === d).length, el = $("a_t_" + d);
-    el.textContent = s === null ? "not given" : `${n}x · ${clock(s)} ago`;
-    el.style.color = d === "epinephrine" && s !== null && s >= ARREST.drugs.epinephrine.minIntervalS ? "var(--warn)" : "var(--muted)";
+    const due = d === "epinephrine" && s !== null && s >= ARREST.drugs.epinephrine.minIntervalS;
+    el.textContent = s === null ? (d === "epinephrine" ? "give now" : "not given") : due ? `${n}x · due (${clock(s)})` : `${n}x · ${clock(s)} ago`;
+    el.classList.toggle("due", due);
+    $(d === "epinephrine" ? "a_epi" : d === "amiodarone" ? "a_amio" : "a_lido").classList.toggle("due", due);
   }
   $("a_amio").textContent = a.drugs.some((x) => x.drug === "amiodarone") ? "Amiodarone 150 mg" : "Amiodarone 300 mg";
   $("a_note").textContent = lastNote;
