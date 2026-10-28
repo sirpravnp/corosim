@@ -18,6 +18,11 @@ export interface PlaygroundState {
    */
   structural?: { id: LesionId; values: Record<string, number> };
   heart?: HeartSpec;
+  /**
+   * The Valves tab's preset the `heart` was filled from (`withValvePreset`). A page-only label: it is not part of the spec or the link,
+   * and a state rebuilt from a spec does not have it. The heart is the truth; the label only names where it started.
+   */
+  valvePreset?: LesionId;
   pericardium?: PericardiumSpec;
   /** Ventricular interdependence through the septum (`PatientSpec.septum`). */
   septum?: boolean;
@@ -144,6 +149,31 @@ export function addBolus(state: PlaygroundState, kind: NonNullable<FluidSpec["gi
 }
 /** The IV volume of the fluids section's doses, ml. */
 export const bolusTotalMl = (state: PlaygroundState) => (state.fluids?.given ?? []).reduce((a, d) => a + d.ml, 0);
+
+/** Round numbers and sort keys, so two hearts that mean the same compare equal. */
+const canon = (x: unknown): string => JSON.stringify(x, (_k, v) => (typeof v === "number" ? +v.toFixed(4) : v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v as object).sort(([a], [b]) => (a < b ? -1 : 1))) : v));
+const withoutVolume = (h: HeartSpec | undefined): HeartSpec => { const { volumeMl: _v, ...rest } = h ?? {}; return rest; };
+
+/**
+ * Fill the structural heart from a lesson preset at its default values (the Valves tab's Preset menu): every valve, shunt and
+ * defect field the lesson sets, plus its systemic fields. The patient's baseline blood volume is the patient's own and stays.
+ * The per-valve controls and the defect settings then edit the filled heart; `valvePreset` keeps the name. Pure.
+ */
+export function withValvePreset(state: PlaygroundState, id: LesionId): PlaygroundState {
+  const def = LESION_BY_ID[id];
+  if (!def) return state;
+  const heart: HeartSpec = { ...(heartOfPick({ id, values: defaults(def) }) ?? {}) };
+  const volume = (state.structural ? heartOfPick(state.structural) : state.heart)?.volumeMl;
+  if (volume) heart.volumeMl = volume;
+  return { ...state, structural: undefined, valvePreset: id, heart: isEmpty(heart) ? undefined : heart };
+}
+/** True when the heart is no longer what `valvePreset` fills in (a valve, a defect or a baseline field was edited; the blood volume does not count). */
+export function valvePresetModified(state: PlaygroundState): boolean {
+  const id = state.valvePreset, def = id ? LESION_BY_ID[id] : undefined;
+  if (!def) return false;
+  const now = state.structural ? heartOfPick(state.structural) : state.heart;
+  return canon(withoutVolume(now)) !== canon(withoutVolume(heartOfPick({ id: def.id, values: defaults(def) })));
+}
 
 /** Set the patient's baseline blood volume (`heart.volumeMl`, extra ml); a lesion pick is turned into its heart fields first. 0 removes the field. Pure. */
 export function withBloodVolume(state: PlaygroundState, ml: number): PlaygroundState {

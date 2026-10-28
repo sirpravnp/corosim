@@ -97,7 +97,7 @@ add("support.paceRate", "support", num(40, 120), ["pacerate"]);
 add("support.iabp", "support", bool("Intra-aortic balloon pump (the legacy switch; devices.iabp is the same pump with settings, and the page's one switch edits both)."), ["m_iabp"]);
 add("support.impella", "support", bool("Microaxial left-ventricular pump (the legacy switch; devices.impella is the same pump with settings, and the page's one switch edits both)."), ["m_impella"]);
 
-// ---- structural heart (Valves tab; heart.volumeMl is on the Patient tab) -----------------------------------------------------------------------------------
+// ---- structural heart (Valves tab; the baseline fields pvri, svrScale, satLung, rvContractility, tof and volumeMl are on the Patient tab) -----------------------------------------------------------------------------------
 const VALVES = [["av", "aortic", 19, 34], ["mv", "mitral", 25, 33], ["tv", "tricuspid", 27, 36], ["pv", "pulmonary", 19, 29]] as const;
 for (const [k, name, lo, hi] of VALVES) {
   add(`heart.valves.${k}.open`, "valves", num(0, 1, `${name[0].toUpperCase()}${name.slice(1)} valve opening as a fraction of normal (1 = normal, 0 = atretic). Ignored when a prosthesis is set.`), ["pg:heart"]);
@@ -115,16 +115,16 @@ for (const [k, name, lo, hi] of VALVES) {
   }, []);
 }
 for (const k of ["pda", "asd", "vsd", "bt"] as const) add(`heart.${k}`, "valves", { type: "object", description: { pda: "Patent ductus arteriosus.", asd: "Atrial septal defect.", vsd: "Ventricular septal defect.", bt: "Modified Blalock-Taussig shunt, aorta to pulmonary artery." }[k], properties: { diameterMm: num(0, 40) } }, ["pg:heart"]);
-add("heart.tof", "valves", { type: "object", description: "Tetralogy of Fallot.", properties: { vsdMm: num(0, 40), rvotFrac: num(0, 1, "Right ventricular outflow tract opening as a fraction of normal."), spasm: num(0, 1), override: num(0, 1), rvHypertrophy: num(0.2, 5) } }, ["pg:heart"]);
-add("heart.pvri", "valves", num(0.2, 60, "Pulmonary vascular resistance index, Wood units·m²."), ["pg:heart"]);
-add("heart.svrScale", "valves", num(0.1, 5, "Multiplies systemic vascular resistance."), ["pg:heart"]);
-add("heart.satLung", "valves", num(0.3, 1, "Saturation of blood leaving the lungs."), ["pg:heart"]);
-// (the baseline blood volume is the patient's own, so it lives in the Patient tab, not with the valves)
+add("heart.tof", "patient", { type: "object", description: "Tetralogy of Fallot.", properties: { vsdMm: num(0, 40), rvotFrac: num(0, 1, "Right ventricular outflow tract opening as a fraction of normal."), spasm: num(0, 1), override: num(0, 1), rvHypertrophy: num(0.2, 5) } }, ["pg:heart.tof"]);
+add("heart.pvri", "patient", num(0.2, 60, "Pulmonary vascular resistance index, Wood units·m²."), ["pg:heart.pvri"]);
+add("heart.svrScale", "patient", num(0.1, 5, "Multiplies systemic vascular resistance."), ["pg:heart.svrScale"]);
+add("heart.satLung", "patient", num(0.3, 1, "Saturation of blood leaving the lungs."), ["pg:heart.satLung"]);
+// (the baseline blood volume and the systemic fields are the patient's own, so they live in the Patient tab, not with the valves)
 add("heart.volumeMl", "patient", num(-1000, 5000, "Baseline blood volume: extra ml on the patient's normal (negative: less). Blood loss, hemorrhage and boluses act on top of it."), ["pg:heart.volumeMl"]);
 for (const k of ["lvSize", "laSize", "rvSize", "raSize"]) add(`heart.${k}`, "valves", num(0.05, 4, "Chamber volume as a multiple of normal."), ["pg:heart"]);
 for (const k of ["lvEes", "rvEes"]) add(`heart.${k}`, "valves", num(0.2, 5, "Multiplies the ventricle's end-systolic elastance (stunned or ischemic muscle)."), ["pg:heart"]);
 for (const k of ["lvStiffness", "rvStiffness"]) add(`heart.${k}`, "valves", num(0.2, 5, "Multiplies the ventricle's passive stiffness."), ["pg:heart"]);
-add("heart.rvContractility", "valves", num(0.2, 5, "Multiplies right ventricular contractility and stiffness."), ["pg:heart"]);
+add("heart.rvContractility", "patient", num(0.2, 5, "Multiplies right ventricular contractility and stiffness."), ["pg:heart.rvContractility"]);
 
 // ---- pericardium (its own tab) ----------------------------------------------------------------------------------------
 add("pericardium.effusionMl", "pericardium", num(0, 2000), ["pg:pericardium.effusionMl"]);
@@ -190,7 +190,7 @@ const GROUPS: Record<string, string> = {
   patient: "What the patient brought with them.",
   support: "Hemodynamic support (as in the app's Support tab). Atropine is drugs.atropine.",
   devices: "Mechanical support with settings. support.iabp / support.impella (true) mean the defaults: IABP 1:1 at correct timing, 40 ml; Impella CP at P6, correct position.",
-  heart: "Structural heart as on the Valves tab: valves {av|mv|tv|pv: {open 0..1, reg cm2, prosthesis}}, pda|asd|vsd|bt {diameterMm}, tof, pvri, svrScale, satLung, volumeMl (baseline blood volume, on the Patient tab), chamber sizes, elastance and stiffness. Use corosim_valve to replace, dilate, clip or repair a valve.",
+  heart: "Structural heart as on the Valves tab: valves {av|mv|tv|pv: {open 0..1, reg cm2, prosthesis}}, pda|asd|vsd|bt {diameterMm}, tof, pvri, svrScale, satLung, volumeMl (baseline blood volume, on the Patient tab with pvri, svrScale, satLung, rvContractility and tof), chamber sizes, elastance and stiffness. Use corosim_valve to replace, dilate, clip or repair a valve.",
   "heart.valves": "Per valve: native opening and regurgitant orifice, or a prosthesis. Several valves can be abnormal at once.",
 };
 type Node = Record<string, unknown>;

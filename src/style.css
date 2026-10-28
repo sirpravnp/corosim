@@ -314,6 +314,7 @@ a.askbtn span { margin-left: 5px; }
 .pg-prosthesis[hidden], .pg-ivresult[hidden] { display: none; }
 .pg-note { margin-top: 6px; }
 .pg-body details.fold { padding: 0; border: 0; }
+.pg-body [hidden], .pg > details[hidden] { display: none; }
 .ctl > [hidden] { display: none; }
 
 /* Settings dock: one tabbed panel for every control (Patient · Rhythm · Coronary · Valves · Support · Display) */
