@@ -162,13 +162,13 @@ export class DiffusionWidget {
     ctx.stroke();
 
     ctx.fillStyle = c.muted;
-    ctx.font = "12px IBM Plex Sans, sans-serif";
+    ctx.font = "12px Helvetica Neue, Helvetica, Arial, sans-serif";
     ctx.fillText("Capillary", 16, top + 16);
     ctx.fillText("0", padL, h - 18);
     ctx.fillText(`${Math.round(L)} µm`, padL + slabW - 28, h - 18);
     ctx.fillText(`${this.axisUm} µm scale`, padL + track - 88, h - 18);
     ctx.fillStyle = c.ink;
-    ctx.font = "600 13px IBM Plex Sans, sans-serif";
+    ctx.font = "600 13px Helvetica Neue, Helvetica, Arial, sans-serif";
     ctx.fillText("Oxygen across the slab", padL, 28);
   }
 }

@@ -123,21 +123,21 @@ export class FickWidget {
     ctx.fillRect(meterX, 28, meterW * frac, 8);
 
     ctx.fillStyle = c.ink;
-    ctx.font = "600 13px IBM Plex Sans, sans-serif";
+    ctx.font = "600 13px Helvetica Neue, Helvetica, Arial, sans-serif";
     ctx.textAlign = "left";
     ctx.fillText("High concentration", left - 70, my - chH / 2 - 14);
     ctx.textAlign = "right";
     ctx.fillText("Low concentration", right + 70, my - chH / 2 - 14);
     ctx.textAlign = "center";
     ctx.fillStyle = c.muted;
-    ctx.font = "12px IBM Plex Sans, sans-serif";
+    ctx.font = "12px Helvetica Neue, Helvetica, Arial, sans-serif";
     ctx.fillText(`membrane  ${this.params.thicknessUm.toFixed(1)} µm`, mid, my + chH / 2 + 28);
     ctx.fillStyle = c.ok;
     ctx.font = "600 15px IBM Plex Mono, monospace";
     ctx.fillText(`J = ${flux.toFixed(1)}`, mid, h - 28);
     ctx.textAlign = "left";
     ctx.fillStyle = c.muted;
-    ctx.font = "11px IBM Plex Sans, sans-serif";
+    ctx.font = "11px Helvetica Neue, Helvetica, Arial, sans-serif";
     ctx.fillText("Flux vs 2× rest", meterX, 22);
   }
 }
