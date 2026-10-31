@@ -23,6 +23,7 @@ Find out, variable by variable and over time, whether the **core engine** (`Simu
 - `scripts/eval/grammar.ts`: expectation cell grammar (`60..80`, `d+10..+30`, `x1.2..x1.5`, `up|down|same`, `true|false`, `~regex`, `p0.4..0.7`; blank, `-` or `?` = no opinion).
 - `scripts/eval/run.ts`: `list`, `template`, `observe [--seeds N --jobs N]`, `check`. Output goes to `scripts/eval/out/` (git-ignored).
 - `scripts/eval/ef-audit.ts`: shows the three EF definitions side by side.
+- Solver: there is one integrator, the core engine (`src/physics/core/`). The structural model (`physics/structural.ts`: chambers, vessels, valves, shunts) is what it is built from, and `analyze()`/`simulate()` run it with no reflexes. The ACS `Simulation` runs the same engine plus the coronary, ischemia, rhythm and autonomic layers.
 - Engine selection: core is used by the Simulator page; legacy is the default of `new Simulation()`. The core still calls the legacy `circulation()` for ischemic fractions, rhythm rate and demand factor.
 - Known definitional split (do not "fix", just keep it labelled): `lvEf` (chamber volumes, Monitor) vs `lvEfEstimate` (aortic-valve stroke volume, smoothed; ischemia panel, MCP, cath echo). They differ with an Impella running (0.30 vs 0.13) and for up to ~0.10 in the first minute after a change.
 - Empty by design: `lactate` (not modelled), `lysisSucceeded` until treated, cath fields on an occluded vessel.
@@ -59,7 +60,7 @@ Add a state option `speed: 1 | 3 | 6` (the page's speed buttons use `minutes` pe
 Done when: a table shows the outcome at equal clinical minutes for 1x/3x/6x; a difference beyond 5% (or arrest at a different clinical time) is reported as a finding (the earlier hemorrhage bug was exactly this class).
 
 ### 6. Stochastic outcomes with many seeds
-Run 40 seeds, short runs, for: fibrinolysis success (state `lad-occlusion-then-lysis`, `revascularize("lysis")`, expect about 55%), defibrillation of VF at 200 J (`s.shock({joules:200})` after 20 s), VT/VF onset rate on proximal LAD occlusion over 6 h, PVC burden after reperfusion. Report the observed rate with a 95% binomial interval, compared with the cell grammar's `p<lo>..<hi>`.
+Run 24 seeds (the owner's choice: 8 for deterministic states, 24 for stochastic ones), short runs, for: fibrinolysis success (state `lad-occlusion-then-lysis`, `revascularize("lysis")`, expect about 55%), defibrillation of VF at 200 J (`s.shock({joules:200})` after 20 s), VT/VF onset rate on proximal LAD occlusion over 6 h, PVC burden after reperfusion. Report the observed rate with a 95% binomial interval, compared with the cell grammar's `p<lo>..<hi>`.
 Done when: each rate has an interval in the report.
 
 ### 7. Extend the registry
@@ -81,7 +82,7 @@ Option A: ischemia panel, MCP state and cath echo read the same chamber-volume E
 Add `.github/workflows/eval.yml` modelled on `.github/workflows/tests-slow.yml`: nightly and on demand, runs `observe` (8 seeds, sharded by state) then `check`, uploads `out/` as an artifact, fails on invariants violations or spec failures. Not part of the deploy gate.
 
 ## Open questions for the owner (ask before assuming)
-1. Cover the structural/valve/congenital solver (`src/physics/structural.ts`) too, or only the ACS patient?
-2. Is 8 seeds fine for deterministic-ish states and 40 for stochastic outcomes?
+1. (Answered) The structural model is not a second solver: `simulate()` in `src/physics/structural.ts` runs the core engine (task A2) with a fixed rate and no reflexes. The adult patient's valve and shunt variables go in the registry (task 7). Still open: do you also want a spec family for the static Structural tab (`analyze()`, neonates, congenital lesions)?
+2. (Answered) 8 seeds for deterministic states, 24 for stochastic outcomes. At 24 seeds a rate near 55% has a 95% interval of about 35-74%: write rate expectations wide.
 3. Expectation source standard: PMID-cited literature, or clinical judgment marked as such?
 4. Unify the EF definitions (task 9), or keep two labelled ones?

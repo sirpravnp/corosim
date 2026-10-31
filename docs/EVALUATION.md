@@ -29,9 +29,9 @@ npx tsx scripts/eval/run.ts check                          # your cells vs obser
 ## Plan
 
 1. **Write expectations (owner: user).** Fill the template CSVs for the highest-value states first: healthy, LAD/RCA/LM occlusion, the three hemorrhage classes, norepinephrine, dobutamine. Fill only cells with an opinion, and put the source or reasoning in the note column.
-2. **First full run.** `observe` at 32 seeds over all 24 states (about 1 hour of compute), then `check`. Triage every failure as a model bug, a wrong expectation, or an ambiguous variable definition.
+2. **First full run.** `observe` at 8 seeds over all 24 states (about 10 minutes of compute; 24 seeds for stochastic outcomes), then `check`. Triage every failure as a model bug, a wrong expectation, or an ambiguous variable definition.
 3. **Widen coverage.**
-   - Registry: PV-loop metrics, JVP, and the structural, valve and congenital solver (a separate engine path, scope to be decided).
+   - Registry: PV-loop metrics, JVP, and the valve, shunt and congenital readings (same core engine, driven without reflexes by `analyze()`; see "Which engine is under test").
    - Edge states: multivessel disease, invalid and extreme inputs (stenosis outside 0..1, NaN, odd seeds), all 9 anatomy variants, drug and device combinations.
    - Invariants on every state: no NaN, MAP between DBP and SBP, fractions within 0..1, volumes conserved.
    - Time-scale invariance: the same event gives the same outcome at 1×, 3× and 6×.
@@ -45,7 +45,7 @@ npx tsx scripts/eval/run.ts check                          # your cells vs obser
 |---|---|---|
 | `core` engine | `LiveHeart`: beat-by-beat chamber/vessel model (`src/physics/core/`) | Simulator page (`src/page/state.ts`), cath lab page. **This is what the harness runs.** |
 | `legacy` engine | algebraic `circulation()` plus a per-beat Windkessel | `new Simulation()` defaults to it: the EKG page, a fresh MCP server (until `corosim_set_scenario` is given `engine: "core"`), regression fixtures |
-| structural 0D solver | `src/physics/structural.ts` | valve, shunt and congenital tab; separate engine, not covered yet |
+| structural model, driven statically | `analyze()` / `simulate()` in `src/physics/structural.ts` | Structural tab, neonates, `structural.json` fixtures. **Not a separate solver:** since task A2 `simulate()` runs the core engine on the same chambers, vessels and valves, with a fixed rate and no reflexes, ischemia or rhythm model |
 
 The core engine is not fully independent of the legacy one. It still calls legacy `circulation()` for the ischemic fractions, the rate the rhythm implies and the oxygen-demand factor, and the ischemia, infarct, rhythm, ECG and coronary-network modules are shared by both engines. Before the first live beat, circulation values (including EF) are the legacy estimate.
 
@@ -84,7 +84,7 @@ So the differences have three causes: (1) the two definitions diverge when a pum
 
 ## Open decisions
 
-- Cover the structural/valve/congenital solver in this spec, or only the ACS patient?
-- Seeds: 8 for the first pass, 32+ for stochastic outcomes (arrhythmia, lysis, defibrillation)?
+- ~~Cover the structural/valve/congenital readings?~~ Same core engine, so the adult patient's valve and shunt variables belong in the registry (plan task 7); the static Structural tab is a second, later spec family.
+- ~~Seeds~~ Decided: 8 for deterministic states, 24 for stochastic outcomes (arrhythmia, lysis, defibrillation). At 24 seeds a rate near 55% has a 95% interval of about 35-74%, so a spec for a rate must be written wide (e.g. `p0.35..0.75`).
 - Source standard for expectations: literature with PMIDs (as in `docs/ARREST.md`) or clinical judgment, marked as such?
 - Unify the EF definitions across panels (proposed above), or keep two labelled definitions?
