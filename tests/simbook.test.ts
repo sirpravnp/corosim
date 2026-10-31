@@ -5,8 +5,10 @@ import {
   solveCircuit,
   ohmIdentityHolds,
 } from "../src/simbook/circuit";
+import { nominalOrganFlows, solveAutoreg } from "../src/simbook/autoreg";
 import { advance, initChapter, recordPredictChoice, canAdvance } from "../src/simbook/runner";
-import { CHAPTER_4 } from "../src/simbook/chapters/chapter4";
+import { CHAPTER_3 } from "../src/simbook/chapters/chapter3";
+import { chapterById } from "../src/simbook/chapters";
 
 describe("simbook circuit", () => {
   it("MAP − CVP = CO × SVR at nominal settings", () => {
@@ -41,12 +43,42 @@ describe("simbook circuit", () => {
   });
 });
 
+describe("simbook autoreg", () => {
+  const targets = nominalOrganFlows();
+
+  it("holds brain flow on the plateau when MAP falls within range", () => {
+    const high = solveAutoreg(90);
+    const mid = solveAutoreg(70);
+    expect(high.organs.brain.status).toBe("plateau");
+    expect(mid.organs.brain.status).toBe("plateau");
+    expect(mid.organs.brain.flowLMin).toBeCloseTo(targets.brain, 3);
+    expect(mid.organs.brain.resistance).toBeLessThan(high.organs.brain.resistance);
+  });
+
+  it("gut loses plateau before brain when MAP is 60 mmHg", () => {
+    const s = solveAutoreg(60);
+    expect(s.organs.gut.status).toBe("below");
+    expect(s.organs.brain.status).toBe("plateau");
+    expect(s.organs.gut.flowLMin).toBeLessThan(targets.gut * 0.95);
+  });
+
+  it("branch flows sum to reported CO", () => {
+    const s = solveAutoreg(75);
+    const sum = (["brain", "kidney", "gut", "muscle"] as const).reduce((a, id) => a + s.organs[id].flowLMin, 0);
+    expect(sum).toBeCloseTo(s.cardiacOutputLMin, 4);
+  });
+});
+
 describe("simbook runner", () => {
   it("requires a predict choice before advancing", () => {
-    let v = initChapter(CHAPTER_4);
+    let v = initChapter(CHAPTER_3);
     while (v.block.kind !== "predict") v = advance(v);
     expect(canAdvance(v)).toBe(false);
     v = recordPredictChoice(v, 0);
     expect(canAdvance(v)).toBe(true);
+  });
+
+  it("maps legacy chapter hash ohm-circuit", () => {
+    expect(chapterById("ohm-circuit")?.id).toBe("perfusion-circuit");
   });
 });
