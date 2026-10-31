@@ -4,33 +4,30 @@ import { mountShell } from "../shell/shell";
 import { CHAPTERS, chapterById } from "./chapters";
 import {
   advance,
-  canAdvance,
   initChapter,
   predictRevealFor,
   recordPredictChoice,
   type ChapterView,
 } from "./runner";
 import { CircuitWidget, CircuitWidgetMode } from "./widgets/circuitWidget";
+import { DiffusionWidget } from "./widgets/diffusionWidget";
+import { FickWidget } from "./widgets/fickWidget";
+import { StarlingWidget } from "./widgets/starlingWidget";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
 mountShell({ page: "simbook", root: "../" });
 
+interface Tickable {
+  tick(dt: number): void;
+}
+
 let view: ChapterView | null = null;
-let circuit: CircuitWidget | null = null;
-let circuitMode: CircuitWidgetMode | null = null;
+let widget: Tickable | null = null;
+let widgetKey: string | null = null;
 let raf = 0;
 let lastT = 0;
-
-function widgetModeFor(v: ChapterView): CircuitWidgetMode {
-  let mode: CircuitWidgetMode = "pump";
-  for (let i = 0; i <= v.index; i++) {
-    const b = v.chapter.blocks[i];
-    if (b?.kind === "widget" && b.id === "circuit") mode = b.mode ?? "pump";
-  }
-  return mode;
-}
 
 function defaultChapterId(): string {
   const hash = location.hash.replace(/^#/, "");
@@ -44,6 +41,16 @@ function firstWidgetIndex(v: ChapterView): number {
 function widgetActive(v: ChapterView): boolean {
   const i = firstWidgetIndex(v);
   return i >= 0 && v.index >= i && !v.finished;
+}
+
+function activeWidgetKey(v: ChapterView): string | null {
+  if (!widgetActive(v)) return null;
+  let key = "";
+  for (let i = 0; i <= v.index; i++) {
+    const b = v.chapter.blocks[i];
+    if (b?.kind === "widget") key = `${b.id}|${b.mode ?? ""}`;
+  }
+  return key || null;
 }
 
 function renderList() {
@@ -84,36 +91,65 @@ function renderStep(v: ChapterView): string {
       ${picked != null && widgetActive(v) ? `<p class="sb-note">Use the simulation below, then continue.</p>` : ""}
       </div>`;
   }
-  if (b.kind === "widget" && b.mode === "autoreg") {
-    return `<div class="sb-prose"><p>Slide MAP and watch each organ defend (or lose) flow. Effective resistance falls on the plateau.</p></div>`;
+  if (b.kind === "widget") {
+    const hints: Record<string, string> = {
+      diffusion: "Adjust thickness, capillary density, metabolism, and flow. Watch the O₂ profile and anoxic depth.",
+      fick: "Change area, membrane thickness, and gradient; flux follows J = D·A·ΔC / x.",
+      starling: "Raise venous pressure, lower albumin, or increase permeability. Arrows show filtration vs reabsorption.",
+      circuit: b.mode === "autoreg"
+        ? "Slide MAP and watch each organ defend (or lose) flow."
+        : "Set pump output and gut radius; MAP follows from total SVR.",
+    };
+    return `<div class="sb-prose"><p>${hints[b.id] ?? "Use the simulation below."}</p></div>`;
   }
-  return `<div class="sb-prose"><p>Set pump output and gut radius. MAP follows from total SVR; check MAP − CVP = CO × SVR.</p></div>`;
+  return "";
+}
+
+function mountWidget(key: string) {
+  const canvas = $<HTMLCanvasElement>("sb-canvas");
+  const readout = $("sb-readout");
+  const controls = $("sb-controls");
+  const [id, mode] = key.split("|");
+  if (id === "diffusion") widget = new DiffusionWidget(canvas, readout, controls);
+  else if (id === "fick") widget = new FickWidget(canvas, readout, controls);
+  else if (id === "starling") widget = new StarlingWidget(canvas, readout, controls);
+  else if (id === "circuit") {
+    widget = new CircuitWidget(canvas, readout, controls, {
+      mode: (mode || "pump") as CircuitWidgetMode,
+      editableOrgan: "gut",
+      coRange: [2, 8],
+      radiusRange: [0.4, 1.4],
+      mapRange: [45, 110],
+    });
+  }
 }
 
 function ensureWidget() {
   const area = $<HTMLElement>("sb-widget-area");
-  if (!view || !widgetActive(view)) {
+  if (!view) {
+    area.hidden = true;
+    return;
+  }
+  const key = activeWidgetKey(view);
+  if (!key) {
     area.hidden = true;
     return;
   }
   area.hidden = false;
-  const mode = widgetModeFor(view);
-  if (circuit && circuitMode !== mode) {
-    cancelAnimationFrame(raf);
-    circuit = null;
-  }
-  circuitMode = mode;
-  if (circuit) {
-    circuit.setMode(mode);
+  if (widget && widgetKey === key) {
+    if (widget instanceof CircuitWidget) {
+      const mode = (key.split("|")[1] || "pump") as CircuitWidgetMode;
+      widget.setMode(mode);
+    }
     return;
   }
-  const canvas = $<HTMLCanvasElement>("sb-circuit");
-  circuit = new CircuitWidget(canvas, $("sb-readout"), $("sb-controls"), { mode, editableOrgan: "gut", coRange: [2, 8], radiusRange: [0.4, 1.4], mapRange: [45, 110] });
-  lastT = performance.now();
   cancelAnimationFrame(raf);
+  widget = null;
+  widgetKey = key;
+  mountWidget(key);
+  lastT = performance.now();
   const loop = (t: number) => {
-    if (!circuit) return;
-    circuit.tick((t - lastT) / 1000);
+    widget?.tick((t - lastT) / 1000);
     lastT = t;
     raf = requestAnimationFrame(loop);
   };
@@ -154,8 +190,8 @@ function loadChapter(id: string) {
   const ch = chapterById(id);
   if (!ch || !ch.ready) return;
   cancelAnimationFrame(raf);
-  circuit = null;
-  circuitMode = null;
+  widget = null;
+  widgetKey = null;
   view = initChapter(ch);
   location.hash = id;
   render();
@@ -198,5 +234,5 @@ addEventListener("hashchange", () => {
 
 renderList();
 $("intro").textContent =
-  "Simbook is a short chapter reader for preclinical cardiac physiology: predict, change one parameter, watch the model, then read the tie-back. Chapter 3 (perfusion and the circuit) is available; chapters 1–2 will follow.";
+  "Simbook is a chapter reader for preclinical cardiac physiology: predict, change one parameter, watch the model, then read the tie-back. Chapters 1–3 are available.";
 loadChapter(defaultChapterId());

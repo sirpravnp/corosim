@@ -28,3 +28,36 @@ export const SIMBOOK_AUTOREG = {
   /** Organs that actively dilate/constrict to hold flow on the plateau. */
   autoreg: { brain: true, kidney: true, gut: true, muscle: false } as const,
 };
+
+/** Tissue O₂ slab (Chapter 1). D in µm²/s, distances in µm; concentrations arbitrary but consistent. [assumed] */
+export const SIMBOOK_DIFFUSION = {
+  dUm2PerS: 1.4e3,
+  capConcBase: 1,
+  /** Capillary O₂ when flow is off (diffusion-limited delivery). */
+  flowOffFactor: 0.35,
+  consumptionBase: 1,
+  thicknessBaseUm: 120,
+  densityBase: 1,
+};
+
+/** Fick membrane (Chapter 2A). Teaching units: D·µm/s, A cm², ΔC arbitrary, x µm → flux in relative units. [assumed] */
+export const SIMBOOK_FICK = {
+  dDefault: 1,
+  areaDefault: 100,
+  deltaCDefault: 1,
+  thicknessDefault: 1,
+};
+
+/** Single capillary Starling profile (Chapter 2B). Pressures mmHg; Kf ml/min/mmHg for this teaching bed. [assumed] */
+export const SIMBOOK_STARLING = {
+  pcArterial: 32,
+  pcVenous: 12,
+  piInterstitial: -2,
+  albuminRestGdl: 7,
+  interstitialProteinGdl: 2.5,
+  kfBase: 0.85,
+  sigma: 0.9,
+  /** Fixed lymphatic return for this bed (ml/min); not a learner lever. */
+  lymphReturnMlMin: 0.12,
+  pvRest: 6,
+};
