@@ -1,22 +1,30 @@
 import { SIMBOOK_CIRCUIT as C } from "../../config/simbook";
+import { solveAutoreg } from "../autoreg";
 import { CircuitParams, OrganId, defaultCircuit, resistanceFromRadius, solveCircuit } from "../circuit";
 
+export type CircuitWidgetMode = "autoreg" | "pump";
+
 export interface CircuitWidgetOptions {
-  /** Which organ radius the learner may change; other radii stay fixed. */
+  mode: CircuitWidgetMode;
   editableOrgan: OrganId;
   coRange: [number, number];
   radiusRange: [number, number];
+  mapRange: [number, number];
 }
 
 const DEFAULT_OPTS: CircuitWidgetOptions = {
+  mode: "pump",
   editableOrgan: "gut",
   coRange: [2, 8],
   radiusRange: [0.4, 1.4],
+  mapRange: [45, 110],
 };
 
 export class CircuitWidget {
   private params: CircuitParams = defaultCircuit();
+  private mapMmHg = C.baseMapMmHg;
   private animT = 0;
+  private mode: CircuitWidgetMode;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -24,7 +32,16 @@ export class CircuitWidget {
     private controls: HTMLElement,
     private opts: CircuitWidgetOptions = DEFAULT_OPTS,
   ) {
+    this.mode = opts.mode;
     this.buildControls();
+    this.draw();
+  }
+
+  setMode(mode: CircuitWidgetMode) {
+    if (mode === this.mode) return;
+    this.mode = mode;
+    this.buildControls();
+    this.syncControls();
     this.draw();
   }
 
@@ -32,14 +49,21 @@ export class CircuitWidget {
     return structuredClone(this.params);
   }
 
-  setCardiacOutput(co: number) {
-    this.params.cardiacOutputLMin = co;
-    this.syncControls();
-    this.draw();
-  }
-
   private buildControls() {
     const o = this.opts;
+    if (this.mode === "autoreg") {
+      this.controls.innerHTML = `
+        <label><span>Mean arterial pressure</span>
+          <input type="range" id="sb-map" min="${o.mapRange[0]}" max="${o.mapRange[1]}" step="1" value="${this.mapMmHg}">
+          <output id="sb-mapv">${this.mapMmHg.toFixed(0)} mmHg</output></label>
+        <p class="sb-lock">Cardiac output is computed as the sum of organ flows. Vessel radii fixed; brain and kidney autoregulate; gut is less protected.</p>`;
+      this.controls.querySelector<HTMLInputElement>("#sb-map")!.addEventListener("input", (e) => {
+        this.mapMmHg = +(e.target as HTMLInputElement).value;
+        this.syncControls(false);
+        this.draw();
+      });
+      return;
+    }
     const ed = this.params.organs.find((x) => x.id === o.editableOrgan)!;
     this.controls.innerHTML = `
       <label><span>Cardiac output</span>
@@ -48,7 +72,7 @@ export class CircuitWidget {
       <label><span>${ed.label} vessel radius</span>
         <input type="range" id="sb-rad" min="${o.radiusRange[0]}" max="${o.radiusRange[1]}" step="0.05" value="${ed.radius}">
         <output id="sb-radv">${ed.radius.toFixed(2)}×</output></label>
-      <p class="sb-lock">Other organ radii are fixed at ${C.refRadius}× (resistances at reference Poiseuille scale).</p>`;
+      <p class="sb-lock">Other organ radii fixed at ${C.refRadius}×. Autoregulation is off — pure Ohm/Poiseuille parallel circuit.</p>`;
     const co = this.controls.querySelector<HTMLInputElement>("#sb-co")!;
     const rad = this.controls.querySelector<HTMLInputElement>("#sb-rad")!;
     co.addEventListener("input", () => {
@@ -64,6 +88,35 @@ export class CircuitWidget {
   }
 
   private syncControls(updateSliders = true) {
+    if (this.mode === "autoreg") {
+      const mapOut = this.controls.querySelector("output#sb-mapv");
+      if (mapOut) mapOut.textContent = `${this.mapMmHg.toFixed(0)} mmHg`;
+      if (updateSliders) {
+        const map = this.controls.querySelector<HTMLInputElement>("#sb-map");
+        if (map) map.value = String(this.mapMmHg);
+      }
+      const sol = solveAutoreg(this.mapMmHg, this.params.organs, this.params.cvpMmHg);
+      const statusLabel = (s: string) => ({ plateau: "on plateau", below: "below range", above: "above range", passive: "passive" })[s] ?? s;
+      this.readout.innerHTML = `
+        <dl class="sb-meas">
+          <div><dt>MAP</dt><dd>${sol.mapMmHg.toFixed(0)} mmHg</dd></div>
+          <div><dt>CVP</dt><dd>${sol.cvpMmHg.toFixed(0)} mmHg</dd></div>
+          <div><dt>CO (Σ flows)</dt><dd>${sol.cardiacOutputLMin.toFixed(2)} L/min</dd></div>
+          <div><dt>ΔP</dt><dd>${sol.deltaPMmHg.toFixed(0)} mmHg</dd></div>
+        </dl>
+        <table class="sb-flows" aria-label="Organ flows">
+          <thead><tr><th>Organ</th><th>R (effective)</th><th>Flow</th><th>Autoreg</th></tr></thead>
+          <tbody>
+            ${this.params.organs.map((org) => {
+              const o = sol.organs[org.id];
+              return `<tr><td>${org.label}</td><td>${o.resistance.toFixed(0)}</td><td>${o.flowLMin.toFixed(2)} L/min</td><td>${statusLabel(o.status)}</td></tr>`;
+            }).join("")}
+          </tbody>
+        </table>
+        <p class="sb-note">Drop MAP toward 60 mmHg and watch gut leave the plateau before brain and kidney.</p>`;
+      return;
+    }
+
     const coOut = this.controls.querySelector("output#sb-cov");
     const rOut = this.controls.querySelector("output#sb-radv");
     const ed = this.params.organs.find((x) => x.id === this.opts.editableOrgan)!;
@@ -76,8 +129,6 @@ export class CircuitWidget {
       if (rad) rad.value = String(ed.radius);
     }
     const sol = solveCircuit(this.params);
-    const edR = sol.resistances[this.opts.editableOrgan];
-    const edQ = sol.flows[this.opts.editableOrgan];
     const rRatio = resistanceFromRadius(ed.r0, ed.radius) / ed.r0;
     this.readout.innerHTML = `
       <dl class="sb-meas">
@@ -99,12 +150,41 @@ export class CircuitWidget {
           }).join("")}
         </tbody>
       </table>
-      <p class="sb-note">${ed.label} resistance ×${rRatio.toFixed(1)} vs reference radius (Poiseuille r⁴).</p>`;
+      <p class="sb-note">${ed.label} resistance ×${rRatio.toFixed(1)} vs reference (Poiseuille r⁴).</p>`;
   }
 
   tick(dt: number) {
     this.animT += dt;
     this.draw();
+  }
+
+  private organFlows(): { id: OrganId; label: string; q: number; highlight: boolean }[] {
+    if (this.mode === "autoreg") {
+      const sol = solveAutoreg(this.mapMmHg, this.params.organs, this.params.cvpMmHg);
+      return this.params.organs.map((o) => ({
+        id: o.id,
+        label: o.label,
+        q: sol.organs[o.id].flowLMin,
+        highlight: sol.organs[o.id].status === "below",
+      }));
+    }
+    const sol = solveCircuit(this.params);
+    const ed = this.opts.editableOrgan;
+    return this.params.organs.map((o) => ({
+      id: o.id,
+      label: o.label,
+      q: sol.flows[o.id],
+      highlight: o.id === ed,
+    }));
+  }
+
+  private headerPressures(): { map: number; cvp: number; co: number; foot: string } {
+    if (this.mode === "autoreg") {
+      const sol = solveAutoreg(this.mapMmHg, this.params.organs, this.params.cvpMmHg);
+      return { map: sol.mapMmHg, cvp: sol.cvpMmHg, co: sol.cardiacOutputLMin, foot: "Autoregulation active" };
+    }
+    const sol = solveCircuit(this.params);
+    return { map: sol.mapMmHg, cvp: sol.cvpMmHg, co: this.params.cardiacOutputLMin, foot: "ΔP = CO × SVR" };
   }
 
   private draw() {
@@ -119,13 +199,13 @@ export class CircuitWidget {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
-    const sol = solveCircuit(this.params);
     const styles = getComputedStyle(this.canvas);
     const ink = styles.getPropertyValue("--ink").trim() || "#f4f1ea";
     const muted = styles.getPropertyValue("--muted").trim() || "#98a0b8";
     const accent = styles.getPropertyValue("--accent").trim() || "#b8372e";
     const down = styles.getPropertyValue("--down").trim() || "#3d8bff";
     const ok = styles.getPropertyValue("--ok").trim() || "#7fc69a";
+    const warn = styles.getPropertyValue("--warn").trim() || "#e0a447";
     const stage = styles.getPropertyValue("--stage").trim() || "#000";
 
     ctx.fillStyle = stage;
@@ -136,8 +216,10 @@ export class CircuitWidget {
     const loopR = Math.min(w, h) * 0.32;
     const organX = w * 0.62;
     const organW = w * 0.32;
+    const hdr = this.headerPressures();
+    const rows = this.organFlows();
+    const maxQ = Math.max(...rows.map((r) => r.q), 0.01);
 
-    // Arterial arc (high pressure) and venous return
     const grad = ctx.createLinearGradient(cx - loopR, cy, cx + loopR, cy);
     grad.addColorStop(0, accent);
     grad.addColorStop(0.45, accent);
@@ -150,7 +232,6 @@ export class CircuitWidget {
     ctx.arc(cx, cy, loopR, -Math.PI * 0.15, Math.PI * 1.15);
     ctx.stroke();
 
-    // Heart pump symbol
     ctx.fillStyle = accent;
     ctx.beginPath();
     ctx.moveTo(cx - 18, cy + 6);
@@ -160,26 +241,21 @@ export class CircuitWidget {
     ctx.fillStyle = ink;
     ctx.font = "600 13px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("Pump", cx, cy + 36);
+    ctx.fillText(this.mode === "autoreg" ? "Arterial pressure" : "Pump", cx, cy + 36);
     ctx.font = "11px monospace";
     ctx.fillStyle = muted;
-    ctx.fillText(`${this.params.cardiacOutputLMin.toFixed(1)} L/min`, cx, cy + 52);
+    ctx.fillText(this.mode === "autoreg" ? `${hdr.map.toFixed(0)} mmHg MAP` : `${hdr.co.toFixed(1)} L/min`, cx, cy + 52);
 
-    // Parallel organ branches
-    const ids = this.params.organs;
-    const maxQ = Math.max(...ids.map((o) => sol.flows[o.id]));
-    ids.forEach((org, i) => {
-      const y = h * 0.18 + (i / (ids.length - 1 || 1)) * h * 0.64;
-      const q = sol.flows[org.id];
-      const bar = (q / maxQ) * (organW * 0.55);
-      const isEd = org.id === this.opts.editableOrgan;
-      ctx.strokeStyle = isEd ? accent : muted;
-      ctx.lineWidth = isEd ? 2.5 : 1.5;
+    rows.forEach((org, i) => {
+      const y = h * 0.18 + (i / (rows.length - 1 || 1)) * h * 0.64;
+      const bar = (org.q / maxQ) * (organW * 0.55);
+      ctx.strokeStyle = org.highlight ? (this.mode === "autoreg" ? warn : accent) : muted;
+      ctx.lineWidth = org.highlight ? 2.5 : 1.5;
       ctx.beginPath();
       ctx.moveTo(cx + loopR * 0.55, cy - loopR * 0.05);
       ctx.lineTo(organX - 8, y);
       ctx.stroke();
-      ctx.fillStyle = isEd ? accent : down;
+      ctx.fillStyle = org.highlight ? (this.mode === "autoreg" ? warn : accent) : down;
       ctx.fillRect(organX, y - 10, bar, 20);
       ctx.strokeStyle = ink;
       ctx.strokeRect(organX, y - 10, organW * 0.55, 20);
@@ -189,17 +265,19 @@ export class CircuitWidget {
       ctx.fillText(org.label, organX, y - 14);
       ctx.fillStyle = muted;
       ctx.font = "11px monospace";
-      ctx.fillText(`${q.toFixed(2)} L/min`, organX + organW * 0.58, y + 4);
+      ctx.fillText(`${org.q.toFixed(2)} L/min`, organX + organW * 0.58, y + 4);
     });
 
     ctx.textAlign = "left";
     ctx.fillStyle = ink;
     ctx.font = "600 12px sans-serif";
-    ctx.fillText(`MAP ${sol.mapMmHg.toFixed(0)} mmHg`, 12, 22);
+    ctx.fillText(`MAP ${hdr.map.toFixed(0)} mmHg`, 12, 22);
     ctx.fillStyle = down;
-    ctx.fillText(`CVP ${sol.cvpMmHg.toFixed(0)} mmHg`, 12, 40);
+    ctx.fillText(`CVP ${hdr.cvp.toFixed(0)} mmHg`, 12, 40);
     ctx.fillStyle = ok;
     ctx.font = "11px monospace";
-    ctx.fillText("ΔP = CO × SVR", 12, h - 14);
+    ctx.fillText(hdr.foot, 12, h - 14);
+
+    this.syncControls(false);
   }
 }

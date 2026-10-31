@@ -6,7 +6,7 @@ export type PredictOption = { label: string; /** Shown after the learner continu
 export type Block =
   | { kind: "text"; paragraphs: string[] }
   | { kind: "predict"; question: string; options: PredictOption[]; /** Teaching text after the widget step. */ reveal: string[] }
-  | { kind: "widget"; id: string }
+  | { kind: "widget"; id: string; /** `autoreg`: MAP drives flows; `pump`: CO drives MAP (default). */ mode?: "autoreg" | "pump" }
   | { kind: "reveal"; paragraphs: string[] };
 
 export interface ChapterDef {

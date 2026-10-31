@@ -10,7 +10,7 @@ import {
   recordPredictChoice,
   type ChapterView,
 } from "./runner";
-import { CircuitWidget } from "./widgets/circuitWidget";
+import { CircuitWidget, CircuitWidgetMode } from "./widgets/circuitWidget";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -19,8 +19,18 @@ mountShell({ page: "simbook", root: "../" });
 
 let view: ChapterView | null = null;
 let circuit: CircuitWidget | null = null;
+let circuitMode: CircuitWidgetMode | null = null;
 let raf = 0;
 let lastT = 0;
+
+function widgetModeFor(v: ChapterView): CircuitWidgetMode {
+  let mode: CircuitWidgetMode = "pump";
+  for (let i = 0; i <= v.index; i++) {
+    const b = v.chapter.blocks[i];
+    if (b?.kind === "widget" && b.id === "circuit") mode = b.mode ?? "pump";
+  }
+  return mode;
+}
 
 function defaultChapterId(): string {
   const hash = location.hash.replace(/^#/, "");
@@ -74,7 +84,10 @@ function renderStep(v: ChapterView): string {
       ${picked != null && widgetActive(v) ? `<p class="sb-note">Use the simulation below, then continue.</p>` : ""}
       </div>`;
   }
-  return `<div class="sb-prose"><p>Use the sliders below. Watch MAP, SVR, and each organ's flow update.</p></div>`;
+  if (b.kind === "widget" && b.mode === "autoreg") {
+    return `<div class="sb-prose"><p>Slide MAP and watch each organ defend (or lose) flow. Effective resistance falls on the plateau.</p></div>`;
+  }
+  return `<div class="sb-prose"><p>Set pump output and gut radius. MAP follows from total SVR; check MAP − CVP = CO × SVR.</p></div>`;
 }
 
 function ensureWidget() {
@@ -84,9 +97,18 @@ function ensureWidget() {
     return;
   }
   area.hidden = false;
-  if (circuit) return;
+  const mode = widgetModeFor(view);
+  if (circuit && circuitMode !== mode) {
+    cancelAnimationFrame(raf);
+    circuit = null;
+  }
+  circuitMode = mode;
+  if (circuit) {
+    circuit.setMode(mode);
+    return;
+  }
   const canvas = $<HTMLCanvasElement>("sb-circuit");
-  circuit = new CircuitWidget(canvas, $("sb-readout"), $("sb-controls"));
+  circuit = new CircuitWidget(canvas, $("sb-readout"), $("sb-controls"), { mode, editableOrgan: "gut", coRange: [2, 8], radiusRange: [0.4, 1.4], mapRange: [45, 110] });
   lastT = performance.now();
   cancelAnimationFrame(raf);
   const loop = (t: number) => {
@@ -133,6 +155,7 @@ function loadChapter(id: string) {
   if (!ch || !ch.ready) return;
   cancelAnimationFrame(raf);
   circuit = null;
+  circuitMode = null;
   view = initChapter(ch);
   location.hash = id;
   render();
@@ -175,5 +198,5 @@ addEventListener("hashchange", () => {
 
 renderList();
 $("intro").textContent =
-  "Simbook is a short chapter reader for preclinical cardiac physiology: predict, change one parameter, watch the model, then read the tie-back. Chapter 4 (the fluid circuit) ships first; chapters 1–3 will follow.";
+  "Simbook is a short chapter reader for preclinical cardiac physiology: predict, change one parameter, watch the model, then read the tie-back. Chapter 3 (perfusion and the circuit) is available; chapters 1–2 will follow.";
 loadChapter(defaultChapterId());
