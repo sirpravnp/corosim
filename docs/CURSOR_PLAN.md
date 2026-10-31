@@ -70,6 +70,13 @@ Add variables (same pattern, one canonical source each; document any that cannot
 - Pericardial pressure and effusion (`sim.pericardium()`), ECMO console readings, Impella RP.
 Done when: `variables.ts` registers them and `observe` fills them without errors for a state that has them.
 
+### 7b. Valve, shunt and prosthesis coverage (required)
+`PatientSpec.heart` (keys in `src/sim/patient.ts` `HEART_KEYS`: `valves`, `pda`, `asd`, `vsd`, `bt`, `tof`, `lvEes`, `lvStiffness`, ...) is read by the core engine. Per-beat valve data is in `LiveSource.beats()[i].valves` (`forwardMl`, `regurgMl`, `openMs` for AV/MV/TV/PV); grading helpers are in `src/sim/valves.ts` and `src/sim/structural.ts` (`assessHeart`, `murmurOf`).
+- Variables to register: per valve forward volume, regurgitant volume and regurgitant fraction, open time, peak and mean gradient, effective orifice area; Qp:Qs and shunt flow per shunt (`pda`, `asd`, `vsd`); murmur text; LV and LA size effects; plus an LV peak systolic pressure (LV minus aortic gradient is invisible in aortic pressure alone).
+- States to add: aortic stenosis (mild, moderate, severe), aortic regurgitation, mitral stenosis, mitral regurgitation (chronic and acute), tricuspid and pulmonary lesions, ASD, VSD, PDA, aortic stenosis + LAD 80% (already shown to interact: LVEDP 8 to 13, EF 0.62 to 0.45), bioprosthetic and mechanical replacement, TAVR, valve-in-valve.
+- Reference values to check against: `docs/VALVES.md` (for example AS plus MR gradients, regurgitant fractions) and the `tests/valvesSim.test.ts` bars; these are the engine's own claims, so list disagreements as findings.
+Done when: each state runs on 8 seeds and `observe` fills the new variables.
+
 ### 8. Owner hand-off: spec templates
 - Run `template` for the priority states: healthy, lad-prox-occlusion, rca-prox-occlusion, lm-occlusion, hemorrhage-15/30/45, norepinephrine-50, dobutamine-50.
 - Add a helper `template --observed` that writes the observed mean as a **comment column** (not as an expectation), so the owner can see current behavior next to each blank cell without it being treated as truth.
@@ -82,7 +89,7 @@ Option A: ischemia panel, MCP state and cath echo read the same chamber-volume E
 Add `.github/workflows/eval.yml` modelled on `.github/workflows/tests-slow.yml`: nightly and on demand, runs `observe` (8 seeds, sharded by state) then `check`, uploads `out/` as an artifact, fails on invariants violations or spec failures. Not part of the deploy gate.
 
 ## Open questions for the owner (ask before assuming)
-1. (Answered) The structural model is not a second solver: `simulate()` in `src/physics/structural.ts` runs the core engine (task A2) with a fixed rate and no reflexes. The adult patient's valve and shunt variables go in the registry (task 7). Still open: do you also want a spec family for the static Structural tab (`analyze()`, neonates, congenital lesions)?
+1. (Answered) Valves, shunts and prostheses are inputs to the one core engine, so they are in scope, not optional (task 7b). Remaining question: also a spec family for the static Structural tab (`analyze()`: neonates, congenital lesions with no reflexes)?
 2. (Answered) 8 seeds for deterministic states, 24 for stochastic outcomes. At 24 seeds a rate near 55% has a 95% interval of about 35-74%: write rate expectations wide.
 3. Expectation source standard: PMID-cited literature, or clinical judgment marked as such?
 4. Unify the EF definitions (task 9), or keep two labelled ones?

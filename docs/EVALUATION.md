@@ -84,7 +84,7 @@ So the differences have three causes: (1) the two definitions diverge when a pum
 
 ## Open decisions
 
-- ~~Cover the structural/valve/congenital readings?~~ Same core engine, so the adult patient's valve and shunt variables belong in the registry (plan task 7); the static Structural tab is a second, later spec family.
+- ~~Cover valves, shunts and prostheses?~~ Yes: they are inputs to the one core engine (plan task 7b). The registry and states do not cover them yet; that is a known gap. Open: also a spec family for the static Structural tab (neonates, congenital lesions, no reflexes)?
 - ~~Seeds~~ Decided: 8 for deterministic states, 24 for stochastic outcomes (arrhythmia, lysis, defibrillation). At 24 seeds a rate near 55% has a 95% interval of about 35-74%, so a spec for a rate must be written wide (e.g. `p0.35..0.75`).
 - Source standard for expectations: literature with PMIDs (as in `docs/ARREST.md`) or clinical judgment, marked as such?
 - Unify the EF definitions across panels (proposed above), or keep two labelled definitions?
