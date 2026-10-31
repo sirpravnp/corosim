@@ -134,7 +134,7 @@ const HAND: State[] = [
   // ---- stochastic outcomes (24 seeds). Rates are reported with a 95% interval; expectation cells stay blank for the owner.
   { id: "lad-occlusion-then-lysis", suite: "stochastic", seeds: 24, invariantsOnly: true, title: "Proximal LAD occlusion, fibrinolysis at 5 s", insult: { lesions: [lad()] }, checkpoints: [40],
     actions: [{ atS: 5, label: "fibrinolysis", run: (s) => { s.revascularize("lysis"); } }] },
-  { id: "vf-shock-200", suite: "stochastic", seeds: 24, invariantsOnly: true, title: "VF, 200 J shock at 20 s", insult: { patient: { rhythm: "vf-coarse" } }, checkpoints: [25],
+  { id: "vf-shock-200", suite: "stochastic", seeds: 24, invariantsOnly: true, title: "VF, 200 J shock at 20 s", insult: { patient: { rhythm: "vf-coarse" } }, checkpoints: [25, 40],
     actions: [{ atS: 20, label: "shock 200 J", run: (s) => { s.shock({ joules: 200 }); } }] },
   { id: "lad-vt-vf-6h", suite: "stochastic", seeds: 24, invariantsOnly: true, title: "Proximal LAD occlusion, VT/VF by 6 h clinical", insult: { lesions: [lad()] }, checkpoints: [180] },
   { id: "lad-reperfuse-pvc", suite: "stochastic", seeds: 24, invariantsOnly: true, title: "Proximal LAD occlusion, PCI at 10 s, PVCs after reperfusion", insult: { lesions: [lad()] }, checkpoints: [40],

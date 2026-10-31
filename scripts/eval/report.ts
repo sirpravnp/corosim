@@ -16,10 +16,11 @@ const meanOf = (runs: SeedRun[], cp: string, id: string): number | null => {
   return a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
 };
 const moved = (base: Value | undefined, v: Value | undefined): boolean => {
+  if (base == null && v == null) return false;
+  if (base == null || v == null) return true; // a panel that was empty and now has a reading (or the reverse) did change
   if (typeof base === "number" && typeof v === "number") return Math.abs(v - base) > Math.max(0.05 * Math.abs(base), 0.01);
   if (typeof base === "boolean" && typeof v === "boolean") return base !== v;
-  if ((typeof base === "string" || typeof v === "string") && base != null && v != null) return String(base) !== String(v);
-  return false;
+  return String(base) !== String(v);
 };
 
 /** Wilson score interval, 95%. */
@@ -60,7 +61,7 @@ function stateTable(st: State, runs: SeedRun[]): string[] {
 function rateBlock(outDir: string, specDir: string): string[] {
   const specs: { id: string; title: string; cp: string; idVar: string; pred: (row: Record<string, Value>) => boolean; note: string }[] = [
     { id: "lad-occlusion-then-lysis", title: "Fibrinolysis success", cp: "40", idVar: "lysisSucceeded", pred: (r) => r.lysisSucceeded === true, note: "The plan's informal figure is about 55%. A 24-seed interval around 55% is about 35-74%, so a spec cell has to be that wide. No expectation cell is written here." },
-    { id: "vf-shock-200", title: "Defibrillation of VF at 200 J", cp: "25", idVar: "dead", pred: (r) => r.dead === false && r.arrestStatus !== "arrest", note: "Success means the patient is alive and not in arrest at 25 s (5 s after the shock). There is no expectation cell." },
+    { id: "vf-shock-200", title: "Defibrillation of VF at 200 J, ROSC by 20 s after the shock", cp: "40", idVar: "arrestStatus", pred: (r) => r.dead === false && r.arrestStatus === "rosc", note: "ROSC is a perfusing rhythm with output held for 10 s (roscSustainS), so it cannot show at the 25 s checkpoint, 5 s after the shock. Counted at 40 s. Rhythm can already be sinus while arrest status is still arrest. There is no expectation cell." },
     { id: "lad-vt-vf-6h", title: "VT or VF by 6 h after proximal LAD occlusion", cp: "180", idVar: "episodes", pred: (r) => ["episodes.nsvt", "episodes.mono", "episodes.poly", "episodes.vf"].some((k) => typeof r[k] === "number" && (r[k] as number) > 0), note: "Any episode of NSVT, monomorphic VT, polymorphic VT or VF. There is no expectation cell." },
     { id: "lad-reperfuse-pvc", title: "At least one PVC after reperfusion", cp: "40", idVar: "pvcsPer10s", pred: (r) => typeof r.pvcsPer10s === "number" && r.pvcsPer10s > 0, note: "Share of seeds with pvcsPer10s > 0 at 40 s (after PCI at 10 s). There is no expectation cell." },
   ];
@@ -109,8 +110,21 @@ function valveBlock(outDir: string): string[] {
   return lines;
 }
 
+/** Clocks always advance, and these noisy single-beat or variability readings move on an untouched healthy run. A control is not credited with them. */
+const DRIFT_ALWAYS = new Set(["simSeconds", "clinicalMinutes"]);
+
+function healthyDrift(outDir: string): Set<string> {
+  // The sweep uses seed 1. Anything that seed's healthy run moves by 180 s is the clock and the noise, not the control.
+  const run = load(outDir, "healthy")?.find((r) => r.seed === 1 && !r.error);
+  const out = new Set(DRIFT_ALWAYS);
+  if (!run) return out;
+  for (const v of VARIABLES) if (moved(run.at.base?.[v.id], run.at["180"]?.[v.id])) out.add(v.id);
+  return out;
+}
+
 function sweepBlock(outDir: string): { md: string[]; nothing: string[] } {
-  const lines = ["## Input sweep", "", "Each patient field at its low, middle and high value, one seed, compared with that seed's own baseline at the last checkpoint. A variable counts as moved when it changes by more than 5% of its baseline or by more than 0.01, whichever is larger (the same band as `same` in the expectation grammar). `seed` is not swept.", ""];
+  const drift = healthyDrift(outDir);
+  const lines = ["## Input sweep", "", "Each patient field at its low, middle and high value, one seed, compared with that seed's own baseline at the last checkpoint. A variable counts as moved when it changes by more than 5% of its baseline or by more than 0.01, whichever is larger (the same band as `same` in the expectation grammar). Clocks, and every reading that seed 1's untouched healthy run moves by 180 s, are left out, so a control is credited only with what the insult adds. `seed` is not swept.", ""];
   const nothing: string[] = [];
   const byField = new Map<string, { level: string; value: string; moved: string[]; error?: string; noPage: boolean }[]>();
   for (const st of STATES.filter((s) => s.suite === "sweep" && s.sweep)) {
@@ -125,7 +139,7 @@ function sweepBlock(outDir: string): { md: string[]; nothing: string[] } {
     const cps = Object.keys(good.at).filter((k) => k !== "base").sort((a, b) => +a - +b);
     const cp = cps[cps.length - 1];
     if (!cp) { row.error = "no checkpoint"; continue; }
-    for (const v of VARIABLES) if (moved(good.at.base?.[v.id], good.at[cp]?.[v.id])) row.moved.push(v.id);
+    for (const v of VARIABLES) if (!drift.has(v.id) && moved(good.at.base?.[v.id], good.at[cp]?.[v.id])) row.moved.push(v.id);
     if (!row.moved.length) nothing.push(`${meta.field} ${meta.level}=${meta.value}`);
   }
   if (!byField.size) { lines.push("Not run.", ""); return { md: lines, nothing }; }

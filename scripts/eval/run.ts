@@ -96,13 +96,12 @@ function template(st: State) {
   }
   if (!seen) { console.log(`keep   ${file} (exists)`); return; }
   const rows = parseCsv(readFileSync(file, "utf8"));
-  const comment = rows.length && rows[0][0]?.startsWith("#") ? rows[0][0] : "";
   const body = rows.filter((r) => r.length > 1 && !r[0].startsWith("#"));
   const oldHead = body[0] ?? [];
   const expIdx = cps.map((t) => oldHead.indexOf(`t${t}s`));
   const noteIdx = oldHead.indexOf("note");
   const byId = new Map(body.slice(1).map((r) => [r[0], r]));
-  const lines = [`# ${st.id}: ${st.title}. Columns t<N>s are expectations. seen_t<N>s is the last observed mean, not an expectation; check ignores it.${comment ? " " + comment.replace(/^#\s*/, "") : ""}`, head.join(",")];
+  const lines = [`# ${st.id}: ${st.title}. Columns t<N>s are expectations. seen_t<N>s is the last observed mean, not an expectation; check ignores it.`, head.join(",")];
   for (const v of VARIABLES) {
     const prev = byId.get(v.id);
     const exp = expIdx.map((i) => (prev && i >= 0 ? prev[i] ?? "" : ""));
@@ -191,6 +190,12 @@ function check(states: State[]) {
   }
   const hits = scanInvariants(states, runs);
   console.log(`\n--- invariants ---`);
+  const byRule = new Map<string, number>();
+  for (const h of hits) {
+    const key = h.rule.replace(/-?\d+(\.\d+)?/g, "#");
+    byRule.set(key, (byRule.get(key) ?? 0) + 1);
+  }
+  for (const [k, n] of [...byRule.entries()].sort((a, b) => b[1] - a[1])) console.log(`  ${n}  ${k}`);
   const show = hits.slice(0, 80);
   for (const h of show) console.log(`INV ${h.state} seed ${h.seed} ${h.where}: ${h.rule}`);
   if (hits.length > show.length) console.log(`... ${hits.length - show.length} more`);

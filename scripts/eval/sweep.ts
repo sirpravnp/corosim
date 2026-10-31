@@ -79,7 +79,8 @@ export function sweepStates(): State[] {
       out.push({
         id, suite: "sweep", seeds: 1, invariantsOnly: true,
         title: `${f.path} = ${JSON.stringify(L.value)} (${L.level})`,
-        insult: setPath(f.path, L.value),
+        // A pace rate does nothing unless pacing is on, and pacing only captures when the sinus is at or under that rate (simulation.ts paced()).
+        insult: f.path === "support.paceRate" ? { support: { pacing: true, paceRate: L.value as number } } : setPath(f.path, L.value),
         sweep: { field: f.path, level: L.level, value: JSON.stringify(L.value), noPageControl: f.controls.length === 0 },
       });
     }
