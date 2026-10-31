@@ -1,7 +1,9 @@
 import { defaultFick, fickFlux, FickParams } from "../fick";
+import { fitCanvas, palette, wash } from "./canvasKit";
 
 export class FickWidget {
   private params: FickParams = defaultFick();
+  private anim = 0;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -13,7 +15,8 @@ export class FickWidget {
     this.draw();
   }
 
-  tick(_dt: number) {
+  tick(dt: number) {
+    this.anim += dt;
     this.draw();
   }
 
@@ -54,73 +57,87 @@ export class FickWidget {
     if (x) x.textContent = `${this.params.thicknessUm.toFixed(2)} µm`;
     if (dc) dc.textContent = `${this.params.deltaC.toFixed(2)}`;
     const flux = fickFlux(this.params);
+    const rest = fickFlux(defaultFick());
     this.readout.innerHTML = `
       <dl class="sb-meas">
         <div><dt>Flux J</dt><dd>${flux.toFixed(1)}</dd></div>
+        <div><dt>Vs rest</dt><dd>${(flux / rest).toFixed(2)}×</dd></div>
         <div><dt>D·A·ΔC</dt><dd>${(this.params.d * this.params.areaCm2 * this.params.deltaC).toFixed(1)}</dd></div>
         <div><dt>x</dt><dd>${this.params.thicknessUm.toFixed(2)} µm</dd></div>
       </dl>
-      <p class="sb-note">Thicken the membrane (fibrosis, edema) and the same gradient moves less O₂ per minute.</p>`;
+      <p class="sb-note">Molecules cross in proportion to J. A thicker membrane (fibrosis, edema) slows them at the same gradient.</p>`;
   }
 
   private draw() {
     const flux = fickFlux(this.params);
-    const ctx = this.canvas.getContext("2d")!;
-    const dpr = Math.min(devicePixelRatio || 1, 2);
-    const w = this.canvas.clientWidth || 640;
-    const h = this.canvas.clientHeight || 380;
-    if (this.canvas.width !== Math.round(w * dpr) || this.canvas.height !== Math.round(h * dpr)) {
-      this.canvas.width = Math.round(w * dpr);
-      this.canvas.height = Math.round(h * dpr);
-    }
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-    const styles = getComputedStyle(this.canvas);
-    const ink = styles.getPropertyValue("--ink").trim() || "#f4f1ea";
-    const muted = styles.getPropertyValue("--muted").trim() || "#98a0b8";
-    const accent = styles.getPropertyValue("--accent").trim() || "#b8372e";
-    const down = styles.getPropertyValue("--down").trim() || "#3d8bff";
-    const ok = styles.getPropertyValue("--ok").trim() || "#7fc69a";
-    const stage = styles.getPropertyValue("--stage").trim() || "#000";
-    ctx.fillStyle = stage;
-    ctx.fillRect(0, 0, w, h);
+    const rest = fickFlux(defaultFick());
+    const { ctx, w, h } = fitCanvas(this.canvas);
+    const c = palette(this.canvas);
+    wash(ctx, w, h, c.stage);
 
-    const mx = w * 0.5;
-    const my = h * 0.45;
-    const thick = 20 + this.params.thicknessUm * 18;
-    ctx.fillStyle = muted;
-    ctx.fillRect(mx - 120, my - 60, 100, 120);
-    ctx.fillRect(mx + 20, my - 60, 100, 120);
-    ctx.fillStyle = accent;
-    ctx.fillRect(mx - thick / 2, my - 70, thick, 140);
-    ctx.fillStyle = ink;
-    ctx.font = "12px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("Alveolar / blood side", mx - 70, my - 76);
-    ctx.fillText("Tissue side", mx + 70, my - 76);
-    ctx.fillText(`x = ${this.params.thicknessUm.toFixed(1)} µm`, mx, my + 90);
+    const my = h * 0.46;
+    const thick = 16 + this.params.thicknessUm * 28;
+    const left = w * 0.18;
+    const right = w * 0.82;
+    const mid = w * 0.5;
+    const chamberH = 160;
+    const areaScale = Math.max(0.55, Math.min(1.35, this.params.areaCm2 / 100));
+    const chH = chamberH * areaScale;
 
-    const arrowN = 5;
-    const fluxNorm = flux / (this.params.d * this.params.areaCm2 * 2);
-    for (let i = 0; i < arrowN; i++) {
-      const y = my - 40 + (i * 80) / (arrowN - 1);
-      const len = 12 + fluxNorm * 40;
-      ctx.strokeStyle = down;
-      ctx.lineWidth = 2;
+    const leftG = ctx.createLinearGradient(left - 70, 0, mid, 0);
+    leftG.addColorStop(0, "rgba(127, 212, 255, 0.55)");
+    leftG.addColorStop(1, "rgba(127, 212, 255, 0.08)");
+    ctx.fillStyle = leftG;
+    ctx.fillRect(left - 90, my - chH / 2, mid - left + 40, chH);
+
+    const rightG = ctx.createLinearGradient(mid, 0, right + 70, 0);
+    rightG.addColorStop(0, "rgba(226, 75, 60, 0.05)");
+    rightG.addColorStop(1, `rgba(226, 75, 60, ${0.15 + 0.25 * this.params.deltaC})`);
+    ctx.fillStyle = rightG;
+    ctx.fillRect(mid - 20, my - chH / 2, right - mid + 110, chH);
+
+    ctx.fillStyle = "rgba(244, 241, 234, 0.14)";
+    ctx.fillRect(mid - thick / 2, my - chH / 2 - 8, thick, chH + 16);
+    ctx.strokeStyle = c.ink;
+    ctx.strokeRect(mid - thick / 2, my - chH / 2 - 8, thick, chH + 16);
+
+    const n = 14;
+    const speed = 0.12 + Math.min(1.4, flux / rest) * 0.35;
+    for (let i = 0; i < n; i++) {
+      const lane = (i % 7) / 6;
+      const u = (i / n + this.anim * speed) % 1;
+      const x = left - 20 + u * (right - left + 40);
+      const y = my - chH / 2 + 16 + lane * (chH - 32);
       ctx.beginPath();
-      ctx.moveTo(mx - thick / 2 - 4, y);
-      ctx.lineTo(mx - thick / 2 - 4 - len, y);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(mx - thick / 2 - 4 - len, y);
-      ctx.lineTo(mx - thick / 2 - 4 - len + 6, y - 4);
-      ctx.lineTo(mx - thick / 2 - 4 - len + 6, y + 4);
-      ctx.fillStyle = down;
+      ctx.arc(x, y, 3.2, 0, Math.PI * 2);
+      ctx.fillStyle = x < mid ? c.o2 : c.accent;
       ctx.fill();
     }
-    ctx.fillStyle = ok;
-    ctx.font = "600 14px monospace";
-    ctx.fillText(`J = ${flux.toFixed(1)}`, mx, my + 110);
+
+    const meterW = 160;
+    const meterX = w - meterW - 28;
+    const frac = Math.max(0.04, Math.min(1, flux / (rest * 2.2)));
+    ctx.fillStyle = "rgba(255,255,255,0.08)";
+    ctx.fillRect(meterX, 28, meterW, 8);
+    ctx.fillStyle = c.o2;
+    ctx.fillRect(meterX, 28, meterW * frac, 8);
+
+    ctx.fillStyle = c.ink;
+    ctx.font = "600 13px IBM Plex Sans, sans-serif";
     ctx.textAlign = "left";
+    ctx.fillText("High concentration", left - 70, my - chH / 2 - 14);
+    ctx.textAlign = "right";
+    ctx.fillText("Low concentration", right + 70, my - chH / 2 - 14);
+    ctx.textAlign = "center";
+    ctx.fillStyle = c.muted;
+    ctx.font = "12px IBM Plex Sans, sans-serif";
+    ctx.fillText(`membrane  ${this.params.thicknessUm.toFixed(1)} µm`, mid, my + chH / 2 + 28);
+    ctx.fillStyle = c.ok;
+    ctx.font = "600 15px IBM Plex Mono, monospace";
+    ctx.fillText(`J = ${flux.toFixed(1)}`, mid, h - 28);
+    ctx.textAlign = "left";
+    ctx.fillStyle = c.muted;
+    ctx.font = "11px IBM Plex Sans, sans-serif";
+    ctx.fillText("Flux vs 2× rest", meterX, 22);
   }
 }

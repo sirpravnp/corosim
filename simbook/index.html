@@ -9,7 +9,7 @@
 <meta name="description" content="A chapter-based reader for preclinical cardiac physiology: predict, change one parameter, watch the physics, then read the tie-back.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 </head>
 <body>
 <div class="app" id="app">
@@ -24,15 +24,23 @@
   <section class="sb-room">
     <p class="sb-intro" id="intro"></p>
     <div class="titlebar">
+      <p class="sb-kicker" id="kicker">Simbook</p>
       <h1 id="title">Simbook</h1>
-      <p id="summary" class="summary"></p>
+      <p id="summary" class="sb-sub"></p>
+      <ol id="sb-progress" class="sb-steps"></ol>
     </div>
     <div id="sb-step"></div>
     <div id="sb-widget-area" hidden>
       <div class="sb-widget">
-        <div class="sb-screen"><canvas id="sb-canvas" width="640" height="380" aria-label="Chapter simulation"></canvas></div>
-        <div class="sb-controls" id="sb-controls"></div>
-        <div id="sb-readout"></div>
+        <header class="sb-stage-head">
+          <span class="sb-stage-kicker">Live model</span>
+          <strong id="sb-stage-title">Simulation</strong>
+        </header>
+        <div class="sb-screen"><canvas id="sb-canvas" width="960" height="420" aria-label="Chapter simulation"></canvas></div>
+        <div class="sb-deck">
+          <div class="sb-controls" id="sb-controls"></div>
+          <div id="sb-readout"></div>
+        </div>
       </div>
     </div>
     <div class="sb-nav">

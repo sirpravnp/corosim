@@ -1,7 +1,9 @@
 import { defaultStarling, starlingProfile, StarlingParams } from "../starlingCapillary";
+import { fitCanvas, palette, wash } from "./canvasKit";
 
 export class StarlingWidget {
   private params: StarlingParams = defaultStarling();
+  private anim = 0;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -13,7 +15,8 @@ export class StarlingWidget {
     this.draw();
   }
 
-  tick(_dt: number) {
+  tick(dt: number) {
+    this.anim += dt;
     this.draw();
   }
 
@@ -68,71 +71,101 @@ export class StarlingWidget {
 
   private draw() {
     const prof = starlingProfile(this.params);
-    const ctx = this.canvas.getContext("2d")!;
-    const dpr = Math.min(devicePixelRatio || 1, 2);
-    const w = this.canvas.clientWidth || 640;
-    const h = this.canvas.clientHeight || 380;
-    if (this.canvas.width !== Math.round(w * dpr) || this.canvas.height !== Math.round(h * dpr)) {
-      this.canvas.width = Math.round(w * dpr);
-      this.canvas.height = Math.round(h * dpr);
-    }
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-    const styles = getComputedStyle(this.canvas);
-    const ink = styles.getPropertyValue("--ink").trim() || "#f4f1ea";
-    const muted = styles.getPropertyValue("--muted").trim() || "#98a0b8";
-    const accent = styles.getPropertyValue("--accent").trim() || "#b8372e";
-    const down = styles.getPropertyValue("--down").trim() || "#3d8bff";
-    const ok = styles.getPropertyValue("--ok").trim() || "#7fc69a";
-    const bad = styles.getPropertyValue("--bad").trim() || "#ff6b5e";
-    const stage = styles.getPropertyValue("--stage").trim() || "#000";
-    ctx.fillStyle = stage;
-    ctx.fillRect(0, 0, w, h);
+    const { ctx, w, h } = fitCanvas(this.canvas);
+    const c = palette(this.canvas);
+    wash(ctx, w, h, c.stage);
 
-    const pad = 40;
-    const capY = h * 0.42;
+    const pad = 48;
+    const capY = h * 0.38;
     const capL = w - pad * 2;
     const capX = pad;
-    ctx.strokeStyle = ink;
-    ctx.lineWidth = 3;
+    const tube = 18;
+    const g = ctx.createLinearGradient(capX, 0, capX + capL, 0);
+    g.addColorStop(0, c.accent);
+    g.addColorStop(1, c.down);
+    ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.moveTo(capX, capY);
-    ctx.lineTo(capX + capL, capY);
-    ctx.stroke();
-    ctx.fillStyle = muted;
-    ctx.font = "11px sans-serif";
-    ctx.fillText("Arteriolar", capX, capY - 10);
-    ctx.fillText("Venular", capX + capL - 44, capY - 10);
+    ctx.roundRect(capX, capY - tube / 2, capL, tube, 9);
+    ctx.fill();
+
+    const n = 8;
+    for (let i = 0; i < n; i++) {
+      const u = (i / n + this.anim * 0.12) % 1;
+      ctx.beginPath();
+      ctx.arc(capX + 12 + u * (capL - 24), capY, 2.2, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.fill();
+    }
+
+    if (prof.edema) {
+      const excess = Math.min(1, (prof.netFiltrationMlMin - prof.lymphReturnMlMin) / 0.4);
+      ctx.fillStyle = `rgba(255, 122, 110, ${0.12 + 0.28 * excess})`;
+      ctx.beginPath();
+      ctx.ellipse(capX + capL * 0.55, capY + 54, 70 + 40 * excess, 16 + 10 * excess, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     const maxJv = Math.max(...prof.stations.map((s) => Math.abs(s.jvMlMin)), 1e-6);
+    let cross: number | null = null;
+    for (let i = 1; i < prof.stations.length; i++) {
+      const a = prof.stations[i - 1]!;
+      const b = prof.stations[i]!;
+      if (a.jvMlMin >= 0 && b.jvMlMin < 0) cross = capX + b.s * capL;
+    }
     prof.stations.forEach((st, i) => {
-      if (i % 3 !== 0) return;
+      if (i % 4 !== 0) return;
       const x = capX + st.s * capL;
-      const up = st.jvMlMin > 0;
-      const mag = (Math.abs(st.jvMlMin) / maxJv) * 50;
-      ctx.strokeStyle = up ? bad : ok;
+      const out = st.jvMlMin > 0;
+      const mag = 10 + (Math.abs(st.jvMlMin) / maxJv) * 42;
+      const y0 = out ? capY - tube / 2 : capY + tube / 2;
+      const y1 = out ? y0 - mag : y0 + mag;
+      ctx.strokeStyle = out ? c.bad : c.ok;
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(x, capY);
-      ctx.lineTo(x, capY + (up ? -mag : mag));
+      ctx.moveTo(x, y0);
+      ctx.lineTo(x, y1);
       ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x, y1);
+      ctx.lineTo(x - 4, y1 + (out ? 6 : -6));
+      ctx.lineTo(x + 4, y1 + (out ? 6 : -6));
+      ctx.closePath();
+      ctx.fillStyle = out ? c.bad : c.ok;
+      ctx.fill();
     });
+    if (cross != null) {
+      ctx.strokeStyle = c.ink;
+      ctx.setLineDash([3, 4]);
+      ctx.beginPath();
+      ctx.moveTo(cross, capY - 70);
+      ctx.lineTo(cross, capY + 70);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
 
-    const curveY = h * 0.72;
-    ctx.strokeStyle = down;
+    const base = h - 78;
+    ctx.strokeStyle = "rgba(255,255,255,0.18)";
     ctx.beginPath();
+    ctx.moveTo(capX, base);
+    ctx.lineTo(capX + capL, base);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.strokeStyle = c.down;
     prof.stations.forEach((st, i) => {
       const x = capX + st.s * capL;
-      const y = curveY - (st.pcMmHg / 40) * 60;
+      const y = base - (st.jvMlMin / maxJv) * 36;
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     });
     ctx.stroke();
-    ctx.fillStyle = down;
-    ctx.fillText("Pc along capillary", capX, curveY + 24);
 
-    ctx.fillStyle = prof.edema ? bad : ok;
-    ctx.font = "600 12px sans-serif";
-    ctx.fillText(prof.edema ? "Net filtration > lymph" : "Lymph keeps up", pad, h - 16);
+    ctx.font = "12px IBM Plex Sans, sans-serif";
+    ctx.fillStyle = c.muted;
+    ctx.fillText("Arteriole", capX, capY - 28);
+    ctx.fillText("Venule", capX + capL - 42, capY - 28);
+    ctx.fillText("Jv  (out above the line)", capX, base + 22);
+    ctx.fillStyle = prof.edema ? c.bad : c.ok;
+    ctx.font = "600 13px IBM Plex Sans, sans-serif";
+    ctx.fillText(prof.edema ? "Edema — filtration exceeds lymph" : "Lymph return keeps up", capX + capL - 250, h - 18);
   }
 }
