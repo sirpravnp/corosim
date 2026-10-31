@@ -25,9 +25,13 @@ function runOne(st: State, seed: number): SeedRun {
   try {
     const s = new Simulation({}, { engine: "core" });
     s.reset({ ...BASE_SPEC, ...(st.baseline ?? {}), seed }, { settled: true, warmup: 30 });
+    // The page makes its LiveSource first. A LiveSource only sees beats made after it exists; one made late has an empty ring and falls back
+    // to a single stored warm-up beat (identical for every seed), which would make every baseline look the same.
+    const src = new LiveSource(s);
+    if (s.engine !== "core") throw new Error(`engine is ${s.engine}, not core`);
+    if (s.coreNote) throw new Error(`core engine could not settle this patient: ${s.coreNote}`); // otherwise a plain adult is shown and the run means nothing
     s.warmup(WARM_S - 30);
     s.step(20);
-    const src = new LiveSource(s);
     out.at["base"] = snapshot(context(s, src, 20));
     const t0 = s.t;
     s.apply({ ...st.insult });
@@ -138,7 +142,8 @@ function check(states: State[]) {
     const f = join(OUT, `${st.id}.json`); if (!existsSync(f)) continue;
     const runs = (JSON.parse(readFileSync(f, "utf8")) as SeedRun[]).filter((r) => !r.error);
     for (const x of CROSS_CHECKS) for (const cp of ["base", ...cpOf(st).map(String)]) {
-      const d = runs.map((r) => Math.abs(Number(r.at[cp]?.[x.a]) - Number(r.at[cp]?.[x.b]))).filter(Number.isFinite);
+      const d = runs.filter((r) => !(x.unlessDevice && Number(r.at[cp]?.["deviceFlow"]) > 0.1)).map((r) => Math.abs(Number(r.at[cp]?.[x.a]) - Number(r.at[cp]?.[x.b]))).filter(Number.isFinite);
+      if (!d.length) continue;
       const worst = Math.max(...d); if (worst > x.tol) console.log(`CROSS ${st.id} ${cp}: ${x.why}: ${x.a} vs ${x.b} differ by up to ${worst.toFixed(3)} (tol ${x.tol})`);
     }
   }

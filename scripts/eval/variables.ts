@@ -21,6 +21,10 @@ add("Monitor", "hr", "bpm", (c) => vit(c).hr);
 add("Monitor", "sbp", "mmHg", (c) => vit(c).sbp); add("Monitor", "dbp", "mmHg", (c) => vit(c).dbp); add("Monitor", "map", "mmHg", (c) => vit(c).map);
 add("Monitor", "co", "L/min", (c) => vit(c).co); add("Monitor", "ci", "L/min/m2", (c) => vit(c).ci); add("Monitor", "sv", "ml", (c) => vit(c).sv);
 add("Monitor", "lvEf", "fraction", (c) => vit(c).lvEf); add("Monitor", "rvEf", "fraction", (c) => vit(c).rvEf);
+// The same quantities computed a second way elsewhere in the app. Registered under their own names so a disagreement is a labelled finding.
+// lvEfEstimate: aortic-valve stroke volume / LV EDV of every beat, smoothed (ischemia panel, MCP state, explain, cath echo). See docs/EVALUATION.md.
+add("Monitor", "lvEfEstimate", "fraction", (c) => c.st.ventricle.ejectionFraction);
+add("Monitor", "hrRolling", "bpm", (c) => c.st.rolling10s.hr); add("Monitor", "svAortic", "ml", (c) => c.s.rolling(c.win).sv);
 add("Monitor", "status", "", (c) => c.st.circulationState, "str");
 add("Monitor", "rhythm", "", (c) => c.st.rhythm.label, "str");
 add("Monitor", "ventRate", "bpm", (c) => c.st.rhythm.ventricularRate ?? c.st.rhythm.sinusRate);
@@ -94,8 +98,11 @@ add("Cath lab", "echo.abnormalSegments", "count", (c) => c.cath.echo.abnormal.le
 export const VARIABLES: readonly Variable[] = v;
 
 /** Pairs of variables that two panels compute separately and that must agree (tolerance in the variable's unit). */
-export const CROSS_CHECKS: { a: string; b: string; tol: number; why: string }[] = [
-  { a: "lvEf", b: "echo.ef", tol: 0.03, why: "Monitor EF vs echo panel EF" },
+export const CROSS_CHECKS: { a: string; b: string; tol: number; why: string; unlessDevice?: boolean }[] = [
+  { a: "lvEf", b: "lvEfEstimate", tol: 0.06, why: "Monitor EF (LV chamber volumes) vs state EF (aortic stroke volume, smoothed); differ in a pump's presence and in fast transients", unlessDevice: true },
+  { a: "lvEfEstimate", b: "echo.ef", tol: 0.02, why: "state EF vs cath-lab echo EF (same source; rounding only)" },
+  { a: "hr", b: "hrRolling", tol: 4, why: "Monitor HR vs state HR (different windows)" },
+  { a: "sv", b: "svAortic", tol: 6, why: "Monitor SV (output / rate, includes pump flow) vs aortic-valve stroke volume", unlessDevice: true },
 ];
 
 export function context(s: Simulation, src: LiveSource, win = 20): Ctx {
