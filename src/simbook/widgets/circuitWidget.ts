@@ -1,6 +1,7 @@
 import { SIMBOOK_CIRCUIT as C } from "../../config/simbook";
 import { solveAutoreg } from "../autoreg";
 import { CircuitParams, OrganId, defaultCircuit, resistanceFromRadius, solveCircuit } from "../circuit";
+import { fitCanvas, palette, wash } from "./canvasKit";
 
 export type CircuitWidgetMode = "autoreg" | "pump";
 
@@ -34,6 +35,7 @@ export class CircuitWidget {
   ) {
     this.mode = opts.mode;
     this.buildControls();
+    this.syncControls();
     this.draw();
   }
 
@@ -56,7 +58,7 @@ export class CircuitWidget {
         <label><span>Mean arterial pressure</span>
           <input type="range" id="sb-map" min="${o.mapRange[0]}" max="${o.mapRange[1]}" step="1" value="${this.mapMmHg}">
           <output id="sb-mapv">${this.mapMmHg.toFixed(0)} mmHg</output></label>
-        <p class="sb-lock">Cardiac output is computed as the sum of organ flows. Vessel radii fixed; brain and kidney autoregulate; gut is less protected.</p>`;
+        <p class="sb-lock">Cardiac output is the sum of organ flows. Vessel width shows dilation: resistance falls on the plateau.</p>`;
       this.controls.querySelector<HTMLInputElement>("#sb-map")!.addEventListener("input", (e) => {
         this.mapMmHg = +(e.target as HTMLInputElement).value;
         this.syncControls(false);
@@ -80,11 +82,12 @@ export class CircuitWidget {
       this.syncControls(false);
       this.draw();
     });
-    rad.addEventListener("input", () => {
+      rad.addEventListener("input", () => {
       ed.radius = +rad.value;
       this.syncControls(false);
       this.draw();
     });
+    this.syncControls();
   }
 
   private syncControls(updateSliders = true) {
@@ -187,97 +190,111 @@ export class CircuitWidget {
     return { map: sol.mapMmHg, cvp: sol.cvpMmHg, co: this.params.cardiacOutputLMin, foot: "ΔP = CO × SVR" };
   }
 
-  private draw() {
-    const ctx = this.canvas.getContext("2d")!;
-    const dpr = Math.min(devicePixelRatio || 1, 2);
-    const w = this.canvas.clientWidth || 560;
-    const h = this.canvas.clientHeight || 360;
-    if (this.canvas.width !== Math.round(w * dpr) || this.canvas.height !== Math.round(h * dpr)) {
-      this.canvas.width = Math.round(w * dpr);
-      this.canvas.height = Math.round(h * dpr);
+  private calibers(): number[] {
+    if (this.mode === "autoreg") {
+      const sol = solveAutoreg(this.mapMmHg, this.params.organs, this.params.cvpMmHg);
+      return this.params.organs.map((o) => {
+        const r = sol.organs[o.id].resistance;
+        const rRef = resistanceFromRadius(o.r0, 1);
+        return Math.max(2.5, Math.min(16, 7 * rRef / Math.max(r, 1)));
+      });
     }
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
+    return this.params.organs.map((o) => 3 + o.radius * 8);
+  }
 
-    const styles = getComputedStyle(this.canvas);
-    const ink = styles.getPropertyValue("--ink").trim() || "#f4f1ea";
-    const muted = styles.getPropertyValue("--muted").trim() || "#98a0b8";
-    const accent = styles.getPropertyValue("--accent").trim() || "#b8372e";
-    const down = styles.getPropertyValue("--down").trim() || "#3d8bff";
-    const ok = styles.getPropertyValue("--ok").trim() || "#7fc69a";
-    const warn = styles.getPropertyValue("--warn").trim() || "#e0a447";
-    const stage = styles.getPropertyValue("--stage").trim() || "#000";
+  private draw() {
+    const { ctx, w, h } = fitCanvas(this.canvas);
+    const pal = palette(this.canvas);
+    wash(ctx, w, h, pal.stage);
 
-    ctx.fillStyle = stage;
-    ctx.fillRect(0, 0, w, h);
-
-    const cx = w * 0.22;
-    const cy = h * 0.48;
-    const loopR = Math.min(w, h) * 0.32;
-    const organX = w * 0.62;
-    const organW = w * 0.32;
+    const cx = w * 0.24;
+    const cy = h * 0.5;
+    const loopR = Math.min(w, h) * 0.3;
+    const organX = w * 0.58;
+    const organW = w * 0.28;
     const hdr = this.headerPressures();
     const rows = this.organFlows();
+    const widths = this.calibers();
     const maxQ = Math.max(...rows.map((r) => r.q), 0.01);
+    const a0 = -Math.PI * 0.2;
+    const a1 = Math.PI * 1.2;
 
     const grad = ctx.createLinearGradient(cx - loopR, cy, cx + loopR, cy);
-    grad.addColorStop(0, accent);
-    grad.addColorStop(0.45, accent);
-    grad.addColorStop(0.55, down);
-    grad.addColorStop(1, down);
+    grad.addColorStop(0, pal.accent);
+    grad.addColorStop(0.5, pal.accent);
+    grad.addColorStop(0.62, pal.down);
+    grad.addColorStop(1, pal.down);
     ctx.strokeStyle = grad;
-    ctx.lineWidth = 10;
+    ctx.lineWidth = 14;
     ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.arc(cx, cy, loopR, -Math.PI * 0.15, Math.PI * 1.15);
+    ctx.arc(cx, cy, loopR, a0, a1);
     ctx.stroke();
 
-    ctx.fillStyle = accent;
+    const dots = 16;
+    const speed = 0.08 + hdr.co * 0.03;
+    for (let i = 0; i < dots; i++) {
+      const u = (i / dots + this.animT * speed) % 1;
+      const ang = a0 + u * (a1 - a0);
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(ang) * loopR, cy + Math.sin(ang) * loopR, 2.6, 0, Math.PI * 2);
+      ctx.fillStyle = u < 0.48 ? "#ffe8e2" : "#d7e6ff";
+      ctx.fill();
+    }
+
+    ctx.fillStyle = pal.accent;
     ctx.beginPath();
-    ctx.moveTo(cx - 18, cy + 6);
-    ctx.bezierCurveTo(cx - 28, cy - 22, cx + 28, cy - 22, cx + 18, cy + 6);
-    ctx.bezierCurveTo(cx + 8, cy + 18, cx - 8, cy + 18, cx - 18, cy + 6);
+    ctx.moveTo(cx - 16, cy + 4);
+    ctx.bezierCurveTo(cx - 26, cy - 20, cx + 26, cy - 20, cx + 16, cy + 4);
+    ctx.bezierCurveTo(cx + 6, cy + 16, cx - 6, cy + 16, cx - 16, cy + 4);
     ctx.fill();
-    ctx.fillStyle = ink;
-    ctx.font = "600 13px sans-serif";
+    ctx.fillStyle = pal.ink;
+    ctx.font = "600 13px IBM Plex Sans, sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(this.mode === "autoreg" ? "Arterial pressure" : "Pump", cx, cy + 36);
-    ctx.font = "11px monospace";
-    ctx.fillStyle = muted;
-    ctx.fillText(this.mode === "autoreg" ? `${hdr.map.toFixed(0)} mmHg MAP` : `${hdr.co.toFixed(1)} L/min`, cx, cy + 52);
+    ctx.fillText(this.mode === "autoreg" ? "Arterial pressure" : "Pump", cx, cy + loopR + 28);
+    ctx.font = "12px IBM Plex Mono, monospace";
+    ctx.fillStyle = pal.muted;
+    ctx.fillText(this.mode === "autoreg" ? `${hdr.map.toFixed(0)} mmHg` : `${hdr.co.toFixed(1)} L/min`, cx, cy + loopR + 46);
 
     rows.forEach((org, i) => {
-      const y = h * 0.18 + (i / (rows.length - 1 || 1)) * h * 0.64;
-      const bar = (org.q / maxQ) * (organW * 0.55);
-      ctx.strokeStyle = org.highlight ? (this.mode === "autoreg" ? warn : accent) : muted;
-      ctx.lineWidth = org.highlight ? 2.5 : 1.5;
+      const y = h * 0.16 + (i / (rows.length - 1 || 1)) * h * 0.68;
+      const bar = (org.q / maxQ) * (organW * 0.62);
+      const wide = widths[i] ?? 4;
+      ctx.strokeStyle = org.highlight ? (this.mode === "autoreg" ? pal.warn : pal.accent) : pal.down;
+      ctx.lineWidth = wide;
+      ctx.lineCap = "round";
       ctx.beginPath();
-      ctx.moveTo(cx + loopR * 0.55, cy - loopR * 0.05);
-      ctx.lineTo(organX - 8, y);
+      ctx.moveTo(cx + loopR * 0.72, cy);
+      ctx.quadraticCurveTo((cx + organX) / 2, y, organX - 6, y);
       ctx.stroke();
-      ctx.fillStyle = org.highlight ? (this.mode === "autoreg" ? warn : accent) : down;
-      ctx.fillRect(organX, y - 10, bar, 20);
-      ctx.strokeStyle = ink;
-      ctx.strokeRect(organX, y - 10, organW * 0.55, 20);
-      ctx.fillStyle = ink;
-      ctx.font = "12px sans-serif";
+      ctx.fillStyle = org.highlight ? (this.mode === "autoreg" ? pal.warn : pal.accent) : pal.down;
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      ctx.roundRect(organX, y - 9, Math.max(6, bar), 18, 6);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = "rgba(255,255,255,0.2)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(organX, y - 9, organW * 0.62, 18, 6);
+      ctx.stroke();
+      ctx.fillStyle = pal.ink;
+      ctx.font = "13px IBM Plex Sans, sans-serif";
       ctx.textAlign = "left";
-      ctx.fillText(org.label, organX, y - 14);
-      ctx.fillStyle = muted;
-      ctx.font = "11px monospace";
-      ctx.fillText(`${org.q.toFixed(2)} L/min`, organX + organW * 0.58, y + 4);
+      ctx.fillText(org.label, organX, y - 16);
+      ctx.fillStyle = pal.muted;
+      ctx.font = "12px IBM Plex Mono, monospace";
+      ctx.fillText(`${org.q.toFixed(2)}`, organX + organW * 0.66, y + 4);
     });
 
     ctx.textAlign = "left";
-    ctx.fillStyle = ink;
-    ctx.font = "600 12px sans-serif";
-    ctx.fillText(`MAP ${hdr.map.toFixed(0)} mmHg`, 12, 22);
-    ctx.fillStyle = down;
-    ctx.fillText(`CVP ${hdr.cvp.toFixed(0)} mmHg`, 12, 40);
-    ctx.fillStyle = ok;
-    ctx.font = "11px monospace";
-    ctx.fillText(hdr.foot, 12, h - 14);
-
-    this.syncControls(false);
+    ctx.fillStyle = pal.ink;
+    ctx.font = "600 13px IBM Plex Sans, sans-serif";
+    ctx.fillText(`MAP  ${hdr.map.toFixed(0)}`, 18, 26);
+    ctx.fillStyle = pal.down;
+    ctx.fillText(`CVP  ${hdr.cvp.toFixed(0)}`, 18, 46);
+    ctx.fillStyle = pal.ok;
+    ctx.font = "12px IBM Plex Mono, monospace";
+    ctx.fillText(hdr.foot, 18, h - 18);
   }
 }

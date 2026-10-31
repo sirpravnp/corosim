@@ -48,7 +48,7 @@ function activeWidgetKey(v: ChapterView): string | null {
   let key = "";
   for (let i = 0; i <= v.index; i++) {
     const b = v.chapter.blocks[i];
-    if (b?.kind === "widget") key = `${b.id}|${b.mode ?? ""}`;
+    if (b?.kind === "widget") key = b.mode ? `${b.id}|${b.mode}` : b.id;
   }
   return key || null;
 }
@@ -59,9 +59,27 @@ function renderList() {
     const on = ch.id === cur ? " on" : "";
     const dis = ch.ready ? "" : " disabled";
     const href = ch.ready ? `#${ch.id}` : "#";
-    return `<a href="${href}" class="${on.trim()}${dis}" data-id="${ch.id}" aria-disabled="${ch.ready ? "false" : "true"}"><b>${ch.number}. ${esc(ch.title)}</b><small>${esc(ch.subtitle)}</small></a>`;
+    return `<a href="${href}" class="${on.trim()}${dis}" data-id="${ch.id}" aria-disabled="${ch.ready ? "false" : "true"}"><span class="sb-num">${ch.number}</span><span><b>${esc(ch.title)}</b><small>${esc(ch.subtitle)}</small></span></a>`;
   }).join("");
 }
+
+const STEP_LABEL: Record<string, string> = { text: "Read", predict: "Predict", widget: "Model", reveal: "Takeaway" };
+
+function renderProgress(v: ChapterView) {
+  $("sb-progress").innerHTML = v.chapter.blocks.map((b, i) => {
+    const cls = v.finished || i < v.index ? "done" : i === v.index ? "now" : "";
+    return `<li class="${cls}">${STEP_LABEL[b.kind] ?? b.kind}</li>`;
+  }).join("");
+}
+
+const STAGE_TITLE: Record<string, string> = {
+  diffusion: "Tissue oxygen",
+  fick: "Membrane flux",
+  starling: "Capillary exchange",
+  "circuit|autoreg": "Organ autoregulation",
+  "circuit|pump": "The circuit",
+  "circuit|": "The circuit",
+};
 
 function renderPredictReveals(v: ChapterView): string {
   const parts: string[] = [];
@@ -146,6 +164,8 @@ function ensureWidget() {
   cancelAnimationFrame(raf);
   widget = null;
   widgetKey = key;
+  const title = $("sb-stage-title");
+  if (title) title.textContent = STAGE_TITLE[key] ?? "Simulation";
   mountWidget(key);
   lastT = performance.now();
   const loop = (t: number) => {
@@ -178,8 +198,10 @@ function syncNav() {
 function render() {
   if (!view) return;
   const ch = view.chapter;
-  $("title").textContent = `${ch.number}. ${ch.title}`;
+  $("kicker").textContent = `Chapter ${ch.number}`;
+  $("title").textContent = ch.title;
   $("summary").textContent = ch.subtitle;
+  renderProgress(view);
   $("sb-step").innerHTML = renderStep(view) + renderPredictReveals(view);
   ensureWidget();
   syncNav();
