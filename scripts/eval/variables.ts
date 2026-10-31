@@ -7,8 +7,9 @@ import { LiveSource } from "../../src/sim/liveSource";
 import { cathReport } from "../../src/sim/cath";
 import { leftHeartCath } from "../../src/sim/leftHeartCath";
 import { rightHeartCath } from "../../src/sim/rightHeartCath";
+import { readout, type Readout } from "./readout";
 
-export interface Ctx { s: Simulation; src: LiveSource; st: any; ecg: any; hemo: any; fl: any; drugs: any; cor: any; met: any; sat: any; num: any; dev: any; cath: any; lhc: any; rhc: any; win: number }
+export interface Ctx { s: Simulation; src: LiveSource; st: any; ecg: any; hemo: any; fl: any; drugs: any; cor: any; met: any; sat: any; num: any; dev: any; cath: any; lhc: any; rhc: any; peri: { effusionMl: number; pressureMmHg: number; sacVolumeMl: number } | null; rd: Readout; win: number }
 export type Value = number | string | boolean | null;
 export interface Variable { id: string; panel: string; unit: string; kind: "num" | "bool" | "str"; get: (c: Ctx) => Value }
 
@@ -93,7 +94,7 @@ add("Treatment", "simSeconds", "s", (c) => c.st.timeS); add("Treatment", "clinic
 add("Treatment", "ischemicMinutes", "min", (c) => c.st.treatment.ischemicMinutes);
 add("Treatment", "stented", "", (c) => c.st.treatment.stent, "bool"); add("Treatment", "lysisSucceeded", "", (c) => c.st.treatment.lysis === null ? null : c.st.treatment.lysis, "bool"); add("Treatment", "grafted", "", (c) => c.st.treatment.grafted, "bool");
 // ---- Fluids and lungs
-for (const [k, u] of [["blood", "ml"], ["plasma", "ml"], ["hematocrit", "fraction"], ["hb", "g/dL"], ["interstitial", "ml"], ["plasmaProtein", "g/dL"], ["oncoticPlasma", "mmHg"], ["capillaryPressure", "mmHg"], ["urineRate", "ml/min"], ["lungWater", "ml"], ["lungWaterIndex", "ml/kg"], ["lungCapillaryPressure", "mmHg"], ["lungSatDrop", "fraction"], ["hemorrhage", "ml/min"]] as const)
+for (const [k, u] of [["blood", "ml"], ["plasma", "ml"], ["hematocrit", "fraction"], ["hb", "g/dL"], ["interstitial", "ml"], ["plasmaProtein", "g/dL"], ["oncoticPlasma", "mmHg"], ["capillaryPressure", "mmHg"], ["urineRate", "ml/min"], ["lungWater", "ml"], ["lungWaterIndex", "ml/kg"], ["lungCapillaryPressure", "mmHg"], ["lungSatDrop", "fraction"], ["hemorrhage", "ml/min"], ["conservation", "ml"]] as const)
   add("Fluids", `fluid.${k}`, u, (c) => c.fl?.[k]);
 // ---- Drugs (effect-site level 0..1 of a full dose)
 for (const k of ["norepinephrine", "epinephrine", "dobutamine", "milrinone", "vasopressin", "phenylephrine", "nitroglycerin", "nitroprusside", "betaBlocker", "furosemide", "diltiazem"]) add("Drugs", `drug.${k}`, "0-1", (c) => c.drugs?.level[k]);
@@ -102,6 +103,46 @@ add("Devices", "deviceFlow", "L/min", (c) => c.st.support.deviceFlowLpm);
 add("Devices", "impella.flow", "L/min", (c) => c.dev?.impella?.flowLpm); add("Devices", "impella.motorCurrent", "mA", (c) => c.dev?.impella?.motorCurrentMa);
 add("Devices", "impella.placement", "mmHg", (c) => c.dev?.impella?.placementMmHg); add("Devices", "impella.suctionLevel", "0-1", (c) => c.dev?.impella?.suctionLevel);
 add("Devices", "iabp.coronaryAugmentation", "mmHg", (c) => c.dev?.iabp?.coronaryAugmentationMmHg); add("Devices", "iabp.peakDiastolic", "mmHg", (c) => c.dev?.iabp?.peakDiastolicMmHg);
+// ECMO and Impella RP consoles (null until that circuit is in the patient). returnSat is the oxygenator's, from the live source.
+add("Devices", "ecmo.flow", "L/min", (c) => c.dev?.ecmo?.flowLpm); add("Devices", "ecmo.rpm", "rpm", (c) => c.dev?.ecmo?.rpm);
+add("Devices", "ecmo.sweep", "L/min", (c) => c.dev?.ecmo?.sweepLpm); add("Devices", "ecmo.fio2", "fraction", (c) => c.dev?.ecmo?.fio2);
+add("Devices", "ecmo.returnSat", "fraction", (c) => c.src.devices().find((d) => d.id === "ecmo")?.readings.returnSat);
+add("Devices", "ecmo.suction", "0-1", (c) => c.dev?.ecmo?.suctionLevel); add("Devices", "ecmo.membraneDp", "mmHg", (c) => c.dev?.ecmo?.membraneDpMmHg);
+add("Devices", "ecmo.head", "mmHg", (c) => c.dev?.ecmo?.headMmHg);
+add("Devices", "impellaRp.flow", "L/min", (c) => c.dev?.impellaRp?.flowLpm); add("Devices", "impellaRp.level", "P", (c) => c.dev?.impellaRp?.level);
+add("Devices", "impellaRp.speed", "krpm", (c) => c.dev?.impellaRp?.speedKrpm); add("Devices", "impellaRp.current", "mA", (c) => c.dev?.impellaRp?.motorCurrentMa);
+add("Devices", "impellaRp.placement", "mmHg", (c) => c.dev?.impellaRp?.placementMmHg);
+add("Devices", "impellaRp.suction", "", (c) => (c.dev?.impellaRp ? !!c.dev.impellaRp.suctionAlarm : null), "bool");
+// Pericardial sac. Null when the patient has no sac (pericardium() is null).
+add("Pericardium", "peri.effusionMl", "ml", (c) => c.peri?.effusionMl); add("Pericardium", "peri.pressure", "mmHg", (c) => c.peri?.pressureMmHg);
+add("Pericardium", "peri.sacMl", "ml", (c) => c.peri?.sacVolumeMl);
+// PV loop of the last steady LV beat (physics/loopMetrics.ts). tau is the recorder's Weiss fit, passed through loopMetrics.
+add("PV loop", "loop.strokeWork", "mmHg·ml", (c) => c.rd.strokeWork); add("PV loop", "loop.ea", "mmHg/ml", (c) => c.rd.ea);
+add("PV loop", "loop.ees", "mmHg/ml", (c) => c.rd.ees); add("PV loop", "loop.dpdtMax", "mmHg/s", (c) => c.rd.dpdtMax);
+add("PV loop", "loop.dpdtMin", "mmHg/s", (c) => c.rd.dpdtMin); add("PV loop", "loop.tau", "ms", (c) => c.rd.tau);
+add("PV loop", "loop.mvo2", "ml/min", (c) => c.rd.mvo2);
+add("PV loop", "cardiacPower", "W", (c) => c.rd.cpo);
+// JVP of the last steady beat (physics/jvp.ts) and respiratory swing (physics/respiratory.ts).
+add("JVP", "jvp.heightCm", "cm", (c) => c.rd.jvpHeightCm); add("JVP", "jvp.meanRa", "mmHg", (c) => c.rd.jvpMeanRa);
+add("JVP", "jvp.class", "", (c) => c.rd.jvpClass, "str");
+add("Respiratory", "pulsusParadoxus", "mmHg", (c) => c.rd.pulsusParadoxus); add("Respiratory", "ppv", "fraction", (c) => c.rd.ppv);
+// Live valves. Forward / regurg / open time from LiveSource.beats().valves; gradients from the same beat's recorder
+// (BeatSummary does not carry them). EOA is gorlinArea. The pulmonary valve's recorder name is PVL.
+for (const id of ["AV", "MV", "TV", "PV"] as const) {
+  const k = id.toLowerCase();
+  add("Valves", `valve.${k}.forwardMl`, "ml", (c) => c.rd.valve[id].forwardMl);
+  add("Valves", `valve.${k}.regurgMl`, "ml", (c) => c.rd.valve[id].regurgMl);
+  add("Valves", `valve.${k}.regurgFraction`, "fraction", (c) => c.rd.valve[id].regurgFraction);
+  add("Valves", `valve.${k}.openMs`, "ms", (c) => c.rd.valve[id].openMs);
+  add("Valves", `valve.${k}.peakGradient`, "mmHg", (c) => c.rd.valve[id].peakGradient);
+  add("Valves", `valve.${k}.meanGradient`, "mmHg", (c) => c.rd.valve[id].meanGradient);
+  add("Valves", `valve.${k}.eoa`, "cm2", (c) => c.rd.valve[id].eoa);
+}
+for (const k of ["pda", "asd", "vsd", "bt"] as const) add("Shunts", `shunt.${k}`, "L/min", (c) => c.rd.shunt[k]);
+add("Valves", "murmur", "", (c) => c.rd.murmur, "str");
+add("Valves", "laVolume", "ml", (c) => c.rd.laVolume);
+// LV peak systolic pressure. A valve gradient lives here (LV minus aorta), not in the aortic pressure.
+add("Valves", "lvPeakSys", "mmHg", (c) => c.rd.lvPeakSys);
 // ---- Autonomic and variability (rolling window)
 add("Autonomic", "sbpSd", "mmHg", (c) => c.met.sbp.sd); add("Autonomic", "mapSd", "mmHg", (c) => c.met.map.sd); add("Autonomic", "strokeVolumeCv", "%", (c) => c.met.strokeVolume.cv);
 add("Autonomic", "sdnn", "ms", (c) => c.met.hrv?.sdnnMs); add("Autonomic", "rmssd", "ms", (c) => c.met.hrv?.rmssdMs); add("Autonomic", "pnn50", "%", (c) => c.met.hrv?.pnn50);
@@ -123,15 +164,19 @@ export const CROSS_CHECKS: { a: string; b: string; tol: number; why: string; unl
   { a: "co", b: "rhc.fickCo", tol: 0.6, why: "thermodilution-style CO vs Fick CO (real catheters agree within about 10-20%)" },
   { a: "hr", b: "hrRolling", tol: 4, why: "Monitor HR vs state HR (different windows)" },
   { a: "sv", b: "svAortic", tol: 6, why: "Monitor SV (output / rate, includes pump flow) vs aortic-valve stroke volume", unlessDevice: true },
+  { a: "lvPeakSys", b: "lhc.lvSystolic", tol: 8, why: "LV peak pressure of the last steady beat vs the left-heart cath systolic (same beat, different window)" },
+  { a: "cardiacPower", b: "rhc.cpo", tol: 0.15, why: "MAP·CO/451 vs the right-heart cath cardiac power" },
 ];
 
 export function context(s: Simulation, src: LiveSource, win = 20): Ctx {
   const safe = <T,>(f: () => T): T | null => { try { return f(); } catch { return null; } };
   const dev = safe(() => s.devices());
+  const num = src.numbers();
   return {
     s, src, win, st: s.state(), ecg: s.ecg(), hemo: safe(() => s.hemo(win)), fl: safe(() => s.fluids()), drugs: safe(() => s.drugState()), cor: safe(() => s.coronarySupply()),
-    met: s.metrics(win), sat: src.saturations(), num: src.numbers(), dev, cath: safe(() => cathReport(s)) ?? { findings: [], echo: { abnormal: [] } },
-    lhc: safe(() => leftHeartCath(src.numbers(), src.beats(3).slice(-1)[0])), rhc: safe(() => rightHeartCath(src as any)),
+    met: s.metrics(win), sat: src.saturations(), num, dev, cath: safe(() => cathReport(s)) ?? { findings: [], echo: { abnormal: [] } },
+    lhc: safe(() => leftHeartCath(num, src.beats(3).slice(-1)[0])), rhc: safe(() => rightHeartCath(src as any)),
+    peri: safe(() => s.pericardium()), rd: readout(s, src, num.map, num.co),
   };
 }
 export const snapshot = (c: Ctx): Record<string, Value> => Object.fromEntries(VARIABLES.map((x) => [x.id, x.get(c)]));

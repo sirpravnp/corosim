@@ -1,60 +1,56 @@
 // Evaluation runner. The engine runs headless (no browser, no site): Simulation is a DOM-free class.
-//   npx tsx scripts/eval/run.ts list
-//   npx tsx scripts/eval/run.ts template [state ...]     blank spec CSV per state in scripts/eval/spec/ (never overwrites a filled one)
-//   npx tsx scripts/eval/run.ts observe  [state ...] [--seeds 8] [--jobs 4]    run seeds, write scripts/eval/out/<state>.observed.csv + .json
-//   npx tsx scripts/eval/run.ts check    [state ...]     compare scripts/eval/spec/<state>.csv with the last observe; exit 1 on failures
+//   npx tsx scripts/eval/run.ts list [--suite standard,edge,valve,stochastic,sweep]
+//   npx tsx scripts/eval/run.ts template [state ...] [--observed]   blank spec CSV; --observed adds seen_* columns from the last observe (not expectations)
+//   npx tsx scripts/eval/run.ts observe  [state ...] [--seeds 8] [--jobs 4] [--suite S] [--shard i/n]
+//   npx tsx scripts/eval/run.ts check    [state ...] [--invariants-only]   expectations, then invariants; exit 1 on either
+//   npx tsx scripts/eval/run.ts report   write scripts/eval/out/REPORT.md from whatever has been observed
+//   npx tsx scripts/eval/run.ts timescale   hemorrhage, bleed and LAD occlusion at 1x/3x/6x, equal clinical minutes
+// Default observe/check skip the input sweep (one state per field value). Pass --suite sweep or --suite all.
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { Simulation } from "../../src/sim/simulation";
-import { LiveSource } from "../../src/sim/liveSource";
-import { VARIABLES, CROSS_CHECKS, context, snapshot, type Value } from "./variables";
-import { STATES, STATE_BY_ID, CHECKPOINTS, type State } from "./states";
+import { VARIABLES, CROSS_CHECKS } from "./variables";
+import { STATES, STATE_BY_ID, type State } from "./states";
 import { parseRule, satisfies, PASS_FRACTION } from "./grammar";
+import { cpOf, runOne, summarise, type SeedRun } from "./engine";
+import { scanInvariants } from "./invariants";
+import { renderReport } from "./report";
+import { writeTimescale } from "./timescale";
 
-const here = dirname(fileURLToPath(import.meta.url)), SPEC = join(here, "spec"), OUT = join(here, "out");
-const BASE_SPEC = { lesions: [] as never[] };
-const WARM_S = 40;
-type Row = Record<string, Value>;
-interface SeedRun { state: string; seed: number; error?: string; warnings: string[]; at: Record<string, Row> } // keys: "base", "5", "20" ...
+const here = dirname(fileURLToPath(import.meta.url));
+const SPEC = join(here, "spec");
+const OUT = join(here, "out");
+const TAKES = new Set(["--seeds", "--jobs", "--suite", "--shard"]);
+const DEFAULT_SUITES = ["standard", "edge", "valve", "stochastic"];
+const TIMEOUT_MS = 180_000;
 
-// ---- one (state, seed): the engine, headless
-function runOne(st: State, seed: number): SeedRun {
-  const out: SeedRun = { state: st.id, seed, warnings: [], at: {} };
-  try {
-    const s = new Simulation({}, { engine: "core" });
-    s.reset({ ...BASE_SPEC, ...(st.baseline ?? {}), seed }, { settled: true, warmup: 30 });
-    // The page makes its LiveSource first. A LiveSource only sees beats made after it exists; one made late has an empty ring and falls back
-    // to a single stored warm-up beat (identical for every seed), which would make every baseline look the same.
-    const src = new LiveSource(s);
-    if (s.engine !== "core") throw new Error(`engine is ${s.engine}, not core`);
-    if (s.coreNote) throw new Error(`core engine could not settle this patient: ${s.coreNote}`); // otherwise a plain adult is shown and the run means nothing
-    s.warmup(WARM_S - 30);
-    s.step(20);
-    out.at["base"] = snapshot(context(s, src, 20));
-    const t0 = s.t;
-    s.apply({ ...st.insult });
-    const cps = [...(st.checkpoints ?? CHECKPOINTS)].sort((a, b) => a - b);
-    const acts = [...(st.actions ?? [])].sort((a, b) => a.atS - b.atS);
-    const events = [...cps.map((t) => ({ t, kind: "snap" as const })), ...acts.map((a) => ({ t: a.atS, kind: "act" as const, a }))].sort((x, y) => x.t - y.t || (x.kind === "act" ? -1 : 1));
-    for (const e of events) {
-      const dt = t0 + e.t - s.t;
-      if (dt > 0) s.step(dt);
-      if (e.kind === "act") e.a.run(s); else out.at[String(e.t)] = snapshot(context(s, src, Math.max(5, Math.min(20, e.t))));
-    }
-    out.warnings = s.warnings.slice();
-  } catch (e) { out.error = (e as Error).stack?.split("\n").slice(0, 3).join(" | ") ?? String(e); }
-  return out;
+const arg = (name: string, d: string) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : d; };
+const flag = (name: string) => process.argv.includes(`--${name}`);
+const suiteOf = (st: State) => st.suite ?? "standard";
+
+function pick(): State[] {
+  const ids = process.argv.slice(3).filter((a, i, all) => !a.startsWith("--") && !(i > 0 && TAKES.has(all[i - 1])));
+  for (const i of ids) if (!STATE_BY_ID[i]) { console.error(`unknown state ${i}`); process.exit(2); }
+  let list = ids.length ? ids.map((i) => STATE_BY_ID[i]) : STATES;
+  const suite = arg("suite", "");
+  if (suite && suite !== "all") {
+    const ok = new Set(suite.split(",").map((s) => s.trim()));
+    list = list.filter((s) => ok.has(suiteOf(s)));
+  } else if (!suite && !ids.length) {
+    const skipped = list.filter((s) => !DEFAULT_SUITES.includes(suiteOf(s)));
+    list = list.filter((s) => DEFAULT_SUITES.includes(suiteOf(s)));
+    if (skipped.length) console.error(`skipping ${skipped.length} states (pass --suite sweep or --suite all)`);
+  }
+  const shard = arg("shard", "");
+  if (shard) {
+    const [i, n] = shard.split("/").map(Number);
+    if (!Number.isInteger(i) || !Number.isInteger(n) || i < 1 || i > n) { console.error("--shard i/n"); process.exit(2); }
+    list = list.filter((_, k) => k % n === i - 1);
+  }
+  return list;
 }
 
-// ---- driver
-const arg = (name: string, d: string) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : d; };
-const pick = () => {
-  const ids = process.argv.slice(3).filter((a, i, all) => !a.startsWith("--") && !(i > 0 && all[i - 1].startsWith("--")));
-  for (const i of ids) if (!STATE_BY_ID[i]) { console.error(`unknown state ${i}`); process.exit(2); }
-  return ids.length ? ids.map((i) => STATE_BY_ID[i]) : STATES;
-};
 const csvCell = (x: string) => (/[",\n]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x);
 const parseCsv = (txt: string): string[][] => {
   const rows: string[][] = []; let cur: string[] = [], f = "", q = false;
@@ -66,28 +62,76 @@ const parseCsv = (txt: string): string[][] => {
   if (f || cur.length) { cur.push(f); rows.push(cur); }
   return rows;
 };
-const cpOf = (st: State) => (st.checkpoints ?? CHECKPOINTS).slice().sort((a, b) => a - b);
+const seenMean = (cell: string) => cell.includes(" (") ? cell.slice(0, cell.indexOf(" (")) : cell;
+
+function observedMeans(st: State): Map<string, string[]> | null {
+  const f = join(OUT, `${st.id}.observed.csv`);
+  if (!existsSync(f)) return null;
+  const rows = parseCsv(readFileSync(f, "utf8")).filter((r) => r.length > 1 && !r[0].startsWith("#"));
+  const head = rows[0] ?? [];
+  const cols = cpOf(st).map((t) => head.indexOf(`t${t}s`));
+  const out = new Map<string, string[]>();
+  for (const row of rows.slice(1)) out.set(row[0], cols.map((i) => (i >= 0 ? seenMean(row[i] ?? "") : "")));
+  return out;
+}
 
 function template(st: State) {
   const file = join(SPEC, `${st.id}.csv`);
-  if (existsSync(file)) { console.log(`keep   ${file} (exists)`); return; }
-  const head = ["variable", "unit", "panel", ...cpOf(st).map((t) => `t${t}s`), "note"];
-  const lines = [`# ${st.id}: ${st.title}. Columns t<N>s = N simulated seconds after the insult (x2 = clinical minutes). Grammar: scripts/eval/grammar.ts`, head.join(",")];
-  for (const v of VARIABLES) lines.push([v.id, v.unit, v.panel, ...cpOf(st).map(() => ""), ""].map(csvCell).join(","));
-  mkdirSync(SPEC, { recursive: true }); writeFileSync(file, lines.join("\n") + "\n"); console.log(`wrote  ${file}`);
+  const cps = cpOf(st);
+  const seen = flag("observed");
+  const means = seen ? observedMeans(st) : null;
+  const seenHead = seen ? cps.map((t) => `seen_t${t}s`) : [];
+  const head = ["variable", "unit", "panel", ...cps.map((t) => `t${t}s`), ...seenHead, "note"];
+  const blank = (id: string) => {
+    const m = means?.get(id) ?? cps.map(() => "");
+    return [id, VARIABLES.find((v) => v.id === id)?.unit ?? "", VARIABLES.find((v) => v.id === id)?.panel ?? "", ...cps.map(() => ""), ...(seen ? m : []), ""];
+  };
+  mkdirSync(SPEC, { recursive: true });
+  if (!existsSync(file)) {
+    const lines = [`# ${st.id}: ${st.title}. Columns t<N>s are expectations (grammar.ts). seen_t<N>s is the last observed mean, not an expectation; check ignores it.`, head.join(",")];
+    for (const v of VARIABLES) lines.push(blank(v.id).map(csvCell).join(","));
+    writeFileSync(file, lines.join("\n") + "\n");
+    console.log(`wrote  ${file}`);
+    return;
+  }
+  if (!seen) { console.log(`keep   ${file} (exists)`); return; }
+  const rows = parseCsv(readFileSync(file, "utf8"));
+  const comment = rows.length && rows[0][0]?.startsWith("#") ? rows[0][0] : "";
+  const body = rows.filter((r) => r.length > 1 && !r[0].startsWith("#"));
+  const oldHead = body[0] ?? [];
+  const expIdx = cps.map((t) => oldHead.indexOf(`t${t}s`));
+  const noteIdx = oldHead.indexOf("note");
+  const byId = new Map(body.slice(1).map((r) => [r[0], r]));
+  const lines = [`# ${st.id}: ${st.title}. Columns t<N>s are expectations. seen_t<N>s is the last observed mean, not an expectation; check ignores it.${comment ? " " + comment.replace(/^#\s*/, "") : ""}`, head.join(",")];
+  for (const v of VARIABLES) {
+    const prev = byId.get(v.id);
+    const exp = expIdx.map((i) => (prev && i >= 0 ? prev[i] ?? "" : ""));
+    const m = means?.get(v.id) ?? cps.map(() => "");
+    const note = noteIdx >= 0 && prev ? prev[noteIdx] ?? "" : "";
+    lines.push([v.id, v.unit, v.panel, ...exp, ...m, note].map(csvCell).join(","));
+  }
+  writeFileSync(file, lines.join("\n") + "\n");
+  console.log(`updated ${file} (seen_* from the last observe; expectation cells kept)`);
 }
 
 async function observe(states: State[]) {
-  const seeds = +arg("seeds", "8"), jobs = +arg("jobs", "4");
+  const seeds = +arg("seeds", "8"), jobs = Math.max(1, +arg("jobs", "4"));
   const queue = states.flatMap((st) => Array.from({ length: st.seeds ?? seeds }, (_, i) => ({ st, seed: i + 1 })));
   const results: SeedRun[] = []; let next = 0, done = 0; const t0 = Date.now();
-  await Promise.all(Array.from({ length: jobs }, async () => {
+  await Promise.all(Array.from({ length: Math.min(jobs, queue.length) }, async () => {
     while (next < queue.length) {
       const job = queue[next++];
       const r = await new Promise<SeedRun>((res) => {
         const p = spawn(process.execPath, ["--import", "tsx", fileURLToPath(import.meta.url), "worker", job.st.id, String(job.seed)], { stdio: ["ignore", "pipe", "inherit"] });
-        let buf = ""; p.stdout.on("data", (d) => (buf += d));
-        p.on("close", () => { try { res(JSON.parse(buf.split("\n").filter((l) => l.startsWith("{")).pop()!)); } catch { res({ state: job.st.id, seed: job.seed, error: "worker produced no result", warnings: [], at: {} }); } });
+        let buf = ""; let timed = false;
+        const timer = setTimeout(() => { timed = true; p.kill("SIGKILL"); }, TIMEOUT_MS);
+        p.stdout.on("data", (d) => (buf += d));
+        p.on("close", () => {
+          clearTimeout(timer);
+          if (timed) { res({ state: job.st.id, seed: job.seed, error: `timed out after ${TIMEOUT_MS / 1000}s`, warnings: [], at: {} }); return; }
+          try { res(JSON.parse(buf.split("\n").filter((l) => l.startsWith("{")).pop()!)); }
+          catch { res({ state: job.st.id, seed: job.seed, error: "worker produced no result", warnings: [], at: {} }); }
+        });
       });
       results.push(r); done++; process.stderr.write(`\r${done}/${queue.length} runs, ${((Date.now() - t0) / 1000).toFixed(0)}s`);
     }
@@ -101,21 +145,13 @@ async function observe(states: State[]) {
     const lines = [`# ${st.id}: ${st.title}; ${runs.length} seeds${errs.length ? `; ${errs.length} CRASHED: ${errs[0].error}` : ""}. Cell = mean (min..max) for numbers, share true for booleans, most common for text.`, ["variable", "unit", "panel", ...cps.map((c) => (c === "base" ? "base" : `t${c}s`))].join(",")];
     for (const v of VARIABLES) lines.push([v.id, v.unit, v.panel, ...cps.map((c) => summarise(runs.filter((r) => !r.error), c, v.id, v.kind))].map(csvCell).join(","));
     writeFileSync(join(OUT, `${st.id}.observed.csv`), lines.join("\n") + "\n");
-    console.log(`${st.id.padEnd(26)} ${runs.length} seeds${errs.length ? `  ${errs.length} CRASHED` : ""}  -> out/${st.id}.observed.csv`);
+    console.log(`${st.id.padEnd(28)} ${runs.length} seeds${errs.length ? `  ${errs.length} CRASHED` : ""}  -> out/${st.id}.observed.csv`);
   }
-}
-function summarise(runs: SeedRun[], cp: string, id: string, kind: string): string {
-  const vals = runs.map((r) => r.at[cp]?.[id]).filter((x) => x !== undefined && x !== null) as Exclude<Value, null>[];
-  if (!vals.length) return "";
-  if (kind === "num") { const a = vals as number[], m = a.reduce((x, y) => x + y, 0) / a.length, f = (x: number) => (Math.abs(x) >= 100 ? x.toFixed(0) : Math.abs(x) >= 10 ? x.toFixed(1) : x.toFixed(2)); return `${f(m)} (${f(Math.min(...a))}..${f(Math.max(...a))})`; }
-  if (kind === "bool") return `p=${((vals as boolean[]).filter(Boolean).length / vals.length).toFixed(2)}`;
-  const c = new Map<string, number>(); for (const x of vals) c.set(String(x), (c.get(String(x)) ?? 0) + 1);
-  const top = [...c.entries()].sort((a, b) => b[1] - a[1]); return top.length === 1 ? top[0][0] : `${top[0][0]} (${top[0][1]}/${vals.length}; also ${top.slice(1).map((x) => x[0]).join(" | ")})`;
 }
 
 function check(states: State[]) {
   let fail = 0, pass = 0, open = 0, bad = 0;
-  for (const st of states) {
+  if (!flag("invariants-only")) for (const st of states) {
     const specFile = join(SPEC, `${st.id}.csv`), runFile = join(OUT, `${st.id}.json`);
     if (!existsSync(specFile)) continue;
     if (!existsSync(runFile)) { console.log(`${st.id}: no observation yet; run observe`); continue; }
@@ -136,24 +172,47 @@ function check(states: State[]) {
       }
     }
   }
-  console.log(`\n${pass} cells pass, ${fail} fail, ${bad} unparseable, ${open} cells with no opinion yet`);
-  // Do the panels agree with each other? Independent of any spec.
-  for (const st of states) {
-    const f = join(OUT, `${st.id}.json`); if (!existsSync(f)) continue;
-    const runs = (JSON.parse(readFileSync(f, "utf8")) as SeedRun[]).filter((r) => !r.error);
-    for (const x of CROSS_CHECKS) for (const cp of ["base", ...cpOf(st).map(String)]) {
-      const d = runs.filter((r) => !(x.unlessDevice && Number(r.at[cp]?.["deviceFlow"]) > 0.1)).map((r) => Math.abs(Number(r.at[cp]?.[x.a]) - Number(r.at[cp]?.[x.b]))).filter(Number.isFinite);
-      if (!d.length) continue;
-      const worst = Math.max(...d); if (worst > x.tol) console.log(`CROSS ${st.id} ${cp}: ${x.why}: ${x.a} vs ${x.b} differ by up to ${worst.toFixed(3)} (tol ${x.tol})`);
+  if (!flag("invariants-only")) {
+    console.log(`\n${pass} cells pass, ${fail} fail, ${bad} unparseable, ${open} cells with no opinion yet`);
+    for (const st of states) {
+      const f = join(OUT, `${st.id}.json`); if (!existsSync(f)) continue;
+      const runs = (JSON.parse(readFileSync(f, "utf8")) as SeedRun[]).filter((r) => !r.error);
+      for (const x of CROSS_CHECKS) for (const cp of ["base", ...cpOf(st).map(String)]) {
+        const d = runs.filter((r) => !(x.unlessDevice && Number(r.at[cp]?.["deviceFlow"]) > 0.1)).map((r) => Math.abs(Number(r.at[cp]?.[x.a]) - Number(r.at[cp]?.[x.b]))).filter(Number.isFinite);
+        if (!d.length) continue;
+        const worst = Math.max(...d); if (worst > x.tol) console.log(`CROSS ${st.id} ${cp}: ${x.why}: ${x.a} vs ${x.b} differ by up to ${worst.toFixed(3)} (tol ${x.tol})`);
+      }
     }
   }
-  process.exit(fail || bad ? 1 : 0);
+  const runs: SeedRun[] = [];
+  for (const st of states) {
+    const f = join(OUT, `${st.id}.json`); if (!existsSync(f)) continue;
+    runs.push(...(JSON.parse(readFileSync(f, "utf8")) as SeedRun[]));
+  }
+  const hits = scanInvariants(states, runs);
+  console.log(`\n--- invariants ---`);
+  const show = hits.slice(0, 80);
+  for (const h of show) console.log(`INV ${h.state} seed ${h.seed} ${h.where}: ${h.rule}`);
+  if (hits.length > show.length) console.log(`... ${hits.length - show.length} more`);
+  console.log(`${hits.length} invariant violations over ${runs.length} runs${runs.length ? "" : " (no observations)"}`);
+  const warnStates = states.filter((s) => suiteOf(s) !== "sweep");
+  for (const st of warnStates) {
+    const f = join(OUT, `${st.id}.json`); if (!existsSync(f)) continue;
+    const ws = [...new Set((JSON.parse(readFileSync(f, "utf8")) as SeedRun[]).flatMap((r) => r.warnings))];
+    if (ws.length) console.log(`warn ${st.id}: ${ws.join(" | ")}`);
+  }
+  process.exit(fail || bad || hits.length ? 1 : 0);
 }
 
 const cmd = process.argv[2];
-if (cmd === "worker") { const st = STATE_BY_ID[process.argv[3]]; console.log(JSON.stringify(runOne(st, +process.argv[4]))); }
-else if (cmd === "list") for (const s of STATES) console.log(`${s.id.padEnd(26)} ${s.title}`);
+if (cmd === "worker") {
+  const st = STATE_BY_ID[process.argv[3]];
+  if (!st) { console.error(`unknown state ${process.argv[3]}`); process.exit(2); }
+  console.log(JSON.stringify(runOne(st, +process.argv[4])));
+} else if (cmd === "list") for (const s of pick()) console.log(`${s.id.padEnd(28)} ${(s.suite ?? "standard").padEnd(11)} ${s.title}`);
 else if (cmd === "template") pick().forEach(template);
 else if (cmd === "observe") await observe(pick());
 else if (cmd === "check") check(pick());
-else console.log("usage: run.ts list | template [state..] | observe [state..] [--seeds N] [--jobs N] | check [state..]");
+else if (cmd === "report") { mkdirSync(OUT, { recursive: true }); const md = renderReport(OUT, SPEC); writeFileSync(join(OUT, "REPORT.md"), md); console.log(`wrote ${join(OUT, "REPORT.md")}`); }
+else if (cmd === "timescale") { mkdirSync(OUT, { recursive: true }); writeTimescale(OUT, +arg("seed", "1")); }
+else console.log("usage: run.ts list | template [--observed] | observe [--seeds N --jobs N --suite S --shard i/n] | check [--invariants-only] | report | timescale");
