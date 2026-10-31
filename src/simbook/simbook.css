@@ -54,6 +54,7 @@ main.sb-main { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 
 .sb-controls label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; min-width: 200px; }
 .sb-controls input[type="range"] { width: 100%; accent-color: var(--range); }
 .sb-controls output { font: 600 13px var(--font-data); color: var(--muted); }
+.sb-controls label.sb-chk { flex-direction: row; align-items: center; gap: 8px; min-width: unset; }
 .sb-lock { margin: 0; flex: 1 1 100%; font-size: 12px; color: var(--muted); }
 
 .sb-meas { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px 16px; margin: 0 0 12px; }
