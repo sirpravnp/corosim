@@ -5,8 +5,10 @@
 import type { Simulation } from "../../src/sim/simulation";
 import { LiveSource } from "../../src/sim/liveSource";
 import { cathReport } from "../../src/sim/cath";
+import { leftHeartCath } from "../../src/sim/leftHeartCath";
+import { rightHeartCath } from "../../src/sim/rightHeartCath";
 
-export interface Ctx { s: Simulation; src: LiveSource; st: any; ecg: any; hemo: any; fl: any; drugs: any; cor: any; met: any; sat: any; num: any; dev: any; cath: any; win: number }
+export interface Ctx { s: Simulation; src: LiveSource; st: any; ecg: any; hemo: any; fl: any; drugs: any; cor: any; met: any; sat: any; num: any; dev: any; cath: any; lhc: any; rhc: any; win: number }
 export type Value = number | string | boolean | null;
 export interface Variable { id: string; panel: string; unit: string; kind: "num" | "bool" | "str"; get: (c: Ctx) => Value }
 
@@ -38,7 +40,23 @@ add("Hemodynamics", "svr", "WU", (c) => c.num.svr); add("Hemodynamics", "pvr", "
 add("Hemodynamics", "lvEdv", "ml", (c) => c.hemo?.lvEdv); add("Hemodynamics", "lvEsv", "ml", (c) => c.hemo?.lvEsv);
 add("Hemodynamics", "msfp", "mmHg", (c) => c.hemo?.filling.msfp); add("Hemodynamics", "stressedVolume", "ml", (c) => c.hemo?.filling.stressed);
 add("Hemodynamics", "unstressedVolume", "ml", (c) => c.hemo?.filling.unstressed);
-add("Hemodynamics", "coronaryPerfusionPressure", "mmHg", (c) => c.st.coronaryPerfusionPressure);
+// Two different quantities both called CPP: the Hemodynamics panel shows aortic diastolic minus LVEDP; the engine's own `coronaryPerfusionPressure`
+// is the (calibrated) pressure the coronary network is solved at, about 90 in a healthy adult. Registered under separate names on purpose.
+add("Hemodynamics", "cppPanel", "mmHg", (c) => vit(c).dbp - vit(c).lvedp);
+add("Hemodynamics", "coronaryDrivingPressure", "mmHg", (c) => c.st.coronaryPerfusionPressure);
+add("Monitor", "sinusRate", "bpm", (c) => c.st.rhythm.sinusRate);
+add("Hemodynamics", "ectopicBeatsPct", "%", (c) => (c.num.ectopy?.fraction ?? 0) * 100);
+// ---- Left-heart cath panel (sim/leftHeartCath.ts, latest steady beat). A valve gradient shows here, not in the aortic pressure.
+add("Left-heart cath", "lhc.lvSystolic", "mmHg", (c) => c.lhc.lv.systolic); add("Left-heart cath", "lhc.peakToPeak", "mmHg", (c) => c.lhc.gradient.peakToPeak);
+add("Left-heart cath", "lhc.meanGradient", "mmHg", (c) => c.lhc.gradient.mean); add("Left-heart cath", "lhc.peakInstant", "mmHg", (c) => c.lhc.gradient.peakInstant);
+add("Left-heart cath", "lhc.aorticAreaGorlin", "cm2", (c) => c.lhc.area.aorticGorlin); add("Left-heart cath", "lhc.aorticAreaHakki", "cm2", (c) => c.lhc.area.aorticHakki);
+add("Left-heart cath", "lhc.mitralMeanGradient", "mmHg", (c) => c.lhc.mitral.meanGradient); add("Left-heart cath", "lhc.mitralAreaGorlin", "cm2", (c) => c.lhc.area.mitralGorlin);
+add("Left-heart cath", "lhc.avForwardMl", "ml", (c) => c.lhc.avForwardMl); add("Left-heart cath", "lhc.aorticSeverity", "", (c) => c.lhc.severity.aortic, "str"); add("Left-heart cath", "lhc.mitralSeverity", "", (c) => c.lhc.severity.mitral, "str");
+// ---- Right-heart cath panel (sim/rightHeartCath.ts)
+add("Right-heart cath", "rhc.raA", "mmHg", (c) => c.rhc.pullback.ra.a); add("Right-heart cath", "rhc.raV", "mmHg", (c) => c.rhc.pullback.ra.v); add("Right-heart cath", "rhc.rvSystolic", "mmHg", (c) => c.rhc.pullback.rv.systolic);
+add("Right-heart cath", "rhc.fickCo", "L/min", (c) => c.rhc.output.fick); add("Right-heart cath", "rhc.qpQsFick", "ratio", (c) => c.rhc.output.qpQs);
+add("Right-heart cath", "rhc.tpg", "mmHg", (c) => c.rhc.derived.tpg); add("Right-heart cath", "rhc.dpg", "mmHg", (c) => c.rhc.derived.dpg); add("Right-heart cath", "rhc.papi", "ratio", (c) => c.rhc.derived.papi);
+add("Right-heart cath", "rhc.cpo", "W", (c) => c.rhc.derived.cpo); add("Right-heart cath", "rhc.mixedVenousSat", "fraction", (c) => c.rhc.oximetry.mixedVenous); add("Right-heart cath", "rhc.stepUp", "", (c) => c.rhc.oximetry.stepUp ? JSON.stringify(c.rhc.oximetry.stepUp) : "none", "str");
 // ---- Oxygen
 add("Oxygen", "spo2", "fraction", (c) => c.sat.spo2); add("Oxygen", "svo2", "fraction", (c) => c.sat.svo2);
 add("Oxygen", "preductalSat", "fraction", (c) => c.sat.preductal); add("Oxygen", "postductalSat", "fraction", (c) => c.sat.postductal);
@@ -101,6 +119,8 @@ export const VARIABLES: readonly Variable[] = v;
 export const CROSS_CHECKS: { a: string; b: string; tol: number; why: string; unlessDevice?: boolean }[] = [
   { a: "lvEf", b: "lvEfEstimate", tol: 0.06, why: "Monitor EF (LV chamber volumes) vs state EF (aortic stroke volume, smoothed); differ in a pump's presence and in fast transients", unlessDevice: true },
   { a: "lvEfEstimate", b: "echo.ef", tol: 0.02, why: "state EF vs cath-lab echo EF (same source; rounding only)" },
+  { a: "qpQs", b: "rhc.qpQsFick", tol: 0.05, why: "Qp:Qs from flows (Hemodynamics, Oxygen panels) vs from oxygen content (right-heart cath, Fick)" },
+  { a: "co", b: "rhc.fickCo", tol: 0.6, why: "thermodilution-style CO vs Fick CO (real catheters agree within about 10-20%)" },
   { a: "hr", b: "hrRolling", tol: 4, why: "Monitor HR vs state HR (different windows)" },
   { a: "sv", b: "svAortic", tol: 6, why: "Monitor SV (output / rate, includes pump flow) vs aortic-valve stroke volume", unlessDevice: true },
 ];
@@ -111,6 +131,7 @@ export function context(s: Simulation, src: LiveSource, win = 20): Ctx {
   return {
     s, src, win, st: s.state(), ecg: s.ecg(), hemo: safe(() => s.hemo(win)), fl: safe(() => s.fluids()), drugs: safe(() => s.drugState()), cor: safe(() => s.coronarySupply()),
     met: s.metrics(win), sat: src.saturations(), num: src.numbers(), dev, cath: safe(() => cathReport(s)) ?? { findings: [], echo: { abnormal: [] } },
+    lhc: safe(() => leftHeartCath(src.numbers(), src.beats(3).slice(-1)[0])), rhc: safe(() => rightHeartCath(src as any)),
   };
 }
 export const snapshot = (c: Ctx): Record<string, Value> => Object.fromEntries(VARIABLES.map((x) => [x.id, x.get(c)]));

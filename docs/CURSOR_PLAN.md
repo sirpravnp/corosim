@@ -26,6 +26,8 @@ Find out, variable by variable and over time, whether the **core engine** (`Simu
 - Solver: there is one integrator, the core engine (`src/physics/core/`). The structural model (`physics/structural.ts`: chambers, vessels, valves, shunts) is what it is built from, and `analyze()`/`simulate()` run it with no reflexes. The ACS `Simulation` runs the same engine plus the coronary, ischemia, rhythm and autonomic layers.
 - Engine selection: core is used by the Simulator page; legacy is the default of `new Simulation()`. The core still calls the legacy `circulation()` for ischemic fractions, rhythm rate and demand factor.
 - Known definitional split (do not "fix", just keep it labelled): `lvEf` (chamber volumes, Monitor) vs `lvEfEstimate` (aortic-valve stroke volume, smoothed; ischemia panel, MCP, cath echo). They differ with an Impella running (0.30 vs 0.13) and for up to ~0.10 in the first minute after a change.
+- Duplicated quantities registered under separate names (do not merge): `lvEf` vs `lvEfEstimate`; `cppPanel` (aortic diastolic minus LVEDP, about 57) vs `coronaryDrivingPressure` (about 90); `qpQs` (flows) vs `rhc.qpQsFick` (oxygen content: reads 1.08 in a healthy heart, a Fick-path bias); `co` vs `rhc.fickCo` (-7%).
+- A valve gradient shows in `lhc.*` (LV minus aorta), not in aortic pressure: register and check those for every valve state.
 - Empty by design: `lactate` (not modelled), `lysisSucceeded` until treated, cath fields on an occluded vessel.
 
 ## Tasks, in order
@@ -76,6 +78,14 @@ Done when: `variables.ts` registers them and `observe` fills them without errors
 - States to add: aortic stenosis (mild, moderate, severe), aortic regurgitation, mitral stenosis, mitral regurgitation (chronic and acute), tricuspid and pulmonary lesions, ASD, VSD, PDA, aortic stenosis + LAD 80% (already shown to interact: LVEDP 8 to 13, EF 0.62 to 0.45), bioprosthetic and mechanical replacement, TAVR, valve-in-valve.
 - Reference values to check against: `docs/VALVES.md` (for example AS plus MR gradients, regurgitant fractions) and the `tests/valvesSim.test.ts` bars; these are the engine's own claims, so list disagreements as findings.
 Done when: each state runs on 8 seeds and `observe` fills the new variables.
+
+### 7c. Input sweep from the spec registry
+`FIELDS` in `src/sim/registry.ts` lists every control (101: 91 patient, 10 display) with a JSON-schema fragment (`minimum`, `maximum`, `enum`). Generate states automatically: for each patient field, one state per low, middle and high value, applied to the healthy baseline, recorded at the default checkpoints.
+- Skip `display.*` and `seed`. Pair fields that need each other (a lesion needs an artery).
+- Invariants (task 2) apply to all of them; expectations are optional.
+- Report per field which variables moved (more than 5% or 0.01 from baseline) so the owner sees what each control actually does. A control that moves nothing, or moves a variable the owner did not expect, is a finding.
+- The 8 fields with no page control (`drugs.vasopressor`, `support.fluids`, `support.diltiazem`, `devices.impellaRp.level`, `devices.iabp.volumeMl`, four `valves.*.prosthesis`) are listed separately.
+Done when: a table of field x variables-moved exists for all 91 patient fields.
 
 ### 8. Owner hand-off: spec templates
 - Run `template` for the priority states: healthy, lad-prox-occlusion, rca-prox-occlusion, lm-occlusion, hemorrhage-15/30/45, norepinephrine-50, dobutamine-50.

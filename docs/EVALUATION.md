@@ -82,6 +82,42 @@ So the differences have three causes: (1) the two definitions diverge when a pum
 - **First look at the LAD occlusion** is plausible in direction: V2 ST +3.5 mm, III -3 mm, EF 0.62 to 0.30, PCWP 7.6 to 21 mmHg, infarct 0 to 45% by 6 h. Healthy stays flat for 3 minutes. Not yet checked against written expectations.
 - **Empty by design:** lactate (not modelled), lysis (until treated), cath fields on an occluded vessel.
 
+## Playground page inventory (checked against the code and screenshots)
+
+**Inputs.** The spec registry (`src/sim/registry.ts`, `FIELDS`) is the authoritative list of controls: 101 fields, 91 on the patient and 10 for the 3D display. By dock tab:
+
+| Tab | Fields | Examples |
+|---|---|---|
+| Patient | 16 | autonomic (baroreflex gain, respiratory rate and depth, set-point, noise), seed, ectopy and arrhythmia tendency, potassium, magnesium, `heart.svrScale`, `pvri`, `satLung`, `volumeMl`, `rvContractility`, `tof` |
+| Rhythm | 2 | `patient.rhythm` (library rhythms), `patient.bbb` |
+| Coronary | 7 | dominance, left main pattern, nodal artery origin, conus ostium, LAD course, lesions, exertion |
+| Valves | 24 | per-valve `open` and `reg` (AV, MV, TV, PV), prostheses, `pda`, `asd`, `vsd`, `bt` sizes, chamber sizes, `lvEes`, `rvEes`, stiffness |
+| Pericardium | 6 | effusion volume and rate, stiffness, open, drain, septum |
+| Support | 36 | blood loss, drugs, fluids, hemorrhage rate, capillary leak, ventilation, Impella, IABP, ECMO, pacing |
+
+Eight of these have no page control (set from chat or a link only): `drugs.vasopressor`, `support.fluids`, `support.diltiazem`, `devices.impellaRp.level`, `devices.iabp.volumeMl` and the four `valves.*.prosthesis` fields. The harness has not swept the inputs yet (plan task 7c).
+
+**Outputs by panel, and what the registry covers now.**
+
+| Panel | Covered | Not yet |
+|---|---|---|
+| Monitor | circulation status, BP, CO, rhythm, ventricular and atrial rate, ECG summary, ischemia and infarct | PR interval is in; "myocardium at risk" is `ischemicMassFraction` |
+| Hemodynamics | all rows, plus both CPP definitions and ectopic beat share | none |
+| Oxygen | saturations, DO2, VO2, extraction, lactate | pleth waveform |
+| Ischemia by bed | aggregates only | the 14 per-bed supply ratios and ischemia values |
+| Right-heart cath | RA a and v, RV, Fick CO, Qp:Qs (Fick), TPG, DPG, PAPi, CPO, mixed venous, step-up | per-site saturations, pullback waveforms |
+| Left-heart cath | LV systolic, gradients, valve areas, severities | Hakki mitral area, waveforms |
+| JVP | not yet | height, waveform class |
+| PV loops and traces | not yet | loop metrics (plan task 7) |
+
+## New findings from the playground check
+
+- **Two different "CPP".** The Hemodynamics panel shows aortic diastolic minus LVEDP (about 57 mmHg in a healthy adult). The engine and MCP report `coronaryPerfusionPressure` of about 90, which is the calibrated pressure the coronary network is solved at. They are different quantities with the same label. Registered separately as `cppPanel` and `coronaryDrivingPressure`. Suggest renaming one in the UI.
+- **Qp:Qs reads 1.01 from flows and 1.08 from oxygen content (Fick) in a healthy heart,** reproduced on every seed (1.07 to 1.08). Fick CO reads 4.78 against 5.14 from flows (-7%). The same bias. A normal heart has no shunt, so this is an error in the Fick path (likely the pulmonary venous saturation it assumes), small but visible in the right-heart cath panel. The cross-check reports it.
+- **A valve gradient shows in the LV pressure, not the aorta.** Severe aortic stenosis (open 0.2): LV systolic 172, aorta 111, peak-to-peak 61, mean 46, peak instantaneous 78 mmHg, Gorlin area 0.71 cm2. This is why aortic pressures barely move in aortic stenosis alone, and why valve states need the left-heart-cath variables.
+- **Unreproduced: LV systolic 185 with a 2 mmHg gradient** (screenshot). Healthy headless runs give 105 to 121 across 120 beats, and a severe AS rebuild gives 172 to 189 with a correct 60 to 75 mmHg gradient. A row of 185 next to a "no stenosis" gradient is internally inconsistent. It needs a browser reproduction: what was on the Valves tab, and had the patient just changed?
+- **Tetralogy of Fallot button on the Patient tab (`src/panels/heartDefects.ts`, `buildBaseline`).** It toggles `heart.tof` (large VSD, right-ventricular outflow obstruction, overriding aorta). Its sizes are sliders in Valves > Defect settings, and the Valves tab's Preset menu also has Tetralogy (congenital group). The button was added with the Valves tab rework (commit `217509e`) inside "Hemodynamic baseline", a group of four circulation sliders (systemic resistance, pulmonary resistance, lung saturation, RV contractility). A structural defect switch does not belong with those, and it duplicates the Preset. Suggest removing it or moving it next to Defect settings. Not changed.
+
 ## Open decisions
 
 - ~~Cover valves, shunts and prostheses?~~ Yes: they are inputs to the one core engine (plan task 7b). The registry and states do not cover them yet; that is a known gap. Open: also a spec family for the static Structural tab (neonates, congenital lesions, no reflexes)?
