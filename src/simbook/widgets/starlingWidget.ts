@@ -159,13 +159,13 @@ export class StarlingWidget {
     });
     ctx.stroke();
 
-    ctx.font = "12px IBM Plex Sans, sans-serif";
+    ctx.font = "12px Helvetica Neue, Helvetica, Arial, sans-serif";
     ctx.fillStyle = c.muted;
     ctx.fillText("Arteriole", capX, capY - 28);
     ctx.fillText("Venule", capX + capL - 42, capY - 28);
     ctx.fillText("Jv  (out above the line)", capX, base + 22);
     ctx.fillStyle = prof.edema ? c.bad : c.ok;
-    ctx.font = "600 13px IBM Plex Sans, sans-serif";
+    ctx.font = "600 13px Helvetica Neue, Helvetica, Arial, sans-serif";
     ctx.fillText(prof.edema ? "Edema — filtration exceeds lymph" : "Lymph return keeps up", capX + capL - 250, h - 18);
   }
 }

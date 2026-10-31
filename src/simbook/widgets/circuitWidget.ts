@@ -249,7 +249,7 @@ export class CircuitWidget {
     ctx.bezierCurveTo(cx + 6, cy + 16, cx - 6, cy + 16, cx - 16, cy + 4);
     ctx.fill();
     ctx.fillStyle = pal.ink;
-    ctx.font = "600 13px IBM Plex Sans, sans-serif";
+    ctx.font = "600 13px Helvetica Neue, Helvetica, Arial, sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(this.mode === "autoreg" ? "Arterial pressure" : "Pump", cx, cy + loopR + 28);
     ctx.font = "12px IBM Plex Mono, monospace";
@@ -279,7 +279,7 @@ export class CircuitWidget {
       ctx.roundRect(organX, y - 9, organW * 0.62, 18, 6);
       ctx.stroke();
       ctx.fillStyle = pal.ink;
-      ctx.font = "13px IBM Plex Sans, sans-serif";
+      ctx.font = "13px Helvetica Neue, Helvetica, Arial, sans-serif";
       ctx.textAlign = "left";
       ctx.fillText(org.label, organX, y - 16);
       ctx.fillStyle = pal.muted;
@@ -289,7 +289,7 @@ export class CircuitWidget {
 
     ctx.textAlign = "left";
     ctx.fillStyle = pal.ink;
-    ctx.font = "600 13px IBM Plex Sans, sans-serif";
+    ctx.font = "600 13px Helvetica Neue, Helvetica, Arial, sans-serif";
     ctx.fillText(`MAP  ${hdr.map.toFixed(0)}`, 18, 26);
     ctx.fillStyle = pal.down;
     ctx.fillText(`CVP  ${hdr.cvp.toFixed(0)}`, 18, 46);

@@ -6,10 +6,10 @@
 <link rel="icon" href="/favicon.ico" sizes="any" />
 <link rel="icon" type="image/png" href="/favicon.png" />
 <title>CoroSim Simbook</title>
-<meta name="description" content="A chapter-based reader for preclinical cardiac physiology: predict, change one parameter, watch the physics, then read the tie-back.">
+<meta name="description" content="A chapter-based reader for preclinical cardiac physiology: the text, the model, then a few questions.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap">
 </head>
 <body>
 <div class="app" id="app">
@@ -18,35 +18,15 @@
 <main class="sb-main">
   <nav class="library" aria-label="Chapters">
     <div id="list" class="list"></div>
-    <p class="lib-foot">Educational lumped models only — same disclaimer as the rest of CoroSim.</p>
+    <p class="lib-foot">Educational lumped models only.</p>
   </nav>
 
   <section class="sb-room">
-    <p class="sb-intro" id="intro"></p>
-    <div class="titlebar">
-      <p class="sb-kicker" id="kicker">Simbook</p>
-      <h1 id="title">Simbook</h1>
-      <p id="summary" class="sb-sub"></p>
-      <ol id="sb-progress" class="sb-steps"></ol>
-    </div>
-    <div id="sb-step"></div>
-    <div id="sb-widget-area" hidden>
-      <div class="sb-widget">
-        <header class="sb-stage-head">
-          <span class="sb-stage-kicker">Live model</span>
-          <strong id="sb-stage-title">Simulation</strong>
-        </header>
-        <div class="sb-screen"><canvas id="sb-canvas" width="960" height="420" aria-label="Chapter simulation"></canvas></div>
-        <div class="sb-deck">
-          <div class="sb-controls" id="sb-controls"></div>
-          <div id="sb-readout"></div>
-        </div>
-      </div>
-    </div>
-    <div class="sb-nav">
-      <button type="button" id="sb-back">Back</button>
-      <button type="button" id="sb-next" class="primary">Continue</button>
-    </div>
+    <h1 id="title">Simbook</h1>
+    <p id="summary" class="sb-sub"></p>
+    <div id="sb-read"></div>
+    <div id="sb-sims"></div>
+    <div id="sb-questions"></div>
   </section>
 </main>
 
