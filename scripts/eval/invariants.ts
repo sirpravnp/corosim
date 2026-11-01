@@ -78,6 +78,9 @@ export function nullAllowed(id: string, row: Record<string, Value>): boolean {
   // Fick and mixed venous are undefined at no forward output. The panel svo2 is the same gap in VF.
   if ((id === "rhc.fickCo" || id === "rhc.qpQsFick" || id === "rhc.mixedVenousSat" || id === "svo2") && row[id] == null)
     return row.hr === 0 || !pulse(row) || !(typeof row.co === "number" && row.co > 0.05);
+  // Fick LVEF is Fick stroke volume over LV EDV (rightHeartCath.fickLvEf). It abstains without a rate, forward output, or an end-diastolic volume.
+  if (id === "lvEfFick" && row[id] == null)
+    return row.hr === 0 || !pulse(row) || !(typeof row.co === "number" && row.co > 0.05) || !(typeof row.lvEdv === "number" && row.lvEdv > 0);
   // Stroke-volume CV needs a spread of beats (metrics.ts); one beat or a silent rhythm abstains.
   if (id === "strokeVolumeCv") return row[id] == null;
   // No hemodynamic beat yet (hemo() empty): the instant after the heart is rebuilt, or no ejection.
