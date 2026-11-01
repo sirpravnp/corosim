@@ -21,8 +21,8 @@ export interface TerminalResult {
 export interface NetResult { seg: Record<string, SegResult>; terminals: TerminalResult[]; atRisk: number; iterations: number; pa: number }
 
 const HALF = 7; // mm, half of the 14 mm lesion window
-/** Autoregulation reserve at the working MAP (stenosis vs healthy at the same aortic pressure). [assumed] */
-const AUTOREG_RESERVE = 0.345;
+/** Autoregulation reserve at the working MAP (stenosis vs healthy at the same aortic pressure). 0.28 leaves a 60% proximal LAD quiet at rest and a 70% lesion only partly ischemic. [assumed] */
+const AUTOREG_RESERVE = 0.28;
 /** Looser reserve when MAP is below the reference (hypotension unmasks ischemia). [assumed] */
 const HYPO_RESERVE = 0.22;
 const lesionFactor = (xm: number, L: ReturnType<typeof defaultLesion>) => {
