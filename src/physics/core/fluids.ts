@@ -113,6 +113,7 @@ const [VP, VR, VI, MP, MI, MC, GIVEN, LOST, URINE, MAINT, VL] = [0, 1, 2, 3, 4, 
 export class FluidCompartments {
   /** Capillary leak (0..1), hemorrhage rate (ml/min of whole blood), diuretic multiplier of the urine flow. Set between steps. */
   leak = 0; hemorrhage = 0; diuretic = 1;
+  legRaise = false;
   /** Clinical minutes since the start. */
   time = 0;
   readonly doses: FluidDose[] = [];
@@ -125,6 +126,7 @@ export class FluidCompartments {
   private readonly ciLow: number; private readonly ciHigh: number; private readonly u0: number;
   // the lung
   private readonly vl0: number; private readonly piL0: number; private readonly kfL: number; private readonly lL0: number; private readonly ciLowL: number; private readonly ciHighL: number; private readonly ciDryL: number;
+  private legRaiseAt = NaN; private legShift = 0;
 
   constructor(patient: FluidPatient, pa = FLUIDS.mapRest, pv = 6) {
     const F = FLUIDS, s = (this.s = patient.weightKg / 70), hct = patient.hb / F.mchc;
@@ -178,6 +180,22 @@ export class FluidCompartments {
 
   /** Put the whole dose in at once (the plasma takes it before the next step). */
   give(kind: FluidKind, ml: number) { this.add(this.y, kind, ml); }
+
+  setLegRaise(on: boolean) {
+    if (on) { if (!this.legRaise) this.legRaiseAt = this.time; }
+    else { this.legRaiseAt = NaN; this.legShift = 0; }
+    this.legRaise = on;
+  }
+
+  private legRaiseRate(): number {
+    if (!this.legRaise || !Number.isFinite(this.legRaiseAt)) return 0;
+    const L = FLUIDS.legRaise, elapsed = this.time - this.legRaiseAt;
+    if (elapsed >= L.durationMin || this.legShift >= L.shiftMl - 1e-6) return 0;
+    const ramp = Math.min(1, elapsed / L.rampMin);
+    const fade = elapsed <= L.rampMin ? 1 : Math.max(0, 1 - (elapsed - L.rampMin) / (L.durationMin - L.rampMin));
+    const want = (L.shiftMl * ramp * fade) / Math.max(L.durationMin, L.rampMin);
+    return Math.min(want, (L.shiftMl - this.legShift) / FLUIDS.maxStepMin);
+  }
 
   /** Whole blood lost at once, ml (negative: whole blood of the patient's own composition given back). */
   bleed(ml: number) {
@@ -252,9 +270,10 @@ export class FluidCompartments {
     const F = FLUIDS, f = this.flows(y), vb = Math.max(y[VP] + y[VR], 1), hem = this.hemorrhageRate(y[VP] + y[VR]), hemP = (hem * Math.max(y[VP], 0)) / vb, hemR = (hem * Math.max(y[VR], 0)) / vb;
     const bloodP = inf.blood * (1 - F.bloodHct), bloodR = inf.blood * F.bloodHct, vp = Math.max(y[VP], 1), m0 = this.u0;
     const give = inf.crystalloid + inf.colloid + inf.albumin + inf.blood;
-    out[VP] = inf.crystalloid + inf.colloid + inf.albumin + bloodP - f.jv + f.lymph - f.jvL + f.lymphL - hemP - f.urine + m0;
+    const lr = this.legRaiseRate();
+    out[VP] = inf.crystalloid + inf.colloid + inf.albumin + bloodP - f.jv + f.lymph - f.jvL + f.lymphL - hemP - f.urine + m0 + lr;
     out[VR] = bloodR - hemR;
-    out[VI] = f.jv - f.lymph;
+    out[VI] = f.jv - f.lymph - lr;
     out[VL] = f.jvL - f.lymphL;
     out[MP] = (inf.albumin * F.albuminGdl) / 100 + (bloodP * F.bloodProteinGdl) / 100 - f.escape + f.lymph * f.ci - (y[MP] * hemP) / vp;
     out[MC] = (inf.colloid * F.colloidGdl) / 100 - (y[MC] * Math.LN2) / F.colloidHalfLifeMin - (y[MC] * hemP) / vp;
@@ -267,9 +286,11 @@ export class FluidCompartments {
     if (!(minutes > 0)) return;
     const n = Math.max(1, Math.ceil(minutes / FLUIDS.maxStepMin)), h = minutes / n;
     const k1 = new Float64Array(N), k2 = new Float64Array(N), k3 = new Float64Array(N), k4 = new Float64Array(N), t = new Float64Array(N), prev = new Float64Array(N);
+    let lrAcc = 0;
     for (let i = 0; i < n; i++) {
       prev.set(this.y);
       const inf = this.infusion(this.time, this.time + h);
+      lrAcc += h * this.legRaiseRate();
       this.deriv(this.y, inf, k1);
       for (let j = 0; j < N; j++) t[j] = this.y[j] + 0.5 * h * k1[j];
       this.deriv(t, inf, k2);
@@ -284,6 +305,7 @@ export class FluidCompartments {
       if (!finite) this.y.set(prev);
       this.time += h;
     }
+    if (this.legRaise) this.legShift = Math.min(FLUIDS.legRaise.shiftMl, this.legShift + lrAcc);
   }
 
   /** Infusion rates (ml/min) of each kind over [t0, t1], and record what is delivered. */

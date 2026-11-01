@@ -490,8 +490,9 @@ export class Simulation {
     };
   }
 
-  private slew(h: number) {
-    const a = 1 - Math.exp(-(h * this.speed) / DRUG_TAU), v = 1 - Math.exp(-(h * this.speed) / VOLUME_TAU);
+  private slew(h: number, minutes: number) {
+    const clin = minutes > 0 ? minutes : h * this.speed * this.minutesPerSecond;
+    const a = 1 - Math.exp(-clin / DRUG_TAU), v = 1 - Math.exp(-clin / VOLUME_TAU);
     for (const k of ["betaBlocker", "atropine", "vasopressor"] as const) this.drug[k] += (this.n.drugs[k] - this.drug[k]) * a;
     const loss0 = this.bloodLoss, fluid0 = this.fluidGiven;
     this.bloodLoss += (this.n.bloodLoss - this.bloodLoss) * v;
@@ -534,7 +535,7 @@ export class Simulation {
       this.clinicalMinutes += minutes;
       if (ischemicBurden(this.sites, this.sev) > 0.005) this.ischemicMinutes += minutes;
     }
-    this.slew(h);
+    this.slew(h, minutes);
     if (this.engine === "core") { this.pk.step(minutes, this.drugDoses()); if (this.fluidModel) this.fluidModel.diuretic = this.pk.effects().diuretic; }
     if (this.fluidModel) this.stepFluids(minutes);
     this.updateCirculation();
@@ -542,7 +543,7 @@ export class Simulation {
     ctl.betaBlock = this.engine === "core" ? this.pk.effects().betaBlock : this.drug.betaBlocker;
     ctl.vagalBlock = Math.max(this.drug.atropine, this.support.atropine ? 1 : 0);
     ctl.volumeDeficit = finiteOr(Math.max(0, this.fluidModel ? 1 - this.fluidModel.bloodVolume / this.bv0 : this.bloodLoss), ctl.volumeDeficit); // core: the blood volume short of the patient's own, whatever its cause or refill
-    this.autonomic.step(h);
+    this.autonomic.step(minutes > 0 ? minutes * 60 : h);
     this.stream.alternans = alternansAmplitude(this.sac()?.effusionMl, this.periSpec?.open);
     this.stream.ectopy?.update(minutes, weightedBurden(this.sites, this.sev, this.transmural), { sympathetic: this.fx.sympathetic, betaBlock: ctl.betaBlock, drugDrive: this.pk.effects().ectopyDrive });
     if (this.arrhythmia) {

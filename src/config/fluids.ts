@@ -105,6 +105,8 @@ export const FLUIDS = {
     congestionMlPerKg: 5,
   },
 
+  legRaise: { shiftMl: 350, rampMin: 2, durationMin: 20 },
+
   // ---- numerics ----------------------------------------------------------------------------------------------------
   /** Largest step of the integration, clinical minutes (the slowest time scale is about 20 min). */
   maxStepMin: 0.5,
