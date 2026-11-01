@@ -114,8 +114,12 @@ export class BeatRecorder {
 /**
  * Weiss time constant (s) of a ventricular pressure trace: slope of ln P against t from the minimum of dP/dt (taken after the peak
  * pressure; centred differences) to the first sample where the atrial pressure `pa` reaches `pv` (inlet valve opening), else to
- * the end of the trace. NaN with fewer than 5 samples or no falling limb.
+ * the end of the trace. NaN with fewer than 5 samples, no falling limb, an interval shorter than `TAU_MIN_DROP_MMHG`, or a fit
+ * slower than `TAU_MAX_S`.
  */
+const TAU_MIN_DROP_MMHG = 8;
+const TAU_MAX_S = 0.12;
+
 export function relaxationTau(t: ArrayLike<number>, pv: ArrayLike<number>, pa: ArrayLike<number>): number {
   const n = t.length;
   let iPk = 0;
@@ -125,16 +129,21 @@ export function relaxationTau(t: ArrayLike<number>, pv: ArrayLike<number>, pa: A
     const d = (pv[i + 1] - pv[i - 1]) / (t[i + 1] - t[i - 1]);
     if (d < dMin) { dMin = d; iMin = i; }
   }
-  if (iMin < 0) return NaN;
+  if (iMin < 0 || dMin >= -1) return NaN;
   let iEnd = n - 1;
   for (let i = iMin; i < n; i++) if (pa[i] >= pv[i]) { iEnd = i; break; }
+  let pHi = pv[iMin], pLo = pv[iMin];
   let m = 0, sx = 0, sy = 0, sxx = 0, sxy = 0;
   for (let i = iMin; i <= iEnd; i++) {
     if (pv[i] <= 0.5) continue;
+    if (pv[i] > pHi) pHi = pv[i];
+    if (pv[i] < pLo) pLo = pv[i];
     const x = t[i] - t[iMin], y = Math.log(pv[i]);
     m++; sx += x; sy += y; sxx += x * x; sxy += x * y;
   }
-  if (m < 5) return NaN;
+  if (m < 5 || pHi - pLo < TAU_MIN_DROP_MMHG) return NaN;
   const slope = (m * sxy - sx * sy) / (m * sxx - sx * sx);
-  return slope < 0 ? -1 / slope : NaN;
+  if (!(slope < 0)) return NaN;
+  const tau = -1 / slope;
+  return tau <= TAU_MAX_S ? tau : NaN;
 }

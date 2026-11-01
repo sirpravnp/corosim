@@ -135,6 +135,7 @@ export class Simulation {
   /** Why the patient died: the arrest machine's no-flow clock, or refractory shock (pressure held very low). Null while alive. */
   deathCause: "noFlow" | "shock" | null = null;
   private shockS = 0; // seconds the pressure has been below the shock-death line
+  private emptyCircMin = 0;
   /** The pressure part of the pulse check (ARREST_SIM.pulsePressure): true while the arterial pressure is too low to feel a pulse, with hysteresis. */
   private noPulse = false;
   /**
@@ -227,7 +228,7 @@ export class Simulation {
   reset(input: PatientSpec = {}, opts: { settled?: boolean; warmup?: number } = {}) {
     const { scenario, warnings } = normalizeScenario(input);
     this.lastReset = { input: JSON.parse(JSON.stringify(input)), opts: { ...opts } };
-    this.arrest = null; this.dead = false; this.deathCause = null; this.shockS = 0; this.noPulse = false; this.pulseTimer = 0; this.critical = false; this.shockNoArrest = null; this.shockCount = 0; this.arrestRng = createRng((scenario.seed ^ ARREST_SIM.seedSalt) >>> 0);
+    this.arrest = null; this.dead = false; this.deathCause = null; this.shockS = 0; this.emptyCircMin = 0; this.noPulse = false; this.pulseTimer = 0; this.critical = false; this.shockNoArrest = null; this.shockCount = 0; this.arrestRng = createRng((scenario.seed ^ ARREST_SIM.seedSalt) >>> 0);
     this.job = null; this.building = null; this.jobWarm = 0;
     this.live = undefined; this.fluidModel = undefined; this.liveSeen = false;
     this.n = scenario; this.warnings = warnings;
@@ -357,7 +358,33 @@ export class Simulation {
       if (patch.patient?.rhythm !== undefined || scenario.arrhythmiaTendency === 0) this.arrhythmia.terminate(this.t); // setting the rhythm (or forbidding arrhythmias) ends a running VT or VF: the teacher's override until B4 brings the shock
     }
     this.autonomic.controls = { ...scenario.autonomic };
+    if (patch.seed !== undefined) {
+      if (!Number.isFinite(patch.seed)) {
+        this.warnings = [...this.warnings, "seed is not a number; ignored"];
+        this.n = { ...this.n, seed: prev.seed };
+      } else {
+        const seed = Math.trunc(patch.seed) >>> 0;
+        this.n.seed = seed;
+        if (seed !== prev.seed) this.reseedRandom(seed);
+      }
+    }
     if (anatomyChanged) { this.grafts = []; this.rebuildAnatomy(); } else this.resolveCoronaries(true);
+  }
+
+  /** Reseed every random stream after `apply({ seed })`. */
+  private reseedRandom(seed: number) {
+    const s = seed >>> 0;
+    this.arrestRng = createRng((s ^ ARREST_SIM.seedSalt) >>> 0);
+    this.stream.reseed(s);
+    this.autonomic = new Autonomic(s, this.engine === "core" ? { ...AUTONOMIC, ...AUTONOMIC_CORE } : AUTONOMIC);
+    this.autonomic.controls = { ...this.n.autonomic };
+    if (this.engine === "core") {
+      const e = new Ectopy(s, this.n.ectopyTendency);
+      this.stream.ectopy = e;
+      this.arrhythmia = this.stream.arrhythmia = new Arrhythmia(s, e, this.n.arrhythmiaTendency);
+      this.arrhythmia.potassium = this.n.electrolytes.potassium;
+      this.arrhythmia.magnesium = this.n.electrolytes.magnesium;
+    }
   }
 
   /** The patient as this engine can run it: EKG-library rhythms (B2) run on the core engine only; the legacy engine runs sinus and warns. */
@@ -463,8 +490,9 @@ export class Simulation {
     };
   }
 
-  private slew(h: number) {
-    const a = 1 - Math.exp(-(h * this.speed) / DRUG_TAU), v = 1 - Math.exp(-(h * this.speed) / VOLUME_TAU);
+  private slew(h: number, minutes: number) {
+    const clin = minutes > 0 ? minutes : h * this.speed * this.minutesPerSecond;
+    const a = 1 - Math.exp(-clin / DRUG_TAU), v = 1 - Math.exp(-clin / VOLUME_TAU);
     for (const k of ["betaBlocker", "atropine", "vasopressor"] as const) this.drug[k] += (this.n.drugs[k] - this.drug[k]) * a;
     const loss0 = this.bloodLoss, fluid0 = this.fluidGiven;
     this.bloodLoss += (this.n.bloodLoss - this.bloodLoss) * v;
@@ -507,7 +535,7 @@ export class Simulation {
       this.clinicalMinutes += minutes;
       if (ischemicBurden(this.sites, this.sev) > 0.005) this.ischemicMinutes += minutes;
     }
-    this.slew(h);
+    this.slew(h, minutes);
     if (this.engine === "core") { this.pk.step(minutes, this.drugDoses()); if (this.fluidModel) this.fluidModel.diuretic = this.pk.effects().diuretic; }
     if (this.fluidModel) this.stepFluids(minutes);
     this.updateCirculation();
@@ -515,7 +543,7 @@ export class Simulation {
     ctl.betaBlock = this.engine === "core" ? this.pk.effects().betaBlock : this.drug.betaBlocker;
     ctl.vagalBlock = Math.max(this.drug.atropine, this.support.atropine ? 1 : 0);
     ctl.volumeDeficit = finiteOr(Math.max(0, this.fluidModel ? 1 - this.fluidModel.bloodVolume / this.bv0 : this.bloodLoss), ctl.volumeDeficit); // core: the blood volume short of the patient's own, whatever its cause or refill
-    this.autonomic.step(h);
+    this.autonomic.step(minutes > 0 ? minutes * 60 : h);
     this.stream.alternans = alternansAmplitude(this.sac()?.effusionMl, this.periSpec?.open);
     this.stream.ectopy?.update(minutes, weightedBurden(this.sites, this.sev, this.transmural), { sympathetic: this.fx.sympathetic, betaBlock: ctl.betaBlock, drugDrive: this.pk.effects().ectopyDrive });
     if (this.arrhythmia) {
@@ -526,7 +554,7 @@ export class Simulation {
     this.stream.extend(this.t, this.rstate, this.mod);
     this.stream.prune(this.t);
     this.t += h;
-    if (this.live) { this.coreStep(h, minutes); if (this.liveSeen) { if (!this.warming) this.pressureTick(h); this.arrestTick(h); if (!this.warming) this.shockTick(h); this.criticalTick(); } } else for (const b of this.stream.drain(this.t)) this.handleBeat(b);
+    if (this.live) { this.coreStep(h, minutes); if (this.liveSeen) { if (!this.warming) this.pressureTick(h); this.arrestTick(h); if (!this.warming) { this.shockTick(h); this.emptyCircTick(minutes); } this.criticalTick(); } } else for (const b of this.stream.drain(this.t)) this.handleBeat(b);
     // Coronary perfusion follows the pressure the heart actually generates (plus any balloon augmentation),
     // and demand follows what drugs and devices do to it.
     // core (E2): the aortic-equivalent pressure of the subendocardium from the beat's traces (diastolic pressure, diastolic time, LVEDP, intramyocardial
@@ -1056,6 +1084,7 @@ export class Simulation {
     fm.setDoses(f.given ?? []);
     fm.hemorrhage = f.hemorrhageMlMin ?? 0;
     fm.leak = f.capillaryLeak ?? 0;
+    fm.setLegRaise(!!f.legRaise);
   }
   private patchFluids(patch: PatientSpec) {
     this.fluidSpec = normalizePatient({ fluids: patch.fluids }).spec.fluids ?? {};
@@ -1174,6 +1203,20 @@ export class Simulation {
     const r = shockDeathStep(this.shockS, this.map, h);
     this.shockS = r.acc;
     if (r.dead) { this.dead = true; this.deathCause = "shock"; this.cprPump?.set({ peakMmHg: 0 }); }
+  }
+
+  private emptyCircTick(clinicalMin: number) {
+    if (this.dead || this.warming || this.engine !== "core" || !this.liveSeen || this.arrest?.status === "arrest") return;
+    const native = Math.max(0, this.outputFraction() - this.cprOutput());
+    const stressed = this.filling()?.stressed ?? Infinity;
+    const empty = native < ARREST_SIM.pulselessOutput && !(stressed > 1);
+    if (empty && clinicalMin > 0) this.emptyCircMin += clinicalMin;
+    else if (!empty) this.emptyCircMin = 0;
+    if (this.emptyCircMin >= 2) {
+      this.dead = true;
+      this.deathCause = "noFlow";
+      this.cprPump?.set({ peakMmHg: 0 });
+    }
   }
 
   private pushCpr() {
