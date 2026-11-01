@@ -1326,7 +1326,7 @@ export class Simulation {
       ventricle: { ejectionFraction: +c.ejectionFraction.toFixed(2), lvInfarctFraction: +lvInfarctSize(this.sites, this.scar).toFixed(3), lvIschemia: +c.lvIschemia.toFixed(2), rvIschemia: +c.rvIschemia.toFixed(2), pulmonaryCongestion: +c.congestion.toFixed(2) },
       support: { ...supportSpec(this.support), deviceFlowLpm: +c.deviceFlow.toFixed(1), atropine: this.support.atropine || this.n.drugs.atropine >= 0.5 },
       circulationState: this.map < CIRC.shockMap ? "shock" : this.map < CIRC.hypotensionMap ? "hypotension" : "stable",
-      ischemicMassFraction: +cond.atRisk.toFixed(3),
+      ischemicMassFraction: +this.analysis.cond.terminals.reduce((a, t) => a + t.mass * t.severity, 0).toFixed(3),
       compromisedBeds: compromised.slice(0, 8),
       ffr: this.analysis.ffr.map((f, i) => ({ artery: this.n.lesions[i]?.segId, ffr: +f.toFixed(2) })),
       ...(this.engine === "core" ? { arrest: this.arrestState() } : {}),

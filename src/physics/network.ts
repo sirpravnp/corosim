@@ -22,7 +22,7 @@ export interface NetResult { seg: Record<string, SegResult>; terminals: Terminal
 
 const HALF = 7; // mm, half of the 14 mm lesion window
 /** Autoregulation reserve at the working MAP (stenosis vs healthy at the same aortic pressure). [assumed] */
-const AUTOREG_RESERVE = 0.34;
+const AUTOREG_RESERVE = 0.345;
 /** Looser reserve when MAP is below the reference (hypotension unmasks ischemia). [assumed] */
 const HYPO_RESERVE = 0.22;
 const lesionFactor = (xm: number, L: ReturnType<typeof defaultLesion>) => {
@@ -185,7 +185,7 @@ export function solveNetwork(tree: Tree, lesions: Lesion[], demandMult: number, 
     const supply = ratio * demand;
     return { key: t.key, segId: t.seg.id, label: t.label, group: t.seg.group, mass: t.mass, Qrest: t.Qrest, Q: Q[i], Pd, demand, ratio, severity: severityTarget(supply, demand), blocked: isBlocked[i] };
   });
-  const atRisk = terminals.reduce((a, t) => a + t.mass * t.severity, 0);
+  const atRisk = terminals.reduce((a, t) => a + (t.ratio < 0.95 ? t.mass : 0), 0);
   return { seg, terminals, atRisk, iterations: it, pa: Pa };
 }
 
