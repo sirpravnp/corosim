@@ -1,5 +1,5 @@
 import type { BeatPainter, EBeat } from "../ekg/engine";
-import { AF, ALL_LEADS, BBB, Bbb, LEAD_AXES, LeadName, RHYTHM, ST, TERRITORY, T_CENTER, T_WIDTH, Vec3, WAVES } from "../config/ecg";
+import { AF, ALL_LEADS, BBB, Bbb, LEAD_AXES, LeadName, POTASSIUM_ECG, RHYTHM, ST, TERRITORY, T_CENTER, T_WIDTH, Vec3, WAVES } from "../config/ecg";
 
 export type Territory = keyof typeof TERRITORY;
 
@@ -46,6 +46,19 @@ const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
 
 export const heartRate = (severity: number) => RHYTHM.baseHr + RHYTHM.hrRiseAtFullIschemia * severity;
 
+/** P, T and QRS scale factors for serum potassium (mmol/l); identity at normal K. */
+export function potassiumMorph(k: number) {
+  const P = POTASSIUM_ECG;
+  const hi = Math.min(1, Math.max(0, (k - P.hiFrom) / (P.hiTo - P.hiFrom)));
+  const lo = Math.min(1, Math.max(0, (P.loFrom - k) / (P.loFrom - P.loTo)));
+  return {
+    pAmp: 1 - P.pAmpHi * hi,
+    tAmp: 1 + P.tAmpHi * hi - P.tAmpLo * lo,
+    tWidth: 1 - P.tWidthNarrow * hi,
+    qrsWidth: 1 + P.qrsWide * hi,
+  };
+}
+
 /** Beat times from t0 to t1. Severity (a function of time) sets rate and PVC probability. */
 export function generateBeats(t1: number, severity: (t: number) => number, seed = 1, t0 = 0): Beat[] {
   const rng = mulberry32(seed);
@@ -67,40 +80,38 @@ export function generateBeats(t1: number, severity: (t: number) => number, seed 
 }
 
 /** Dipole (heart vector, mV) at time t for one beat. */
-function beatVector(dt: number, beat: Beat, injury: Vec3, tBoost: number): Vec3 {
+function beatVector(dt: number, beat: Beat, injury: Vec3, tBoost: number, k: number): Vec3 {
+  const morph = potassiumMorph(k);
   const out: [number, number, number] = [0, 0, 0];
-  const add = (v: Vec3, k: number) => {
-    out[0] += v[0] * k; out[1] += v[1] * k; out[2] += v[2] * k;
+  const add = (v: Vec3, amp: number) => {
+    out[0] += v[0] * amp; out[1] += v[1] * amp; out[2] += v[2] * amp;
   };
   if (beat.pvc) {
-    // Wide, tall, premature QRS with discordant (inverted) T and no P wave.
-    const w = RHYTHM.pvcWidthScale;
+    const w = RHYTHM.pvcWidthScale * morph.qrsWidth;
     add(WAVES.R.v, RHYTHM.pvcAmpScale * gauss(dt, 0.02, WAVES.R.w * w));
     add(WAVES.S.v, RHYTHM.pvcAmpScale * gauss(dt, 0.02 + WAVES.S.w * w * 1.6, WAVES.S.w * w));
     add(WAVES.T.v, -0.8 * gauss(dt, 0.28, 0.07));
     return out;
   }
-  if (!beat.noP) add(WAVES.P.v, gauss(dt, -(beat.pr ?? -WAVES.P.t), WAVES.P.w));
+  if (!beat.noP) add(WAVES.P.v, morph.pAmp * gauss(dt, -(beat.pr ?? -WAVES.P.t), WAVES.P.w));
   if (beat.pOnly) return out;
-  const tc = T_CENTER(beat.rr), tw = T_WIDTH(beat.rr), bbb = beat.bbb ?? "none", A = beat.alt ?? 1;
-  // Injury current flows during the ST segment (J point → end of T); a block's discordant ST shares the window.
+  const tc = T_CENTER(beat.rr), tw = T_WIDTH(beat.rr) * morph.tWidth, bbb = beat.bbb ?? "none", A = beat.alt ?? 1;
+  const qw = morph.qrsWidth;
   const win = sigmoid((dt - ST.jPoint) / ST.edge) - sigmoid((dt - (tc + 2 * tw)) / ST.edge);
   if (bbb === "lbbb") {
-    // No septal q; one broad wave toward the late left ventricle; repolarization runs the other way.
     const L = BBB.lbbb;
-    add(L.r.v, A * gauss(dt, L.r.t, L.r.w));
-    add(L.s.v, A * gauss(dt, L.s.t, L.s.w));
-    add(L.t, (1 + tBoost) * gauss(dt, tc + 0.03, tw * 1.2));
+    add(L.r.v, A * gauss(dt, L.r.t, L.r.w * qw));
+    add(L.s.v, A * gauss(dt, L.s.t, L.s.w * qw));
+    add(L.t, (1 + tBoost) * morph.tAmp * gauss(dt, tc + 0.03, tw * 1.2));
     add(L.st, win);
   } else {
-    add(WAVES.Q.v, A * gauss(dt, WAVES.Q.t, WAVES.Q.w));
-    add(WAVES.R.v, A * gauss(dt, WAVES.R.t, WAVES.R.w));
-    add(WAVES.S.v, A * gauss(dt, WAVES.S.t, WAVES.S.w));
-    add(WAVES.T.v, (1 + tBoost) * gauss(dt, tc, tw));
+    add(WAVES.Q.v, A * gauss(dt, WAVES.Q.t, WAVES.Q.w * qw));
+    add(WAVES.R.v, A * gauss(dt, WAVES.R.t, WAVES.R.w * qw));
+    add(WAVES.S.v, A * gauss(dt, WAVES.S.t, WAVES.S.w * qw));
+    add(WAVES.T.v, (1 + tBoost) * morph.tAmp * gauss(dt, tc, tw));
     if (bbb === "rbbb") {
-      // The right ventricle depolarizes late through muscle: a terminal rightward-anterior wave after the normal QRS.
       const R = BBB.rbbb;
-      add(R.rPrime.v, A * gauss(dt, R.rPrime.t, R.rPrime.w));
+      add(R.rPrime.v, A * gauss(dt, R.rPrime.t, R.rPrime.w * qw));
       add(R.t, gauss(dt, tc + 0.02, tw));
       add(R.st, win);
     }
@@ -126,12 +137,12 @@ export const territoryInjury = (territory: Territory, severity: number): Vec3 =>
  * Heart vector (mV) at time t of the coronary model's beats, for an arbitrary injury vector (mV), hyperacute T boost and f-wave
  * amplitude. Beats drawn by the EKG engine's painter (`ekg`) and silent ticks are left out: the strip adds those (ecgStrip.ts).
  */
-export function heartVector(t: number, beats: Beat[], injury: Vec3, tBoost: number, fWave = 0): [number, number, number] {
+export function heartVector(t: number, beats: Beat[], injury: Vec3, tBoost: number, fWave = 0, potassium: number = POTASSIUM_ECG.normal): [number, number, number] {
   const v: [number, number, number] = fWaves(t, fWave) as [number, number, number];
   for (const b of beats) {
     const dt = t - b.t;
     if (dt < -0.5 || dt > 0.8 || b.ekg || b.silent) continue;
-    const bv = beatVector(dt, b, injury, tBoost);
+    const bv = beatVector(dt, b, injury, tBoost, potassium);
     v[0] += bv[0]; v[1] += bv[1]; v[2] += bv[2];
   }
   return v;
@@ -145,8 +156,8 @@ export function projectLeads(v: Vec3): Record<LeadName, number> {
 }
 
 /** Voltage (mV) of all 15 leads at time t for an arbitrary injury vector (mV), hyperacute T boost and f-wave amplitude. */
-export function sampleLeadsVec(t: number, beats: Beat[], injury: Vec3, tBoost: number, fWave = 0): Record<LeadName, number> {
-  const v = heartVector(t, beats, injury, tBoost, fWave);
+export function sampleLeadsVec(t: number, beats: Beat[], injury: Vec3, tBoost: number, fWave = 0, potassium: number = POTASSIUM_ECG.normal): Record<LeadName, number> {
+  const v = heartVector(t, beats, injury, tBoost, fWave, potassium);
   const out = {} as Record<LeadName, number>;
   for (const l of ALL_LEADS) out[l] = dot(LEAD_AXES[l], v);
   return out;

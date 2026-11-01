@@ -19,7 +19,8 @@ import { gaussian } from "./autonomic";
  *  - burst, tail: reperfusion stores, filled by each fall of the burden (scaled by how long the ischemia had lasted) and decaying
  *    over tens of minutes (burst) and hours (tail);
  *  - S: the patient's fixed, seeded susceptibility (lognormal), `tendency` the scenario's teaching override (0 = none);
- *  - sympathetic tone after beta-blockade, the beta-1 drive of the receptor-level drugs, and electrolyte hooks fixed at 1.
+ *  - sympathetic tone after beta-blockade, the beta-1 drive of the receptor-level drugs, and electrolyte multipliers on ischemic terms;
+ *    non-ischemic PVC tendency from abnormal K uses max(0, potassium − 1) (see `electrolyteRate`).
  *
  * Each beat's probability is then modulated by a slow random factor (heartbeat time, mean 1) and raised for the beat after a PVC,
  * and saturates at `cap`: p = cap (1 - exp(-rate x noise x memory / cap)). A PVC may be followed directly by a second (a couplet);
@@ -89,7 +90,7 @@ export class Ectopy implements EctopySource {
   readonly susceptibility: number;
   /** Teaching override from the scenario (`ectopyTendency`, 0..3): multiplies the susceptibility; 0 = no ectopy at all. */
   tendency: number;
-  /** Electrolyte multipliers (hooks for a later item; 1 = normal). */
+  /** Electrolyte multipliers on ischemic/reperfusion terms (Arrhythmia sets potassium from serum K). */
   potassium = E.potassium; magnesium = E.magnesium;
   tone: EctopyTone = { ...REST_TONE };
   /** Weighted ischemic burden now, and the clinical minutes since this episode's onset. */
@@ -152,8 +153,16 @@ export class Ectopy implements EctopySource {
   ischemicRate(): number { return this.inEpisode ? this.gain() * E.rateAtFullEffect * burdenEffect(this.burden) * onsetCourse(this.age) : 0; }
   /** Expected PVCs per beat from reperfusion, for this patient now. */
   reperfusionRate(): number { return this.gain() * (E.burstRate * hill(this.burst / E.half) + E.tailRate * hill(this.tail / E.half)); }
+  /** Expected PVCs per eligible beat from abnormal serum K without ischemia. */
+  electrolyteRate(): number {
+    const excess = Math.max(0, this.potassium - 1);
+    if (excess <= 0) return 0;
+    const t = this.tone, s = t.sympathetic * (1 - t.betaBlock);
+    const base = this.susceptibility * this.tendency * Math.exp(E.sympatheticGain * (s - E.restSympathetic)) * (1 + E.drugGain * t.drugDrive) * this.magnesium;
+    return base * E.electrolytePerBeat * excess;
+  }
   /** Instantaneous expected PVCs per eligible beat (before the slow noise, the after-PVC memory and saturation): B3b's hazard input. */
-  rate(): number { return this.ischemicRate() + this.reperfusionRate(); }
+  rate(): number { return this.ischemicRate() + this.reperfusionRate() + this.electrolyteRate(); }
 
   /** Where the patient is in the ischemic time course, for B3b (VT/VF hazard by phase) and for the explanation. */
   phase(): EctopyPhase {
