@@ -18,9 +18,9 @@ A spec is: **specified state × variable × time → expected change.** The user
 ## Commands
 
 ```bash
-npx tsx scripts/eval/run.ts list                          # --suite standard,edge,valve,stochastic,sweep
+npx tsx scripts/eval/run.ts list                          # --suite standard,edge,valve,stochastic,sweep,probe
 npx tsx scripts/eval/run.ts template healthy --observed   # blank expectations; seen_* is the last observed mean, and check ignores it
-npx tsx scripts/eval/run.ts observe --seeds 8 --jobs 4    # default suites; --suite sweep or --suite all for the field sweep; --shard i/n
+npx tsx scripts/eval/run.ts observe --seeds 8 --jobs 4    # default suites; --suite probe for the extra solver questions; --suite sweep or --suite all for the field sweep; --shard i/n
 npx tsx scripts/eval/run.ts check --invariants-only       # expectations, then invariants; exit 1 on either. Cross-checks are logged only
 npx tsx scripts/eval/run.ts report                        # scripts/eval/out/REPORT.md
 npx tsx scripts/eval/run.ts timescale                     # hemorrhage, bleed and LAD occlusion at 1x/3x/6x
@@ -163,6 +163,73 @@ The input sweep (90 patient fields, seed 1, low/mid/high) is the table in the sn
 - Draining the pericardium moves nothing when there is no sac.
 
 A 70% LAD stenosis at rest does not move HR, MAP or CO off the healthy trajectory. It does fill the cath reading (diameter stenosis 70, FFR 0.56). 50% is FFR 0.86 and the same trajectory.
+
+## Probe suite
+
+`scripts/eval/probe.ts` adds a `probe` suite the nightly job does not run. Nothing in it is an expectation. The questions are the ones the first run could not answer: the stenosis series is not continuous in the states we had (50% matches healthy, 70% only fills the cath report, 80% takes the occlusion’s territory and the wrong ST map), reperfusion was a single PCI time, drugs were given to a healthy heart, and potassium, ectopy, arrhythmia tendency and leg raise did nothing on their own.
+
+```bash
+npx tsx scripts/eval/run.ts list --suite probe
+npx tsx scripts/eval/run.ts observe --suite probe --seeds 8 --jobs 4
+npx tsx scripts/eval/run.ts check --suite probe --invariants-only
+```
+
+A one-seed smoke on 1 Nov 2026 (seed 1, every probe state) threw nothing. The invariant check on that smoke was 54 hits over 110 runs: null Weiss tau and a missing right-atrial a wave, which the main run already reports, plus `rvEf` 1.05 at 50 s in `probe-vf-cpr-epi-shock` on the way back to sinus. Seed 1 is a sample, not an 8-seed mean. It already answers a few of the questions:
+
+- The LAD rest curve is flat through 70% (heart rate 74, mean pressure 90, ejection fraction 0.62, no infarct, no ST shift) and the territory jumps to 0.43 at 75%. Anterior ST elevation does not appear at that jump. At 85% the ejection fraction is 0.31 and V2 is still only +0.4 mm with aVL −1.1. At 90% and 95% the tracing finally matches the occlusion (V2 +3.2 to +3.5, aVL +2.7 to +3.2, III −3).
+- Exertion gives the 60% lesion that same territory of 0.43, with an infarct fraction of 0.07 and still no anterior elevation. The 70% lesion with exertion reaches an infarct fraction of 0.35.
+- PCI ordered at 2 s leaves an infarct fraction of 0.13; at 30 s, 0.25. The order at 60 s is in VF on this seed, so that infarct number is not a clean timing comparison. CABG ordered at 5 s leaves infarct fraction 0.41 and a residual ischemic mass of 0.12, which is what a graft beyond a remaining native lesion should do.
+- Left-dominant RCA occlusion has ischemic mass 0.13 and stays in sinus. The right-dominant occlusion in the main run has mass 0.34 and goes on to complete heart block. Dominance is live for the RCA.
+- Library complete heart block with pacing at 70 stays at a heart rate of 40 and the rhythm label does not say paced. The same pace rate on an RCA occlusion that has grown its own block holds the heart rate at 70 and the label says paced.
+- Impella RP at level 0 flows −1.1 L/min at 5 s with a speed of 0. Level 9 flows about 3.9 L/min. That RP flow is not in `deviceFlow`, which stays 0.
+- Potassium 7.5 plus arrhythmia tendency 3 on a proximal LAD is in VF on this seed. Those two dials on a healthy heart were bitwise identical to healthy across 8 seeds. One seed is not a rate.
+- Leg raise during 30% blood loss lands at heart rate 104 and mean pressure 82, the same place as the 8-seed mean of `hemorrhage-30`. Baroreflex gain 0 during that hemorrhage is slower and much lower (heart rate 91, mean pressure 66) than gain 4 (heart rate 98, mean pressure 88).
+
+Families, and the state already on disk to read them against:
+
+| Family | What it asks | Read it against |
+|---|---|---|
+| LAD 60–95% at rest, and 60/70/75/90% with exertion; RCA 70/80/90%; LCx 80%; D1 and OM1 occlusions; mid LAD | Is ischemic mass, FFR, output and the ST map a smooth function of diameter stenosis, and does exertion move a lesion that is quiet at rest? | `lad-50-rest`, `lad-80-rest`, `lad-prox-occlusion` |
+| PCI ordered at 2, 30 and 60 s; CABG at 5 s; lysis at 20 s; lysis then PCI | Does a later order leave a larger infarct, after the procedure delay the engine already adds (PCI 60 clinical min, lysis 40, CABG 240)? | `lad-occlusion-then-pci`, untreated `lad-prox-occlusion` |
+| Norepinephrine, dobutamine, nitroglycerin, beta blockade, phenylephrine and fluid on a proximal LAD; fluid and norepinephrine on an RCA; both pressors on a left main | Does the drug do on an ischemic heart what it did on a healthy one, and does dobutamine enlarge the infarct? | the healthy drug states and the occlusion |
+| K 7.5, K 2.5, low magnesium, with ectopy or arrhythmia tendency, on a proximal LAD | Do the dials that reproduced the healthy heart fire once the ventricle is ischemic? | `edge-k-7.5`, `edge-arrhythmia-3`, `edge-ectopy-3` |
+| Library rhythms (AF with a rapid rate, flutter, SVT, Mobitz, torsades, asystole, hypothermia, hyperkalemia tracings) and pacing at 70 on library complete heart block and on an RCA occlusion | Is the library tracing the same path as `electrolytes.potassium`, and does pacing capture a ventricular escape? | `chb`, `af`, `rca-prox-occlusion` |
+| CPR, epinephrine and a shock on VF; CPR and epinephrine in asystole; an unsynchronized shock on sinus; synchronized shocks on AF and VT | Do the arrest actions change rhythm and output on the schedule `roscSustainS` already imposes? | `vf-shock-200`, `vf` |
+| Blood or crystalloid after hemorrhage, stopping a 100 ml/min bleed, capillary leak, leg raise during 30% loss, baroreflex gain 0 and 4 during 30% loss | Does volume come back, does the reflex own the tachycardia, and does leg raise stay a no-op? | `hemorrhage-30`, `hemorrhage-45`, `bleed-100mlmin` |
+| Raised PVR, an isolated weak RV, RV infarct, tamponade at 80 and 160 ml, a drain, an accumulating effusion, constriction | Does the right heart and the sac form a graded series rather than one extreme? | `rca-prox-occlusion`, `edge-tamponade-bleed` |
+| Severe AS plus hemorrhage, acute MR plus LAD occlusion, mitral stenosis in fast AF, aortic regurgitation with exertion, tetralogy, a 15 mm VSD | Do valve lesions still behave when the rest of the heart is sick? | `as-severe`, `mr-acute`, `hemorrhage-30` |
+| IABP, early inflation, Impella CP at P2 and P8, malposition, Impella 5.5, Impella RP at 0 and 9, ECMO, ECPELLA, ECMO turned on at 20 s | Does delivered flow match the setpoint, and does level 0 stay at zero? | `edge-ecmo-no-vent`, `edge-impella-rv-fail` |
+| 30% hemorrhage and proximal LAD at 3× and 6×, checkpoints chosen so the clinical minute matches | The same clinical minute should be the same patient. Infarct already is. Heart rate and pressure were not. | `hemorrhage-30`, `lad-prox-occlusion` |
+
+## Where a more accurate solver would come from
+
+These are proposals. None of them is implemented, and none of them fills a spec cell. The probe states above are the acceptance tests.
+
+1. **Make diameter stenosis continuous.** Between 70% and 80% the LAD goes from a normal heart with an FFR to an occlusion-sized territory (ischemic mass 0.43) whose ST map is not the anterior elevation the occlusion itself produces. Log flow ratio, transmural fraction and the ST vector at every 0.05 of diameter stenosis, at rest and with exertion. A proximal LAD that the solver calls transmural should elevate V2 and aVL in the same direction as `lad-prox-occlusion`, scaled by how transmural it is. Exertion should move 60–70% before rest does. `probe-lad-*-rest` and `probe-lad-*-exertion` are that curve.
+
+2. **Integrate the reflex and the volume on the clinical clock.** Infarct fraction after a proximal LAD is the same at 1×, 3× and 6×. Heart rate and pressure after 30% hemorrhage are not (76, 118 and 114 bpm at 10 clinical minutes). The acceptance test is already written: `probe-hemorrhage-30-x3`, `probe-hemorrhage-30-x6` and `probe-lad-prox-x6` against the 1× states, inside 5% at a matched clinical minute. Until that holds, a checkpoint in simulated seconds is not a clinical time.
+
+3. **Say when the patient has died, and show the clock that was actually used.** A 100 ml/min bleed reaches a stressed volume of 0 and a mean pressure of numerical dust with `dead` still false. Once the patient is critical, simulated time is real time, so the 180 s checkpoint is not six hours. Death wants a rule on absent forward flow and empty stressed volume held for a defined clinical interval. The UI wants `criticalTime` next to the clock so a VF row is not read as a six-hour no-flow.
+
+4. **Use the model’s own saturations in the Fick equation.** A healthy heart with no shunt reads Qp:Qs about 1.01 from flows and about 1.08 from Fick, and Fick cardiac output about 7% below flow cardiac output, on every seed. The pulmonary end-capillary content the solver already has should be what Fick divides by. Acceptance: Fick cardiac output within 2% of flow cardiac output, and Fick Qp:Qs within 0.02 of the flow ratio, on `healthy`.
+
+5. **Keep one ejection fraction on the panels, and a second number only where the definition really differs.** `lvEf` is chamber volume. `lvEfEstimate` is aortic-valve stroke volume, and it leaves 0..1 when LV size is at the schema minimum (about 2.3–2.5) and falls to about 0.13 under Impella while the chamber fraction stays about 0.30. Point the ischemia panel, MCP state and echo at the chamber fraction. Keep aortic-valve stroke volume under its own name. This is the change that touches `src/` and the fixtures, and it stays unstarted until you ask for it.
+
+6. **Fit tau on a real falling limb, or leave it blank.** Healthy tau is bimodal, about 35 ms or about 200 ms. On VA-ECMO without a vent it is null or absurd while the monitor still shows a pulse and stroke work is 0. Require a falling limb, enough samples and a pressure drop above a floor. When the ventricle is not ejecting, report that, instead of a time constant.
+
+7. **Connect the electrolyte number to the tracing, and make the hazard observable on ischemia.** `electrolytes.potassium` 7.5 reproduces the healthy run for six clinical hours. The hyperkalemia ECG is a different object, `patient.rhythm` of `hyperk`. `probe-k75-arr3-lad` asks whether tendency 3 and potassium 7.5 change VT or VF once the LAD is closed. `probe-hyperk-rhythm` is the tracing with a normal serum number. Either the serum value should drive the QRS and T wave and the ischemic hazard, or the page should say the dial is a hazard multiplier that does not redraw the ECG.
+
+8. **Implement passive leg raise, or remove it.** `fluids.legRaise` is stored and shown. Nothing under `src/physics/` reads it. `probe-leg-raise-bleed` against `hemorrhage-30` is the test: a real leg raise moves stressed volume for a short clinical window, and today’s control must match `hemorrhage-30` exactly.
+
+9. **Warn on a bad number, and reseed when the seed is applied.** A NaN stenosis becomes 70% with no warning, because `num()` rejects NaN and the default is 0.7. `apply({ seed })` stores the seed and does not reseed the autonomic or arrest generators built at reset. A non-finite stenosis or seed should warn and refuse the substitution. An applied seed should rebuild those generators.
+
+10. **Make a setpoint a flow, and a level of 0 a stopped pump.** VA-ECMO set to 4 L/min delivers about 2.6. Impella RP present at level 0 flows about −1.3 L/min. `probe-lm-ecmo`, `probe-rca-rp-0` and `probe-rca-rp-9` are the measurements. If preload or an RPM limit is why the ECMO flow is short, show that next to the setpoint. Level 0 should be zero flow.
+
+11. **Publish valve numbers from the engine that is on the page.** The live AS+MR mean gradient falls about 1 mmHg against stenosis alone. `docs/VALVES.md` measured about 5 mmHg on the no-reflex structural model. Valve-in-valve reads 25 mmHg against the note’s about 15. Recompute the `inRing` orifice on the live core engine, and label the structural-page figure as no-reflex. The shunt reader should grade ASD, VSD and PDA from the L/min it already computes: 15, 8 and 4 mm currently shunt 2.5, 5.7 and 2.7 L/min and all three say “No murmur.”
+
+12. **Name the two perfusion pressures, and pick a beat that has an a wave.** The hemodynamics panel is aortic diastolic minus LV end-diastolic pressure, about 57 mmHg. The coronary network is driven at about 90. They want different labels. The right-atrial a wave is null on some sinus beats after a coronary occlusion while RV systolic pressure is present, because the representative beat has no atrial marker. When the rhythm says there is a PR, choose a beat that has one.
+
+13. **Lock the pairs without inventing a clinical target.** The comparisons in the table above are inequalities: a later PCI leaves at least as much infarct as an earlier one, left-dominant RCA ischemia is no larger than right-dominant, exertion moves anything 70% that rest does not, baroreflex gain 0 does not out-tachycardia gain 4 during the same hemorrhage, and leg raise matches the hemorrhage it is added to until the control is real. Those can become checks that fail on a regression. They still are not literature cells. Literature cells, with a PMID or an explicit “clinical judgment” note, stay yours to write.
 
 ## Open decisions
 

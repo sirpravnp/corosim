@@ -3,6 +3,7 @@ name: Core engine evaluation
 # Nightly and on demand. Not a deploy gate: the deploy workflows only run the fast tests.
 # Shards the default suites (standard, edge, valve, stochastic) at 8 seeds, then checks
 # expectations and invariants. The input sweep is a separate job (one seed per field value).
+# The probe suite (scripts/eval/probe.ts) is not in this workflow: run it with --suite probe.
 # A failure is an invariant violation, a crash, or a filled spec cell that does not hold.
 # Panel cross-checks are logged and do not fail the job.
 on:

@@ -1,11 +1,11 @@
 // Evaluation runner. The engine runs headless (no browser, no site): Simulation is a DOM-free class.
-//   npx tsx scripts/eval/run.ts list [--suite standard,edge,valve,stochastic,sweep]
+//   npx tsx scripts/eval/run.ts list [--suite standard,edge,valve,stochastic,sweep,probe]
 //   npx tsx scripts/eval/run.ts template [state ...] [--observed]   blank spec CSV; --observed adds seen_* columns from the last observe (not expectations)
 //   npx tsx scripts/eval/run.ts observe  [state ...] [--seeds 8] [--jobs 4] [--suite S] [--shard i/n]
 //   npx tsx scripts/eval/run.ts check    [state ...] [--invariants-only]   expectations, then invariants; exit 1 on either
 //   npx tsx scripts/eval/run.ts report   write scripts/eval/out/REPORT.md from whatever has been observed
 //   npx tsx scripts/eval/run.ts timescale   hemorrhage, bleed and LAD occlusion at 1x/3x/6x, equal clinical minutes
-// Default observe/check skip the input sweep (one state per field value). Pass --suite sweep or --suite all.
+// Default observe/check skip the input sweep and the probe suite. Pass --suite sweep, --suite probe, or --suite all.
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -40,7 +40,7 @@ function pick(): State[] {
   } else if (!suite && !ids.length) {
     const skipped = list.filter((s) => !DEFAULT_SUITES.includes(suiteOf(s)));
     list = list.filter((s) => DEFAULT_SUITES.includes(suiteOf(s)));
-    if (skipped.length) console.error(`skipping ${skipped.length} states (pass --suite sweep or --suite all)`);
+    if (skipped.length) console.error(`skipping ${skipped.length} states (pass --suite probe, --suite sweep, or --suite all)`);
   }
   const shard = arg("shard", "");
   if (shard) {
@@ -214,7 +214,7 @@ if (cmd === "worker") {
   const st = STATE_BY_ID[process.argv[3]];
   if (!st) { console.error(`unknown state ${process.argv[3]}`); process.exit(2); }
   console.log(JSON.stringify(runOne(st, +process.argv[4])));
-} else if (cmd === "list") for (const s of pick()) console.log(`${s.id.padEnd(28)} ${(s.suite ?? "standard").padEnd(11)} ${s.title}`);
+} else if (cmd === "list") for (const s of pick()) console.log(`${s.id.padEnd(44)} ${(s.suite ?? "standard").padEnd(11)} ${s.title}`);
 else if (cmd === "template") pick().forEach(template);
 else if (cmd === "observe") await observe(pick());
 else if (cmd === "check") check(pick());
