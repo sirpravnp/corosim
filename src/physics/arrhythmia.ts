@@ -28,7 +28,7 @@ import { gaussian } from "./autonomic";
  */
 
 export type RunKind = "nsvt" | "mono" | "poly" | "vf" | "aivr";
-export type RunCause = "ischemia" | "reperfusion" | "scar" | "degeneration" | "induced";
+export type RunCause = "ischemia" | "reperfusion" | "scar" | "electrolyte" | "degeneration" | "induced";
 type Sustained = Exclude<RunKind, "nsvt">;
 
 /** One arrhythmia event: a run that started (and, once over, when it ended). Times in stream (heartbeat) seconds, `minute` on the clinical clock. */
@@ -154,7 +154,8 @@ export class Arrhythmia implements RunTrigger {
     const h = this.hazards(), runs = h.ischemia + h.reperfusion + h.scar + h.electrolyte;
     if (!this.pending && runs > 0 && this.rng() < 1 - Math.exp(-runs * minutes)) {
       const u = this.rng() * runs;
-      this.pending = { cause: u < h.ischemia ? "ischemia" : u < h.ischemia + h.reperfusion ? "reperfusion" : "scar", at: t };
+      const cutIschemia = h.ischemia, cutReperfusion = cutIschemia + h.reperfusion, cutScar = cutReperfusion + h.scar;
+      this.pending = { cause: u < cutIschemia ? "ischemia" : u < cutReperfusion ? "reperfusion" : u < cutScar ? "scar" : "electrolyte", at: t };
     }
     if (!this.pending && h.aivr > 0 && this.rng() < 1 - Math.exp(-h.aivr * minutes)) this.startAivr(t, "reperfusion");
   }
