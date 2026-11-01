@@ -32,7 +32,7 @@ export function createStubSource(clock: () => number = () => performance.now() /
   const node = {} as Record<HemoNode, number>;
   for (const n of NODES) node[n] = ["PA", "RV", "RA", "SVC", "IVC"].includes(n) ? 0.72 : 0.97;
   const sats: Saturations = {
-    node, spo2: 0.98, preductal: 0.98, postductal: 0.98, svo2: 0.72, do2: 1000, vo2: 250, lactate: NaN, bed: {}, bedSource: "ischemia-derived",
+    node, satLung: 0.98, spo2: 0.98, preductal: 0.98, postductal: 0.98, svo2: 0.72, do2: 1000, vo2: 250, lactate: NaN, bed: {}, bedSource: "ischemia-derived",
   };
   const beatSamples = 50;
   const time = Float32Array.from({ length: beatSamples }, (_, i) => (i / (beatSamples - 1)) * rr);

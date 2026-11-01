@@ -6,7 +6,7 @@ import type { SeedRun } from "./engine";
 
 export interface Hit { state: string; seed: number; where: string; rule: string }
 
-const FRACTIONS = ["lvEf", "rvEf", "lvEfEstimate", "lvIschemia", "rvIschemia", "lvInfarctFraction", "ischemicMassFraction", "pulmonaryCongestion"];
+const FRACTIONS = ["lvEf", "rvEf", "lvEfEstimate", "lvEfFick", "lvIschemia", "rvIschemia", "lvInfarctFraction", "ischemicMassFraction", "pulmonaryCongestion"];
 const POSITIVE = ["lvEdv", "lvEsv", "laVolume", "stressedVolume", "unstressedVolume", "fluid.blood", "fluid.plasma"];
 /** Whole groups that are null when that device or sac is not in the patient. A null inside a group that is otherwise present is a violation. */
 const ABSENT_GROUPS: string[][] = [

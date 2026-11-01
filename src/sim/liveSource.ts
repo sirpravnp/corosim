@@ -1,4 +1,4 @@
-import type { BeatSummary, Chamber, DeviceConsole, HemoNode, HemoNumbers, HemoSource, Saturations, Series } from "./hemoSource";
+import type { BeatSummary, Chamber, DeviceConsole, HemoNode, HemoNumbers, HemoPanelExtras, HemoSource, Saturations, Series } from "./hemoSource";
 import type { Simulation } from "./simulation";
 import type { DevicesReadout } from "./coreDevices";
 import { NODES as ALL_NODES, CATH_NODES as NODES, solveOxygen, type Model } from "../physics/structural";
@@ -6,6 +6,7 @@ import { oxygenatorSat, type Ecmo } from "../physics/core/devices/ecmo";
 import type { RotaryPump } from "../physics/core/devices/pump";
 import type { LiveBeat, LiveHeart } from "../physics/core/live";
 import { vitalsOf, type Vitals } from "./vitals";
+import { fickLvEf, rightHeartCath } from "./rightHeartCath";
 import { windowedHemodynamicBeats, type HemoBeatSelection } from "./hemoBeats";
 import { PATIENTS, O2_PER_G_HB } from "../config/structural";
 import { LIVE_SOURCE as CFG } from "../config/liveSource";
@@ -246,7 +247,7 @@ export class LiveSource implements HemoSource {
     const n = this.numbers();
     this.satKey = k;
     this.sat = {
-      node, spo2: node.AO, preductal: node.AO, postductal: node.DAO, svo2: node.PA,
+      node, satLung: m.patient.satLung, spo2: node.AO, preductal: node.AO, postductal: node.DAO, svo2: node.PA,
       do2: n.co * base.hb * 10 * O2_PER_G_HB * node.AO, vo2: base.vo2PerKg * base.weightKg, lactate: NaN, bed, bedSource: "ischemia-derived",
     };
     return this.sat;
@@ -288,6 +289,17 @@ export class LiveSource implements HemoSource {
       out.push({ id: "impellaRp", label: `Impella RP P-${r.level}`, alarms: r.suctionAlarm ? ["Suction: the inflow is collapsing in the vena cava"] : [], readings: { flowLpm: r.flowLpm, level: r.level, speedKrpm: r.speedKrpm, motorCurrentMa: r.motorCurrentMa, placementMmHg: r.placementMmHg } });
     }
     return (this.dev = out);
+  }
+
+  /** Optional rows for the Hemodynamics panel (echo and Fick EF, coronary driving pressure). */
+  panelExtras(): HemoPanelExtras {
+    const st = this.sim.state(), r = rightHeartCath(this);
+    const h = this.sim.hemo(20);
+    return {
+      lvEfEcho: st.ventricle.ejectionFraction,
+      lvEfFick: r && h ? fickLvEf(this.numbers(), r.output, h.lvEdv) : null,
+      coronaryDrivingPressure: st.coronaryPerfusionPressure,
+    };
   }
 
   /** `a` minus `b` pressure over the last seconds (the placement signal is aortic minus ventricular pressure), at the samples the two share. */

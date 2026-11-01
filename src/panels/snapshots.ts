@@ -2,7 +2,7 @@
  * Snapshots (task P13): a saved moment of the hemodynamics, kept to compare against the live data. DOM-free store shared
  * by the workspace bar and the panels. A snapshot holds copies, so later changes to the source never alter it.
  */
-import type { BeatSummary, HemoNumbers, HemoSource, Saturations, Series } from "../sim/hemoSource";
+import type { BeatSummary, HemoNumbers, HemoPanelExtras, HemoSource, Saturations, Series } from "../sim/hemoSource";
 
 export const MAX_SNAPSHOTS = 3;
 /** Seconds of pressure trace kept in a snapshot. */
@@ -16,6 +16,7 @@ export interface Snapshot {
   t: number;
   numbers: HemoNumbers;
   saturations: Saturations;
+  extras?: HemoPanelExtras;
   /** The last completed beat, null before the first. */
   beat: BeatSummary | null;
   /** Pressure of every node over the last SNAPSHOT_SECONDS, mmHg, on the source clock. */
@@ -30,6 +31,7 @@ export function captureSnapshot(source: HemoSource, id: number, label: string): 
   return {
     id, label, t: source.now(),
     numbers: structuredClone(source.numbers()), saturations: structuredClone(source.saturations()),
+    ...("panelExtras" in source ? { extras: (source as { panelExtras: () => HemoPanelExtras }).panelExtras() } : {}),
     beat: source.beats(1)[0] ?? null, traces,
   };
 }

@@ -40,7 +40,7 @@ describe.each([
       expect(mt.hr).toBe(`${row(rows, "HR")} bpm`);
       expect(mt.bp).toBe(row(rows, "BP s/d (mean)"));
       expect(mt.co.startsWith(`${row(rows, "CO / CI").split(" / ")[0]} L/min`)).toBe(true);
-      expect(mt.ef).toBe(row(rows, "LVEF"));
+      expect(mt.ef).toBe(row(rows, "LVEF (chamber)"));
       const hb = recentHemodynamicBeats(src.beats(4 + SETTLE_BEATS)).beats, c = leftHeartCath(n, hb[hb.length - 1], "adult");
       if (c) {
         const lh = cathRows(c, v);

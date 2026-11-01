@@ -6,7 +6,7 @@ import type { Simulation } from "../../src/sim/simulation";
 import { LiveSource } from "../../src/sim/liveSource";
 import { cathReport } from "../../src/sim/cath";
 import { leftHeartCath } from "../../src/sim/leftHeartCath";
-import { rightHeartCath } from "../../src/sim/rightHeartCath";
+import { rightHeartCath, fickLvEf } from "../../src/sim/rightHeartCath";
 import { readout, type Readout } from "./readout";
 
 export interface Ctx { s: Simulation; src: LiveSource; st: any; ecg: any; hemo: any; fl: any; drugs: any; cor: any; met: any; sat: any; num: any; dev: any; cath: any; lhc: any; rhc: any; peri: { effusionMl: number; pressureMmHg: number; sacVolumeMl: number } | null; rd: Readout; win: number }
@@ -27,6 +27,7 @@ add("Monitor", "lvEf", "fraction", (c) => vit(c).lvEf); add("Monitor", "rvEf", "
 // The same quantities computed a second way elsewhere in the app. Registered under their own names so a disagreement is a labelled finding.
 // lvEfEstimate: aortic-valve stroke volume / LV EDV of every beat, smoothed (ischemia panel, MCP state, explain, cath echo). See docs/EVALUATION.md.
 add("Monitor", "lvEfEstimate", "fraction", (c) => c.st.ventricle.ejectionFraction);
+add("Hemodynamics", "lvEfFick", "fraction", (c) => (c.rhc && c.hemo ? fickLvEf(c.num, c.rhc.output, c.hemo.lvEdv) : null));
 add("Monitor", "hrRolling", "bpm", (c) => c.st.rolling10s.hr); add("Monitor", "svAortic", "ml", (c) => c.s.rolling(c.win).sv);
 add("Monitor", "status", "", (c) => c.st.circulationState, "str");
 add("Monitor", "rhythm", "", (c) => c.st.rhythm.label, "str");
@@ -160,8 +161,8 @@ export const VARIABLES: readonly Variable[] = v;
 export const CROSS_CHECKS: { a: string; b: string; tol: number; why: string; unlessDevice?: boolean }[] = [
   { a: "lvEf", b: "lvEfEstimate", tol: 0.06, why: "Monitor EF (LV chamber volumes) vs state EF (aortic stroke volume, smoothed); differ in a pump's presence and in fast transients", unlessDevice: true },
   { a: "lvEfEstimate", b: "echo.ef", tol: 0.02, why: "state EF vs cath-lab echo EF (same source; rounding only)" },
-  { a: "qpQs", b: "rhc.qpQsFick", tol: 0.05, why: "Qp:Qs from flows (Hemodynamics, Oxygen panels) vs from oxygen content (right-heart cath, Fick)" },
-  { a: "co", b: "rhc.fickCo", tol: 0.6, why: "thermodilution-style CO vs Fick CO (real catheters agree within about 10-20%)" },
+  { a: "qpQs", b: "rhc.qpQsFick", tol: 0.02, why: "Qp:Qs from flows (Hemodynamics, Oxygen panels) vs from oxygen content (right-heart cath, Fick)" },
+  { a: "co", b: "rhc.fickCo", tol: 0.12, why: "Flow-derived CO vs Fick CO (same VO2 balance; should agree within a few percent on a healthy heart)" },
   { a: "hr", b: "hrRolling", tol: 4, why: "Monitor HR vs state HR (different windows)" },
   { a: "sv", b: "svAortic", tol: 6, why: "Monitor SV (output / rate, includes pump flow) vs aortic-valve stroke volume", unlessDevice: true },
   { a: "lvPeakSys", b: "lhc.lvSystolic", tol: 8, why: "LV peak pressure of the last steady beat vs the left-heart cath systolic (same beat, different window)" },
