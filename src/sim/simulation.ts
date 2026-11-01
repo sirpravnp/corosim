@@ -2,6 +2,7 @@ import { buildTree, Tree } from "../anatomy/tree";
 import { Lesion, Graft, analyze, solveNetwork, Analysis } from "../physics/network";
 import { FLOW } from "../config/tree";
 import { ST, LEADS, ALL_LEADS, LeadName } from "../config/ecg";
+import { ARRHYTHMIA } from "../config/arrhythmia";
 import { stLevelVec, Beat } from "../physics/ecg";
 import { assess, Assessment } from "../physics/advice";
 import { Treated, untreated, applyProcedure } from "../physics/revasc";
@@ -410,7 +411,8 @@ export class Simulation {
   /** ECG injury vector and T-wave boost for the strip, from the current ischemia. */
   ecgInputs() {
     const g = globalSeverity(ischemicBurden(this.sites, this.sev));
-    return { injury: injuryVector(this.sites, this.sev, this.transmural), tBoost: ST.tBoost * g };
+    const potassium = this.arrhythmia?.potassium ?? ARRHYTHMIA.potassium.normal;
+    return { injury: injuryVector(this.sites, this.sev, this.transmural), tBoost: ST.tBoost * g, potassium };
   }
 
   /**
