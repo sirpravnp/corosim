@@ -8,8 +8,9 @@ import type { PatientSpec, HeartSpec } from "../../src/sim/patient";
 import { intervene, valveSet } from "../../src/sim/valves";
 import { sweepStates } from "./sweep";
 import { probeStates } from "./probe";
+import { matrixStates } from "./matrix";
 
-export type Suite = "standard" | "edge" | "valve" | "stochastic" | "sweep" | "probe";
+export type Suite = "standard" | "edge" | "valve" | "stochastic" | "sweep" | "probe" | "matrix";
 
 export interface State {
   id: string; title: string;
@@ -142,7 +143,7 @@ const HAND: State[] = [
     actions: [{ atS: 10, label: "primary PCI", run: (s) => { s.revascularize("pci"); } }] },
 ];
 
-export const STATES: State[] = [...HAND, ...probeStates(), ...sweepStates()];
+export const STATES: State[] = [...HAND, ...probeStates(), ...sweepStates(), ...matrixStates()];
 const ids = STATES.map((s) => s.id);
 const dup = ids.filter((id, i) => ids.indexOf(id) !== i);
 if (dup.length) throw new Error(`duplicate eval state ids: ${[...new Set(dup)].join(", ")}`);

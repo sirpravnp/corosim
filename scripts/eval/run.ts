@@ -1,11 +1,12 @@
 // Evaluation runner. The engine runs headless (no browser, no site): Simulation is a DOM-free class.
-//   npx tsx scripts/eval/run.ts list [--suite standard,edge,valve,stochastic,sweep,probe]
+//   npx tsx scripts/eval/run.ts list [--suite standard,edge,valve,stochastic,sweep,probe,matrix]
 //   npx tsx scripts/eval/run.ts template [state ...] [--observed]   blank spec CSV; --observed adds seen_* columns from the last observe (not expectations)
 //   npx tsx scripts/eval/run.ts observe  [state ...] [--seeds 8] [--jobs 4] [--suite S] [--shard i/n]
 //   npx tsx scripts/eval/run.ts check    [state ...] [--invariants-only]   expectations, then invariants; exit 1 on either
 //   npx tsx scripts/eval/run.ts report   write scripts/eval/out/REPORT.md from whatever has been observed
 //   npx tsx scripts/eval/run.ts timescale   hemorrhage, bleed and LAD occlusion at 1x/3x/6x, equal clinical minutes
-// Default observe/check skip the input sweep and the probe suite. Pass --suite sweep, --suite probe, or --suite all.
+// Default observe/check skip the input sweep, the probe suite and the condition matrix.
+// Pass --suite sweep, --suite probe, --suite matrix, or --suite all.
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -40,7 +41,7 @@ function pick(): State[] {
   } else if (!suite && !ids.length) {
     const skipped = list.filter((s) => !DEFAULT_SUITES.includes(suiteOf(s)));
     list = list.filter((s) => DEFAULT_SUITES.includes(suiteOf(s)));
-    if (skipped.length) console.error(`skipping ${skipped.length} states (pass --suite probe, --suite sweep, or --suite all)`);
+    if (skipped.length) console.error(`skipping ${skipped.length} states (pass --suite probe, --suite sweep, --suite matrix, or --suite all)`);
   }
   const shard = arg("shard", "");
   if (shard) {
