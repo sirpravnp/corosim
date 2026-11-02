@@ -72,9 +72,16 @@ describe("hypotension feeds back on coronary perfusion", () => {
     expect(solveNetwork(t, [], 1, 55 * MMHG).atRisk).toBe(0);
     expect(solveNetwork(t, [], 1, 40 * MMHG).atRisk).toBeGreaterThan(0.8);
   });
-  it("a 70% stenosis that is silent at normal pressure becomes ischemic when pressure falls", () => {
+  it("a 70% stenosis is partly ischemic at normal pressure and worsens as pressure falls, without recruiting a remote artery", () => {
     const les = [{ segId: "LAD", pos: 0.4, ds: 0.7 }];
-    expect(solveNetwork(t, les, 1, 90 * MMHG).atRisk).toBe(0);
-    expect(solveNetwork(t, les, 1, 70 * MMHG).atRisk).toBeGreaterThan(0.2);
+    const normal = solveNetwork(t, les, 1, 90 * MMHG);
+    const low = solveNetwork(t, les, 1, 70 * MMHG);
+    expect(normal.atRisk).toBeGreaterThan(0.05);
+    expect(normal.atRisk).toBeLessThan(0.5);
+    expect(low.atRisk).toBeGreaterThan(normal.atRisk);
+    const remote = (r: ReturnType<typeof solveNetwork>) => r.terminals.find((x) => x.key === "RCA#end")!;
+    expect(remote(normal).ratio).toBeGreaterThan(0.95);
+    expect(remote(low).ratio).toBeGreaterThan(0.95);
+    expect(remote(solveNetwork(t, les, 1, 50 * MMHG)).ratio).toBeGreaterThan(0.95);
   });
 });

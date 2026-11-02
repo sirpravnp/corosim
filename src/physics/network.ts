@@ -23,8 +23,10 @@ export interface NetResult { seg: Record<string, SegResult>; terminals: Terminal
 const HALF = 7; // mm, half of the 14 mm lesion window
 /** Autoregulation reserve at the working MAP (stenosis vs healthy at the same aortic pressure). 0.28 leaves a 60% proximal LAD quiet at rest and a 70% lesion only partly ischemic. [assumed] */
 const AUTOREG_RESERVE = 0.28;
-/** Looser reserve when MAP is below the reference (hypotension unmasks ischemia). [assumed] */
+/** Looser reserve when MAP is below the reference (hypotension unmasks a stenosis). [assumed] */
 const HYPO_RESERVE = 0.22;
+/** A bed must lose at least this fraction of its same-MAP healthy pressure before the hypotensive reserve applies. */
+const HYPO_LOCAL_DROP = 0.02;
 const lesionFactor = (xm: number, L: ReturnType<typeof defaultLesion>) => {
   if (xm < L.entranceLength) return 0.5 * (1 - Math.cos((Math.PI * xm) / L.entranceLength));
   if (xm <= L.entranceLength + L.plateau) return 1;
@@ -174,10 +176,14 @@ export function solveNetwork(tree: Tree, lesions: Lesion[], demandMult: number, 
     const Pd = Math.max(0, interp(dense[t.seg.id].s, P[t.seg.id], t.pos));
     const demand = base * t.Qrest;
     const flowRatio = demand > 0 ? Q[i] / demand : 1;
+    const sameBase = basePd?.[t.key] ?? 0;
+    const localDrop = sameBase > 0 ? 1 - Pd / sameBase : 0;
     const pressSame = basePd
-      ? Math.max(0, 1 - Pd / basePd[t.key] - AUTOREG_RESERVE) / Math.max(1e-6, 1 - AUTOREG_RESERVE)
+      ? Math.max(0, localDrop - AUTOREG_RESERVE) / Math.max(1e-6, 1 - AUTOREG_RESERVE)
       : 0;
-    const pressHypo = refPd
+    // Only beds downstream of a lesion (a real drop versus the healthy tree at this same MAP) take the
+    // hypotensive reserve. A global pressure fall must not mark open arteries ischemic.
+    const pressHypo = refPd && localDrop > HYPO_LOCAL_DROP
       ? Math.max(0, 1 - Pd / refPd[t.key] - HYPO_RESERVE) / Math.max(1e-6, 1 - HYPO_RESERVE)
       : 0;
     const pressDeficit = Math.max(pressSame, pressHypo);
