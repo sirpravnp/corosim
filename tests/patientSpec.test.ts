@@ -3,6 +3,7 @@ import { decodePatient, decodeScenario, encodePatient, encodeScenario, SCENARIO_
 import { DEFAULT_IABP, DEFAULT_IMPELLA, effectiveDevices, normalizePatient, PatientSpec } from "../src/sim/patient";
 import { Scenario } from "../src/sim/scenario";
 import { LESIONS, parseLesionHash, patientFromLesionHash } from "../src/sim/structural";
+import { STENOSIS_SPAN } from "../src/config/valves";
 
 /** Realistic scenarios as the app, the MCP link tool and LLMs have produced them. */
 const OLD: Scenario[] = [
@@ -125,7 +126,7 @@ describe("effectiveDevices", () => {
 
 describe("patientFromLesionHash", () => {
   it("an adult valve lesion: heart from the lesion", () => {
-    expect(patientFromLesionHash("#lesion=as&severity=0.5")).toEqual({ heart: { valves: { av: { open: 1 - 0.85 * 0.5 } } } });
+    expect(patientFromLesionHash("#lesion=as&severity=0.5")).toEqual({ heart: { valves: { av: { open: 1 - STENOSIS_SPAN.av * 0.5 } } } });
   });
   it("a neonate lesson: patient and hr left out, defaults filled in", () => {
     const p = patientFromLesionHash("#lesion=vsd&diameter=7");
