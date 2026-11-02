@@ -51,11 +51,41 @@ Python: Gymnasium env + MaskablePPO  <-- JSON lines over stdio -->  Node worker:
 **Decision step.** 10 simulated seconds. While the patient is critical the clinical clock runs in real time (`criticalTime`),
 so define the step in clinical time and cap episodes at 24 clinical hours or death.
 
-**Observation (normalised vector).** HR, MAP, SBP, DBP, cardiac output, stroke volume, coronary perfusion pressure; EF, LV and RV
-ischemia, congestion, infarct fraction; rhythm class one-hot, AV degree, PVC severity; 12 ST values and
-`meetsStemiCriteria`; `ischemicMinutes`, `clinicalMinutes`, PCI pending; current drug levels, pacing, IABP, Impella level, ECMO
-flow, fluids given; time since each intervention. **Hidden from the agent:** lesion location and severity, seed, scheduled
-complications. Hidden complications must surface through the vitals, as in practice.
+**Observation: only what a clinician could realistically know.** Rule: the policy sees what a bedside team would have, when
+they would have it, with the noise and delay it comes with. The sim's internal state is never an input. An observation layer
+(`rl/observe.ts`) maps `Simulation` state to this clinician's view; a test asserts the observation keys are a whitelist.
+
+| Tier | What the policy gets | How it is limited |
+|---|---|---|
+| Continuous monitor | Heart rate; rhythm class (sinus, AF, VT, VF, paced, block); PVC rate; SpO2 if the model supports it | Rounded to monitor precision |
+| Blood pressure | Cuff pressure every few minutes; continuous arterial-line pressure only after an arterial line is placed (an action) | Cuff is intermittent and noisier; MAP is derived, not read from the engine |
+| 12-lead ECG | ST elevation or depression by lead group, rhythm, QRS width | Only when ordered, plus a repeat on a schedule; a snapshot, not continuous |
+| Bedside exam | Coarse findings: cool or warm, JVP high or normal, crackles, new murmur | Few ordinal levels, derived from congestion, JVP and perfusion; no exact numbers |
+| Echo (ordered) | EF band (severe, moderate, preserved), RV size or function, effusion present, severity of MR, VSD | Costs time; noisy bands, not exact values |
+| Invasive hemodynamics | Cardiac output, wedge pressure, right atrial and PA pressures, mixed venous saturation | Only after a right heart cath is placed (an action, with a delay and a complication risk) |
+| Cath lab | Angiographic flow grade and culprit location | Only during or after a cath |
+| Device console | Impella level and flow estimate, ECMO flow and RPM; IABP ratio | Only for devices that are in |
+| History | Minutes since symptom onset (given at the start, with uncertainty), time since each intervention, drugs and fluids given | Known to the team |
+
+**Not exposed as inputs** because a clinician cannot measure them in real time: LV and RV ischemia fractions, infarct size,
+coronary perfusion pressure, exact stroke volume, EF on every step, the true lesion (artery, position, stenosis), the seed,
+tendencies for ectopy and arrhythmia, scheduled or pending complications, `deathCause`, and the advisor's `steps` and
+`warnings` (a guideline oracle the agent would copy). **Not modelled in CoroSim, so unavailable:** lactate, troponin, labs,
+urine output, age and comorbidities. The report must say the agent had no lactate or troponin, since clinicians lean on both.
+
+Rules for the layer:
+- Information is an action: ordering an ECG, echo, arterial line or right heart cath takes time and carries a cost or risk, so
+  the agent faces real choices about what to find out.
+- Hidden complications must surface through this clinician's view (falling pressure, new murmur, effusion on echo) before the
+  agent can respond to them.
+- Observations carry realistic noise, rounding and delay; ordinal bands rather than exact values for exam and echo.
+- Partial observability, so use a recurrent policy or frame stacking over the last several observations.
+- **Privileged information is allowed only for the learning signal and evaluation**, never as a policy input: the reward and an
+  asymmetric critic (value function) may use the true state (infarct fraction, true lesion, `dead`), while the actor sees only
+  the clinician's view. This keeps training fast without leaking.
+
+Open check (phase 0): confirm which of the echo, exam and invasive findings the simulator can already produce
+(`src/sim/leftHeartCath.ts`, `rightHeartCath.ts`, `cath.ts`, `src/physics/jvp.ts`, the echo atlas) and which need new code.
 
 **Actions.** Off/low/high for norepinephrine, epinephrine, dobutamine, milrinone, vasopressin, nitroglycerin, diuretic; fluid
 bolus; pacing (with a rate); IABP; Impella (level, with removal); ECMO (flow, with removal); order PCI, lysis or CABG; wait.
