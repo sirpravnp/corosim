@@ -122,10 +122,22 @@ export class LibraryRhythm {
   }
 
   private strength(e: EBeat): number | undefined {
-    if (e.kind !== "v" || e.pvc) return undefined; // supraventricular: normal (and the live heart's potentiation rule); a PVC: its PVC rule
+    if (e.pvc) return undefined; // supraventricular: normal (and the live heart's potentiation rule); a PVC: its PVC rule
+    if (e.kind !== "v") return undefined;
     if (e.paced) return M.paced;
     const r = this.spec.rhythm;
-    return r.kind === "torsades" || (r.kind === "ventricular" && r.poly) ? M.polymorphic : M.ventricular;
+    if (r.kind === "torsades") return M.torsades;
+    if (r.kind === "ventricular" && r.poly) return M.polymorphic;
+    return M.ventricular;
+  }
+
+  /** Flutter 2:1, SVT and junctional: ventricular beats have no P, but a flutter wave or retrograde P can still land in the PR window. */
+  private kickGuard(e: EBeat): Beat | undefined {
+    const k = this.spec.rhythm.kind;
+    if (e.pvc || e.paced) return undefined;
+    if (k === "flutter" && e.kind === "sv") return { t: e.t, rr: e.rr, pvc: false, pr: M.kickGuardPr, pOnly: true, silent: true, atrialStrength: 0, origin: "atrial" };
+    if ((k === "svt" || k === "junctional") && e.kind === "sv") return { t: e.t, rr: e.rr, pvc: false, pr: M.kickGuardPr, pOnly: true, silent: true, atrialStrength: 0, origin: "junctional" };
+    return undefined;
   }
 
   /** Beats the ventricles take from the conduction system or a pacemaker: the ones ischemic ectopy may follow. */
@@ -151,8 +163,13 @@ export class LibraryRhythm {
       const b: Beat = { t: e.t, rr: e.rr, pvc: !!e.pvc, origin: this.origin(e), ekg: { beat: e, painter } };
       if (e.pr !== undefined) b.pr = e.pr; else b.noP = true;
       if (e.retroP !== undefined) b.retroP = e.retroP;
+      const guard = this.kickGuard(e);
+      if (guard) out.push(guard);
       const st = this.strength(e);
-      if (st !== undefined) { b.strength = st; b.systole = e.paced ? M.pacedSystole : st === M.polymorphic ? M.polymorphicSystole : M.ventricularSystole; }
+      if (st !== undefined) {
+        b.strength = st;
+        b.systole = e.paced ? M.pacedSystole : st === M.polymorphic || st === M.torsades ? M.polymorphicSystole : M.ventricularSystole;
+      }
       out.push(b);
       if (this.ectopy && this.eligible(e)) {
         const pv = this.ectopy.decide(e.t, e.rr);
