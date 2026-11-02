@@ -189,6 +189,13 @@ export function renderReport(outDir: string, specDir: string): string {
     const crashed = runs.filter((r) => r.error);
     lines.push(`- **${st.id}** (${st.title}). ${crashed.length ? `CRASH seed ${crashed.map((r) => r.seed).join(",")}: ${crashed[0].error!.split(" | ")[0]}` : `${runs.length} seeds, no throw`}`);
   }
+  lines.push("", "## Matrix states", "", "The condition matrix in `docs/CONDITION_MATRIX.md`. Off the nightly job. Run with `--suite matrix`. Scored in `docs/MATRIX_REPORT.md`. A crash is a failure of that input.", "");
+  for (const st of STATES.filter((s) => s.suite === "matrix")) {
+    const runs = load(outDir, st.id);
+    if (!runs) continue;
+    const crashed = runs.filter((r) => r.error);
+    lines.push(`- **${st.id}** (${st.title}). ${crashed.length ? `CRASH seed ${crashed.map((r) => r.seed).join(",")}: ${crashed[0].error!.split(" | ")[0]}` : `${runs.length} seeds, no throw`}`);
+  }
   lines.push("");
   const ts = join(outDir, "timescale.md");
   if (existsSync(ts)) lines.push(readFileSync(ts, "utf8"), "");
