@@ -7,7 +7,7 @@ import type { HeartSpec } from "../src/sim/patient";
 import { intervene, nativeLesion, valveSet } from "../src/sim/valves";
 import { LESION_BY_ID } from "../src/sim/structural";
 import { PATIENTS } from "../src/config/structural";
-import { PROSTHESIS_EOA, PROSTHESIS_KINDS, PROSTHESIS_SIZE, VALVE_KEYS } from "../src/config/valves";
+import { PROSTHESIS_EOA, PROSTHESIS_KINDS, PROSTHESIS_SIZE, REGURG_AREA_FRAC, STENOSIS_SPAN, VALVE_KEYS } from "../src/config/valves";
 
 const A = PATIENTS.adult.valveAreas;
 const edge = (h: HeartSpec, name: string) => buildModel({ ...h, patient: "adult" }).edges.find((e) => e.name === name)!;
@@ -42,8 +42,8 @@ describe("a valve lesion as the engine's edge", () => {
   });
   it("several lesions at once all reach the model: aortic stenosis and mitral regurgitation, side by side", () => {
     const h: HeartSpec = { valves: valveSet({ av: { stenosis: 0.9 }, mv: { regurgitation: 0.6 } }) };
-    expect(edge(h, "AV").area).toBeCloseTo(A.av * (1 - 0.85 * 0.9), 9); expect(edge(h, "AV").reg).toBe(0);
-    expect(edge(h, "MV").area).toBe(A.mv); expect(edge(h, "MV").reg).toBeCloseTo(0.6 * 0.12 * A.mv, 9);
+    expect(edge(h, "AV").area).toBeCloseTo(A.av * (1 - STENOSIS_SPAN.av * 0.9), 9); expect(edge(h, "AV").reg).toBe(0);
+    expect(edge(h, "MV").area).toBe(A.mv); expect(edge(h, "MV").reg).toBeCloseTo(0.6 * REGURG_AREA_FRAC.mv * A.mv, 9);
   });
   it("valveSet builds the same lesion as the single-lesion presets, number for number", () => {
     for (const [id, k, key] of [["as", "av", "stenosis"], ["ms", "mv", "stenosis"], ["ts", "tv", "stenosis"], ["ps", "pv", "stenosis"], ["ar", "av", "regurgitation"], ["mr", "mv", "regurgitation"], ["tr", "tv", "regurgitation"], ["pr", "pv", "regurgitation"]] as const) {
