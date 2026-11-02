@@ -1,4 +1,4 @@
-import { BLOOD, CORONARY } from "../config/anatomy";
+import { BLOOD, CORONARY, MMHG } from "../config/anatomy";
 import { FLOW } from "../config/tree";
 import { Segment, Tree, diameterAt } from "../anatomy/tree";
 import { area, defaultLesion } from "./geometry";
@@ -21,6 +21,10 @@ export interface TerminalResult {
 export interface NetResult { seg: Record<string, SegResult>; terminals: TerminalResult[]; atRisk: number; iterations: number; pa: number }
 
 const HALF = 7; // mm, half of the 14 mm lesion window
+/** Autoregulation reserve at the working MAP (stenosis vs healthy at the same aortic pressure). 0.28 leaves a 60% proximal LAD quiet at rest and a 70% lesion only partly ischemic. [assumed] */
+const AUTOREG_RESERVE = 0.28;
+/** Looser reserve when MAP is below the reference (hypotension unmasks ischemia). [assumed] */
+const HYPO_RESERVE = 0.22;
 const lesionFactor = (xm: number, L: ReturnType<typeof defaultLesion>) => {
   if (xm < L.entranceLength) return 0.5 * (1 - Math.cos((Math.PI * xm) / L.entranceLength));
   if (xm <= L.entranceLength + L.plateau) return 1;
@@ -86,6 +90,13 @@ export function solveNetwork(tree: Tree, lesions: Lesion[], demandMult: number, 
   };
   const isBlocked = terms.map(blocked);
   const demandOf = (t: Terminal) => (Number.isFinite(demandMult) ? demandMult : Infinity) * t.Qrest;
+
+  const basePd: Record<string, number> | null = lesions.length
+    ? Object.fromEntries(solveNetwork(tree, [], demandMult, aorticPressure, grafts).terminals.map((t) => [t.key, t.Pd]))
+    : null;
+  const refPd: Record<string, number> | null = lesions.length && aorticPressure < CORONARY.meanAorticPressure - 0.5 * MMHG
+    ? Object.fromEntries(solveNetwork(tree, [], demandMult, CORONARY.meanAorticPressure, grafts).terminals.map((t) => [t.key, t.Pd]))
+    : null;
 
   let Q = terms.map((t, i) => (isBlocked[i] ? 0 : Math.min(demandOf(t), t.Qrest * FLOW.maxCoronaryFlowReserve)));
   const P: Record<string, number[]> = {}, Qs: Record<string, number[]> = {};
@@ -161,8 +172,18 @@ export function solveNetwork(tree: Tree, lesions: Lesion[], demandMult: number, 
   const base = Number.isFinite(demandMult) ? demandMult : 1;
   const terminals: TerminalResult[] = terms.map((t, i) => {
     const Pd = Math.max(0, interp(dense[t.seg.id].s, P[t.seg.id], t.pos));
-    const demand = base * t.Qrest, ratio = demand > 0 ? Q[i] / demand : 1;
-    return { key: t.key, segId: t.seg.id, label: t.label, group: t.seg.group, mass: t.mass, Qrest: t.Qrest, Q: Q[i], Pd, demand, ratio, severity: severityTarget(Q[i], demand), blocked: isBlocked[i] };
+    const demand = base * t.Qrest;
+    const flowRatio = demand > 0 ? Q[i] / demand : 1;
+    const pressSame = basePd
+      ? Math.max(0, 1 - Pd / basePd[t.key] - AUTOREG_RESERVE) / Math.max(1e-6, 1 - AUTOREG_RESERVE)
+      : 0;
+    const pressHypo = refPd
+      ? Math.max(0, 1 - Pd / refPd[t.key] - HYPO_RESERVE) / Math.max(1e-6, 1 - HYPO_RESERVE)
+      : 0;
+    const pressDeficit = Math.max(pressSame, pressHypo);
+    const ratio = Math.min(flowRatio, 1 - pressDeficit);
+    const supply = ratio * demand;
+    return { key: t.key, segId: t.seg.id, label: t.label, group: t.seg.group, mass: t.mass, Qrest: t.Qrest, Q: Q[i], Pd, demand, ratio, severity: severityTarget(supply, demand), blocked: isBlocked[i] };
   });
   const atRisk = terminals.reduce((a, t) => a + (t.ratio < 0.95 ? t.mass : 0), 0);
   return { seg, terminals, atRisk, iterations: it, pa: Pa };

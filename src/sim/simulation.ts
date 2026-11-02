@@ -490,8 +490,11 @@ export class Simulation {
     };
   }
 
-  private slew(h: number) {
-    const a = 1 - Math.exp(-(h * this.speed) / DRUG_TAU), v = 1 - Math.exp(-(h * this.speed) / VOLUME_TAU);
+  private slew(h: number, minutes: number) {
+    // Tau is in speed-scaled simulated seconds, the speed-1 calibration. Clinical minutes convert
+    // back by minutesPerSecond, so a faster playback covers the same ramp in the same clinical time.
+    const scaled = minutes > 0 ? minutes / this.minutesPerSecond : h * this.speed;
+    const a = 1 - Math.exp(-scaled / DRUG_TAU), v = 1 - Math.exp(-scaled / VOLUME_TAU);
     for (const k of ["betaBlocker", "atropine", "vasopressor"] as const) this.drug[k] += (this.n.drugs[k] - this.drug[k]) * a;
     const loss0 = this.bloodLoss, fluid0 = this.fluidGiven;
     this.bloodLoss += (this.n.bloodLoss - this.bloodLoss) * v;
@@ -534,7 +537,7 @@ export class Simulation {
       this.clinicalMinutes += minutes;
       if (ischemicBurden(this.sites, this.sev) > 0.005) this.ischemicMinutes += minutes;
     }
-    this.slew(h);
+    this.slew(h, minutes);
     if (this.engine === "core") { this.pk.step(minutes, this.drugDoses()); if (this.fluidModel) this.fluidModel.diuretic = this.pk.effects().diuretic; }
     if (this.fluidModel) this.stepFluids(minutes);
     this.updateCirculation();
@@ -542,7 +545,7 @@ export class Simulation {
     ctl.betaBlock = this.engine === "core" ? this.pk.effects().betaBlock : this.drug.betaBlocker;
     ctl.vagalBlock = Math.max(this.drug.atropine, this.support.atropine ? 1 : 0);
     ctl.volumeDeficit = finiteOr(Math.max(0, this.fluidModel ? 1 - this.fluidModel.bloodVolume / this.bv0 : this.bloodLoss), ctl.volumeDeficit); // core: the blood volume short of the patient's own, whatever its cause or refill
-    this.autonomic.step(h);
+    this.autonomic.step(minutes > 0 ? minutes / this.minutesPerSecond : h);
     this.stream.alternans = alternansAmplitude(this.sac()?.effusionMl, this.periSpec?.open);
     this.stream.ectopy?.update(minutes, weightedBurden(this.sites, this.sev, this.transmural), { sympathetic: this.fx.sympathetic, betaBlock: ctl.betaBlock, drugDrive: this.pk.effects().ectopyDrive });
     if (this.arrhythmia) {
@@ -1369,7 +1372,7 @@ export class Simulation {
       ventricle: { ejectionFraction: +c.ejectionFraction.toFixed(2), lvInfarctFraction: +lvInfarctSize(this.sites, this.scar).toFixed(3), lvIschemia: +c.lvIschemia.toFixed(2), rvIschemia: +c.rvIschemia.toFixed(2), pulmonaryCongestion: +c.congestion.toFixed(2) },
       support: { ...supportSpec(this.support), deviceFlowLpm: +c.deviceFlow.toFixed(1), atropine: this.support.atropine || this.n.drugs.atropine >= 0.5 },
       circulationState: this.map < CIRC.shockMap ? "shock" : this.map < CIRC.hypotensionMap ? "hypotension" : "stable",
-      ischemicMassFraction: +cond.atRisk.toFixed(3),
+      ischemicMassFraction: +this.analysis.cond.terminals.reduce((a, t) => a + t.mass * t.severity, 0).toFixed(3),
       compromisedBeds: compromised.slice(0, 8),
       ffr: this.analysis.ffr.map((f, i) => ({ artery: this.n.lesions[i]?.segId, ffr: +f.toFixed(2) })),
       ...(this.engine === "core" ? { arrest: this.arrestState() } : {}),
