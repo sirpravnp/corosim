@@ -120,7 +120,7 @@ function frame(now: number) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (!reported.dead) sim.step(dt * speed, { minutes: 0 }); // a dead patient stops: the replay freezes like the simulation does (the infarct clock belongs to the AI's patient, not to this replay)
   const fx = sim.ecgInputs();
-  ecg.step(dt * speed, fx.injury, fx.tBoost, sim.rstate.rhythm); // with the simulation frozen no new beats arrive: the strip runs on as a flat line
+  ecg.step(dt * speed, fx.injury, fx.tBoost, sim.rstate.rhythm, fx.potassium); // with the simulation frozen no new beats arrive: the strip runs on as a flat line
   ecg.draw();
   if ((paintClock += dt) > 0.2) { paintClock = 0; scene.paint(); }
   if ((uiClock += dt) > 0.5) { uiClock = 0; monitor(); }

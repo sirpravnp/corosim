@@ -42,6 +42,7 @@ export const CAUSE_WHY: Record<RunCause, string> = {
   ischemia: "a premature beat on the vulnerable phase of acutely ischemic myocardium started it",
   reperfusion: "it came with reperfusion of the ischemic muscle",
   scar: "a re-entry circuit around healed infarct scar runs it",
+  electrolyte: "severe hyper- or hypokalaemia made the ventricle irritable, without an acute ischemic territory",
   degeneration: "a ventricular tachycardia broke up into fibrillation",
   induced: "it was started on purpose",
 };

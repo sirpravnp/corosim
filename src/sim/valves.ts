@@ -127,7 +127,7 @@ const SOUND: Record<string, { stenosis: string; regurgitation: string }> = {
 };
 
 /** What the examiner hears across all the valves, one clause per finding; a prosthesis adds its sounds. */
-export function murmurOf(valves: ValveFinding[]): string {
+export function murmurOf(valves: ValveFinding[], shunt?: Partial<Record<"asd" | "vsd" | "pda" | "bt", number>>): string {
   const out: string[] = [];
   for (const v of valves) {
     const p = v.prosthesis;
@@ -137,6 +137,13 @@ export function murmurOf(valves: ValveFinding[]): string {
     }
     if (v.stenosis !== "none") out.push(`${LABEL[v.valve]}: ${SOUND[v.valve].stenosis}`);
     if (v.regurgitation !== "none") out.push(`${LABEL[v.valve]}: ${SOUND[v.valve].regurgitation}`);
+  }
+  if (shunt) {
+    const q = (x: number | undefined) => Math.abs(x ?? 0);
+    if (q(shunt.asd) >= 1.5) out.push("Atrial septal shunt: soft systolic flow murmur at the left upper sternal border and a fixed split S2.");
+    if (q(shunt.vsd) >= 2) out.push("Ventricular septal shunt: harsh holosystolic murmur at the left lower sternal border.");
+    if (q(shunt.pda) >= 1.5) out.push("Patent ductus shunt: continuous machinery murmur at the left infraclavicular area.");
+    if (q(shunt.bt) >= 1) out.push("Blalock–Taussig shunt: continuous murmur from the systemic–pulmonary connection.");
   }
   return out.length ? `${out.join("; ")}.` : "No murmur.";
 }
@@ -160,5 +167,5 @@ const RANK: Grade[] = ["none", "mild", "moderate", "severe"];
 export function assessHeart(heart: HeartSpec = {}, opts: { waveform?: boolean } = {}): HeartAssessment {
   const spec: StructuralSpec = { ...heart, patient: "adult" }, report = analyze(spec, { waveform: opts.waveform ?? false }), valves = gradeValves(spec, report);
   const worst = valves.reduce<Grade>((a, v) => (RANK.indexOf(v.grade as Grade) > RANK.indexOf(a) ? (v.grade as Grade) : a), "none");
-  return { spec, report, valves, murmur: murmurOf(valves), summary: valveSummary(valves), worst };
+  return { spec, report, valves, murmur: murmurOf(valves, report.shunt), summary: valveSummary(valves), worst };
 }

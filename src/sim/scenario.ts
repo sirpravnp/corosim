@@ -130,7 +130,11 @@ export function normalizeScenario(input: Scenario = {}, base?: Normalized["scena
     if (!id) { warnings.push(`lesion on "${l.artery}" dropped: no such artery in this anatomy`); continue; }
     if (specs.some((s) => s.artery === id)) { warnings.push(`second lesion on ${id} dropped: one lesion per artery`); continue; }
     const occluded = !!l.occluded;
-    const stenosis = occluded ? 1 : clamp(num(l.stenosis) ? l.stenosis : 0.7, 0, 0.99);
+    if (l.stenosis !== undefined && !num(l.stenosis) && !occluded) {
+      warnings.push(`${id} stenosis is not a number; lesion dropped`);
+      continue;
+    }
+    const stenosis = occluded ? 1 : clamp(l.stenosis !== undefined ? l.stenosis! : 0.7, 0, 0.99);
     if (num(l.stenosis) && l.stenosis !== stenosis && !occluded) warnings.push(`${id} stenosis clamped to ${stenosis}`);
     specs.push({ artery: id, stenosis, occluded, position: clamp(num(l.position) ? l.position : 0.15, 0, 1) });
   }

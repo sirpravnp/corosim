@@ -39,7 +39,7 @@ export function frame(now: number) {
   if (sim.analysis !== A) { takeAnalysis(); for (const b of built) b.blocked = blockedFlags(b.seg); shapeVessels(); } // perfusion pressure or demand moved
   takeRC();
   const fx = sim.ecgInputs();
-  if (!sim.dead) ecg.step(dt, fx.injury, fx.tBoost, rstate!.rhythm); // death freezes the strip
+  if (!sim.dead) ecg.step(dt, fx.injury, fx.tBoost, rstate!.rhythm, fx.potassium); // death freezes the strip
   ecg.draw();
   if (K.phase === "run") caseStep(dt * S.speed);
   if (S.flow) stepParticles(dt);

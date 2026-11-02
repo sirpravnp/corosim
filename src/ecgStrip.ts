@@ -1,4 +1,4 @@
-import { AF, ALL_LEADS, LeadName, Rhythm, ST, Vec3 } from "./config/ecg";
+import { AF, ALL_LEADS, LeadName, POTASSIUM_ECG, Rhythm, ST, Vec3 } from "./config/ecg";
 import { Beat, heartVector, projectLeads, stLevelVec } from "./physics/ecg";
 import { BeatStream } from "./physics/beatStream";
 
@@ -23,6 +23,7 @@ export class EcgStrip {
   private injury: Vec3 = [0, 0, 0];
   private tBoost = 0;
   private fWave = 0;
+  private potassium: number = POTASSIUM_ECG.normal;
 
   constructor(private canvas: HTMLCanvasElement, public stream: BeatStream = new BeatStream(1)) {}
 
@@ -32,8 +33,8 @@ export class EcgStrip {
   reset(t = 0) { for (const l of ALL_LEADS) this.ring[l].fill(NaN); this.acc = 0; this.idx = 0; this.t = t; }
 
   /** The simulation generates and prunes the beats; this only samples them. */
-  step(dt: number, injury: Vec3, tBoost: number, rhythm: Rhythm) {
-    this.injury = injury; this.tBoost = tBoost; this.fWave = rhythm === "af" ? AF.fWaveMv : 0;
+  step(dt: number, injury: Vec3, tBoost: number, rhythm: Rhythm, potassium: number = POTASSIUM_ECG.normal) {
+    this.injury = injury; this.tBoost = tBoost; this.fWave = rhythm === "af" ? AF.fWaveMv : 0; this.potassium = potassium;
     this.acc += dt * FS;
     const n = Math.floor(this.acc);
     this.acc -= n;
@@ -47,7 +48,7 @@ export class EcgStrip {
   /** Heart vector (mV) at time t: the coronary model's beats, the library rhythm's beats (their own painter, with this frame's injury) and baseline. */
   vector(t: number): Vec3 {
     const base = this.stream.baseline(t);
-    const v = heartVector(t, this.beats, this.injury, this.tBoost, base || this.stream.libraryRhythm ? 0 : this.fWave);
+    const v = heartVector(t, this.beats, this.injury, this.tBoost, base || this.stream.libraryRhythm ? 0 : this.fWave, this.potassium);
     if (base) { v[0] += base[0]; v[1] += base[1]; v[2] += base[2]; }
     for (const b of this.beats) {
       if (!b.ekg) continue;
