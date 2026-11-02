@@ -34,7 +34,7 @@ Rhythm
 
 Autonomic
 
-- `mx-sup-bleed30-baro4`. Gain 0 is heart rate 95.7 and MAP 69.6. Gain 4 is heart rate 95.8 and MAP 75.0. Pressure rises a little. Rate does not. The probe seed was about 91 / 66 against 98 / 88.
+- `mx-sup-bleed30-baro4` is not a place to change the solver. At 60 s the heart rate has not diverged (95.6 versus 95.8) while MAP has (69.6 versus 75.0). At 180 s, gain 0 is heart rate 91.0 and MAP 65.5, and gain 4 is heart rate 98.4 and MAP 88.4. That is the probe picture. The section file's 60 s miss is early.
 - `mx-sup-bleed30-speed3` and `mx-sup-bleed30-speed6` are not misses. Re-ran on this merge at 12:19 PM ET: speed 1 at 5 s is heart rate 75.5 and MAP 82.0; speed 3 at 2 s is 73.1 and 87.5; speed 6 at 1 s is 73.1 and 87.8. Heart rate is within 5% of speed 1. MAP is 6.7% and 7.1% above speed 1, inside the 8% band. The section file marked them misses. The older runaway near heart rate 118 does not appear in the first 1–2 simulated seconds. `autonomic.step` on this commit still takes simulated seconds.
 
 Devices and volume
@@ -329,7 +329,6 @@ NOT merged: stenosis curve, potassium ECG/hazard, solver guards, Fick EF.
 
 - mx-sup-bleed30-speed3@2 — autonomic
 - mx-sup-bleed30-speed6@1 — autonomic
-- mx-sup-bleed30-baro4@60 — autonomic
 - mx-sup-bleed30-legraise@60 — autonomic
 - mx-sup-hemorrhage-100@180 — network
 - mx-sup-hem100-norepi1@180 — network
@@ -479,7 +478,7 @@ mx-sup-vent-peep15-pos @60s: hr=83.66 map=80.48 co=3.61 lvEf=0.56 lvEfEstimate=0
 mx-sup-vent-tidal-4 @60s: hr=74.49 map=82.67 co=4.39 lvEf=0.60 lvEfEstimate=0.60 pcwp=10.54 lvedp=10.29 cvp=7.68 qpQs=0.97 spo2=0.98 stressedVolume=1001.92 deviceFlow=0.00 impella.flow=0.00 impellaRp.flow=null ecmo.flow=null dead=false deathCause= rhythm=sinus drug.norepinephrine=0.00 drug.dobutamine=0.00 fickEFderived=0.561 iabpAug=0.00 | match intended; basis directional
 mx-sup-vent-tidal-8 @60s: hr=76.90 map=80.42 co=4.10 lvEf=0.59 lvEfEstimate=0.59 pcwp=11.51 lvedp=11.05 cvp=9.17 qpQs=0.99 spo2=0.98 stressedVolume=992.42 deviceFlow=0.00 impella.flow=0.00 impellaRp.flow=null ecmo.flow=null dead=false deathCause= rhythm=sinus drug.norepinephrine=0.00 drug.dobutamine=0.00 fickEFderived=0.548 iabpAug=0.00 | match intended; basis directional
 mx-sup-bleed30-baro0 @60s: hr=95.65 map=69.57 co=3.12 lvEf=0.50 lvEfEstimate=0.50 pcwp=2.32 lvedp=1.75 cvp=0.47 qpQs=0.94 spo2=0.98 stressedVolume=305.83 deviceFlow=0.00 impella.flow=0.00 impellaRp.flow=null ecmo.flow=null dead=false deathCause= rhythm=sinus drug.norepinephrine=0.00 drug.dobutamine=0.00 fickEFderived=0.455 iabpAug=0.00 | match intended; basis measured
-mx-sup-bleed30-baro4 @60s: hr=95.80 map=74.99 co=2.45 lvEf=0.48 lvEfEstimate=0.47 pcwp=3.84 lvedp=5.58 cvp=1.48 qpQs=1.36 spo2=0.98 stressedVolume=590.46 deviceFlow=0.00 impella.flow=0.00 impellaRp.flow=null ecmo.flow=null dead=false deathCause= rhythm=sinus drug.norepinephrine=0.00 drug.dobutamine=0.00 fickEFderived=0.349 iabpAug=0.00 | miss intended (probe seed-1 MAP ~88); basis measured
+mx-sup-bleed30-baro4 @60s: hr=95.80 map=74.99 co=2.45 lvEf=0.48 lvEfEstimate=0.47 pcwp=3.84 lvedp=5.58 cvp=1.48 qpQs=1.36 spo2=0.98 stressedVolume=590.46 deviceFlow=0.00 impella.flow=0.00 impellaRp.flow=null ecmo.flow=null dead=false deathCause= rhythm=sinus drug.norepinephrine=0.00 drug.dobutamine=0.00 fickEFderived=0.349 iabpAug=0.00 | 60s rate not yet split; at 180s gain 0 is HR 91.0 MAP 65.5 and gain 4 is HR 98.4 MAP 88.4, match intended; basis measured
 mx-sup-bleed30-legraise @60s: hr=104.06 map=82.28 co=3.37 lvEf=0.48 lvEfEstimate=0.48 pcwp=2.84 lvedp=1.94 cvp=0.49 qpQs=0.97 spo2=0.98 stressedVolume=361.29 deviceFlow=0.00 impella.flow=0.00 impellaRp.flow=null ecmo.flow=null dead=false deathCause= rhythm=sinus drug.norepinephrine=0.00 drug.dobutamine=0.00 fickEFderived=0.443 iabpAug=0.00 | miss intended; match known-now; basis engine
 mx-sup-bleed30-norepi0p5 @60s: hr=93.51 map=91.74 co=3.20 lvEf=0.48 lvEfEstimate=0.48 pcwp=2.68 lvedp=2.13 cvp=0.61 qpQs=0.96 spo2=0.98 stressedVolume=379.37 deviceFlow=0.00 impella.flow=0.00 impellaRp.flow=null ecmo.flow=null dead=false deathCause= rhythm=sinus drug.norepinephrine=0.50 drug.dobutamine=0.00 fickEFderived=0.441 iabpAug=0.00 | match intended; basis directional
 mx-sup-hem100-norepi1 @60s: hr=141.32 map=-0.00 co=0.00 lvEf=0.00 lvEfEstimate=0.00 pcwp=-0.00 lvedp=-0.00 cvp=-0.01 qpQs=0.95 spo2=0.98 stressedVolume=0.00 deviceFlow=0.00 impella.flow=0.00 impellaRp.flow=null ecmo.flow=null dead=false deathCause= rhythm=sinus drug.norepinephrine=1.00 drug.dobutamine=0.00 fickEFderived=0.977 iabpAug=0.00 | match intended; basis directional
