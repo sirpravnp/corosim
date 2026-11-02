@@ -70,9 +70,10 @@ describe("library events as beats for the heart", () => {
   });
   it("polymorphic VT and torsades contract worse than monomorphic VT; paced beats a little worse than normal", () => {
     expect(vent(run("vt-poly").beats).every((b) => b.strength === RHYTHM_MECH.polymorphic)).toBe(true);
-    expect(vent(run("torsades").beats).some((b) => b.strength === RHYTHM_MECH.polymorphic)).toBe(true);
+    expect(vent(run("torsades").beats).some((b) => b.strength === RHYTHM_MECH.torsades)).toBe(true);
     const p = vent(run("paced").beats);
     expect(p.every((b) => b.origin === "paced" && b.strength === RHYTHM_MECH.paced)).toBe(true);
+    expect(RHYTHM_MECH.torsades).toBeLessThan(RHYTHM_MECH.polymorphic);
     expect(RHYTHM_MECH.polymorphic).toBeLessThan(RHYTHM_MECH.ventricular);
     expect(RHYTHM_MECH.ventricular).toBeLessThan(RHYTHM_MECH.paced);
   });
@@ -88,7 +89,7 @@ describe("library events as beats for the heart", () => {
   });
   it("flutter 2:1: a weak atrial event at every flutter wave (300/min), each conducted beat with one 120 ms before it", () => {
     const { beats } = run("flutter-21");
-    const f = beats.filter((b) => b.pOnly && b.silent), v = vent(beats);
+    const f = beats.filter((b) => b.pOnly && b.silent && b.atrialStrength === RHYTHM_MECH.flutterAtrial), v = vent(beats);
     expect((60 * f.length) / 30).toBeCloseTo(300, -1);
     expect(f.every((b) => b.atrialStrength === RHYTHM_MECH.flutterAtrial)).toBe(true);
     expect((60 * v.length) / 30).toBeCloseTo(150, -1);
