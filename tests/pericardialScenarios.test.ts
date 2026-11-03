@@ -233,7 +233,7 @@ describe("pericardiocentesis", () => {
   it("on a patient with no sac it does nothing and does not build one; the legacy engine ignores it", () => {
     const s = ward({}, 10), live = s.live;
     expect(s.drainPericardium(100)).toBe(0); expect(s.live).toBe(live); expect(s.pericardium()).toBeNull();
-    const legacy = new Simulation({}); legacy.reset({ seed: 3, pericardium: { effusionMl: 200 } }); expect(legacy.drainPericardium(100)).toBe(0);
+    const legacy = new Simulation({}, { engine: "legacy" }); legacy.reset({ seed: 3, pericardium: { effusionMl: 200 } }); expect(legacy.drainPericardium(100)).toBe(0);
   });
   it("corosim_adjust takes pericardium.drainMl through the tool, off the remembered effusion, and never stores it", () => {
     const sim = new Simulation({ seed: 3 }), tool = (name: string, a: Record<string, unknown>) => TOOLS.find((x) => x.name === name)!.run({ sim, appUrl: "https://x/sim/" }, a) as any;

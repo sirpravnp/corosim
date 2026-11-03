@@ -31,15 +31,19 @@ function measure(s: Simulation, sec = 30) {
 const LAD = CASE_BY_ID.ladocc.scenario, RCA = CASE_BY_ID.rcaocc.scenario;
 
 describe("engine option", () => {
-  it("defaults to the legacy engine, which has no live heart", () => {
+  it("defaults to the core engine, which has a live heart; legacy is opt-in", () => {
     const s = new Simulation({ seed: 1 });
-    expect(s.engine).toBe("legacy");
-    expect(s.live).toBeUndefined();
-    expect(s.hemo()).toBeNull();
-    expect(new Simulation({ seed: 1 }, { engine: "core" }).live).toBeDefined();
+    expect(s.engine).toBe("core");
+    expect(s.live).toBeDefined();
+    s.run(5);
+    expect(s.hemo()).not.toBeNull();
+    const legacy = new Simulation({ seed: 1 }, { engine: "legacy" });
+    expect(legacy.engine).toBe("legacy");
+    expect(legacy.live).toBeUndefined();
+    expect(legacy.hemo()).toBeNull();
   });
   it("legacy numbers are unchanged by the option: same seed, same beats", () => {
-    const a = new Simulation({ seed: 5 }), b = new Simulation({ seed: 5 }, { engine: "legacy" });
+    const a = new Simulation({ seed: 5 }, { engine: "legacy" }), b = new Simulation({ seed: 5 }, { engine: "legacy" });
     expect(b.run(20).map((x) => x.sbp)).toEqual(a.run(20).map((x) => x.sbp));
   });
 });

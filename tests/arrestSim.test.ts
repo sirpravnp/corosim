@@ -140,7 +140,7 @@ describe("arrest in the Simulation (core engine)", () => {
   });
 
   it("the legacy engine has no arrest: no block in state(), and the actions return a note", () => {
-    const s = new Simulation({ seed: 1 });
+    const s = new Simulation({ seed: 1 }, { engine: "legacy" });
     s.run(3);
     expect("arrest" in s.state()).toBe(false);
     expect(s.state().dead).toBe(false);

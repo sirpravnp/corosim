@@ -3,7 +3,7 @@ import { Simulation } from "../src/sim/simulation";
 import { normalizeScenario } from "../src/sim/scenario";
 import { computeMetrics, sequenceBrs, BeatRecord } from "../src/sim/metrics";
 
-const settled = (sc = {}, warm = 60) => { const s = new Simulation(); s.reset({ seed: 3, ...sc }, { settled: true }); s.warmup(warm); s.history = []; return s; };
+const settled = (sc = {}, warm = 60) => { const s = new Simulation({}, { engine: "legacy" }); s.reset({ seed: 3, ...sc }, { settled: true }); s.warmup(warm); s.history = []; return s; };
 const measure = (s: Simulation, sec = 90) => { s.run(sec); return s.metrics(sec); };
 
 describe("resting patient", () => {
@@ -20,7 +20,7 @@ describe("resting patient", () => {
     expect(new Set(b.map((x) => x.sbp.toFixed(3))).size).toBeGreaterThan(b.length * 0.8);
   });
   it("is deterministic for a given seed, and differs across seeds", () => {
-    const run = (seed: number) => { const s = new Simulation({ seed }); return s.run(30).map((b) => b.sbp.toFixed(3)).join(); };
+    const run = (seed: number) => { const s = new Simulation({ seed }, { engine: "legacy" }); return s.run(30).map((b) => b.sbp.toFixed(3)).join(); };
     expect(run(4)).toBe(run(4)); expect(run(4)).not.toBe(run(5));
   });
   it("shows respiratory sinus arrhythmia", () => { expect(m.respiratorySinusArrhythmia.peakToTroughMs!).toBeGreaterThan(20); });
@@ -75,7 +75,7 @@ describe("baroreflex in the closed loop", () => {
 
 describe("coronary coupling", () => {
   it("an acute LAD occlusion develops ischemia, lowers stroke volume and causes ectopy over tens of seconds", () => {
-    const s = new Simulation({ seed: 2, lesions: [{ artery: "LAD", occluded: true }] });
+    const s = new Simulation({ seed: 2, lesions: [{ artery: "LAD", occluded: true }] }, { engine: "legacy" });
     const early = s.run(5), late = (s.warmup(55), s.run(60));
     const sv = (a: BeatRecord[]) => a.reduce((x, b) => x + b.sv, 0) / a.length;
     expect(sv(late)).toBeLessThan(sv(early) * 0.8);
@@ -131,7 +131,7 @@ describe("metrics", () => {
 });
 
 describe("GitHub's management model inside the shared core", () => {
-  const settle = (sc: Record<string, unknown>, warm = 40) => { const s = new Simulation(); s.reset({ seed: 5, ...sc }, { settled: true }); s.warmup(warm); s.history = []; return s; };
+  const settle = (sc: Record<string, unknown>, warm = 40) => { const s = new Simulation({}, { engine: "legacy" }); s.reset({ seed: 5, ...sc }, { settled: true }); s.warmup(warm); s.history = []; return s; };
   it("atrial fibrillation is irregular, has no atrial kick, and is labelled", () => {
     const s = settle({ patient: { rhythm: "af" } }), b = s.run(60);
     expect(b.every((x) => !x.atrialKick)).toBe(true);
@@ -167,7 +167,7 @@ describe("GitHub's management model inside the shared core", () => {
 });
 
 describe("what the AI sees: ECG, guideline assessment, treatment", () => {
-  const settled2 = (sc: Record<string, unknown>) => { const s = new Simulation(); s.reset({ seed: 5, ...sc }, { settled: true }); s.warmup(30); return s; };
+  const settled2 = (sc: Record<string, unknown>) => { const s = new Simulation({}, { engine: "legacy" }); s.reset({ seed: 5, ...sc }, { settled: true }); s.warmup(30); return s; };
   it("reads the ST pattern of the territory", () => {
     const lad = settled2({ lesions: [{ artery: "LAD", occluded: true }] }).ecg();
     expect(lad.stElevation).toEqual(expect.arrayContaining(["V2", "V3"]));
@@ -203,7 +203,7 @@ describe("what the AI sees: ECG, guideline assessment, treatment", () => {
 });
 
 describe("subendocardial and transmural ischemia, and the transition between them", () => {
-  const ecgOf = (sc: Record<string, unknown>) => { const s = new Simulation(); s.reset({ seed: 2, ...sc }, { settled: true }); s.warmup(20); return { e: s.ecg(), a: s.assessment() }; };
+  const ecgOf = (sc: Record<string, unknown>) => { const s = new Simulation({}, { engine: "legacy" }); s.reset({ seed: 2, ...sc }, { settled: true }); s.warmup(20); return { e: s.ecg(), a: s.assessment() }; };
   const lad = (ds: number, exertion = true) => ecgOf({ lesions: [{ artery: "LAD", stenosis: ds, position: 0.25 }], exertion });
   it("a flow-limiting stenosis on exertion gives non-localizing ST depression with aVR elevation, not a STEMI", () => {
     const { e, a } = lad(0.75);

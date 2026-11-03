@@ -8,7 +8,7 @@ Find out, variable by variable and over time, whether the **core engine** (`Simu
 
 ## Ground rules
 
-- Test the **core** engine only. Never use the default `new Simulation()` (that is the legacy engine). Every harness run must assert `s.engine === "core"` and empty `s.coreNote` (already done in `scripts/eval/run.ts`; keep it).
+- Test the **core** engine only. `new Simulation()` defaults to core; legacy is opt-in via `engine: "legacy"`. Every harness run must assert `s.engine === "core"` and empty `s.coreNote` (already done in `scripts/eval/run.ts`; keep it).
 - Create `new LiveSource(sim)` **right after `sim.reset(...)`**, before stepping. A late `LiveSource` has no beat history and falls back to one stored beat, which makes all seeds look identical.
 - Apply an insult with `sim.apply(patch)` (what the page does), not by resetting.
 - Do **not** change anything under `src/` (physics, config, sim) and do **not** hand-edit `tests/fixtures/*.json`. This plan only adds evaluation code. If you think the engine is wrong, record it as a finding in `docs/EVALUATION.md` and stop.
@@ -24,7 +24,7 @@ Find out, variable by variable and over time, whether the **core engine** (`Simu
 - `scripts/eval/run.ts`: `list`, `template`, `observe [--seeds N --jobs N]`, `check`. Output goes to `scripts/eval/out/` (git-ignored).
 - `scripts/eval/ef-audit.ts`: shows the three EF definitions side by side.
 - Solver: there is one integrator, the core engine (`src/physics/core/`). The structural model (`physics/structural.ts`: chambers, vessels, valves, shunts) is what it is built from, and `analyze()`/`simulate()` run it with no reflexes. The ACS `Simulation` runs the same engine plus the coronary, ischemia, rhythm and autonomic layers.
-- Engine selection: core is used by the Simulator page; legacy is the default of `new Simulation()`. The core still calls the legacy `circulation()` for ischemic fractions, rhythm rate and demand factor.
+- Engine selection: `new Simulation()` defaults to core (page, MCP, EKG, viewer). Legacy remains callable via `engine: "legacy"` for comparison and ACS regression fixtures. The core still calls the legacy `circulation()` for ischemic fractions, rhythm rate and demand factor.
 - Known definitional split (do not "fix", just keep it labelled): `lvEf` (chamber volumes, Monitor) vs `lvEfEstimate` (aortic-valve stroke volume, smoothed; ischemia panel, MCP, cath echo). They differ with an Impella running (0.30 vs 0.13) and for up to ~0.10 in the first minute after a change.
 - Duplicated quantities registered under separate names (do not merge): `lvEf` vs `lvEfEstimate`; `cppPanel` (aortic diastolic minus LVEDP, about 57) vs `coronaryDrivingPressure` (about 90); `qpQs` (flows) vs `rhc.qpQsFick` (oxygen content: reads 1.08 in a healthy heart, a Fick-path bias); `co` vs `rhc.fickCo` (-7%).
 - A valve gradient shows in `lhc.*` (LV minus aorta), not in aortic pressure: register and check those for every valve state.

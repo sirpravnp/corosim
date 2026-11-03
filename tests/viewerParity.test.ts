@@ -27,8 +27,8 @@ describe("viewer parity (results the viewer reads)", () => {
     expect(valves.map((v) => v.valve).sort()).toEqual(["AV", "MV"]);
   });
   it("the legacy engine reports itself and has no arrest block", () => {
-    const sim = new Simulation({ seed: 1 });
-    run(sim, "corosim_set_scenario", { scenario: {}, warmupSeconds: 5 });
+    const sim = new Simulation({ seed: 1 }, { engine: "legacy" });
+    run(sim, "corosim_set_scenario", { engine: "legacy", scenario: {}, warmupSeconds: 5 });
     const r = run(sim, "corosim_show");
     expect(r.engine).toBe("legacy");
     expect(r.arrest).toBeUndefined();

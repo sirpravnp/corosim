@@ -204,7 +204,7 @@ describe("scenario field and engines", () => {
     expect("ectopyTendency" in toScenario(normalizeScenario({}).scenario)).toBe(false); // plain specs stay as they were
   });
   it("the legacy engine keeps the old PVC rule (no ectopy model); the core engine has one, with the scenario's tendency", () => {
-    expect(new Simulation({ seed: 3 }).stream.ectopy).toBeUndefined();
+    expect(new Simulation({ seed: 3 }, { engine: "legacy" }).stream.ectopy).toBeUndefined();
     const s = new Simulation({ seed: 3, ectopyTendency: 2 }, { engine: "core", deferCore: true });
     expect(s.stream.ectopy?.tendency).toBe(2);
     s.apply({ ectopyTendency: 0 });

@@ -52,7 +52,7 @@ describe("core engine: ischemic PVCs in the Simulation", () => {
     }
   });
   it("the legacy engine keeps the old sentence", () => {
-    const s = new Simulation({ seed: 3, lesions: LAD });
+    const s = new Simulation({ seed: 3, lesions: LAD }, { engine: "legacy" });
     s.reset({ seed: 3, lesions: LAD }, { settled: true });
     s.run(5);
     expect(explain(s).mechanisms.join(" ")).toMatch(/ectopy threshold/);

@@ -164,8 +164,9 @@ export class Simulation {
   onBeat?: (b: BeatRecord) => void;
 
   /**
-   * Which engine computes the circulation. "legacy" (default) is `circulation()` + `BeatHemodynamics`, untouched. "core" runs the
-   * ACS patient on the core engine (`LiveHeart`), see the section "Core engine" below. Takes effect at the next `reset()`.
+   * Which engine computes the circulation. "core" (default) runs the ACS patient on the core engine (`LiveHeart`), see the
+   * section "Core engine" below. "legacy" is `circulation()` + `BeatHemodynamics`, kept for comparison and regression fixtures
+   * via explicit `engine: "legacy"`. Takes effect at the next `reset()`.
    */
   engine: EngineKind;
   /** The live heart of the core engine (undefined with "legacy"). */
@@ -215,7 +216,7 @@ export class Simulation {
   private base!: Circulation; // circulation() of the legacy model: the fractions and demand the core circ borrows
 
   constructor(input: Scenario = {}, opts: { engine?: EngineKind; deferCore?: boolean } = {}) {
-    this.engine = opts.engine ?? "legacy";
+    this.engine = opts.engine ?? "core";
     this.defer = !!opts.deferCore;
     this.mod = {
       rate: (t) => (this.paced() ? 1 : this.autonomic.hrScaleAt(t)),
