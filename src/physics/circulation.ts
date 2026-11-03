@@ -35,6 +35,20 @@ export const BASE_SVR = CIRC.baseMap / ((CIRC.baseRate * CIRC.baseStrokeVolume) 
 export const isRightVentricular = (key: string) => /^(AM|CONUS|RCA)#/.test(key);
 const isNodal = (key: string) => /^(SAN|AVN)#/.test(key);
 
+/**
+ * Mass-weighted ischemic (or scarred) fraction of each ventricle from the coronary beds. Shared by the legacy
+ * `circulation()` algebra and the core E3 regional path (`regionalVentricles`); keep the definition in one place.
+ */
+export function ischemicFractions(sites: BedSite[], sev: Record<string, number>, scar: Record<string, number> = {}): { lv: number; rv: number } {
+  let lvMass = 0, lvIsch = 0, rvMass = 0, rvIsch = 0;
+  for (const s of sites) {
+    if (isNodal(s.key)) continue;
+    const k = Math.max(sev[s.key] ?? 0, scar[s.key] ?? 0) * s.mass;
+    if (isRightVentricular(s.key)) { rvMass += s.mass; rvIsch += k; } else { lvMass += s.mass; lvIsch += k; }
+  }
+  return { lv: lvMass ? lvIsch / lvMass : 0, rv: rvMass ? rvIsch / rvMass : 0 };
+}
+
 /** Ventricular rate implied by the rhythm (not the noisy measured one). */
 export function ventricularRate(r: RhythmState): number {
   if (r.avDegree === 3) return r.escapeRate;
@@ -62,13 +76,7 @@ export interface Circulation {
  */
 export function circulation(sites: BedSite[], sev: Record<string, number>, rhythm: RhythmState, support: Support = NO_SUPPORT, scar: Record<string, number> = {}, baroreflexRetained = CIRC.baroreflexRetained): Circulation {
   const K = SUPPORT;
-  let lvMass = 0, lvIsch = 0, rvMass = 0, rvIsch = 0;
-  for (const s of sites) {
-    if (isNodal(s.key)) continue;
-    const k = Math.max(sev[s.key] ?? 0, scar[s.key] ?? 0) * s.mass;
-    if (isRightVentricular(s.key)) { rvMass += s.mass; rvIsch += k; } else { lvMass += s.mass; lvIsch += k; }
-  }
-  const lvF = lvMass ? lvIsch / lvMass : 0, rvF = rvMass ? rvIsch / rvMass : 0;
+  const { lv: lvF, rv: rvF } = ischemicFractions(sites, sev, scar);
   const hr = ventricularRate(rhythm);
   const filling = Math.min(CIRC.fillingMax, Math.max(CIRC.fillingMin, Math.pow(CIRC.baseRate / hr, CIRC.fillingExponent)));
   const fill = 1 - Math.exp(-support.fluids / K.fluidScale); // saturating volume effect

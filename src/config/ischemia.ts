@@ -1,5 +1,9 @@
 // How ischemia acts on the ventricles of the structural/core engines. Used by the ACS simulation on the core engine (src/sim/simulation.ts, engine "core"). Values were first validated against the structural engine (P2)
 // and are unchanged. [assumed] = a teaching/engineering choice.
+//
+// E3: on the core path the LV/RV pressure laws sum bed-mapped segments (`physics/regional.ts`, `ElastanceChamber.setRegional`);
+// the active scale still uses lvEesLoss / rvEesLoss so a given mass-weighted ischemic fraction matches the A7 global cut.
+// REGIONAL.bulgeMl is the extra dead volume of a fully injured ventricle (dyskinesis); 0 keeps A7 numbers.
 
 export const ISCHEMIA = {
   /**
@@ -15,6 +19,17 @@ export const ISCHEMIA = {
    * Acute ischemia raises diastolic stiffness (impaired relaxation, then contracture); LVEDP rises at a given volume. [assumed]
    */
   lvStiffGain: 1.5, rvStiffGain: 2,
+};
+
+/**
+ * Regional segment law (E3). Dead volume from a dyskinetic bulge: V0_eff = V0 + bulgeMl · Σ w·injury.
+ * Kept modest so the calibrated Ees cut still owns most of the STEMI depth; raise once E3 recalibration is deliberate. [assumed]
+ */
+export const REGIONAL = {
+  /** ml of dead volume for a fully injured left ventricle (injury-weighted). [assumed] */
+  lvBulgeMl: 8,
+  /** ml of dead volume for a fully injured right ventricle. [assumed] */
+  rvBulgeMl: 6,
 };
 
 /** Ees and passive-stiffness factors (1 = design point) of the two ventricles for ischemic fractions `lv` and `rv` (0..1). */
