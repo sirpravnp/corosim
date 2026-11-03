@@ -31,7 +31,7 @@
 [hidden] { display: none !important; }
 html { background: var(--bg); }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font-ui); }
-.app { max-width: 1440px; margin: 0 auto; padding: 0 20px 40px; }
+.app { max-width: 1680px; margin: 0 auto; padding: 0 20px 40px; }
 button { padding: 8px 11px; font: 600 13px/1 var(--font-ui); letter-spacing: 0; color: var(--ink); background: var(--panel); border: 1px solid var(--sh-line); border-radius: 8px; cursor: pointer; }
 button:hover { background: var(--sh-hover); border-color: var(--sh-line-strong); color: var(--ink); }
 button.on, button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }

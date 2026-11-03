@@ -6,7 +6,7 @@ body.home { --bg: #000; --panel: #0b0d14; --ink: #f4f1ea; --muted: #98a0b8; --ru
 @media (hover: hover) { .art { cursor: crosshair; } }
 
 /* The overlay lets the pointer through to the dots everywhere but on the links. */
-.home-main { position: relative; z-index: 1; pointer-events: none; min-height: 100dvh; margin: 0; padding: 220px max(20px, calc((100% - 1440px) / 2 + 20px)) 20px; display: grid; grid-template-rows: auto 1fr auto auto; gap: 14px; }
+.home-main { position: relative; z-index: 1; pointer-events: none; min-height: 100dvh; margin: 0; padding: 220px max(20px, calc((100% - 1680px) / 2 + 20px)) 20px; display: grid; grid-template-rows: auto 1fr auto auto; gap: 14px; }
 .home-main a { pointer-events: auto; }
 .home-head h1 { margin: 0; font: 700 clamp(48px, 9vw, 104px)/0.92 var(--font-ui); letter-spacing: -0.045em; }
 .home-head .kind { margin: 14px 0 0; font: 500 11px/1.5 var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
@@ -28,7 +28,7 @@ body.home { --bg: #000; --panel: #0b0d14; --ink: #f4f1ea; --muted: #98a0b8; --ru
 .privacy:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 
 @media (min-width: 820px) {
-  .home-main { grid-template-columns: minmax(300px, 420px) 1fr minmax(240px, 320px); grid-template-rows: 1fr auto; grid-template-areas: "head . fact" ". . corner"; padding: 112px max(20px, calc((100% - 1440px) / 2 + 20px)) 40px; row-gap: 28px; column-gap: 32px; align-items: end; }
+  .home-main { grid-template-columns: minmax(300px, 420px) 1fr minmax(240px, 320px); grid-template-rows: 1fr auto; grid-template-areas: "head . fact" ". . corner"; padding: 112px max(20px, calc((100% - 1680px) / 2 + 20px)) 40px; row-gap: 28px; column-gap: 32px; align-items: end; }
   .home-head { grid-area: head; }
   .fact { grid-area: fact; align-self: start; margin-top: 0; padding: 14px 16px 15px; }
   .fact-t { font-size: 14px; }
@@ -37,13 +37,13 @@ body.home { --bg: #000; --panel: #0b0d14; --ink: #f4f1ea; --muted: #98a0b8; --ru
 
 /* Connect your AI: the same control as every other page, over the thermogram */
 /* The page menu across the top: the same header every other page has (shell.css), fixed over the thermogram. */
-/* same container as the other pages' header: 1440px wide at most, centered, with 20px gutters */
-.home-top { position: fixed; z-index: 4; top: 0; left: 0; right: 0; padding: 0 max(20px, calc((100% - 1440px) / 2 + 20px)); background: #000; --sh-press: #fff; }
+/* same container as the other pages' header: 1680px wide at most, centered, with 20px gutters */
+.home-top { position: fixed; z-index: 4; top: 0; left: 0; right: 0; padding: 0 max(20px, calc((100% - 1680px) / 2 + 20px)); background: #000; --sh-press: #fff; }
 @media (max-width: 819px) { .home-top { position: absolute; } }
 
 /* Below the fold: what the site does, one tool at a time, shown with the tool itself. The thermogram stays pinned and the story slides over it. */
 .story { position: relative; z-index: 2; background: #000; border-top: 1px solid var(--rule); }
-.story-in { position: relative; z-index: 1; max-width: 1240px; margin: 0 auto; padding: 104px 24px 0; }
+.story-in { position: relative; z-index: 1; max-width: 1480px; margin: 0 auto; padding: 104px 24px 0; }
 /* A blurred burst of the thermal ramp behind the screenshots. The layer is pinned to the viewport while the story scrolls, so the glow
    stays where it is on the screen and the page moves over it. */
 .burst { position: sticky; top: 0; height: 100vh; margin-bottom: -100vh; overflow: hidden; pointer-events: none; z-index: 0; --bx: 65vw; --by: 45vh; }
