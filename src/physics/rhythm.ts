@@ -5,6 +5,11 @@ import { Beat, mulberry32 } from "./ecg";
 import { ECTOPY } from "../config/ectopy";
 import type { EctopySource } from "./ectopy";
 
+/** Shortest cycle the conduction model will generate, s (400/min): an interval below it, or not finite, falls back to a sane one. */
+const MIN_INTERVAL_S = 0.15;
+/** Hard cap on the events one `advance` call may return (a few seconds ahead hold a few dozen): a last guard against a runaway loop. */
+const MAX_BEATS_PER_CALL = 10000;
+
 /**
  * Rate and conduction from where the ischemia is, not only how much.
  *  - Sympathetic drive rises with ischemia outside the inferoposterior wall (anterior, lateral): tachycardia.
@@ -111,16 +116,22 @@ export class Conduction {
     const out: Beat[] = [];
     const C = CONDUCTION;
     const bbb = state.bbb === "none" ? undefined : state.bbb;
-    const pp = (tAt: number) => (60 / (state.sinusRate * (mod ? mod.rate(tAt) : 1))) * (1 + (mod ? mod.jitter() : RHYTHM.hrv * (2 * this.rng() - 1)));
+    // every interval is finite and at least `minIntervalS`: a NaN or zero rate (a broken input upstream) must not loop forever on a clock that never moves
+    const iv = (x: number, fallback: number) => (Number.isFinite(x) && x >= MIN_INTERVAL_S ? x : Number.isFinite(fallback) && fallback >= MIN_INTERVAL_S ? fallback : 1);
+    const pp = (tAt: number) => iv((60 / (state.sinusRate * (mod ? mod.rate(tAt) : 1))) * (1 + (mod ? mod.jitter() : RHYTHM.hrv * (2 * this.rng() - 1))), 60 / state.sinusRate);
     const ectopy = Math.max(0, (state.pvcSeverity - RHYTHM.pvcOnsetSeverity) / (1 - RHYTHM.pvcOnsetSeverity));
-    if (state.avDegree < 3) this.nextEscape = Math.max(this.nextEscape, this.lastR + 60 / state.escapeRate);
+    const escRr = iv(60 / state.escapeRate, 1.5);
+    const fin = (x: number) => (Number.isFinite(x) ? x : until); // a clock poisoned upstream restarts at the horizon
+    this.nextP = fin(this.nextP); this.nextEscape = fin(this.nextEscape); this.nextAf = fin(this.nextAf);
+    if (Number.isNaN(this.lastR)) this.lastR = -Infinity;
+    if (state.avDegree < 3) this.nextEscape = Math.max(this.nextEscape, this.lastR + escRr);
     const af = state.rhythm === "af";
     if (af && state.avDegree < 3) {
       // No P waves; the ventricles follow at irregular intervals as the AV node lets fibrillation through.
       this.nextAf = Math.max(this.nextAf, this.lastR + 0.3);
       while (this.nextAf <= until) {
         const mean = 60 / (state.afRate * (mod ? mod.rate(this.nextAf) : 1));
-        const rr = mean * (1 + AF.irregularity * (2 * this.rng() - 1));
+        const rr = iv(mean * (1 + AF.irregularity * (2 * this.rng() - 1)), 60 / state.afRate);
         const tR = this.nextAf;
         if (this.ectopy) {
           out.push({ t: tR, rr, pvc: false, noP: true, bbb });
@@ -136,14 +147,14 @@ export class Conduction {
       this.nextP = Math.max(this.nextP, this.nextAf - C.basePr); // so a return to sinus rhythm starts from now, not from a backlog
       return out;
     }
-    while (true) {
+    while (out.length < MAX_BEATS_PER_CALL) {
       if (state.avDegree === 3) {
         // Atria and ventricles dissociate: P waves march through (none in fibrillation); the junction escapes regularly.
         const tP = this.nextP, tE = this.nextEscape;
         if (Math.min(tP, tE) > until) break;
-        if (tP <= tE) { if (!af) out.push({ t: tP + C.basePr, rr: 60 / state.escapeRate, pvc: false, pr: C.basePr, pOnly: true }); this.nextP = tP + pp(tP); }
+        if (tP <= tE) { if (!af) out.push({ t: tP + C.basePr, rr: escRr, pvc: false, pr: C.basePr, pOnly: true }); this.nextP = tP + pp(tP); }
         else {
-          const rr = 60 / state.escapeRate; out.push({ t: tE, rr, pvc: false, noP: true, bbb }); this.lastR = tE; this.nextEscape = tE + rr * (1 + 0.01 * (2 * this.rng() - 1)); this.nextAf = tE;
+          const rr = escRr; out.push({ t: tE, rr, pvc: false, noP: true, bbb }); this.lastR = tE; this.nextEscape = tE + rr * (1 + 0.01 * (2 * this.rng() - 1)); this.nextAf = tE;
           // core: the ischemic myocardium fires whatever drives the ventricles; a PVC resets the junctional pacemaker
           const pv = this.ectopy ? this.ectopy.decide(tE, rr) : [];
           for (const tv of pv) out.push({ t: tv, rr, pvc: true });

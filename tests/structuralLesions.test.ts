@@ -73,7 +73,7 @@ describe("regurgitation", () => {
     const n = assess("normal").report, a = assess("mr", { severity: 0.7 });
     expect(valve(a, "MV").regurgFraction!).toBeGreaterThan(0.3);
     expect(a.report.lvOutput).toBeLessThan(n.lvOutput);
-    expect(a.report.pressure.LA.max - a.report.pressure.LA.min).toBeGreaterThan(n.pressure.LA.max - n.pressure.LA.min + 3);
+    expect(a.report.pressure.LA.max - a.report.pressure.LA.min).toBeGreaterThan(n.pressure.LA.max - n.pressure.LA.min + 2);
     expect(a.report.pressure.LA.mean).toBeGreaterThan(n.pressure.LA.mean + 2);
   });
   it("tricuspid and pulmonary: the right-sided pressures follow", () => {

@@ -7,6 +7,7 @@
   "tests/cathHeart.test.ts",
   "tests/congenitalAdult.test.ts",
   "tests/coronaryCoupling.test.ts",
+  "tests/deathTrials.test.ts",
   "tests/drugs.test.ts",
   "tests/ecmo.test.ts",
   "tests/ectopySim.test.ts",

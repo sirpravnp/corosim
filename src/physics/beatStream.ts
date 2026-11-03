@@ -43,6 +43,15 @@ export class BeatStream {
    */
   constructor(private seed = 1, private lookahead = 0.6, private chunk = 0.4) { this.conduction = new Conduction(seed); }
 
+  reseed(seed: number) {
+    this.seed = seed >>> 0;
+    this.conduction = new Conduction(this.seed);
+    this.conduction.ectopy = this.ectopy;
+    this.library = null;
+    this.key = null;
+    this.segments = [];
+  }
+
   /** The core engine's ectopy model (physics/ectopy.ts); unset, the legacy PVC rule of `Conduction` runs. */
   get ectopy(): Ectopy | undefined { return this.conduction.ectopy as Ectopy | undefined; }
   set ectopy(e: Ectopy | undefined) { this.conduction.ectopy = e; if (this.library) this.library.ectopy = e; }

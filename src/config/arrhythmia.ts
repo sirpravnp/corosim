@@ -83,6 +83,11 @@ export const ARRHYTHMIA = {
    */
   potassium: { normal: 4.2, lowFrom: 4.0, lowGain: 0.8, highFrom: 4.8, highGain: 1.73, min: 2.0, max: 7.5 },
   /**
+   * Non-ischemic VT/VF hazard from serum potassium alone, per clinical minute: baseGain × electrolytePerMin × max(0, potassiumFactor(K) − 1).
+   * Lets severe hyper- or hypokalaemia show arrhythmia without coronary occlusion; zero at normal K. [rate assumed]
+   */
+  electrolytePerMin: 3e-5,
+  /**
    * Serum magnesium (mmol/l): hazard x exp(lowGain x max(0, lowFrom - Mg)); IV magnesium lowered PVC and run counts after MI (Thiele 2000,
    * PMID 10907229). [curve assumed: Mg 0.5 gives about 1.6] Also passed to the ectopy model's magnesium hook.
    */

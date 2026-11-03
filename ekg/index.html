@@ -7,6 +7,10 @@
 <link rel="icon" type="image/png" href="/favicon.png" />
 <title>CoroSim EKG</title>
 <meta name="description" content="Simulated 12-lead EKGs: common rhythms, blocks, STEMI and its mimics, with the leads drawn through a 3D heart.">
+<script>try{var t=localStorage.getItem("corosim-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Doto:wght@400;800&display=swap">
 </head>
 <body>
 <div class="app" id="app">
@@ -30,7 +34,6 @@
         <p id="summary" class="summary"></p>
       </div>
       <div class="pickwrap" id="pickwrap" hidden><select id="pick" aria-label="Preset"></select></div>
-      <a id="askClaude" class="askbtn" target="_blank" rel="noopener" title="Open Claude with this tracing (needs the CoroSim connector)">Ask Claude<span aria-hidden="true">↗</span></a>
     </div>
 
     <div class="quiz" id="quiz" hidden>

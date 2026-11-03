@@ -50,7 +50,7 @@ export const SOLVER = { dt: 0.0005, maxBeats: 120, minBeats: 8, tol: 4e-4 };
 
 /**
  * Grading bins. [lit, rounded] from ACC/AHA 2020 and ASE 2017 valve guidance (adult cut-offs), expressed as a fraction of a
- * normal valve of the same patient so a newborn's valve is judged by how much of its own area is open. Pediatric z-scores are not modelled.
+ * normal valve of the same patient so a newborn's valve is judged by how much of its own area is open. Pediatric z-scores are not modeled.
  */
 export const GRADE = {
   asMeanGradient: { moderate: 20, severe: 40 }, // mmHg

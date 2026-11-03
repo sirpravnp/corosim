@@ -24,7 +24,7 @@ export const VIEWS: ViewDef[] = [
     placement: "Left sternal border, 3rd or 4th intercostal space; patient on the left side.",
     marker: "Toward the right shoulder (about 10 o'clock).",
     shows: ["Right ventricular outflow", "Septum", "Left ventricle", "LV outflow tract", "Aortic valve and root", "Mitral valve (anterior and posterior leaflets)", "Left atrium", "Descending aorta behind the atrium"],
-    lookFor: "The aortic valve opening and closing in the centre, the mitral leaflets opening into the LV, and the septum and posterior wall thickening evenly." },
+    lookFor: "The aortic valve opening and closing in the center, the mitral leaflets opening into the LV, and the septum and posterior wall thickening evenly." },
   { id: "psax-pm", name: "Parasternal short axis, papillary muscles", short: "PSAX PM", window: "Parasternal", pose: "psaxPM",
     placement: "From the mitral level, tilt further toward the apex.",
     marker: "About 2 o'clock.",

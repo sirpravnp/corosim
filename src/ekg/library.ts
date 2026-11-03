@@ -349,7 +349,7 @@ export const PRESETS: EkgPreset[] = [
   },
   {
     id: "nstemi", name: "NSTEMI: subendocardial ischemia", category: "Ischemia & infarction",
-    spec: { rhythm: sinus(102) }, coronary: { scenario: { lesions: [{ artery: "LAD", stenosis: 0.82, position: 0.2 }], exertion: true } },
+    spec: { rhythm: sinus(102) }, coronary: { scenario: { lesions: [{ artery: "LAD", stenosis: 0.78, position: 0.2 }], exertion: true } },
     summary: "Demand ischemia of the inner wall: non-localizing ST depression.",
     features: ["Horizontal or downsloping ST depression, most in V4–V6, I and II", "Reciprocal ST elevation in aVR", "The pattern does not show which artery"],
     pearls: ["Subendocardial ST depression does not localize: the vector points from the inner wall toward the cavity in every territory.", "Troponin decides NSTEMI from unstable angina."],

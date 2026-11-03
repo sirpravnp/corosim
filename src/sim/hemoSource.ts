@@ -63,11 +63,13 @@ export interface HemoNumbers {
 export interface Saturations {
   /** Blood saturation in each node. */
   node: Record<HemoNode, number>;
+  /** Saturation of blood leaving the lungs (pulmonary end-capillary content for Fick Qp). */
+  satLung?: number;
   spo2: number; // a finger probe on the right hand (pre-ductal)
   preductal: number; postductal: number;
   svo2: number; // mixed venous (pulmonary artery)
   do2: number; vo2: number; // ml O₂/min
-  lactate: number; // mmol/L, NaN until oxygen-in-time (E6)
+  lactate: number; // mmol/L from core E6 transport when present; NaN on legacy / before warm-up
   /** Per coronary bed: tissue oxygenation 0..1, and whether the value is physics or derived from ischemia severity. */
   bed: Record<string, number>;
   bedSource: "ischemia-derived" | "supply-demand";
@@ -101,4 +103,11 @@ export interface HemoSource {
   onBeat(cb: (b: BeatSummary) => void): () => void;
   /** The numbers come from a live beat-by-beat engine (the core engine). */
   readonly kind: "live";
+}
+
+/** Optional hemodynamics rows that need the core engine (echo EF, Fick EF, coronary network driving pressure). */
+export interface HemoPanelExtras {
+  lvEfEcho: number;
+  lvEfFick: number | null;
+  coronaryDrivingPressure: number;
 }

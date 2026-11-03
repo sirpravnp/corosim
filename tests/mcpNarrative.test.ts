@@ -73,8 +73,8 @@ describe("the case is narrated as it is built", () => {
     expect(JSON.stringify(sim.scenario())).toBe(s);
   });
   it("the legacy engine is narrated too", () => {
-    const sim = new Simulation({ seed: 1 });
-    const r = run(sim, "corosim_set_scenario", { scenario: { lesions: [{ artery: "RCA", stenosis: 0.8 }] }, warmupSeconds: 10 });
+    const sim = new Simulation({ seed: 1 }, { engine: "legacy" });
+    const r = run(sim, "corosim_set_scenario", { engine: "legacy", scenario: { lesions: [{ artery: "RCA", stenosis: 0.8 }] }, warmupSeconds: 10 });
     expect(r.narrative).toMatch(/^New patient with an 80% proximal RCA stenosis/);
   });
 });

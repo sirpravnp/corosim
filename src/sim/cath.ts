@@ -168,9 +168,9 @@ export function wireModel(sim: Simulation, artery: string): WireModel {
   };
 }
 
-/** Whether an FFR calls for treatment, with the grey zone named as such. */
-export function ffrCall(ffr: number): "flow-limiting" | "grey zone" | "not flow-limiting" {
-  return ffr <= WIRE.grayZone[0] ? "flow-limiting" : ffr <= WIRE.ffrCutoff ? "grey zone" : "not flow-limiting";
+/** Whether an FFR calls for treatment, with the gray zone named as such. */
+export function ffrCall(ffr: number): "flow-limiting" | "gray zone" | "not flow-limiting" {
+  return ffr <= WIRE.grayZone[0] ? "flow-limiting" : ffr <= WIRE.ffrCutoff ? "gray zone" : "not flow-limiting";
 }
 
 // ------------------------------------------------------------------------------------------------ echo

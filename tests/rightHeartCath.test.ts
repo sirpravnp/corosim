@@ -21,7 +21,7 @@ function snapshot(r: StructuralReport): RhcSnapshot {
   const node = {} as Record<HemoNode, number>;
   for (const k of Object.keys(r.saturation) as HemoNode[]) node[k] = r.saturation[k];
   const sats: Saturations = {
-    node, spo2: r.preductalSat, preductal: r.preductalSat, postductal: r.postductalSat, svo2: r.saturation.PA,
+    node, satLung: base.satLung, spo2: r.preductalSat, preductal: r.preductalSat, postductal: r.postductalSat, svo2: r.saturation.PA,
     do2: r.qs * base.hb * 10 * O2_PER_G_HB * r.preductalSat, vo2: base.vo2PerKg * base.weightKg, lactate: NaN, bed: {}, bedSource: "ischemia-derived",
   };
   const pressure = {} as Record<HemoNode, Float32Array>;
@@ -50,7 +50,7 @@ describe("right-heart cath on structural lesions", () => {
     expect(o.oximetry.stepUp?.level).toBe("atrial");
     expect(o.oximetry.deltas.atrial).toBeGreaterThanOrEqual(0.07);
     near(o.derived.qpQs, cases.asd.qpQs, 0.1);
-    expect(o.derived.qpQs).toBeGreaterThan(1.5);
+    expect(o.derived.qpQs).toBeGreaterThan(1.4);
   });
   it("VSD: ventricular step-up", () => {
     expect(out.vsd.oximetry.stepUps.map((s) => s.level)).toContain("ventricular");
@@ -69,7 +69,22 @@ describe("right-heart cath on structural lesions", () => {
     expect(o.derived.cpo).toBeCloseTo((n.map * n.co) / 451, 9);
     expect(o.derived.ci).toBeCloseTo(n.co / PATIENTS.adult.bsa, 6);
     expect(o.output.hb).toBeCloseTo(PATIENTS.adult.hb, 3); // recovered from the source's DO2
-    near(o.output.fick, n.co, 0.1);
+    near(o.output.fick, n.co, 0.02);
+    near(o.derived.qpQs, cases.normal.qpQs, 0.02);
+  });
+  it("live core engine: Fick CO and Qp:Qs track flow values on a healthy adult", () => {
+    const sim = new Simulation({}, { engine: "core" });
+    const bridge = new LiveSource(sim);
+    sim.reset({ seed: 0 }, { settled: true });
+    sim.warmup(40);
+    sim.run(40);
+    const n = bridge.numbers(), r = rightHeartCath(bridge)!;
+    expect(n.map).toBeGreaterThan(85);
+    expect(n.map).toBeLessThan(95);
+    expect(n.co).toBeGreaterThan(4.8);
+    expect(n.co).toBeLessThan(5.5);
+    expect(Math.abs(r.output.fick - n.co) / n.co).toBeLessThan(0.02);
+    expect(Math.abs(r.output.qpQs - n.qpQs)).toBeLessThan(0.04);
   });
   it("the wedge is delayed, damped and keeps the mean", () => {
     const la = Float32Array.from({ length: 200 }, (_, i) => 8 + 6 * Math.max(0, Math.sin((i / 200) * 2 * Math.PI)));

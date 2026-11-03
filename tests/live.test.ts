@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { AddressInfo } from "node:net";
 import { createHash, randomBytes } from "node:crypto";
 import { mkdtempSync } from "node:fs";
@@ -10,6 +10,10 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { startHttp, localExec } from "../src/mcp/server";
 import { ServerToPage } from "../src/mcp/protocol";
 import { Simulation } from "../src/sim/simulation";
+
+// Dual OAuth round-trips plus a core-engine corosim_adjust routinely exceed vitest's 5s default
+// once E3/E6 sit on the live path; keep the file above that floor so Pages deploy stays green.
+vi.setConfig({ testTimeout: 30_000 });
 
 type Srv = ReturnType<typeof startHttp>;
 async function boot(opts: Partial<Parameters<typeof startHttp>[0]> = {}): Promise<{ srv: Srv; base: string }> {

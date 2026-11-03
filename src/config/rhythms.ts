@@ -21,6 +21,11 @@ export const RHYTHM_MECH = {
    */
   polymorphic: 0.35,
   /**
+   * Torsades de pointes run beats: the same wandering front as polymorphic VT, but the axis twists and the rate is often
+   * irregular; each beat ejects even less than uniform polymorphic VT at the same ventricular rate [assumed].
+   */
+  torsades: 0.22,
+  /**
    * Right-ventricular apical pacing: a left-bundle-branch-like activation sequence, dyssynchronous, with a modest fall in ejection
    * fraction: acute RV apical pacing took LVEF from 53 to 47 % (about x 0.9; Wolber 2010, PMID 20946287) [lit].
    */
@@ -48,4 +53,9 @@ export const RHYTHM_MECH = {
    * strength-0 event that resets nothing mechanical and is not counted in the heart rate.
    */
   tickS: 1,
+  /**
+   * A silent atrial event this long before a no-P ventricular beat (flutter 2:1, junctional, SVT): close enough to reset
+   * `lastAtrialT` but below `LIVE.kickMinLead`, so a flutter wave or retrograde P does not count as an atrial kick.
+   */
+  kickGuardPr: 0.02,
 };

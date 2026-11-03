@@ -46,12 +46,12 @@ describe("rate model pieces", () => {
     expect(q(0.9)).toBeGreaterThan(3); // and a tail with frequent ectopy
   });
   it("sympathetic tone and adrenergic drugs raise the rate, a beta-blocker lowers it; potassium and magnesium hooks scale it", () => {
-    const at = (tone: Partial<typeof REST_TONE>, k = 1) => { const e = new Ectopy(5); e.potassium = k; e.update(30, 0.43, { ...REST_TONE, ...tone }); return e.rate(); };
-    const rest = at({});
-    expect(at({ sympathetic: 0.6 })).toBeGreaterThan(1.8 * rest);
-    expect(at({ drugDrive: 1 })).toBeCloseTo(rest * (1 + ECTOPY.drugGain), 9);
-    expect(at({ sympathetic: 0.6, betaBlock: 0.8 })).toBeLessThan(rest);
-    expect(at({}, 2)).toBeCloseTo(2 * rest, 9);
+    const ischemic = (tone: Partial<typeof REST_TONE>, k = 1) => { const e = new Ectopy(5); e.potassium = k; e.update(30, 0.43, { ...REST_TONE, ...tone }); return e.ischemicRate(); };
+    const rest = ischemic({});
+    expect(ischemic({ sympathetic: 0.6 })).toBeGreaterThan(1.8 * rest);
+    expect(ischemic({ drugDrive: 1 })).toBeCloseTo(rest * (1 + ECTOPY.drugGain), 9);
+    expect(ischemic({ sympathetic: 0.6, betaBlock: 0.8 })).toBeLessThan(rest);
+    expect(ischemic({}, 2)).toBeCloseTo(2 * rest, 9);
   });
   it("hooks for VT/VF (B3b): instantaneous rate, phase, and the coupling against the T wave", () => {
     const e = new Ectopy(3);
@@ -204,7 +204,7 @@ describe("scenario field and engines", () => {
     expect("ectopyTendency" in toScenario(normalizeScenario({}).scenario)).toBe(false); // plain specs stay as they were
   });
   it("the legacy engine keeps the old PVC rule (no ectopy model); the core engine has one, with the scenario's tendency", () => {
-    expect(new Simulation({ seed: 3 }).stream.ectopy).toBeUndefined();
+    expect(new Simulation({ seed: 3 }, { engine: "legacy" }).stream.ectopy).toBeUndefined();
     const s = new Simulation({ seed: 3, ectopyTendency: 2 }, { engine: "core", deferCore: true });
     expect(s.stream.ectopy?.tendency).toBe(2);
     s.apply({ ectopyTendency: 0 });

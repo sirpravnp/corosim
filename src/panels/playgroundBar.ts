@@ -91,7 +91,7 @@ export function createPlaygroundBar(source: HemoSource, clock: PlayClock | undef
     g.append(save, pick, clear, clearAll);
     const sync = () => {
       const items = store.list(), sel = store.selectedId();
-      pick.replaceChildren(...[["", items.length ? "No overlay" : "No snapshots"] as const, ...items.map(s => [String(s.id), `${s.label} · ${s.t.toFixed(1)} s`] as const)].map(([v, t]) => {
+      pick.replaceChildren(...[["", items.length ? "No overlay" : "No snapshots"] as const, ...items.map(s => [String(s.id), `${s.label}, ${s.t.toFixed(1)} s`] as const)].map(([v, t]) => {
         const o = document.createElement("option"); o.value = v; o.textContent = t; return o;
       }));
       pick.value = sel === null ? "" : String(sel);

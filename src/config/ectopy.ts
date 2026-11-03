@@ -95,12 +95,12 @@ export const ECTOPY = {
   /** Adrenergic drugs: rate x (1 + gain x beta-1 drive of the receptor-level drugs), the dobutamine/epinephrine multiplier the old rule used (SUPPORT.dobEctopy). [assumed, carried over] */
   drugGain: 0.6,
   /**
-   * Electrolyte hooks, fixed at 1 until an item drives them (rate x potassium x magnesium). Hypokalaemia on admission
-   * (K <= 3.5 mmol/l) went with VF in 17.2% against 7.4% of normokalaemic patients, and earlier (Nordrehaug 1983, PMID 6651995);
-   * intravenous magnesium lowered PVC and run counts after MI (Thiele 2000, PMID 10907229). A later item can map serum levels to
-   * these multipliers (e.g. about 2 at K 3.0).
+   * Serum electrolyte multipliers on the ischemic and reperfusion terms (Arrhythmia sets potassium from potassiumFactor(K)).
+   * Non-ischemic PVC tendency from K alone: susceptibility × tendency × tone × drugs × magnesium × electrolytePerBeat × max(0, potassium − 1).
    */
   potassium: 1, magnesium: 1,
+  /** Expected PVCs per eligible beat at potassiumFactor(K) − 1 = 1 (before noise and saturation). [rate assumed] */
+  electrolytePerBeat: 2e-6,
   /**
    * Burstiness. The rate is modulated by exp(sigma x z - sigma^2/2) (mean 1), z an Ornstein-Uhlenbeck process with this
    * correlation time in heartbeat seconds, so PVCs cluster over a minute or two instead of falling as independent coin flips.

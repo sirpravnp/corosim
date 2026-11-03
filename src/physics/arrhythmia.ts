@@ -28,7 +28,7 @@ import { gaussian } from "./autonomic";
  */
 
 export type RunKind = "nsvt" | "mono" | "poly" | "vf" | "aivr";
-export type RunCause = "ischemia" | "reperfusion" | "scar" | "degeneration" | "induced";
+export type RunCause = "ischemia" | "reperfusion" | "scar" | "electrolyte" | "degeneration" | "induced";
 type Sustained = Exclude<RunKind, "nsvt">;
 
 /** One arrhythmia event: a run that started (and, once over, when it ended). Times in stream (heartbeat) seconds, `minute` on the clinical clock. */
@@ -117,18 +117,20 @@ export class Arrhythmia implements RunTrigger {
   /** Back to a heart with no arrhythmia and no history (the patient, tendency and electrolytes stay). */
   reset() { this.pending = null; this.episode = null; this.cut = undefined; this.minutes = this.scarAge = 0; this.log.length = 0; }
 
-  /** Multiplier from the patient, the tone, the drugs and the electrolytes. */
-  gain(): number {
+  /** Multiplier from the patient, the tone, the drugs and the electrolytes (includes potassium on ischemic terms). */
+  gain(): number { return this.baseGain() * potassiumFactor(this.k); }
+  private baseGain(): number {
     const t = this.ectopy.tone, s = t.sympathetic * (1 - t.betaBlock);
-    return this.susceptibility * this.tendency * Math.exp(A.sympatheticGain * (s - A.restSympathetic)) * (1 + A.drugGain * t.drugDrive) * potassiumFactor(this.k) * magnesiumFactor(this.mg);
+    return this.susceptibility * this.tendency * Math.exp(A.sympatheticGain * (s - A.restSympathetic)) * (1 + A.drugGain * t.drugDrive) * magnesiumFactor(this.mg);
   }
-  /** Hazards now, per clinical minute: ischemic, reperfusion and scar initiating events, and AIVR. */
-  hazards(): { ischemia: number; reperfusion: number; scar: number; aivr: number } {
+  /** Hazards now, per clinical minute: ischemic, reperfusion, scar, electrolyte-only initiating events, and AIVR. */
+  hazards(): { ischemia: number; reperfusion: number; scar: number; electrolyte: number; aivr: number } {
     const e = this.ectopy, g = this.gain();
     const ischemia = e.active ? g * A.ischemicPerMin * substrateEffect(e.burden) * arrhythmiaCourse(e.age) : 0;
     const rep = hill(e.burst / A.half);
     const scar = g * A.scarPerMin * hill((this.inp.scar - A.scarFloor) / A.half) * (1 - Math.exp(-this.scarAge / A.scarMatureMin));
-    return { ischemia, reperfusion: g * A.reperfusionPerMin * rep, scar, aivr: this.susceptibility * this.tendency * A.aivrPerMin * rep };
+    const electrolyte = this.baseGain() * A.electrolytePerMin * Math.max(0, potassiumFactor(this.k) - 1);
+    return { ischemia, reperfusion: g * A.reperfusionPerMin * rep, scar, electrolyte, aivr: this.susceptibility * this.tendency * A.aivrPerMin * rep };
   }
 
   /** The sustained arrhythmia running now (null: none). */
@@ -149,10 +151,11 @@ export class Arrhythmia implements RunTrigger {
     if (this.episode) { this.pending = null; this.course(dt, t); return; }
     if (this.pending && t - this.pending.at > A.pendingMaxS) this.pending = null;
     if (minutes <= 0) return;
-    const h = this.hazards(), runs = h.ischemia + h.reperfusion + h.scar;
+    const h = this.hazards(), runs = h.ischemia + h.reperfusion + h.scar + h.electrolyte;
     if (!this.pending && runs > 0 && this.rng() < 1 - Math.exp(-runs * minutes)) {
       const u = this.rng() * runs;
-      this.pending = { cause: u < h.ischemia ? "ischemia" : u < h.ischemia + h.reperfusion ? "reperfusion" : "scar", at: t };
+      const cutIschemia = h.ischemia, cutReperfusion = cutIschemia + h.reperfusion, cutScar = cutReperfusion + h.scar;
+      this.pending = { cause: u < cutIschemia ? "ischemia" : u < cutReperfusion ? "reperfusion" : u < cutScar ? "scar" : "electrolyte", at: t };
     }
     if (!this.pending && h.aivr > 0 && this.rng() < 1 - Math.exp(-h.aivr * minutes)) this.startAivr(t, "reperfusion");
   }
@@ -284,7 +287,7 @@ export class Arrhythmia implements RunTrigger {
       current: e ? { kind: e.kind, label: RUN_LABEL[e.kind], cause: e.cause, forS: +Math.max(0, t - e.start).toFixed(1), rate: Math.round(e.rate) } : null,
       last: last ? { ...last, label: RUN_LABEL[last.kind] } : null,
       counts: { nsvt: count("nsvt"), mono: count("mono"), poly: count("poly"), vf: count("vf"), aivr: count("aivr") },
-      hazardPerHour: { ischemia: +(h.ischemia * 60).toFixed(4), reperfusion: +(h.reperfusion * 60).toFixed(4), scar: +(h.scar * 60).toFixed(6), aivr: +(h.aivr * 60).toFixed(4) },
+      hazardPerHour: { ischemia: +(h.ischemia * 60).toFixed(4), reperfusion: +(h.reperfusion * 60).toFixed(4), scar: +(h.scar * 60).toFixed(6), electrolyte: +(h.electrolyte * 60).toFixed(4), aivr: +(h.aivr * 60).toFixed(4) },
       potassium: this.k, magnesium: this.mg,
     };
   }

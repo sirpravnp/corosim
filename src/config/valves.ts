@@ -6,10 +6,10 @@ export const VALVE_KEYS: readonly ValveKey[] = ["av", "mv", "tv", "pv"];
 
 /**
  * Native valve severity 0..1 to the engine's lesion: stenosis s closes the valve to `1 - span·s` of its normal area; regurgitation s
- * opens a leak of `s · regAreaFrac · normal area` (cm²). The same spans the single-lesion presets have always used.
+ * opens a leak of `s · regAreaFrac · normal area` (cm²). Aortic span 0.83 keeps severity-1 mean gradient in the severe band while 0.95-style severe stays above 40 mmHg; mitral regAreaFrac 0.088 keeps severity-1 regurgitant fraction near 0.50.
  */
-export const STENOSIS_SPAN: Record<ValveKey, number> = { av: 0.85, mv: 0.85, tv: 0.85, pv: 0.9 };
-export const REGURG_AREA_FRAC: Record<ValveKey, number> = { av: 0.16, mv: 0.12, tv: 0.14, pv: 0.25 };
+export const STENOSIS_SPAN: Record<ValveKey, number> = { av: 0.83, mv: 0.85, tv: 0.85, pv: 0.9 };
+export const REGURG_AREA_FRAC: Record<ValveKey, number> = { av: 0.16, mv: 0.088, tv: 0.14, pv: 0.25 };
 
 export type ProsthesisKind = "bioprosthetic" | "mechanical" | "transcatheter";
 export const PROSTHESIS_KINDS: readonly ProsthesisKind[] = ["bioprosthetic", "mechanical", "transcatheter"];

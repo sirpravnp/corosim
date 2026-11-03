@@ -146,6 +146,7 @@ export class Autonomic {
 
   /** Baroreceptors sample the pressure of each beat; between beats the afferent holds its last value. */
   sense(systolic: number, diastolic: number) {
+    if (!Number.isFinite(systolic) || !Number.isFinite(diastolic)) return; // a broken beat is not sensed: the tones must never turn NaN
     this.sensed = diastolic + this.p.pulseWeight * (systolic - diastolic);
     const x = (this.sensed - (this.p.setPoint + this.controls.setPointShift)) / (2 * this.p.width);
     this.afferent = Math.tanh(x); // = 2·logistic − 1

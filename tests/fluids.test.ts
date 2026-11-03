@@ -109,7 +109,7 @@ describe("capillary leak and diuresis", () => {
 describe("in the core simulation", () => {
   const make = (spec: PatientSpec = {}) => { const s = new Simulation({}, { engine: "core" }); s.reset({ seed: 3, ...spec }, { settled: true }); s.warmup(40); return s; };
   const min = (s: Simulation, m: number) => s.step(m / s.minutesPerSecond / s.speed);
-  it("is null on the legacy engine", () => { expect(new Simulation({ seed: 1 }).fluids()).toBeNull(); });
+  it("is null on the legacy engine", () => { expect(new Simulation({ seed: 1 }, { engine: "legacy" }).fluids()).toBeNull(); });
   it("1 L of crystalloid from the spec: 20-30 % intravascular at 30 clinical minutes, 500 ml of albumin more than 80 %, water conserved", () => {
     const c = make({ fluids: { given: [{ kind: "crystalloid", ml: 1000, atMin: 0, overMin: 5 }] } }), a = make({ fluids: { given: [{ kind: "albumin", ml: 500, atMin: 0, overMin: 5 }] } });
     min(c, 30); min(a, 30);

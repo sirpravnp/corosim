@@ -92,8 +92,8 @@ describe("corosim_arrest", () => {
   });
 
   it("the legacy engine returns ok false with a note, not an error", () => {
-    const sim = new Simulation({ seed: 1 });
-    run(sim, "corosim_set_scenario", { scenario: {}, warmupSeconds: 5 });
+    const sim = new Simulation({ seed: 1 }, { engine: "legacy" });
+    run(sim, "corosim_set_scenario", { engine: "legacy", scenario: {}, warmupSeconds: 5 });
     const r = run(sim, "corosim_arrest", { action: "shock", joules: 200, runSeconds: 1 });
     expect(r.ok).toBe(false);
     expect(r.note).toMatch(/core engine only/);

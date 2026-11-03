@@ -9,7 +9,7 @@ import { renderer, camera, controls, VIEWS, setView, propsView, ray } from "./sc
 import { hPart, heartMesh, applyHeartView } from "./heart3d";
 import { built, vesselGroup, shapeVessels, points, buildGrafts, branchMesh, segIdOfHit } from "./vessels3d";
 import { controlsUi, liveUi } from "./readouts";
-import { syncSelects } from "./model";
+import { syncSelects, anatomyPreset, ANATOMY_PRESETS } from "./model";
 
 let heartBeforeProps: HeartView | null = null; // the heart view the toggle replaced with see-through, put back when it is turned off
 
@@ -29,14 +29,17 @@ function openVc(id: string) {
 }
 /** The lesion, anatomy, display, time-scale and camera controls. */
 export function wireControls() {
-  sel("dom", (v) => { V.dominance = v as Variant["dominance"]; scheduleAnatomy(); });
-  sel("lm", (v) => { V.lm = v as Variant["lm"]; scheduleAnatomy(); });
-  sel("lad", (v) => { V.ladCourse = v as Variant["ladCourse"]; scheduleAnatomy(); });
-  sel("san", (v) => { V.saNodeFrom = v as Variant["saNodeFrom"]; scheduleAnatomy(); });
-  sel("conus", (v) => { V.conusOstium = v as Variant["conusOstium"]; scheduleAnatomy(); });
+  const syncAnat = () => { $<HTMLSelectElement>("anat").value = anatomyPreset(); };
+  sel("dom", (v) => { V.dominance = v as Variant["dominance"]; syncAnat(); scheduleAnatomy(); });
+  sel("lm", (v) => { V.lm = v as Variant["lm"]; syncAnat(); scheduleAnatomy(); });
+  sel("lad", (v) => { V.ladCourse = v as Variant["ladCourse"]; syncAnat(); scheduleAnatomy(); });
+  sel("san", (v) => { V.saNodeFrom = v as Variant["saNodeFrom"]; syncAnat(); scheduleAnatomy(); });
+  sel("conus", (v) => { V.conusOstium = v as Variant["conusOstium"]; syncAnat(); scheduleAnatomy(); });
   sel("lseg", (v) => { S.lesionSeg = v; T.treated = untreated(); T.pending = null; T.original = null; buildGrafts(); scheduleLesion(); });
-  const preset = (p: Partial<Variant>) => { Object.assign(V, TYPICAL, p); syncSelects(); scheduleAnatomy(); };
-  on("p_typ", () => preset({})); on("p_left", () => preset({ dominance: "left" })); on("p_ramus", () => preset({ lm: "trifurcation" })); on("p_abs", () => preset({ lm: "absent" }));
+  sel("anat", (k) => {
+    if (k === "custom") { $<HTMLDetailsElement>("anat-custom").open = true; return; }
+    Object.assign(V, TYPICAL, ANATOMY_PRESETS[k]); syncSelects(); scheduleAnatomy();
+  });
   range("pos", (v) => { S.pos = v / 100; scheduleLesion(); });
   range("ds", (v) => { S.ds = v / 100; S.occ = false; scheduleLesion(); });
   range("ex", (v) => { S.exag = v; shapeVessels(); controlsUi(); });
@@ -76,7 +79,7 @@ export function wirePicking() {
     else {
       const sg = tree.byId[S.selected], r2 = A.cond.seg[S.selected], n = r2.s.length;
       box.style.display = "block";
-      box.innerHTML = `<b>${sg.name}</b><br>length ${sg.length.toFixed(0)} mm · Ø ${(Math.min(...r2.d) * 1e3).toFixed(1)}–${(Math.max(...r2.d) * 1e3).toFixed(1)} mm<br>inflow ${(r2.Q[0] * 6e7).toFixed(0)} ml/min<br>pressure ${(r2.P[0] / MMHG).toFixed(0)} → ${(r2.P[n - 1] / MMHG).toFixed(0)} mmHg<br>supplies ${(sg.subMass * 100).toFixed(0)}% of myocardium`;
+      box.innerHTML = `<b>${sg.name}</b><br>length ${sg.length.toFixed(0)} mm, Ø ${(Math.min(...r2.d) * 1e3).toFixed(1)}–${(Math.max(...r2.d) * 1e3).toFixed(1)} mm<br>inflow ${(r2.Q[0] * 6e7).toFixed(0)} ml/min<br>pressure ${(r2.P[0] / MMHG).toFixed(0)} → ${(r2.P[n - 1] / MMHG).toFixed(0)} mmHg<br>supplies ${(sg.subMass * 100).toFixed(0)}% of myocardium`;
     }
     shapeVessels();
   });

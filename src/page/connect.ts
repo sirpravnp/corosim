@@ -35,7 +35,8 @@ export function applyMode() {
   setInCases(cases);
   shell.setPage(cases ? "cases" : "sim");
   shell.ai.setHidden(cases); // the cases page has no AI line: an AI on the line could read the diagnosis
-  document.title = cases ? "CoroSim · Cases" : "CoroSim";
+  shell.setShare(!cases); // cases keep the patient out of the address bar, so there is nothing useful to share
+  document.title = cases ? "CoroSim: Cases" : "CoroSim";
   casesUi();
 }
 

@@ -31,7 +31,7 @@ export function monitorText(v: Vitals, shockMap: number, hypotensionMap: number)
   return {
     hr: Number.isFinite(v.hr) && Math.round(v.hr) > 0 ? `${Math.round(v.hr)} bpm` : "…",
     bp: Number.isFinite(v.sbp) && Number.isFinite(v.dbp) ? `${rnd(v.sbp)}/${rnd(v.dbp)} (${rnd(v.map)})` : `— (${rnd(v.map)})`,
-    co: Number.isFinite(v.co) ? `${v.co.toFixed(1)} L/min · SV ${rnd(v.sv)} ml` : "…",
+    co: Number.isFinite(v.co) ? `${v.co.toFixed(1)} L/min, SV ${rnd(v.sv)} ml` : "…",
     ef: Number.isFinite(v.lvEf) ? `${Math.round(v.lvEf * 100)}%` : "—",
     status,
   };

@@ -3,6 +3,7 @@ import type { VentricleFactors } from "../../config/ischemia";
 import { buildModel, SYSTEMIC, volumeOffsetFor, type Model, type StructuralSpec } from "../structural";
 import type { Beat } from "../ecg";
 import type { BeatHemo } from "../beatHemo";
+import type { RegionalSegment } from "../regional";
 import { ElastanceChamber } from "./chamber";
 import { createEngine } from "./engine";
 import { defaultPr, fromModel, type FromModelOptions } from "./fromModel";
@@ -243,8 +244,9 @@ export class LiveHeart {
   /**
    * Per-ventricle factors on the design point, separate from the autonomic `contractility` so the two multiply (A7): the ventricle's
    * Ees runs at design · `lvEes` (`rvEes`) · contractility, and its passive stiffness (the `a` of the end-diastolic curve) at
-   * design · `lvStiffness` (`rvStiffness`). Ischemia and scar act here (config/ischemia.ts). Replaces the previous set; a field
-   * left out is 1. Factors are clamped to 0.1-10.
+   * design · `lvStiffness` (`rvStiffness`). On the lumped path ischemia and scar act here (`config/ischemia.ts`); on the E3
+   * regional path `setRegional` owns active elastance and dead volume, and callers leave `lvEes`/`rvEes` at 1 (stiffness still
+   * comes through these factors). Replaces the previous set; a field left out is 1. Factors are clamped to 0.1-10.
    */
   setVentricleFactors(f: VentricleFactors) {
     const g = (x: number | undefined) => (x !== undefined && Number.isFinite(x) ? range(x, [0.1, 10]) : 1);
@@ -252,6 +254,22 @@ export class LiveHeart {
     this.applyVentricles();
   }
   get ventricleFactors(): Readonly<Required<VentricleFactors>> { return this.vf; }
+  /**
+   * Regional bed segments on the LV and RV (E3). Pass null to clear both and fall back to lumped A7 factors for active elastance.
+   * Does not change `ventricleFactors`; the ACS core path sets Ees factors to 1 and stiffness from the same regional map.
+   */
+  setRegional(lv: readonly RegionalSegment[] | null, rv: readonly RegionalSegment[] | null = null) {
+    this.ventricles[0].el.setRegional(lv);
+    this.ventricles[1].el.setRegional(rv);
+  }
+  /** Snapshot of each ventricle's regional active scale and dead volume (α = 1, dead = 0 when regional is off). */
+  regionalState(): { lv: { active: number; deadMl: number; segments: readonly RegionalSegment[] | null }; rv: { active: number; deadMl: number; segments: readonly RegionalSegment[] | null } } {
+    const [lv, rv] = this.ventricles;
+    return {
+      lv: { active: lv.el.regionalActive, deadMl: lv.el.regionalDeadVolume, segments: lv.el.regional },
+      rv: { active: rv.el.regionalActive, deadMl: rv.el.regionalDeadVolume, segments: rv.el.regional },
+    };
+  }
   private applyVentricles() {
     const { vf, mods } = this;
     this.ventricles.forEach((v, i) => v.el.set({ ees: v.ees * mods.contractility * (i === 0 ? vf.lvEes : vf.rvEes), a: v.a * (i === 0 ? vf.lvStiffness : vf.rvStiffness), relaxScale: v.relax * mods.relax }));

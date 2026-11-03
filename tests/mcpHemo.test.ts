@@ -154,17 +154,19 @@ describe("caching and the PatientSpec", () => {
 });
 
 describe("engine choice and devices", () => {
-  it("the default engine stays legacy; engine: core adds the device consoles to the bedside report", () => {
+  it("the default engine is core with device consoles; engine: legacy drops them", () => {
     const sim = new Simulation({ seed: 1 });
-    expect(sim.engine).toBe("legacy");
-    const legacy = run(sim, "corosim_set_scenario", { scenario: STEMI, warmupSeconds: 10 }).out;
-    expect(legacy.devices).toBeUndefined();
-    const core = run(sim, "corosim_set_scenario", { engine: "core", scenario: { ...STEMI, devices: { iabp: { ratio: 1 } } }, warmupSeconds: 10 }).out;
+    expect(sim.engine).toBe("core");
+    const core = run(sim, "corosim_set_scenario", { scenario: { ...STEMI, devices: { iabp: { ratio: 1 } } }, warmupSeconds: 10 }).out;
     expect(sim.engine).toBe("core");
     expect(core.devices).toBeDefined(); expect(core.devices.iabp).toBeDefined();
     expect(core.devices.iabp.on).toBe(true);
+    const legacy = run(sim, "corosim_set_scenario", { engine: "legacy", scenario: STEMI, warmupSeconds: 10 }).out;
+    expect(sim.engine).toBe("legacy");
+    expect(legacy.devices).toBeUndefined();
     expect(() => run(sim, "corosim_set_scenario", { engine: "quantum" })).toThrow(/engine/);
-    // the cath tools read a core-engine patient directly, not a twin
+    // back on core: the cath tools read the patient directly, not a twin
+    run(sim, "corosim_set_scenario", { engine: "core", scenario: STEMI, warmupSeconds: 10 });
     const before = hemoStats(sim).resolves;
     const c = run(sim, "corosim_heart_cath", { side: "right" }).out;
     expect(c.right.pressuresMmHg.pcwp).toBeGreaterThan(5);

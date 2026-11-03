@@ -7,6 +7,10 @@
 <link rel="icon" type="image/png" href="/favicon.png" />
 <title>CoroSim Structural</title>
 <meta name="description" content="Valve and congenital heart lesions on a closed-loop circulation: chamber pressures and oxygen saturations, Qp:Qs, valve gradients and regurgitant fractions, pressure traces and loops.">
+<script>try{var t=localStorage.getItem("corosim-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Doto:wght@400;800&display=swap">
 </head>
 <body>
 <div class="app" id="app">
@@ -25,7 +29,7 @@
       <div id="xlinks" hidden></div>
     </div>
     <div class="stage">
-      <div id="view3d" class="viewport3d" aria-label="3D heart, coloured by oxygen saturation"></div>
+      <div id="view3d" class="viewport3d" aria-label="3D heart, colored by oxygen saturation"></div>
       <div class="views">
         <button data-view="anterior" class="on">Anterior</button><button data-view="left">Left</button><button data-view="posterior">Posterior</button><button data-view="right">Right</button><button data-view="superior">Superior</button>
         <label class="cutlabel">Cutaway <input id="cut" type="range" min="0" max="100" value="0" aria-label="Cutaway depth"></label>
@@ -38,6 +42,7 @@
     <ul class="findings" id="findings"></ul>
     <div class="screen"><canvas id="trL" width="720" height="250" aria-label="Left heart pressure traces"></canvas></div>
     <div class="screen"><canvas id="trR" width="720" height="250" aria-label="Right heart pressure traces"></canvas></div>
+    <ol class="notes" id="notes"></ol>
   </section>
 
   <section class="side">
@@ -54,7 +59,6 @@
     <p class="note" id="warn" hidden></p>
   </section>
 </main>
-<p class="fine" id="notes"></p>
 <footer id="shell-foot"></footer>
 </div>
 <script type="module" src="../src/structural/page.ts"></script>

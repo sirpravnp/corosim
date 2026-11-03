@@ -42,6 +42,7 @@ export const CAUSE_WHY: Record<RunCause, string> = {
   ischemia: "a premature beat on the vulnerable phase of acutely ischemic myocardium started it",
   reperfusion: "it came with reperfusion of the ischemic muscle",
   scar: "a re-entry circuit around healed infarct scar runs it",
+  electrolyte: "severe hyper- or hypokalaemia made the ventricle irritable, without an acute ischemic territory",
   degeneration: "a ventricular tachycardia broke up into fibrillation",
   induced: "it was started on purpose",
 };
@@ -100,7 +101,7 @@ export function explain(sim: Simulation): Explanation {
   if (lib) mech.push(`${lib.name} (from the EKG library; it sets the beats the ventricles get): ${lib.summary}${/^(vf|asystole)/.test(lib.id) ? " The ventricles do not contract: there is no output and the pressure falls to the mean filling pressure." : ""}`);
   if (rs.rhythm === "af") mech.push("Atrial fibrillation: no P waves, an irregular ventricular response set by the AV node, and no atrial kick (each beat fills less).");
   if (rs.bbb !== "none") mech.push(`Pre-existing ${rs.bbb === "lbbb" ? "left" : "right"} bundle branch block widens the QRS${rs.bbb === "lbbb" ? " and masks ST changes" : ""}.`);
-  if (v.lvInfarctFraction > 0.02) mech.push(`Irreversible injury: ${Math.round(v.lvInfarctFraction * 100)}% of the left ventricle has infarcted (${st.clinicalMinutes} clinical minutes of evolution); estimated LVEF ${Math.round(v.ejectionFraction * 100)}%. Reperfusion stops further loss but does not restore it.`);
+  if (v.lvInfarctFraction > 0.02) mech.push(`Irreversible injury: ${Math.round(v.lvInfarctFraction * 100)}% of the left ventricle has infarcted (${st.clinicalMinutes} clinical minutes of evolution); LVEF (aortic-valve estimate) ${Math.round(v.ejectionFraction * 100)}%. Reperfusion stops further loss but does not restore it.`);
   if (sup.norepinephrine) mech.push(`Norepinephrine (${Math.round(sup.norepinephrine * 100)}%) raises resistance and pressure, and adds afterload and oxygen demand to an ischemic ventricle.`);
   if (sup.dobutamine) mech.push(`Dobutamine (${Math.round(sup.dobutamine * 100)}%) restores some lost contractility at the cost of oxygen demand and more ectopy.`);
   if (sup.nitroglycerin) mech.push(`Nitroglycerin lowers preload${v.rvIschemia > 0.3 ? "; with right-ventricular ischemia this preload loss is large and dangerous" : ""}.`);

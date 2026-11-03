@@ -1,6 +1,8 @@
 // The homepage: a different heart each day, stippled as a thermogram. The dots settle on load and stand still; a cursor
-// over them stirs them, and they flow back. The title, the fact and the doors are laid over the picture (home.css).
+// over them stirs them, and they flow back. The menu, the title and the fact are laid over the picture (home.css).
 import { mountAi } from "./shell/ai";
+import { mountTheme } from "./shell/theme";
+import { PAGES, icon } from "./shell/shell";
 import { Placement, Stipple, draw, dotsFor, thermalGradient } from "./stipple";
 import { fieldFor, usesLogo } from "./specimenArt";
 import { specimenFor } from "./specimens";
@@ -14,11 +16,18 @@ const OMEGA = 0.5; // animated: each frame goes halfway to the centroid, so the 
 const STIR = { reach: 100, push: 4.5, warmth: 0.55 }; // the cursor's reach and shove per frame (screen px, so the same on every heart) and heat
 const DOTS = { min: 3000, max: 8000, perPx2: 0.0415, dot: 0.43 }; // the budget: dots per screen pixel² of density-weighted heart (about 7 000 on the logo heart on a desktop), the caps, and the dot's radius as a share of the dot spacing
 $("bar").style.background = thermalGradient();
-void mountAi($("home-ai"), "./").start();
+$("home-top").innerHTML = `
+  <a class="shell-brand" href="./" aria-label="CoroSim home"><img src="logo-transparent.png" alt="" width="32" height="32"><span>CoroSim</span></a>
+  <nav class="shell-nav" aria-label="Pages">${PAGES.map((p) => `<a data-page="${p.id}" href="${p.path}" title="${p.blurb}">${icon(p.id)}<span>${p.label}</span></a>`).join("")}</nav>
+  <div class="shell-theme"></div>
+  <div class="shell-ai"></div>`;
+$("home-top").classList.add("no-share");
+mountTheme($("home-top").querySelector<HTMLElement>(".shell-theme")!);
+void mountAi($("home-top").querySelector<HTMLElement>(".shell-ai")!, "./").start();
 
 // ?heart=<id> or ?day=YYYY-MM-DD pick a heart; with neither it is today's.
 const sp = specimenFor(location.search);
-$("fact-name").textContent = `· ${sp.name}`;
+$("fact-name").textContent = `${sp.name}`;
 $("fact-text").textContent = sp.fact;
 $("fact").hidden = false;
 canvas.setAttribute("aria-label", `${sp.name}: a heart as a thermogram, stippled, its vessels hot against the muscle`);
@@ -46,7 +55,7 @@ function start(logo: HTMLImageElement | null) {
     const rect = (sel: string) => document.querySelector(sel)!.getBoundingClientRect();
     let top = 0, bottom = h, cx = w / 2, maxW = 0.52 * w, maxH = 0.84 * h;
     if (wide) {
-      const left = Math.max(rect(".home-head").right, rect(".doors").right) + 24, right = rect(".fact").left - 24;
+      const left = rect(".home-head").right + 24, right = rect(".fact").left - 24;
       if (right - left >= 0.36 * innerWidth) { cx = ((left + right) / 2) * dpr; maxW = (right - left) * dpr; }
     } else {
       top = (rect(".home-head").bottom + 10) * dpr; bottom = Math.max(top + 120 * dpr, (rect(".fact").top - 10) * dpr); maxW = 0.94 * w; maxH = bottom - top;

@@ -32,8 +32,9 @@ describe("corosim_valve", () => {
     expect(r.warnings.join(" ")).toMatch(/does not leak/);
   });
   it("needs the core engine and a valid request", () => {
+    const legacy = new Simulation({ seed: 1 }, { engine: "legacy" });
+    expect(() => run(legacy, "corosim_valve", { type: "tavr" })).toThrow(/core engine/);
     const sim = new Simulation({ seed: 1 });
-    expect(() => run(sim, "corosim_valve", { type: "tavr" })).toThrow(/core engine/);
     expect(() => run(sim, "corosim_valve", { type: "replace", valve: "mv" })).toThrow(/kind/);
     expect(() => run(sim, "corosim_valve", { type: "balloon", valve: "xx" })).toThrow(/valve must/);
   });

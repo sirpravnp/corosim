@@ -1,4 +1,4 @@
-import type { BeatSummary, Chamber, DeviceConsole, HemoNode, HemoNumbers, HemoSource, Saturations, Series } from "./hemoSource";
+import type { BeatSummary, Chamber, DeviceConsole, HemoNode, HemoNumbers, HemoPanelExtras, HemoSource, Saturations, Series } from "./hemoSource";
 import type { Simulation } from "./simulation";
 import type { DevicesReadout } from "./coreDevices";
 import { NODES as ALL_NODES, CATH_NODES as NODES, solveOxygen, type Model } from "../physics/structural";
@@ -6,6 +6,7 @@ import { oxygenatorSat, type Ecmo } from "../physics/core/devices/ecmo";
 import type { RotaryPump } from "../physics/core/devices/pump";
 import type { LiveBeat, LiveHeart } from "../physics/core/live";
 import { vitalsOf, type Vitals } from "./vitals";
+import { fickLvEf, rightHeartCath } from "./rightHeartCath";
 import { windowedHemodynamicBeats, type HemoBeatSelection } from "./hemoBeats";
 import { PATIENTS, O2_PER_G_HB } from "../config/structural";
 import { LIVE_SOURCE as CFG } from "../config/liveSource";
@@ -59,8 +60,9 @@ interface Rec { lb: LiveBeat; rr: number; end: number; summary: BeatSummary | nu
  * Saturations. The oxygen model (`solveOxygen`, physics/structural.ts), fed with the forward and backward
  * volumes through every element over the same window instead of one steady-state beat: an Impella and an Impella RP are streams
  * between their nodes, an ECMO circuit the extra stream into the descending aorta through its oxygenator (`oxygenatorSat`), so
- * differential hypoxemia (upper body from the lungs, lower body from the circuit) appears. SpO2 = pre-ductal = AO; DO2, VO2 and the
- * per-bed tissue oxygenation placeholder (`bedOxygen`). Recomputed once per completed beat.
+ * differential hypoxemia (upper body from the lungs, lower body from the circuit) appears. SpO2 = pre-ductal = AO; DO2, VO2 from
+ * that solve. Lactate and per-bed myocardial tissue O₂ come from the core E6 transport (`sim.oxygenState`) when present, else
+ * the ischemia placeholder (`bedOxygen`) and NaN lactate. Recomputed once per completed beat.
  *
  * Devices. `sim.devices()` as DeviceConsoles: Impella (flow, speed, current, placement signal, suction; the placement trace of the
  * last seconds), IABP (settings, balloon, augmentation; the arterial trace), ECMO (flow, speed, sweep, FiO2, suction, return
@@ -206,9 +208,12 @@ export class LiveSource implements HemoSource {
     const map = wf((r) => r.lb.p.AO.mean), cvp = w((r) => r.lb.p.RA.mean), pam = w((r) => r.lb.p.PA.mean), pcwp = w((r) => r.lb.p.LA.mean);
     const mapF = map, cvpF = wf((r) => r.lb.p.RA.mean), pamF = wf((r) => r.lb.p.PA.mean), pcwpF = wf((r) => r.lb.p.LA.mean); // resistances use pressures from the same beats as their flow
     const ef = (c: "LV" | "RV") => w((r) => (r.lb.v[c].max > 0 ? (r.lb.edv[c] - r.lb.esv[c]) / r.lb.edv[c] : NaN));
+    const sbp = w((r) => r.lb.p.AO.max), dbp = w((r) => r.lb.p.AO.min);
     return {
       hr: (60 * all.filter((r) => r.lb.strength !== 0).length) / Tall, // the rate counts every beat, premature ones included; not the silent ticks of VF or asystole (B2)
-      map, systolic: w((r) => r.lb.p.AO.max), diastolic: w((r) => r.lb.p.AO.min), cvp,
+      // The mean over the flow window (30 s with ectopy) lags a pressure that is falling fast, so it can read above the systolic of the steadier
+      // recent beats (a crash: 34/28 with a mean of 65). A mean pressure lies between the diastolic and the systolic: keep the shown one there.
+      map: Number.isFinite(map) && Number.isFinite(sbp) && Number.isFinite(dbp) ? Math.min(Math.max(map, dbp), sbp) : map, systolic: sbp, diastolic: dbp, cvp,
       pa: { systolic: w((r) => r.lb.p.PA.max), diastolic: w((r) => r.lb.p.PA.min), mean: pam }, pcwp,
       lvedp: w((r) => r.lb.p.LV.end), rvedp: w((r) => r.lb.p.RV.end),
       co: qs, ci: qs / PATIENTS.adult.bsa, svr: qs > 0 ? (mapF - cvpF) / qs : NaN, pvr: qp > 0 ? (pamF - pcwpF) / qp : NaN,
@@ -223,10 +228,20 @@ export class LiveSource implements HemoSource {
   saturations(): Saturations {
     const live = this.sync(), { recs, flow: fb, key } = this.window();
     const base = PATIENTS.adult;
-    if (!live || !recs.length) return { node: NaNs(NODES), spo2: NaN, preductal: NaN, postductal: NaN, svo2: NaN, do2: NaN, vo2: NaN, lactate: NaN, bed: {}, bedSource: "ischemia-derived" };
+    const e6 = this.sim.oxygenState();
+    if (!live || !recs.length) return { node: NaNs(NODES), spo2: NaN, preductal: NaN, postductal: NaN, svo2: NaN, do2: NaN, vo2: NaN, lactate: e6?.lactate ?? NaN, bed: {}, bedSource: "ischemia-derived" };
     const ec = live.engine.elements.find((e) => e.name === "ecmo") as Ecmo | undefined;
-    const drop = this.sim.lungSatDrop(), bed = bedOxygen(this.sim), k = `${key}|${ec?.sweep}|${ec?.fio2}|${drop.toFixed(3)}`;
-    if (this.sat && this.satKey === k) return { ...this.sat, bed };
+    const drop = this.sim.lungSatDrop(), bed = bedOxygen(this.sim);
+    // E6: overlay myocardial tissue O₂ from evolving debt where tracked; otherwise keep the ischemia placeholder.
+    let bedSource: Saturations["bedSource"] = "ischemia-derived";
+    if (e6) {
+      for (const [bk, bv] of Object.entries(e6.bedTissue)) {
+        if (Number.isFinite(bv) && (e6.myocardialDebt[bk] ?? 0) > 1e-4) { bed[bk] = bv; bedSource = "supply-demand"; }
+      }
+    }
+    const lac = e6 && Number.isFinite(e6.lactate) ? e6.lactate : NaN;
+    const k = `${key}|${ec?.sweep}|${ec?.fio2}|${drop.toFixed(3)}|${lac.toFixed(2)}`;
+    if (this.sat && this.satKey === k) return { ...this.sat, bed, bedSource, lactate: lac };
     const T = fb.reduce((s, r) => s + r.rr, 0); // the oxygen solve takes its flows from every beat of the flow window
     const fwd: Record<string, number> = {}, bwd: Record<string, number> = {};
     for (const r of fb) for (const [src, dst] of [[r.lb.flows.fwd, fwd], [r.lb.flows.bwd, bwd]] as const) for (const [n, v] of Object.entries(src)) dst[n] = (dst[n] ?? 0) + v;
@@ -243,8 +258,8 @@ export class LiveSource implements HemoSource {
     const n = this.numbers();
     this.satKey = k;
     this.sat = {
-      node, spo2: node.AO, preductal: node.AO, postductal: node.DAO, svo2: node.PA,
-      do2: n.co * base.hb * 10 * O2_PER_G_HB * node.AO, vo2: base.vo2PerKg * base.weightKg, lactate: NaN, bed, bedSource: "ischemia-derived",
+      node, satLung: m.patient.satLung, spo2: node.AO, preductal: node.AO, postductal: node.DAO, svo2: node.PA,
+      do2: n.co * base.hb * 10 * O2_PER_G_HB * node.AO, vo2: base.vo2PerKg * base.weightKg, lactate: lac, bed, bedSource,
     };
     return this.sat;
   }
@@ -285,6 +300,17 @@ export class LiveSource implements HemoSource {
       out.push({ id: "impellaRp", label: `Impella RP P-${r.level}`, alarms: r.suctionAlarm ? ["Suction: the inflow is collapsing in the vena cava"] : [], readings: { flowLpm: r.flowLpm, level: r.level, speedKrpm: r.speedKrpm, motorCurrentMa: r.motorCurrentMa, placementMmHg: r.placementMmHg } });
     }
     return (this.dev = out);
+  }
+
+  /** Optional rows for the Hemodynamics panel (echo and Fick EF, coronary driving pressure). */
+  panelExtras(): HemoPanelExtras {
+    const st = this.sim.state(), r = rightHeartCath(this);
+    const h = this.sim.hemo(20);
+    return {
+      lvEfEcho: st.ventricle.ejectionFraction,
+      lvEfFick: r && h ? fickLvEf(this.numbers(), r.output, h.lvEdv) : null,
+      coronaryDrivingPressure: st.coronaryPerfusionPressure,
+    };
   }
 
   /** `a` minus `b` pressure over the last seconds (the placement signal is aortic minus ventricular pressure), at the samples the two share. */

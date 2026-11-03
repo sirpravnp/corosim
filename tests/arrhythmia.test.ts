@@ -227,7 +227,7 @@ describe("scenario fields and engines", () => {
     expect(toScenario(normalizeScenario({ arrhythmiaTendency: 0, electrolytes: { potassium: 3.1 } }).scenario)).toMatchObject({ arrhythmiaTendency: 0, electrolytes: { potassium: 3.1, magnesium: 0.9 } });
   });
   it("the legacy engine has no arrhythmia model; the core engine has one with the scenario's tendency and electrolytes", () => {
-    expect(new Simulation({ seed: 3 }).arrhythmia).toBeUndefined();
+    expect(new Simulation({ seed: 3 }, { engine: "legacy" }).arrhythmia).toBeUndefined();
     const s = new Simulation({ seed: 3, arrhythmiaTendency: 2, electrolytes: { potassium: 3.2 } }, { engine: "core", deferCore: true });
     expect(s.arrhythmia?.tendency).toBe(2);
     expect(s.arrhythmia?.potassium).toBe(3.2);

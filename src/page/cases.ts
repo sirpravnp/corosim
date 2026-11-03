@@ -148,7 +148,7 @@ export function casesUi() {
   $("cprompt").hidden = !o;
   if (o && promptKey !== o.id + "@" + r.t) {
     promptKey = o.id + "@" + r.t;
-    $("cp_time").textContent = `${def.title} · ${clock(r.t)}`;
+    $("cp_time").textContent = `${def.title}, ${clock(r.t)}`;
     $("cp_text").textContent = o.prompt.text;
     $("cp_opts").innerHTML = o.prompt.options.map((x, i) => `<button data-i="${i}">${esc(x.label)}</button>`).join("");
   }

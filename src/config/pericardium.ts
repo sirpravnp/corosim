@@ -16,6 +16,10 @@ export const PERICARDIUM = {
   /** k: ml of unstressed volume lost per unit of (stiffness − 1), V0_eff = V0 − k·(s − 1): a constricting scar fits the heart tighter. [assumed, tuned] */
   reservePerStiffness: 16,
   adaptTauS: Infinity,
+  /** An effusion that keeps accumulating stops at this volume (ml): the sac cannot hold an unlimited amount (a chronic effusion rarely exceeds about 2 L; the spec's own range ends here too). Without it a continuing rate filled the sac to many litres at a fast clock. [assumed] */
+  maxEffusionMl: 2000,
+  /** Fastest the sac may fill per simulated second (ml/s): the clinical clock is slowed so a rate per clinical minute never fills it faster, so the heart follows the effusion as it would in real time and a fast clock cannot outrun the tamponade. [assumed] */
+  maxFillMlPerS: 20,
 };
 
 /**

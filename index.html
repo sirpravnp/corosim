@@ -7,42 +7,85 @@
 <link rel="icon" type="image/png" href="/favicon.png" />
 <link rel="apple-touch-icon" href="/logo.png" />
 <title>CoroSim</title>
-<meta name="description" content="CoroSim: a 3D coronary vasculature simulator for education, and Find the culprit, a daily game on it.">
+<meta name="description" content="A teaching simulator for the heart. Block a coronary artery and the muscle, the 12-lead and the pressures respond. Then treat.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CoroSim">
+<meta property="og:url" content="https://corosim.com/">
+<meta property="og:title" content="CoroSim: the future of cardiac simulation">
+<meta property="og:description" content="A teaching simulator for the heart. Block a coronary artery and the muscle, the 12-lead and the pressures respond. Then treat.">
+<meta property="og:image" content="https://corosim.com/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="A stippled thermogram of a heart beside the CoroSim logo and the words CoroSim, the future of cardiac simulation">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="CoroSim: the future of cardiac simulation">
+<meta name="twitter:description" content="A teaching simulator for the heart. Block a coronary artery and the muscle, the 12-lead and the pressures respond. Then treat.">
+<meta name="twitter:image" content="https://corosim.com/og.png">
 <script>
 // Shared patients used to live at corosim.com/#s=…; the simulator is now at /sim/, so hand the hash on before anything draws.
 if (/^#s=/.test(location.hash)) location.replace("sim/" + location.hash);
 </script>
+<script>try{var t=localStorage.getItem("corosim-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Doto:wght@400;800&display=swap">
 <link rel="stylesheet" href="/src/style.css">
 <link rel="stylesheet" href="/src/home.css">
 </head>
 <body class="home">
 <canvas id="art" class="art" aria-label="A heart as a thermogram: stippled, its vessels hot against the muscle"></canvas>
-<div id="home-ai" class="home-ai"></div>
+<header id="home-top" class="shell-head home-top"></header>
 <main class="home-main">
   <header class="home-head">
     <h1>CoroSim</h1>
-    <p class="kind">3D Coronary Vasculature Simulator</p>
+    <p class="kind">The future of cardiac simulation</p>
   </header>
   <aside class="fact" id="fact" hidden>
     <p class="fact-k"><span>Did you know</span> <b id="fact-name"></b></p>
     <p class="fact-t" id="fact-text"></p>
   </aside>
-  <nav class="doors" aria-label="Pages">
-    <a href="sim/">Simulator</a>
-    <a href="game/">Find the culprit</a>
-    <a href="ekg/">EKG</a>
-    <a href="cath/">Cath lab</a>
-    <a href="structural/">Structural</a>
-    <a href="echo/">Echo</a>
-  </nav>
   <aside class="corner">
     <div class="legend"><div class="bar" id="bar"></div><div class="lg"><span>Muscle</span><span>Vessels</span></div></div>
     <a class="privacy" href="privacy.html">Privacy</a>
   </aside>
 </main>
+<div class="story">
+<div class="burst" aria-hidden="true"><i class="b1"></i><i class="b2"></i></div>
+<div class="story-in">
+  <section class="lede">
+    <h2>A teaching simulator for the heart.</h2>
+    <p>Block a coronary artery and the muscle, the 12-lead and the pressures respond. Then treat.</p>
+  </section>
+  <figure><img src="shots/sim.png" alt="The simulator with a 95 percent stenosis in the LAD marked on the 3D coronary tree, and the Primary PCI button ready under Treat" width="1800" height="868" loading="lazy"></figure>
+
+  <section class="tool">
+    <div class="txt"><h2>The numbers behind the picture.</h2><p>Aortic, ventricular and atrial pressures, pressure-volume loops, cardiac output and oxygen delivery, all from the same patient.</p><a href="sim/">Open the simulator</a></div>
+    <figure><img src="shots/hemo.png" alt="Live hemodynamics: left and right heart pressure traces, a pressure-volume loop, and the hemodynamics and oxygen tables" width="1800" height="953" loading="lazy"></figure>
+  </section>
+  <section class="tool flip">
+    <div class="txt"><h2>Tracings on real paper.</h2><p>Rhythms, blocks, ischemia and the patterns that imitate it, each with what to look for on the tracing.</p><a href="ekg/">Open the EKG</a></div>
+    <figure><img src="shots/ekg.png" alt="The EKG page: a 12-lead tracing on paper beside the rhythm library" width="1800" height="1250" loading="lazy"></figure>
+  </section>
+  <section class="tool">
+    <div class="txt"><h2>The angiogram and the pressure wire.</h2><p>Inject dye and watch it fill, then pull a wire back across the lesion and read the FFR.</p><a href="cath/">Open the cath lab</a></div>
+    <figure><img src="shots/cath.png" alt="The cath lab: an angiogram of the coronary tree with a pressure wire pullback" width="1800" height="1250" loading="lazy"></figure>
+  </section>
+  <section class="tool flip">
+    <div class="txt"><h2>Valve and congenital lesions.</h2><p>Pick a lesion and read the pressures, saturations, and pressure-volume loops it produces.</p><a href="structural/">Open structural</a></div>
+    <figure><img src="shots/structural.png" alt="The structural page showing tricuspid atresia: a 3D heart colored by oxygen saturation, with catheter data, valve grades and pressure-volume loops" width="1800" height="1150" loading="lazy"></figure>
+  </section>
+  <section class="tool">
+    <div class="txt"><h2>Standard echo views, with the probe on the heart.</h2><p>See where the probe goes and which way it looks, beside a real open-licensed echo loop of the view.</p><a href="echo/">Open the echo atlas</a></div>
+    <figure><img src="shots/echo.png" alt="The echo atlas: the probe on the 3D heart beside a real parasternal long axis loop" width="1800" height="1250" loading="lazy"></figure>
+  </section>
+  <section class="tool flip">
+    <div class="txt"><h2>Simulated patients in your chat.</h2><p>Connect Claude and ask for a patient, a rhythm or a treatment. The tracing and the 3D heart appear right in the conversation.</p></div>
+    <figure><img src="shots/claude.png" alt="Claude loading the CoroSim EKG tool for a request to show torsades de pointes, with the 12-lead tracing in the chat" width="1800" height="1220" loading="lazy"></figure>
+  </section>
+
+  <footer class="story-foot"><p>CoroSim is an educational simulation, not a medical device. Anatomy and waveforms are schematic, model constants are assumptions, and nothing here has been clinically validated or is for clinical decisions.</p><a href="privacy.html">Privacy</a></footer>
+</div>
+</div>
 <script type="module" src="/src/home.ts"></script>
 </body>
 </html>

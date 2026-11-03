@@ -19,7 +19,10 @@ export function dockUi() {
 }
 /** Put the patient editor's groups in their tabs and wire the tab buttons (arrow keys move between tabs). */
 export function mountDock(mounts: Record<MountId, HTMLElement>) {
-  $("dpane-patient").append(mounts.patient); $("dpane-valves").append(mounts.valves); $("dpane-pericardium").append(mounts.pericardium); $("dpane-support").append(mounts.support);
+  $("dpane-patient").append(mounts.patient); $("dpane-valves").append(mounts.valves); $("dpane-pericardium").append(mounts.pericardium);
+  // the Support tab's sections have their own rows (sim/index.html); the playground's controls fill the ones the page does not own
+  $("vol-mount").append(mounts.volume); $("vent-mount").append(mounts.ventilation);
+  $("dev-iabp").append(mounts.iabp); $("dev-impella").append(mounts.impella); $("dev-ecmo").append(mounts.ecmo);
   const all = tabs();
   for (const b of all) {
     b.addEventListener("click", () => setDockTab(b.dataset.tab!));

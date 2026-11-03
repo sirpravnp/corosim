@@ -1,5 +1,5 @@
 /** The "Hemodynamics" panel: the catheter-lab numbers as a compact table. Draws only; computes nothing. */
-import type { HemoNumbers, HemoSource, Saturations } from "../sim/hemoSource";
+import type { HemoNumbers, HemoPanelExtras, HemoSource, Saturations } from "../sim/hemoSource";
 import type { Panel, PanelDef } from "./panel";
 import { snapshots } from "./snapshots";
 
@@ -15,8 +15,8 @@ function triple(s: number, d: number, m: number): string {
 }
 
 /** Label/value rows, in catheter-report order. Pure, so tests can check them. */
-export function numberRows(n: HemoNumbers, s: Saturations): [string, string][] {
-  return [
+export function numberRows(n: HemoNumbers, s: Saturations, extra?: HemoPanelExtras): [string, string][] {
+  const rows: [string, string][] = [
     ["HR", fmt(n.hr)],
     ["BP s/d (mean)", triple(n.systolic, n.diastolic, n.map)],
     ["CVP", fmt(n.cvp)],
@@ -27,12 +27,23 @@ export function numberRows(n: HemoNumbers, s: Saturations): [string, string][] {
     ["CO / CI", Number.isFinite(n.co) || Number.isFinite(n.ci) ? `${fmt(n.co, 1)} / ${fmt(n.ci, 1)}` : DASH],
     ["SVR (WU)", fmt(n.svr, 1)],
     ["PVR (WU)", fmt(n.pvr, 1)],
-    ["LVEF", pct(n.lvEf)],
+    ["CPP (DBP − LVEDP)", fmt(n.diastolic - n.lvedp)],
+    ["LVEF (chamber)", pct(n.lvEf)],
     ["RVEF", pct(n.rvEf)],
     ["Qp:Qs", Number.isFinite(n.qpQs) ? n.qpQs.toFixed(2) : DASH],
     ["SpO₂", pct(s.spo2)],
     ["SvO₂", pct(s.svo2)],
   ];
+  if (extra) {
+    const i = rows.findIndex(([k]) => k === "CPP (DBP − LVEDP)");
+    rows.splice(i + 1, 0, ["Coronary driving P", fmt(extra.coronaryDrivingPressure)]);
+    const j = rows.findIndex(([k]) => k === "LVEF (chamber)");
+    rows.splice(j + 1, 0,
+      ["LVEF (aortic valve)", pct(extra.lvEfEcho)],
+      ["LVEF (Fick)", extra.lvEfFick == null ? DASH : pct(extra.lvEfFick)],
+    );
+  }
+  return rows;
 }
 
 /**
@@ -51,13 +62,23 @@ export function ectopyRow(n: HemoNumbers): { label: string; value: string; note:
  * The one value per row of `numberRows` that a delta compares (BP: the mean; PA: the mean; CO / CI: CO), in the same
  * order, with the decimals the row shows. Fractions (EF, saturation) are in percentage points.
  */
-export function deltaBasis(n: HemoNumbers, s: Saturations): { value: number; digits: number; unit: string }[] {
+export function deltaBasis(n: HemoNumbers, s: Saturations, extra?: HemoPanelExtras): { value: number; digits: number; unit: string }[] {
   const pt = (x: number) => ({ value: x * 100, digits: 0, unit: " pts" });
-  return [
+  const base = [
     { value: n.hr, digits: 0, unit: "" }, { value: n.map, digits: 0, unit: "" }, { value: n.cvp, digits: 0, unit: "" },
     { value: n.pa.mean, digits: 0, unit: "" }, { value: n.pcwp, digits: 0, unit: "" }, { value: n.lvedp, digits: 0, unit: "" },
     { value: n.rvedp, digits: 0, unit: "" }, { value: n.co, digits: 1, unit: "" }, { value: n.svr, digits: 1, unit: "" },
-    { value: n.pvr, digits: 1, unit: "" }, pt(n.lvEf), pt(n.rvEf), { value: n.qpQs, digits: 2, unit: "" }, pt(s.spo2), pt(s.svo2),
+    { value: n.pvr, digits: 1, unit: "" }, { value: n.diastolic - n.lvedp, digits: 0, unit: "" }, pt(n.lvEf), pt(n.rvEf), { value: n.qpQs, digits: 2, unit: "" }, pt(s.spo2), pt(s.svo2),
+  ];
+  if (!extra) return base;
+  const i = 10;
+  return [
+    ...base.slice(0, i + 1),
+    { value: extra.coronaryDrivingPressure, digits: 0, unit: "" },
+    ...base.slice(i + 1, i + 2),
+    pt(extra.lvEfEcho),
+    { value: (extra.lvEfFick ?? NaN) * 100, digits: 0, unit: " pts" },
+    ...base.slice(i + 2),
   ];
 }
 
@@ -116,15 +137,16 @@ export const numbersPanel: PanelDef = {
       setSource(s) { src = s; last = ""; },
       draw() {
         const n = src.numbers(), sat = src.saturations(), snap = snapshots.selected();
-        const rows = numberRows(n, sat);
-        const snapRows = snap ? numberRows(snap.numbers, snap.saturations) : null;
+        const extra = "panelExtras" in src ? (src as { panelExtras: () => HemoPanelExtras }).panelExtras() : undefined;
+        const rows = numberRows(n, sat, extra);
+        const snapRows = snap ? numberRows(snap.numbers, snap.saturations, snap.extras) : null;
         const ect = ectopyRow(n);
         const key = badgeText(src.kind) + (snap ? `#${snap.id}` : "") + rows.map(r => r[1]).join("|") + (ect ? `|${ect.value}|${ect.note}` : "");
         if (key === last) return; // numbers change at beat rate; skip identical frames
         last = key;
         badge.textContent = badgeText(src.kind);
         badge.title = "Beat-by-beat engine";
-        const lb = deltaBasis(n, sat), sb = snap ? deltaBasis(snap.numbers, snap.saturations) : null;
+        const lb = deltaBasis(n, sat, extra), sb = snap ? deltaBasis(snap.numbers, snap.saturations, snap.extras) : null;
         const hr = document.createElement("tr");
         if (snap) {
           for (const t of ["", "Live", snap.label, "Δ"]) { const th = document.createElement("th"); th.textContent = t; hr.append(th); }

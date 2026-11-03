@@ -7,8 +7,9 @@
   --accent: #b8372e; --accent-ink: #fff; --range: #d4574d;
   --ok: #7fc69a; --warn: #e0a447; --bad: #ff6b5e; --down: #3d8bff;
   --limb: #6aa7ff; --chest: #ffb36a; --vec: #f2c14e;
-  --font-ui: "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --font-data: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --font-ui: "Hanken Grotesk", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-data: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --font-readout: "Doto", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: light) {
@@ -30,7 +31,7 @@
 [hidden] { display: none !important; }
 html { background: var(--bg); }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font-ui); }
-.app { max-width: 1440px; margin: 0 auto; padding: 0 20px 40px; }
+.app { max-width: 1680px; margin: 0 auto; padding: 0 20px 40px; }
 button { padding: 8px 11px; font: 600 13px/1 var(--font-ui); letter-spacing: 0; color: var(--ink); background: var(--panel); border: 1px solid var(--sh-line); border-radius: 8px; cursor: pointer; }
 button:hover { background: var(--sh-hover); border-color: var(--sh-line-strong); color: var(--ink); }
 button.on, button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
@@ -100,7 +101,9 @@ button.dd-btn[aria-expanded="true"]::after { transform: translateY(2px) rotate(-
 .meas { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); border: 1px solid var(--sh-line); background: var(--panel); }
 .meas div { padding: 8px 10px; border-right: 1px solid var(--rule-light); border-bottom: 1px solid var(--rule-light); }
 .meas b { display: block; font: 600 12px/1 var(--font-ui); letter-spacing: 0; color: var(--muted); margin-bottom: 5px; }
-.meas span { font: 15px/1.2 var(--font-data); font-variant-numeric: tabular-nums; }
+.meas span { font: 400 14px/1.3 var(--font-data); font-variant-numeric: tabular-nums; }
+.meas span i { font: 700 26px/1 var(--font-readout); font-style: normal; letter-spacing: 0.02em; }
+.meas span em { font-style: normal; font-size: 12px; margin-left: 4px; opacity: 0.75; }
 .meas .bad { color: var(--bad); } .meas .warn { color: var(--warn); }
 .stmap { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); border: 1px solid var(--sh-line); }
 .stmap.wide { grid-template-columns: repeat(15, minmax(0, 1fr)); }

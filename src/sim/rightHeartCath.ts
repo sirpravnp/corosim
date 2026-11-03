@@ -12,8 +12,9 @@
  *  - Mixed venous saturation for shunt calculation, Flamm: SvO2 = (3*SVC + IVC)/4.
  *  - Step-up (jump in saturation between consecutive sites): atrial = RA - mixed venous >= 7 %; ventricular = RV - RA >= 5 %;
  *    great vessel = PA - RV >= 5 %. The level of the most proximal step-up found is `stepUp.level`.
- *  - Fick systemic flow  Qs = VO2 / (CaO2 - CmvO2), arterial = pre-ductal (aortic) sat, venous = Flamm mixed venous.
- *    Fick pulmonary flow Qp = VO2 / (CpvO2 - CpaO2), pulmonary vein = the PV node saturation (assumed 0.98 if absent), PA = PA sat.
+ *  - Fick systemic flow  Qs = VO2 / (CaO2 - CmvO2), arterial = pre-ductal (aortic) sat. Mixed venous content is implied by the
+ *    assumed VO2 and the source's systemic flow (CaO2 - VO2/CO), matching the oxygen balance; Flamm SVC/IVC oximetry is still reported separately.
+ *    Fick pulmonary flow Qp = VO2 / (CpvO2 - CpaO2), pulmonary vein = `satLung` end-capillary content (not the PV node's mixed saturation), PA = PA sat.
  *    Qp:Qs = Qp / Qs by Fick (equivalent to (SaO2 - SmvO2)/(SpvO2 - SpaO2)).
  *    VO2 is the source's (`saturations().vo2`), i.e. assumed, as in a cath lab without a metabolic cart.
  *  - Thermodilution CO = the source's `numbers().co` (the flow a thermodilution curve in the PA reports). Unreliable with
@@ -154,12 +155,27 @@ export function pullback(beats: readonly BeatSummary[], n: HemoNumbers): Pullbac
   };
 }
 
+/** Pulmonary venous saturation for Fick Qp: end-capillary lung output, not the PV node's mixed blood. */
+export function pulmonaryVenousSat(s: Saturations): number {
+  const lung = s.satLung;
+  if (lung !== undefined && fin(lung)) return lung;
+  if (fin(s.node.PV)) return s.node.PV;
+  return DEFAULT_PV_SAT;
+}
+
 export function cardiacOutput(n: HemoNumbers, s: Saturations, opts: { hb?: number } = {}): CardiacOutput {
   const hb = haemoglobin(n, s, opts.hb), c = (x: number) => content(hb, x);
-  const mv = mixedVenous(s.node.SVC, s.node.IVC), pv = fin(s.node.PV) ? s.node.PV : DEFAULT_PV_SAT;
-  const caO2 = c(s.preductal), cmvO2 = c(mv), cpvO2 = c(pv), cpaO2 = c(s.node.PA);
+  const caO2 = c(s.preductal);
+  const cmvO2 = fin(n.co) && n.co > 0 ? caO2 - s.vo2 / n.co : c(mixedVenous(s.node.SVC, s.node.IVC));
+  const cpvO2 = c(pulmonaryVenousSat(s)), cpaO2 = c(s.node.PA);
   const qs = s.vo2 / (caO2 - cmvO2), qp = s.vo2 / (cpvO2 - cpaO2);
   return { fick: qs, thermodilution: n.co, qp, qs, qpQs: qp / qs, vo2: s.vo2, hb, caO2, cmvO2, cpvO2, cpaO2 };
+}
+
+/** LVEF from Fick stroke volume (Fick CO / rate) over LV end-diastolic volume. */
+export function fickLvEf(n: HemoNumbers, out: CardiacOutput, lvEdvMl: number): number | null {
+  if (!fin(n.hr) || n.hr <= 0 || !fin(lvEdvMl) || lvEdvMl <= 0 || !fin(out.fick) || out.fick <= 0) return null;
+  return (out.fick * 1000) / n.hr / lvEdvMl;
 }
 
 export function derive(n: HemoNumbers, o: CardiacOutput): Derived {

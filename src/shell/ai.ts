@@ -100,7 +100,7 @@ export function mountAi(host: HTMLElement, root: string, hooks?: AiHooks): AiHan
     if (st) {
       const who = st.lastClient ? st.lastClient.replace(/-/g, " ") : "Your AI";
       [text, tone] = st.state === "open"
-        ? st.clients ? [`${who} is working with this patient${st.lastTool ? ` · last: ${st.lastTool.replace("corosim_", "")}` : ""}.`, "ok"] : ["Ready. Ask your AI about this patient; it works here while this page is open, and on your saved patient when it is not.", ""]
+        ? st.clients ? [`${who} is working with this patient${st.lastTool ? `, last: ${st.lastTool.replace("corosim_", "")}` : ""}.`, "ok"] : ["Ready. Ask your AI about this patient; it works here while this page is open, and on your saved patient when it is not.", ""]
         : st.state === "replaced" ? ["Your AI is working with CoroSim in another tab.", "bad"]
         : st.state === "off" || st.state === "signedout" ? ["", ""] : [st.detail ?? "Connecting to the CoroSim server…", "warn"];
       const working = st.state === "open" && st.clients > 0;

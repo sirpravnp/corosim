@@ -2,6 +2,7 @@ import { buildTree, Tree } from "../anatomy/tree";
 import { Lesion, Graft, analyze, solveNetwork, Analysis } from "../physics/network";
 import { FLOW } from "../config/tree";
 import { ST, LEADS, ALL_LEADS, LeadName } from "../config/ecg";
+import { ARRHYTHMIA } from "../config/arrhythmia";
 import { stLevelVec, Beat } from "../physics/ecg";
 import { assess, Assessment } from "../physics/advice";
 import { Treated, untreated, applyProcedure } from "../physics/revasc";
@@ -35,7 +36,7 @@ import type { Pericardium } from "../physics/core/pericardium";
 import { Thorax } from "../physics/core/thorax";
 import type { FromModelOptions } from "../physics/core/fromModel";
 import { THORAX } from "../config/thorax";
-import { alternansAmplitude } from "../config/pericardium";
+import { alternansAmplitude, PERICARDIUM } from "../config/pericardium";
 import { IABP } from "../config/devices";
 import { SwitchableImpella, DevicesReadout } from "./coreDevices";
 import { PatientSpec, DeviceSpec, HeartSpec, PericardiumSpec, FluidSpec, VentilationSpec, normalizePatient, effectiveDevices, DEFAULT_IMPELLA, DEFAULT_IABP } from "./patient";
@@ -48,6 +49,9 @@ import type { Model } from "../physics/structural";
 import { PATIENTS } from "../config/structural";
 import { ACS_CORE, AUTONOMIC_CORE } from "../config/acsCore";
 import { ischemiaFactors } from "../config/ischemia";
+import { regionalVentricles } from "../physics/regional";
+import { OxygenTransport, debtInjury, estimateMvo2MlMin, mvo2DemandScale, type OxygenRead } from "../physics/core/oxygen";
+import { oxygenatorSat } from "../physics/core/devices/ecmo";
 import { Normalized, Scenario, normalizeScenario, toScenario, supportSpec } from "./scenario";
 import { BeatRecord, computeMetrics, meanRate, Metrics } from "./metrics";
 import { ArrestState, ArrestDrug, CprState, RhythmClass, ShockRecord, ShockResult, Rng, createArrest, createRng, step as arrestStep, shock as arrestShock, give as arrestGive, setCpr as arrestSetCpr, perfusion as cprPerfusion, shockDeathStep } from "./arrest";
@@ -56,6 +60,7 @@ import { ARREST_SIM } from "../config/arrestSim";
 /** Drug and volume changes ramp in over seconds instead of stepping, so interventions play out as transients. */
 const DRUG_TAU = 8, VOLUME_TAU = 10;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+const finiteOr = (v: number, fallback: number) => (Number.isFinite(v) ? v : Number.isFinite(fallback) ? fallback : 0);
 const WARM_CHUNK = 12 * 0.02; // s of reflex warm-up between yields of a deferred build: whole sub-steps (Simulation.DT), so the chunking does not change the numbers
 const MAX_HISTORY = 20000; // beats kept for metrics (~3 h at 70 bpm)
 
@@ -133,6 +138,24 @@ export class Simulation {
   /** Why the patient died: the arrest machine's no-flow clock, or refractory shock (pressure held very low). Null while alive. */
   deathCause: "noFlow" | "shock" | null = null;
   private shockS = 0; // seconds the pressure has been below the shock-death line
+  private emptyCircMin = 0;
+  /** The pressure part of the pulse check (ARREST_SIM.pulsePressure): true while the arterial pressure is too low to feel a pulse, with hysteresis. */
+  private noPulse = false;
+  /**
+   * True during `warmup()`: the reflexes settle from the build, which has none of them (a heavy bleed at build starts with an empty
+   * circulation that the venous tone then fills over seconds). A pulse lost to that start is not an arrest and its low pressure is not
+   * shock: the pressure check, a new PEA and the shock clock wait for the warm-up to end. A rhythm that is itself an arrest (VF,
+   * asystole, pulseless VT) is still recognised.
+   */
+  private warming = false;
+  private pulseTimer = 0;
+  /**
+   * True while the patient is critical (in arrest, pulseless, or MAP below the refractory-shock line; ARREST_SIM.critical): the clinical
+   * clock then runs in real time, whatever `speed` or the `minutes` a caller asks for (see `step`), so every death clock counts clinical seconds.
+   */
+  critical = false;
+  /** Whether `step` slows the clinical clock to real time while the patient is critical (default). A game that keeps its own compressed clock (the Cases mode) turns it off. */
+  realTimeWhenCritical = true;
   private arrestRng: Rng = createRng(1);
   private shockNoArrest: ShockRecord | null = null;
   private shockCount = 0;
@@ -144,8 +167,9 @@ export class Simulation {
   onBeat?: (b: BeatRecord) => void;
 
   /**
-   * Which engine computes the circulation. "legacy" (default) is `circulation()` + `BeatHemodynamics`, untouched. "core" runs the
-   * ACS patient on the core engine (`LiveHeart`), see the section "Core engine" below. Takes effect at the next `reset()`.
+   * Which engine computes the circulation. "core" (default) runs the ACS patient on the core engine (`LiveHeart`), see the
+   * section "Core engine" below. "legacy" is `circulation()` + `BeatHemodynamics`, kept for comparison and regression fixtures
+   * via explicit `engine: "legacy"`. Takes effect at the next `reset()`.
    */
   engine: EngineKind;
   /** The live heart of the core engine (undefined with "legacy"). */
@@ -186,6 +210,13 @@ export class Simulation {
   private fluidModel?: FluidCompartments;
   private fluidSpec: FluidSpec = {};
   private fluidP: { pa: number; pv: number; pcwp: number; pap: number } | null = null; // smoothed mean aortic and venous pressure the compartments read
+  /**
+   * Oxygen-in-time (E6) on the core path: content per node, lactate, myocardial O₂ debt. Undefined with the legacy engine.
+   * Advances on each completed live beat (transport) and on clinical minutes (lactate / debt).
+   */
+  private oxygenModel?: OxygenTransport;
+  /** Last beat's rough MVO₂ estimate (ml/min) for coronary demand scaling; NaN until a beat lands. */
+  private lastMvo2 = NaN;
   private delta = NaN; // s: live time = stream time + delta, set when the first beat is aligned
   private fed = new WeakSet<Beat>();
   private fx: AutonomicEffects = NEUTRAL_FX;
@@ -195,7 +226,7 @@ export class Simulation {
   private base!: Circulation; // circulation() of the legacy model: the fractions and demand the core circ borrows
 
   constructor(input: Scenario = {}, opts: { engine?: EngineKind; deferCore?: boolean } = {}) {
-    this.engine = opts.engine ?? "legacy";
+    this.engine = opts.engine ?? "core";
     this.defer = !!opts.deferCore;
     this.mod = {
       rate: (t) => (this.paced() ? 1 : this.autonomic.hrScaleAt(t)),
@@ -208,9 +239,9 @@ export class Simulation {
   reset(input: PatientSpec = {}, opts: { settled?: boolean; warmup?: number } = {}) {
     const { scenario, warnings } = normalizeScenario(input);
     this.lastReset = { input: JSON.parse(JSON.stringify(input)), opts: { ...opts } };
-    this.arrest = null; this.dead = false; this.deathCause = null; this.shockS = 0; this.shockNoArrest = null; this.shockCount = 0; this.arrestRng = createRng((scenario.seed ^ ARREST_SIM.seedSalt) >>> 0);
+    this.arrest = null; this.dead = false; this.deathCause = null; this.shockS = 0; this.emptyCircMin = 0; this.noPulse = false; this.pulseTimer = 0; this.critical = false; this.shockNoArrest = null; this.shockCount = 0; this.arrestRng = createRng((scenario.seed ^ ARREST_SIM.seedSalt) >>> 0);
     this.job = null; this.building = null; this.jobWarm = 0;
-    this.live = undefined; this.fluidModel = undefined; this.liveSeen = false;
+    this.live = undefined; this.fluidModel = undefined; this.oxygenModel = undefined; this.lastMvo2 = NaN; this.liveSeen = false;
     this.n = scenario; this.warnings = warnings;
     this.support = { ...scenario.support }; this.patient = this.ownPatient(scenario.patient); this.grafts = [];
     this.perfusingRhythm = this.isPerfusingRhythm(this.patient.rhythm) ? this.patient.rhythm : "sinus";
@@ -338,7 +369,33 @@ export class Simulation {
       if (patch.patient?.rhythm !== undefined || scenario.arrhythmiaTendency === 0) this.arrhythmia.terminate(this.t); // setting the rhythm (or forbidding arrhythmias) ends a running VT or VF: the teacher's override until B4 brings the shock
     }
     this.autonomic.controls = { ...scenario.autonomic };
+    if (patch.seed !== undefined) {
+      if (!Number.isFinite(patch.seed)) {
+        this.warnings = [...this.warnings, "seed is not a number; ignored"];
+        this.n = { ...this.n, seed: prev.seed };
+      } else {
+        const seed = Math.trunc(patch.seed) >>> 0;
+        this.n.seed = seed;
+        if (seed !== prev.seed) this.reseedRandom(seed);
+      }
+    }
     if (anatomyChanged) { this.grafts = []; this.rebuildAnatomy(); } else this.resolveCoronaries(true);
+  }
+
+  /** Reseed every random stream after `apply({ seed })`. */
+  private reseedRandom(seed: number) {
+    const s = seed >>> 0;
+    this.arrestRng = createRng((s ^ ARREST_SIM.seedSalt) >>> 0);
+    this.stream.reseed(s);
+    this.autonomic = new Autonomic(s, this.engine === "core" ? { ...AUTONOMIC, ...AUTONOMIC_CORE } : AUTONOMIC);
+    this.autonomic.controls = { ...this.n.autonomic };
+    if (this.engine === "core") {
+      const e = new Ectopy(s, this.n.ectopyTendency);
+      this.stream.ectopy = e;
+      this.arrhythmia = this.stream.arrhythmia = new Arrhythmia(s, e, this.n.arrhythmiaTendency);
+      this.arrhythmia.potassium = this.n.electrolytes.potassium;
+      this.arrhythmia.magnesium = this.n.electrolytes.magnesium;
+    }
   }
 
   /** The patient as this engine can run it: EKG-library rhythms (B2) run on the core engine only; the legacy engine runs sinus and warns. */
@@ -392,7 +449,8 @@ export class Simulation {
   /** ECG injury vector and T-wave boost for the strip, from the current ischemia. */
   ecgInputs() {
     const g = globalSeverity(ischemicBurden(this.sites, this.sev));
-    return { injury: injuryVector(this.sites, this.sev, this.transmural), tBoost: ST.tBoost * g };
+    const potassium = this.arrhythmia?.potassium ?? ARRHYTHMIA.potassium.normal;
+    return { injury: injuryVector(this.sites, this.sev, this.transmural), tBoost: ST.tBoost * g, potassium };
   }
 
   /**
@@ -404,9 +462,33 @@ export class Simulation {
     if (this.job && !this.inJob) return 0; // the core engine is still being built: the clock holds
     if (this.dead) return 0; // death freezes the patient (B4b): nothing evolves until restartPatient() / reset()
     const total = opts.minutes ?? dt * this.speed * this.minutesPerSecond;
-    let left = dt;
-    while (left > 1e-9) { const h = Math.min(left, Simulation.DT); this.sub(h, dt > 0 ? (total * h) / dt : 0); left -= h; }
-    return total;
+    let left = dt, used = 0;
+    while (left > 1e-9) {
+      const h = Math.min(left, Simulation.DT);
+      let m = dt > 0 ? (total * h) / dt : 0;
+      // a critical patient's clock runs in real time (at most one clinical second per simulated second), whatever the speed, and a dead one's stops
+      if (m > 0 && this.dead) m = 0;
+      else if (m > 0 && this.realTimeWhenCritical && (this.critical || this.volumeLag() > ARREST_SIM.critical.volumeLagMl)) m = Math.min(m, h / 60); // nor may it run ahead of the volume the heart can be given or drained
+      const fill = this.realTimeWhenCritical && this.sac() ? this.periSpec?.effusionRateMlMin ?? 0 : 0;
+      if (m > 0 && fill > 0) m = Math.min(m, (PERICARDIUM.maxFillMlPerS * h) / fill); // nor fill the pericardium faster than the heart can follow
+      this.sub(h, m); used += m; left -= h;
+    }
+    return used;
+  }
+
+  /**
+   * Let `minutes` of clinical time pass (a procedure's delay): the heart runs on, and while the patient is critical the clock runs in real
+   * time, so the wait takes more simulated seconds (at most ARREST_SIM.critical.maxWaitS). Stops early at death. Returns the clinical minutes that passed.
+   */
+  private waitClinical(minutes: number): number {
+    let done = 0, simS = 0;
+    while (done < minutes - 1e-9 && !this.dead) {
+      const normal = !(this.critical && this.realTimeWhenCritical), chunk = normal ? Math.min(30, (minutes - done) / this.minutesPerSecond) : Math.min(30, (minutes - done) * 60);
+      if (!normal && simS >= ARREST_SIM.critical.maxWaitS) break;
+      done += this.step(Math.max(chunk, Simulation.DT), { minutes: Math.min(minutes - done, normal ? chunk * this.minutesPerSecond : Infinity) });
+      simS += chunk;
+    }
+    return done;
   }
 
   /** The doses the receptor-level drugs are heading for (core engine): the support dials, the scenario's beta-blocker and its "vasopressor" dial (above 0 an alpha agonist, below 0 a nitroprusside-type vasodilator). */
@@ -419,8 +501,11 @@ export class Simulation {
     };
   }
 
-  private slew(h: number) {
-    const a = 1 - Math.exp(-(h * this.speed) / DRUG_TAU), v = 1 - Math.exp(-(h * this.speed) / VOLUME_TAU);
+  private slew(h: number, minutes: number) {
+    // Tau is in speed-scaled simulated seconds, the speed-1 calibration. Clinical minutes convert
+    // back by minutesPerSecond, so a faster playback covers the same ramp in the same clinical time.
+    const scaled = minutes > 0 ? minutes / this.minutesPerSecond : h * this.speed;
+    const a = 1 - Math.exp(-scaled / DRUG_TAU), v = 1 - Math.exp(-scaled / VOLUME_TAU);
     for (const k of ["betaBlocker", "atropine", "vasopressor"] as const) this.drug[k] += (this.n.drugs[k] - this.drug[k]) * a;
     const loss0 = this.bloodLoss, fluid0 = this.fluidGiven;
     this.bloodLoss += (this.n.bloodLoss - this.bloodLoss) * v;
@@ -463,15 +548,16 @@ export class Simulation {
       this.clinicalMinutes += minutes;
       if (ischemicBurden(this.sites, this.sev) > 0.005) this.ischemicMinutes += minutes;
     }
-    this.slew(h);
+    this.slew(h, minutes);
     if (this.engine === "core") { this.pk.step(minutes, this.drugDoses()); if (this.fluidModel) this.fluidModel.diuretic = this.pk.effects().diuretic; }
     if (this.fluidModel) this.stepFluids(minutes);
+    if (this.oxygenModel && minutes > 0) this.stepOxygenClinical(minutes);
     this.updateCirculation();
     const ctl = this.autonomic.controls;
     ctl.betaBlock = this.engine === "core" ? this.pk.effects().betaBlock : this.drug.betaBlocker;
     ctl.vagalBlock = Math.max(this.drug.atropine, this.support.atropine ? 1 : 0);
-    ctl.volumeDeficit = Math.max(0, this.fluidModel ? 1 - this.fluidModel.bloodVolume / this.bv0 : this.bloodLoss); // core: the blood volume short of the patient's own, whatever its cause or refill
-    this.autonomic.step(h);
+    ctl.volumeDeficit = finiteOr(Math.max(0, this.fluidModel ? 1 - this.fluidModel.bloodVolume / this.bv0 : this.bloodLoss), ctl.volumeDeficit); // core: the blood volume short of the patient's own, whatever its cause or refill
+    this.autonomic.step(minutes > 0 ? minutes / this.minutesPerSecond : h);
     this.stream.alternans = alternansAmplitude(this.sac()?.effusionMl, this.periSpec?.open);
     this.stream.ectopy?.update(minutes, weightedBurden(this.sites, this.sev, this.transmural), { sympathetic: this.fx.sympathetic, betaBlock: ctl.betaBlock, drugDrive: this.pk.effects().ectopyDrive });
     if (this.arrhythmia) {
@@ -482,7 +568,7 @@ export class Simulation {
     this.stream.extend(this.t, this.rstate, this.mod);
     this.stream.prune(this.t);
     this.t += h;
-    if (this.live) { this.coreStep(h, minutes); if (this.liveSeen) { this.arrestTick(h); this.shockTick(h); } } else for (const b of this.stream.drain(this.t)) this.handleBeat(b);
+    if (this.live) { this.coreStep(h, minutes); if (this.liveSeen) { if (!this.warming) this.pressureTick(h); this.arrestTick(h); if (!this.warming) { this.shockTick(h); this.emptyCircTick(minutes); } this.criticalTick(); } } else for (const b of this.stream.drain(this.t)) this.handleBeat(b);
     // Coronary perfusion follows the pressure the heart actually generates (plus any balloon augmentation),
     // and demand follows what drugs and devices do to it.
     // core (E2): the aortic-equivalent pressure of the subendocardium from the beat's traces (diastolic pressure, diastolic time, LVEDP, intramyocardial
@@ -528,10 +614,12 @@ export class Simulation {
   //
   // The beat stream feeds `LiveHeart` (every beat, with its atrial event, ahead of time); the live heart is stepped with the
   // simulation's clock (live time = stream time + delta, delta fixed when the first beat is aligned with the end of the warm-up).
-  // Mapping, all constants in config/acsCore.ts and config/ischemia.ts:
-  //  - ischemia -> ventricles: with L, R the ischemic (or scarred) fractions circulation() computes, LV Ees x max(0.2, 1 - 1.25 L),
-  //    RV Ees x max(0.2, 1 - 0.8 R), passive stiffness (the `a` of the end-diastolic curve) x (1 + 1.5 L), x (1 + 2 R)
-  //    (`LiveHeart.setVentricleFactors`, separate from the autonomic contractility, so they multiply);
+  // Mapping, all constants in config/acsCore.ts and config/ischemia.ts (E3 regional path):
+  //  - ischemia -> ventricles: coronary beds → `regionalVentricles` (core-native; same mass-weighted LV/RV fractions
+  //    `circulation()` used to feed A7). Each bed is a segment of LV or RV: active elastance α = Σ w·(1 − eesLoss·injury)
+  //    floored, dead volume Vdead = bulgeMl · Σ w·injury (`ElastanceChamber.setRegional`). Global Ees factors stay at 1;
+  //    passive stiffness still multiplies via `setVentricleFactors` (1 + stiffGain · fraction). Legacy engine keeps the
+  //    A7 global `ischemiaFactors(lv, rv)` cut. Autonomic contractility multiplies the design Ees separately;
   //  - autonomic -> engine: contractility x effects.contractility, resistance x effects.resistance (and the ischemic reflex terms
   //    circulation() has: x (1 + 0.2 sympathetic) x (1 - 0.12 vagal), and the vasopressor drug), venous tone 1 + 0.75 (vascular tone - rest)
   //    (the volume reflex reaches the veins through the vascular tone: core autonomic calibration `AUTONOMIC_CORE`, config/acsCore.ts; deficit = fraction of blood volume lost net of fluids); rate arrives as beats;
@@ -572,7 +660,7 @@ export class Simulation {
     }
     this.builtSig = sig; // the requested structure, so an identical request does not rebuild again
     if (this.defer) this.pushPatient(); // edits made while it was being built
-    for (let left = this.jobWarm; left > 1e-9; left -= WARM_CHUNK) { this.inJob = true; try { this.step(Math.min(WARM_CHUNK, left), { minutes: 0 }); } finally { this.inJob = false; } yield; } // the reflex loop settles with no clinical time passing
+    for (let left = this.jobWarm; left > 1e-9; left -= WARM_CHUNK) { this.inJob = true; this.warming = true; try { this.step(Math.min(WARM_CHUNK, left), { minutes: 0 }); } finally { this.inJob = false; this.warming = false; } yield; } // the reflex loop settles with no clinical time passing
     this.jobWarm = 0;
   }
 
@@ -706,6 +794,72 @@ export class Simulation {
     this.coRef = Math.max(sm.co, ARREST_SIM.minReferenceCoLpm);
     this.liveSeen = true;
     this.circ = this.coreCirc(this.base);
+    this.initOxygen(lb);
+  }
+
+  /** Create or refresh the E6 oxygen transport from the settled warm-up beat (seeded at the steady solve). */
+  private initOxygen(lb: LiveBeat) {
+    const live = this.live!;
+    const drop = this.lungSatDrop();
+    const m: Model = drop > 0 ? { ...live.model, patient: { ...live.model.patient, satLung: live.model.patient.satLung - drop } } : live.model;
+    const ox = this.oxygenModel ?? (this.oxygenModel = new OxygenTransport(m));
+    ox.setModel(m);
+    ox.setMap(this.map);
+    ox.seedSteady(lb.flows, this.oxygenStream(lb.flows, lb.interval));
+    this.lastMvo2 = estimateMvo2MlMin(lb.map, lb.strokeVolume, 60 / Math.max(lb.interval, 1e-3));
+    ox.advanceBeat(lb.flows, this.nodeVolumes(lb), lb.interval, this.oxygenStream(lb.flows, lb.interval));
+  }
+
+  /** VA-ECMO stream for the oxygen transport, or undefined when no circuit is running. Flow ml/s over the beat. */
+  private oxygenStream(flows: { fwd: Record<string, number>; bwd: Record<string, number> }, dt: number) {
+    const ec = this.ecmo;
+    if (!ec || !(dt > 0)) return undefined;
+    const ml = (flows.fwd.ecmo ?? 0) - (flows.bwd.ecmo ?? 0);
+    if (!(ml > 1e-6)) return undefined;
+    const from = NODE(ec.drain), to = NODE("DAO"), flow = ml / dt;
+    return { from, to, flow, oxygenate: (cIn: number, cap: number) => oxygenatorSat(cIn / cap, ec.sweep, ec.fio2) * cap };
+  }
+
+  /** Node volumes (ml) for the transport ODE: beat means when present, else the engine sample. */
+  private nodeVolumes(lb?: LiveBeat): Float64Array {
+    const live = this.live!, V = new Float64Array(NODES.length);
+    const sample = live.engine.sample().V;
+    for (let i = 0; i < NODES.length; i++) {
+      const name = NODES[i], st = lb?.v[name];
+      V[i] = st && Number.isFinite(st.mean) ? st.mean : sample[i] ?? live.model.start[i] ?? 50;
+    }
+    return V;
+  }
+
+  /** One completed beat into the E6 transport (content mixing; lactate waits for the clinical clock). */
+  private stepOxygenBeat(lb: LiveBeat) {
+    const ox = this.oxygenModel, live = this.live;
+    if (!ox || !live || !(lb.interval > 0)) return;
+    const drop = this.lungSatDrop();
+    if (drop > 0) ox.setModel({ ...live.model, patient: { ...live.model.patient, satLung: live.model.patient.satLung - drop } });
+    else ox.setModel(live.model);
+    ox.setMap(this.map);
+    ox.advanceBeat(lb.flows, this.nodeVolumes(lb), lb.interval, this.oxygenStream(lb.flows, lb.interval));
+  }
+
+  /** Clinical-minute lactate and per-bed myocardial O₂ debt from the coronary network's supply/demand ratios. */
+  private stepOxygenClinical(minutes: number) {
+    const ox = this.oxygenModel;
+    if (!ox) return;
+    const ratios: Record<string, number> = {};
+    for (const t of this.analysis?.cond.terminals ?? []) ratios[t.key] = t.ratio;
+    ox.setMap(this.map);
+    ox.advanceClinical(minutes, ratios);
+  }
+
+  /** Network severity with a soft E6 myocardial-debt overlay for regional elastance (see `debtInjury`). */
+  private sevWithOxygenDebt(): Record<string, number> {
+    const ox = this.oxygenModel, out: Record<string, number> = {};
+    for (const s of this.sites) {
+      const sev = this.sev[s.key] ?? 0;
+      out[s.key] = ox ? debtInjury(sev, ox.bedDebt(s.key)) : sev;
+    }
+    return out;
   }
 
   /**
@@ -758,10 +912,39 @@ export class Simulation {
   /** Slow inputs of the heart from the ischemia, the autonomic state, the drugs and the devices (see the mapping above). */
   private pushInputs() {
     const live = (this.building ?? this.live)!, K = ACS_CORE, fx = this.fx, rs = this.rstate, d = this.pk.effects();
-    live.setVentricleFactors(ischemiaFactors(this.base.lvIschemia, this.base.rvIschemia));
+    // E3: bed-mapped regional elastance owns active Ees + dead volume; stiffness factors stay on the A7 channel.
+    // E6 soft overlay: myocardial O₂ debt can raise injury above network severity (gain in config/oxygen.ts; 0 = E3-only).
+    // Safe fallback: if sites are empty (should not happen after init), keep the lumped ischemiaFactors cut.
+    if (this.sites.length) {
+      const sev = this.sevWithOxygenDebt();
+      const reg = regionalVentricles(this.sites, sev, this.scar);
+      live.setRegional(reg.lv, reg.rv);
+      live.setVentricleFactors({ lvEes: 1, rvEes: 1, ...reg.stiffness });
+    } else {
+      live.setRegional(null, null);
+      live.setVentricleFactors(ischemiaFactors(this.base.lvIschemia, this.base.rvIschemia));
+    }
     const resistance = fx.resistance * d.resistance * (1 + CIRC.sympatheticSvr * rs.sympathetic) * (1 - CIRC.vagalSvr * rs.vagal);
     const venousTone = (1 + K.venousToneGain * (fx.vascular - AUTONOMIC.restSympathetic)) * d.venousTone;
     live.setModifiers({ contractility: fx.contractility * d.contractility, resistance, venousTone, relax: d.relax });
+  }
+
+  /**
+   * Regional LV/RV elastance from coronary beds (E3), null on the legacy engine or before the heart is built.
+   * `active` is the ventricle's contractile scale α; `deadMl` the dyskinetic dead volume; `segments` the bed map.
+   */
+  regionalElastance() {
+    if (this.engine !== "core") return null;
+    const live = this.live ?? this.building;
+    return live ? live.regionalState() : null;
+  }
+
+  /**
+   * Oxygen-in-time state (E6): saturations, DO₂/VO₂, lactate, SCAI stage, myocardial O₂ debt. Null with the legacy engine
+   * or before the core heart has finished warming. Lactate is NaN-free once seeded (resting until low DO₂ accumulates).
+   */
+  oxygenState(): OxygenRead | null {
+    return this.engine === "core" ? this.oxygenModel?.read() ?? null : null;
   }
 
   /** One sub-step: hand over the new beats, set the slow inputs, move blood in or out, and advance the live heart to the simulation's clock. */
@@ -784,11 +967,11 @@ export class Simulation {
     this.pushDevices();
     this.pushInputs();
     const sac = this.sac(), pe = this.periSpec;
-    if (sac && pe) sac.set({ effusionRateMlS: h > 0 ? ((pe.effusionRateMlMin ?? 0) * minutes) / h : 0 }); // ml per clinical minute, on the clinical minutes this sub-step stands for
+    if (sac && pe) sac.set({ effusionRateMlS: h > 0 && sac.effusionMl < PERICARDIUM.maxEffusionMl ? ((pe.effusionRateMlMin ?? 0) * minutes) / h : 0 }); // stops at the sac's limit // ml per clinical minute, on the clinical minutes this sub-step stands for
     const th = this.thorax();
     if (th && this.ventSpec && (this.ventSpec.mode ?? "spontaneous") === "spontaneous") { th.set({ depth: this.autonomic.controls.respDepth }); th.setPhase(this.autonomic.phase, live.engine.t + dt); } // the pleural swing runs with the respiratory sinus arrhythmia of the baroreflex loop
     const q = Math.max(-ACS_CORE.maxVolumeRate, Math.min(ACS_CORE.maxVolumeRate, (this.targetVolume() - this.volApplied) / dt)); // ml/s, so the circulation holds the (ramped) volume
-    this.exchange!.set({ rate: q }); this.volApplied += q * dt;
+    this.exchange!.set({ rate: q }); this.exchange!.capLoss = !this.warming; this.volApplied += q * dt;
     live.step(dt);
     if (this.impella?.enabled || this.ecmo || this.sm.dev > 1e-3) this.sm.dev += (this.deviceFlowNow() - this.sm.dev) * (1 - Math.exp(-dt / ACS_CORE.deviceFlowTau));
     if (this.liveSeen) this.circ = this.coreCirc(this.base);
@@ -819,6 +1002,8 @@ export class Simulation {
     sm.sbp += (lb.systolic - sm.sbp) * a(tau); sm.dbp += (lb.diastolic - sm.dbp) * a(tau);
     this.liveSeen = true;
     this.diastolicBeat(lb, a(2));
+    if (!lb.pvc && lb.strength !== 0) this.lastMvo2 = estimateMvo2MlMin(lb.map, lb.strokeVolume, 60 / Math.max(lb.interval, 1e-3));
+    this.stepOxygenBeat(lb);
     const silent = lb.strength === 0; // a timing tick of VF or asystole (B2): time without a beat
     const rec: BeatRecord = {
       n: this.beatCount++, t: +(lb.t - this.delta).toFixed(3), interval: +lb.interval.toFixed(4), hr: silent ? 0 : 60 / lb.interval,
@@ -950,10 +1135,14 @@ export class Simulation {
     };
   }
 
-  /** Myocardial oxygen demand relative to the patient's own: the drug effects on the ventricle (`DEMAND`), times the unloading of the devices (`SUPPORT`). */
+  /**
+   * Myocardial oxygen demand relative to the patient's own: the drug effects on the ventricle (`DEMAND`), times the unloading of
+   * the devices (`SUPPORT`), times an E6 MVO₂ scale from the last beat's work (falls back to 1 when no beat yet).
+   */
   private coreDemand(): number {
     const K = SUPPORT, s = this.support;
-    return Math.max(0.5, this.pk.effects().demand * (1 - K.impellaDemand * +s.impella - K.iabpDemand * +s.iabp));
+    const base = this.pk.effects().demand * (1 - K.impellaDemand * +s.impella - K.iabpDemand * +s.iabp);
+    return Math.max(0.5, base * mvo2DemandScale(Number.isFinite(this.lastMvo2) ? this.lastMvo2 : null));
   }
 
   /** Flow the circulation gets from its pumps now, L/min: the Impella's (LV to aorta) and the ECMO circuit's (RA to descending aorta); the Impella RP is in series with the lungs and adds nothing. */
@@ -1012,6 +1201,7 @@ export class Simulation {
     fm.setDoses(f.given ?? []);
     fm.hemorrhage = f.hemorrhageMlMin ?? 0;
     fm.leak = f.capillaryLeak ?? 0;
+    fm.setLegRaise(!!f.legRaise);
   }
   private patchFluids(patch: PatientSpec) {
     this.fluidSpec = normalizePatient({ fluids: patch.fluids }).spec.fluids ?? {};
@@ -1071,7 +1261,7 @@ export class Simulation {
   rhythmClass(): { rhythmClass: RhythmClass; tachyarrhythmia: boolean } {
     if (this.engine !== "core") return { rhythmClass: "perfusing", tachyarrhythmia: false };
     const shown = this.shownRhythm(), r = libraryRhythm(shown.rs.rhythm)?.spec.rhythm, cpr = this.cprOutput();
-    const native = Math.max(0, this.outputFraction() - cpr), pulseless = native < ARREST_SIM.pulselessOutput;
+    const native = Math.max(0, this.outputFraction() - cpr), pulseless = native < ARREST_SIM.pulselessOutput || this.noPulse; // no flow, or no pressure to feel
     if (r?.kind === "vf") return { rhythmClass: "vf", tachyarrhythmia: false };
     if (r?.kind === "asystole") return { rhythmClass: "asystole", tachyarrhythmia: false };
     const rate = shown.episodeRate ?? ventRate(shown.rs);
@@ -1092,7 +1282,7 @@ export class Simulation {
   private arrestTick(h: number) {
     const c = this.rhythmClass();
     if (!this.arrest) {
-      if (c.rhythmClass === "perfusing") return;
+      if (c.rhythmClass === "perfusing" || (this.warming && c.rhythmClass === "pea")) return; // a warm-up's empty start is not an arrest (see `warming`)
       this.arrest = createArrest(c.rhythmClass);
     }
     const a = this.arrest, before = a.rhythmClass;
@@ -1102,12 +1292,48 @@ export class Simulation {
     this.pushCpr();
   }
 
+  /** How far (ml) the engine's blood volume lags what the fluid compartments hold (it follows at no more than ACS_CORE.maxVolumeRate ml/s); 0 without them. */
+  private volumeLag(): number {
+    if (!this.fluidModel || !this.live || !this.exchange) return 0;
+    const lag = Math.abs(this.targetVolume() - this.volApplied);
+    return Number.isFinite(lag) ? lag : 0;
+  }
+
+  /** The pressure half of the pulse check (ARREST_SIM.pulsePressure): MAP or systolic under the line for `holdS` loses the pulse; both back over the higher line for `holdS` restores it. */
+  private pressureTick(h: number) {
+    const P = ARREST_SIM.pulsePressure, map = this.map, sbp = this.sm.sbp, pp = sbp - this.sm.dbp, device = this.sm.dev > P.deviceLpm;
+    const flip = this.noPulse ? map >= P.mapAbove && sbp >= P.sbpAbove && (device || pp >= P.ppAbove) : !(map >= P.mapBelow && sbp >= P.sbpBelow && (device || pp >= P.ppBelow)); // a non-finite pressure counts as none
+    this.pulseTimer = flip ? this.pulseTimer + h : 0;
+    if (this.pulseTimer >= P.holdS) { this.noPulse = !this.noPulse; this.pulseTimer = 0; }
+  }
+
+  /** Whether the patient is critical now (ARREST_SIM.critical): in arrest or pulseless, in a sustained VT or VF episode, or MAP under the shock line (back out only at `exitMap`). */
+  private criticalTick() {
+    const C = ARREST_SIM.critical, k = this.arrhythmia?.current?.kind;
+    const arrested = this.arrest?.status === "arrest" || this.noPulse || k === "mono" || k === "poly" || k === "vf"; // a running VT plays out in real heartbeats, not compressed into seconds
+    this.critical = !this.dead && (arrested || (this.critical ? !(this.map >= C.exitMap) : !(this.map >= C.enterMap)));
+  }
+
   /** A perfusing patient whose pressure stays very low dies in refractory shock (the arrest clock only counts the pulseless). */
   private shockTick(h: number) {
     if (this.dead || this.arrest?.status === "arrest") return;
     const r = shockDeathStep(this.shockS, this.map, h);
     this.shockS = r.acc;
     if (r.dead) { this.dead = true; this.deathCause = "shock"; this.cprPump?.set({ peakMmHg: 0 }); }
+  }
+
+  private emptyCircTick(clinicalMin: number) {
+    if (this.dead || this.warming || this.engine !== "core" || !this.liveSeen || this.arrest?.status === "arrest") return;
+    const native = Math.max(0, this.outputFraction() - this.cprOutput());
+    const stressed = this.filling()?.stressed ?? Infinity;
+    const empty = native < ARREST_SIM.pulselessOutput && !(stressed > 1);
+    if (empty && clinicalMin > 0) this.emptyCircMin += clinicalMin;
+    else if (!empty) this.emptyCircMin = 0;
+    if (this.emptyCircMin >= 2) {
+      this.dead = true;
+      this.deathCause = "noFlow";
+      this.cprPump?.set({ peakMmHg: 0 });
+    }
   }
 
   private pushCpr() {
@@ -1199,7 +1425,7 @@ export class Simulation {
   }
 
   /** Let the reflex loop settle without returning beats. No clinical time passes, so no muscle is lost while settling. */
-  warmup(seconds: number) { if (this.job) this.jobWarm = Math.max(this.jobWarm, seconds); else this.step(seconds, { minutes: 0 }); } // while the core engine is being built, the warm-up follows the build
+  warmup(seconds: number) { if (this.job) this.jobWarm = Math.max(this.jobWarm, seconds); else { this.warming = true; try { this.step(seconds, { minutes: 0 }); } finally { this.warming = false; } } } // while the core engine is being built, the warm-up follows the build
 
   metrics(lastSeconds?: number): Metrics {
     const from = lastSeconds ? this.t - lastSeconds : 0;
@@ -1246,6 +1472,8 @@ export class Simulation {
     return {
       timeS: +this.t.toFixed(1),
       dead: this.dead, ...(this.deathCause ? { deathCause: this.deathCause } : {}),
+      /** True while the clinical clock runs in real time because the patient is critical (in arrest, pulseless, or MAP under the shock line). */
+      criticalTime: this.critical && this.realTimeWhenCritical,
       clinicalMinutes: Math.round(this.clinicalMinutes),
       lastBeat: last ?? null,
       rolling10s: { hr: r0(roll.hr), sbp: r0(roll.sbp), dbp: r0(roll.dbp), map: r0(roll.map), sv: r0(roll.sv), cardiacOutput: Number.isFinite(roll.cardiacOutput) ? +roll.cardiacOutput.toFixed(1) : null },
@@ -1259,7 +1487,7 @@ export class Simulation {
       ventricle: { ejectionFraction: +c.ejectionFraction.toFixed(2), lvInfarctFraction: +lvInfarctSize(this.sites, this.scar).toFixed(3), lvIschemia: +c.lvIschemia.toFixed(2), rvIschemia: +c.rvIschemia.toFixed(2), pulmonaryCongestion: +c.congestion.toFixed(2) },
       support: { ...supportSpec(this.support), deviceFlowLpm: +c.deviceFlow.toFixed(1), atropine: this.support.atropine || this.n.drugs.atropine >= 0.5 },
       circulationState: this.map < CIRC.shockMap ? "shock" : this.map < CIRC.hypotensionMap ? "hypotension" : "stable",
-      ischemicMassFraction: +cond.atRisk.toFixed(3),
+      ischemicMassFraction: +this.analysis.cond.terminals.reduce((a, t) => a + t.mass * t.severity, 0).toFixed(3),
       compromisedBeds: compromised.slice(0, 8),
       ffr: this.analysis.ffr.map((f, i) => ({ artery: this.n.lesions[i]?.segId, ffr: +f.toFixed(2) })),
       ...(this.engine === "core" ? { arrest: this.arrestState() } : {}),
@@ -1329,8 +1557,8 @@ export class Simulation {
   revascularize(kind: Procedure) {
     const first = this.n.lesionSpecs[0];
     if (!first) throw new Error("There is no lesion to treat.");
-    const lvBefore = lvInfarctSize(this.sites, this.scar), delay = PROCEDURE[kind].delayMin;
-    this.step(delay / this.minutesPerSecond, { minutes: delay }); // the wait, in heartbeats and clinical minutes
+    const lvBefore = lvInfarctSize(this.sites, this.scar), planned = PROCEDURE[kind].delayMin;
+    const delay = +this.waitClinical(planned).toFixed(1); // the wait, in heartbeats and clinical minutes (real time while the patient is critical)
     const lvAtArrival = lvInfarctSize(this.sites, this.scar);
     const lesion = this.n.lesions.find((l) => l.segId === first.artery) ?? null;
     const r = applyProcedure(kind, lesion, this.tree, this.n.seed + 11);

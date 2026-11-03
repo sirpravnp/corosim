@@ -149,7 +149,7 @@ describe("ischemic ectopy keeps working under a library rhythm, and switching rh
     for (const run of [a, b]) for (const x of run) expect(x.interval).toBeGreaterThan(0.25);
   });
   it("the legacy engine does not run library rhythms: it warns and stays in sinus rhythm", () => {
-    const s = new Simulation({ seed: 1, patient: { rhythm: "vt-mono" } });
+    const s = new Simulation({ seed: 1, patient: { rhythm: "vt-mono" } }, { engine: "legacy" });
     expect(s.patient.rhythm).toBe("sinus");
     expect(s.warnings.join(" ")).toMatch(/core engine only/);
   });

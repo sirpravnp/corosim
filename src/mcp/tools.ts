@@ -103,9 +103,9 @@ function clinicalMetrics(beats: BeatRecord[], seconds: number, autonomic: boolea
 }
 
 function runReport(ctx: ToolContext, seconds: number, beatsMode: string, maxBeats: number, autonomic = false) {
-  const { sim } = ctx, from = sim.t, beats = sim.run(seconds);
+  const { sim } = ctx, from = sim.t, c0 = sim.clinicalMinutes, beats = sim.run(seconds);
   const out: Record<string, unknown> = {
-    ranFromS: round(from), ranToS: round(sim.t), metrics: clinicalMetrics(beats, seconds, autonomic),
+    ranFromS: round(from), ranToS: round(sim.t), clinicalMinutesRun: round(sim.clinicalMinutes - c0), metrics: clinicalMetrics(beats, seconds, autonomic),
     timeCourse: trend(beats, from, sim.t), ...bedside(sim),
   };
   if (beatsMode === "all") out.beats = beatTable(beats, maxBeats);
@@ -132,7 +132,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: "corosim_set_scenario", title: "Build a patient", readOnly: false,
     description: `Replace the current patient with this scenario, then run a warm-up so the reflexes have settled. Returns the monitor, the 12-lead ECG, the guideline assessment and a grounded explanation, plus warnings listing anything that was clamped or dropped (read them: they tell you what actually ran). Use settled=false to watch an occlusion develop from a healthy start. The warm-up does not advance the infarct clock; corosim_run and corosim_adjust do (2 clinical minutes per simulated second), so a closed artery loses muscle as you run it. To put a library rhythm on the patient (flutter, SVT, blocks, VT, VF...) so its hemodynamics follow, set patient.rhythm (every corosim_ekg_list id works); to only see a tracing, use corosim_ekg_show. ${NOT_CLINICAL}`,
-    inputSchema: { type: "object", properties: { scenario: patientSchema, engine: { enum: ["legacy", "core"], description: "Hemodynamic engine for this patient. Omit to keep the current one (a new server starts on legacy). 'core' is the beat-by-beat engine and adds the Impella and IABP consoles (devices) to every report; slower." }, settled: { type: "boolean", description: "Start with ischemia already at its steady value (default true). False = ischemia develops over ~20 s." }, warmupSeconds: { type: "number", minimum: 0, maximum: 300, description: "Simulated seconds to run before returning (default 45)." } } },
+    inputSchema: { type: "object", properties: { scenario: patientSchema, engine: { enum: ["legacy", "core"], description: "Hemodynamic engine for this patient. Omit to keep the current one (a new server starts on core). 'core' is the beat-by-beat engine and adds the Impella and IABP consoles (devices) to every report. 'legacy' is the older circulation()+BeatHemodynamics path, kept for comparison." }, settled: { type: "boolean", description: "Start with ischemia already at its steady value (default true). False = ischemia develops over ~20 s." }, warmupSeconds: { type: "number", minimum: 0, maximum: 300, description: "Simulated seconds to run before returning (default 45)." } } },
     run({ sim }, a) {
       if (a.engine !== undefined && a.engine !== "legacy" && a.engine !== "core") throw new Error("engine must be legacy or core.");
       if (a.engine) sim.engine = a.engine as "legacy" | "core"; // takes effect at the reset below
@@ -157,7 +157,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "corosim_run", title: "Advance the simulation", readOnly: false,
-    description: `Run the current patient forward (the infarct clock runs: 2 clinical minutes per second) and return rate, pressures, stroke volume and ectopy, a time course, the monitor, ECG and guideline assessment at the end, and optionally the individual beats. ${NOT_CLINICAL}`,
+    description: `Run the current patient forward (the infarct clock runs: 2 clinical minutes per second, but only one clinical second per second while the patient is critical: in arrest, pulseless or MAP under 40; state.criticalTime says so) and return rate, pressures, stroke volume and ectopy, a time course, the monitor, ECG and guideline assessment at the end, and optionally the individual beats. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: { seconds: { type: "number", minimum: 1, maximum: 900, description: "Simulated seconds (default 60)." }, beats: { enum: ["none", "all"], description: "'all' adds a beat-by-beat table (decimated to maxBeats)." }, maxBeats: { type: "integer", minimum: 5, maximum: 500, description: "Row cap for the beat table (default 120)." }, autonomic: { type: "boolean", description: "Also return heart-rate variability and baroreflex-sensitivity statistics. Only for autonomic-physiology questions." } } },
     run(ctx, a) {
       const before = vitalsOf(ctx.sim), secs = num(a.seconds, 60, 1, 900);

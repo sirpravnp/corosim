@@ -7,9 +7,10 @@
 <link rel="icon" type="image/png" href="/favicon.png" />
 <link rel="apple-touch-icon" href="/logo.png" />
 <title>CoroSim</title>
+<script>try{var t=localStorage.getItem("corosim-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Doto:wght@400;800&display=swap">
 <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
@@ -21,6 +22,7 @@
       <div id="view" class="viewport">
         <div id="tag"></div>
         <div id="arrestRosc" class="arrest-banner" role="status" hidden><span>Return of spontaneous circulation. Keep supporting the patient: the rhythm can fail again.</span><button id="arrestRoscClose" aria-label="Dismiss">Dismiss</button></div>
+        <div id="clockCritical" class="clock-critical" role="status" hidden>Clock slowed to real time: patient critical</div>
         <div id="arrestDead" class="arrest-dead" role="alertdialog" aria-labelledby="a_deadTitle" hidden>
           <div class="arrest-dead-card">
             <h2 id="a_deadTitle">Patient declared dead</h2>
@@ -135,8 +137,6 @@
         <tr><td>Lesion FFR</td><td id="ffr"></td></tr>
         <tr><td>Ischemic time</td><td id="m_time"></td></tr>
         <tr><td>Infarct, left ventricle</td><td id="m_inf"></td></tr>
-        <tr><td>Estimated LVEF</td><td id="m_ef"></td></tr>
-        <tr><td>Coronary perfusion</td><td id="m_cpp"></td></tr>
       </table>
     </section>
 
@@ -191,12 +191,9 @@
         </div>
         <div id="anatomy">
           <p class="glabel">Anatomy</p>
-        <div class="row" style="margin-top:0">
-          <button id="p_typ">Typical</button>
-          <button id="p_left">Left-dominant</button>
-          <button id="p_ramus">Ramus</button>
-          <button id="p_abs">Absent left main</button>
-        </div>
+        <label for="anat">Preset</label>
+        <select id="anat"><option value="typical">Typical</option><option value="left">Left-dominant</option><option value="ramus">Ramus intermedius</option><option value="absent">Absent left main</option><option value="custom">Custom</option></select>
+        <details id="anat-custom"><summary>Custom anatomy</summary>
         <label for="dom">Dominance</label>
         <select id="dom"><option value="right">Right-dominant</option><option value="co">Co-dominant</option><option value="left">Left-dominant</option></select>
         <label for="lm">Left main pattern</label>
@@ -207,60 +204,57 @@
         <select id="san"><option value="RCA">From the RCA</option><option value="LCx">From the circumflex</option></select>
         <label for="conus">Conus branch</label>
         <select id="conus"><option value="shared">From the RCA</option><option value="separate">Separate ostium</option></select>
+        </details>
         </div>
       </div>
       <div class="dpane" data-pane="valves" id="dpane-valves"></div>
       <div class="dpane" data-pane="pericardium" id="dpane-pericardium"></div>
       <div class="dpane" data-pane="support">
       <div id="arrest" class="acls" hidden>
-        <p class="glabel acls-state"><span id="a_state"></span> <span class="val" id="a_rhythm"></span></p>
-        <p class="note" id="a_shockable" style="margin-top:0"></p>
-        <div class="acls-times">
-          <span>Arrest time</span><b id="a_arrestS">0:00</b>
-          <span>No-flow time</span><b id="a_noflow">0:00</b>
-          <span>Irreversible injury</span><b id="a_injury">0%</b>
+        <div class="acls-head"><span class="acls-chip" id="a_state"></span><span class="acls-rhythm" id="a_rhythm"></span></div>
+        <p class="acls-call" id="a_shockable"></p>
+        <div class="acls-tiles">
+          <div><span>Arrest</span><b id="a_arrestS">0:00</b></div>
+          <div class="acls-flow"><span>No flow</span><b id="a_noflow">0:00</b><i class="acls-bar" title="Irreversible injury begins at 4:00; death at 10:00 of no flow"><u id="a_noflowbar"></u></i></div>
+          <div><span>Injury</span><b id="a_injury">0%</b></div>
         </div>
-        <div class="ctl">
-          <span>Compressions</span><button id="a_cpr">Start CPR</button><span class="val" id="a_output"></span>
-          <label for="a_rate">Rate</label><input id="a_rate" type="range" min="80" max="140" step="1" value="110"><span class="val" id="a_ratev"></span>
-          <label for="a_depth">Depth</label><input id="a_depth" type="range" min="3" max="8" step="0.5" value="5.5"><span class="val" id="a_depthv"></span>
-          <label for="a_quality">Quality</label><input id="a_quality" type="range" min="0" max="100" step="5" value="100"><span class="val" id="a_qualityv"></span>
-        </div>
-        <div class="ctl">
-          <label for="a_joules">Energy</label><select id="a_joules" aria-label="Shock energy"><option value="120">120 J</option><option value="150">150 J</option><option value="200" selected>200 J</option></select><span class="val"></span>
-          <span>Synchronized</span><button id="a_sync">Off</button><span class="val"></span>
-          <span>Defibrillator</span><button id="a_shock" class="primary">Shock</button><span class="val"></span>
-        </div>
-        <div class="ctl">
-          <span>Epinephrine 1 mg</span><button id="a_epi">Give</button><span class="val" id="a_t_epinephrine"></span>
-          <span>Amiodarone</span><button id="a_amio">Amiodarone 300 mg</button><span class="val" id="a_t_amiodarone"></span>
-          <span>Lidocaine 100 mg</span><button id="a_lido">Give</button><span class="val" id="a_t_lidocaine"></span>
-        </div>
-        <p class="note">Shocks given <b id="a_shocks">0</b> · last shock: <span id="a_last">none yet</span></p>
+        <div class="acls-cycle" id="a_cyclebox"><span>Rhythm check</span><b id="a_cycle">2:00</b></div>
+
+        <section class="acls-card" aria-label="Compressions">
+          <button id="a_cpr" class="acls-big">Start CPR</button>
+          <p class="acls-out" id="a_output"></p>
+          <details class="acls-tech"><summary>Compression technique</summary>
+            <div class="ctl">
+              <label for="a_rate">Rate</label><input id="a_rate" type="range" min="80" max="140" step="1" value="110"><span class="val" id="a_ratev"></span>
+              <label for="a_depth">Depth</label><input id="a_depth" type="range" min="3" max="8" step="0.5" value="5.5"><span class="val" id="a_depthv"></span>
+              <label for="a_quality">Quality</label><input id="a_quality" type="range" min="0" max="100" step="5" value="100"><span class="val" id="a_qualityv"></span>
+            </div>
+          </details>
+        </section>
+
+        <section class="acls-card" aria-label="Defibrillator">
+          <div class="acls-row">
+            <div class="acls-seg" id="a_energy" role="group" aria-label="Shock energy">
+              <button data-j="120">120 J</button><button data-j="150">150 J</button><button data-j="200" class="on">200 J</button>
+            </div>
+            <input type="hidden" id="a_joules" value="200">
+            <button id="a_sync" class="acls-sync" aria-pressed="false" title="Synchronized: for a perfusing tachyarrhythmia, not VF">Sync off</button>
+          </div>
+          <button id="a_shock" class="acls-shock">Shock</button>
+          <p class="acls-last"><span id="a_last">No shocks yet</span> <span class="acls-count">· <b id="a_shocks">0</b> given</span></p>
+        </section>
+
+        <section class="acls-card" aria-label="Drugs">
+          <div class="acls-drug"><button id="a_epi">Epinephrine 1 mg</button><span id="a_t_epinephrine"></span></div>
+          <div class="acls-drug"><button id="a_amio">Amiodarone 300 mg</button><span id="a_t_amiodarone"></span></div>
+          <div class="acls-drug"><button id="a_lido">Lidocaine 100 mg</button><span id="a_t_lidocaine"></span></div>
+        </section>
         <p class="note" id="a_note"></p>
       </div>
-      <div id="manage" data-tab="support">
-        <div class="tabs" role="tablist">
-          <button class="tab on" data-tab="support" role="tab">Drugs</button>
-          <button class="tab" data-tab="revasc" role="tab">Reperfuse</button>
-          <button class="tab" data-tab="assess" role="tab">Assessment</button>
-        </div>
-        <div class="pane" data-pane="support">
-          <div class="ctl">
-            <label for="nor">Norepinephrine</label><input id="nor" type="range" min="0" max="100" value="0"><span class="val" id="norv"></span>
-            <label for="dob">Dobutamine</label><input id="dob" type="range" min="0" max="100" value="0"><span class="val" id="dobv"></span>
-            <span>IV fluid</span><button id="m_fluid">+500 ml</button><span class="val" id="fluidv"></span>
-            <span>Nitroglycerin</span><button id="m_nitro">Off</button><span class="val"></span>
-            <span>Atropine</span><button id="m_atropine">Off</button><span class="val"></span>
-            <span>Pacing</span><button id="m_pace">Off</button><span class="val" id="pacev"></span>
-            <label for="pacerate" class="pace-only">at rate</label><input id="pacerate" class="pace-only" type="range" min="40" max="120" value="70"><span class="val pace-only"></span>
-            <span>Balloon pump</span><button id="m_iabp">Off</button><span class="val"></span>
-            <span>Impella</span><button id="m_impella">Off</button><span class="val"></span>
-          </div>
-          <p class="note" id="fluidnote"></p>
-          <p class="note">Support changes what the patient can tolerate and how much oxygen the heart asks for; it does not open the artery. Each choice also has a cost: pressors add afterload, inotropes add demand and ectopy, volume congests a failing left ventricle, nitrates drop the preload a right ventricle depends on.</p>
-        </div>
-        <div class="pane" data-pane="revasc">
+      <div id="manage" class="sup">
+        <details class="fold sup-sec" id="sec-treat" open>
+          <summary><h2>Treat</h2><span class="sum" id="sum-treat"></span><button type="button" class="sec-info" data-info="treat" aria-label="About Treat" aria-expanded="false">i</button></summary>
+          <p class="note sup-info" id="info-treat" hidden>Orders take clinical time to reach the artery (about 2 minutes pass per second at 1×), and muscle that stays ischemic dies as it waits. PCI stents the lesion; a fibrinolytic opens an occlusion in about half of patients and leaves a stenosis; a bypass feeds the vessel beyond the lesion and leaves the lesion itself. Support below changes what the patient can tolerate; it does not open the artery.</p>
           <div class="row" style="margin-top:0">
             <button id="m_pci">Primary PCI</button>
             <button id="m_lysis">Fibrinolytic</button>
@@ -270,34 +264,72 @@
           </div>
           <div id="xlinks" hidden></div>
           <p class="note" id="mstatus"></p>
-          <p class="note">Orders take clinical time to reach the artery (about 2 minutes pass per second at 1×), and muscle that stays ischemic dies as it waits. PCI stents the lesion; a fibrinolytic opens an occlusion in about half of patients and leaves a stenosis; a bypass feeds the vessel beyond the lesion and leaves the lesion itself.</p>
-        </div>
-        <div class="pane" data-pane="assess">
+        </details>
+        <details class="fold sup-sec" id="sec-volume">
+          <summary><h2>Volume</h2><span class="sum" id="sum-volume"></span><button type="button" class="sec-info" data-info="volume" aria-label="About Volume" aria-expanded="false">i</button></summary>
+          <p class="note sup-info" id="info-volume" hidden>Blood loss and an IV bolus ramp in over about 10 s; ongoing hemorrhage keeps taking blood at the rate you set. What follows is the patient's own response: watch the rate, the pressure and the pulse pressure. A bolus of crystalloid mostly leaves the vessels; colloid, albumin and blood stay longer. Volume helps a right ventricular infarct and congests a failing left ventricle.</p>
+          <div class="ctl">
+            <label for="bl" class="sim-only">Blood loss</label><input id="bl" class="sim-only" type="range" min="-20" max="50" value="0"><span class="val sim-only" id="blv"></span>
+            <div id="vol-mount" class="ctl-flat sim-only"></div>
+          </div>
+          <p class="note" id="fluidnote"></p>
+        </details>
+        <details class="fold sup-sec" id="sec-drugs">
+          <summary><h2>Drugs</h2><span class="sum" id="sum-drugs"></span><button type="button" class="sec-info" data-info="drugs" aria-label="About Drugs" aria-expanded="false">i</button></summary>
+          <p class="note sup-info" id="info-drugs" hidden>Each choice has a cost: pressors add afterload, inotropes add demand and ectopy, nitrates drop the preload a right ventricle depends on, a beta blocker slows the heart and weakens contraction. Doses are fractions of the full effect.</p>
+          <div class="ctl">
+            <label for="nor">Norepinephrine</label><input id="nor" type="range" min="0" max="100" value="0"><span class="val" id="norv"></span>
+            <label for="dob">Dobutamine</label><input id="dob" type="range" min="0" max="100" value="0"><span class="val" id="dobv"></span>
+            <label for="bb" class="sim-only">Beta blocker</label><input id="bb" class="sim-only" type="range" min="0" max="100" value="0"><span class="val sim-only" id="bbv"></span>
+            <span>Nitroglycerin</span><button id="m_nitro">Off</button><span class="val"></span>
+            <span>Atropine</span><button id="m_atropine">Off</button><span class="val"></span>
+          </div>
+          <details class="sup-more" id="more-drugs">
+            <summary>More drugs <span class="sum" id="sum-more-drugs"></span></summary>
+            <p class="note" id="more-drugs-note">Receptor-level drugs of the core engine: epinephrine (beta and alpha), milrinone (inodilator), vasopressin (non-adrenergic pressor), nitroprusside (arterial and venous dilator), furosemide (diuretic). Doses are fractions of the full effect.</p>
+            <div class="ctl">
+              <label for="epi">Epinephrine</label><input id="epi" type="range" min="0" max="100" value="0"><span class="val" id="epiv"></span>
+              <label for="mil">Milrinone</label><input id="mil" type="range" min="0" max="100" value="0"><span class="val" id="milv"></span>
+              <label for="vaso">Vasopressin</label><input id="vaso" type="range" min="0" max="100" value="0"><span class="val" id="vasov"></span>
+              <label for="nitp">Nitroprusside</label><input id="nitp" type="range" min="0" max="100" value="0"><span class="val" id="nitpv"></span>
+              <label for="furo">Furosemide</label><input id="furo" type="range" min="0" max="100" value="0"><span class="val" id="furov"></span>
+            </div>
+          </details>
+        </details>
+        <details class="fold sup-sec" id="sec-devices">
+          <summary><h2>Devices</h2><span class="sum" id="sum-devices"></span><button type="button" class="sec-info" data-info="devices" aria-label="About Devices" aria-expanded="false">i</button></summary>
+          <p class="note sup-info" id="info-devices" hidden>Settings appear when a device is on. Pacing captures the ventricle at the set rate. The balloon pump augments diastolic pressure and unloads the ventricle; an Impella pumps blood from the ventricle to the aorta (a wrong position cuts its flow); VA ECMO drains the right atrium and returns blood to the aorta.</p>
+          <div class="ctl">
+            <span>Pacing</span><button id="m_pace">Off</button><span class="val"></span>
+            <label for="pacerate" class="pace-only">Rate</label><input id="pacerate" class="pace-only" type="range" min="40" max="120" value="70"><span class="val pace-only" id="pacev"></span>
+            <span>Intra-aortic balloon pump</span><button id="m_iabp">Off</button><span class="val"></span>
+            <div id="dev-iabp" class="ctl-flat sim-only"></div>
+            <span>Impella</span><button id="m_impella">Off</button><span class="val"></span>
+            <div id="dev-impella" class="ctl-flat sim-only"></div>
+            <span class="sim-only">ECMO</span><button id="m_ecmo" class="sim-only">Off</button><span class="val sim-only"></span>
+            <div id="dev-ecmo" class="ctl-flat sim-only"></div>
+          </div>
+        </details>
+        <details class="fold sup-sec sim-only" id="sec-vent">
+          <summary><h2>Ventilation</h2><span class="sum" id="sum-vent"></span><button type="button" class="sec-info" data-info="vent" aria-label="About Ventilation" aria-expanded="false">i</button></summary>
+          <p class="note sup-info" id="info-vent" hidden>Positive-pressure breaths raise intrathoracic pressure: they cut venous return and right ventricular filling, and unload a failing left ventricle. PEEP and tidal volume set how much.</p>
+          <div class="ctl"><div id="vent-mount" class="ctl-flat"></div></div>
+        </details>
+        <details class="fold sup-sec" id="sec-assess">
+          <summary><h2>Assessment</h2><span class="sum" id="sum-assess"></span><button type="button" class="sec-info" data-info="assess" aria-label="About Assessment" aria-expanded="false">i</button></summary>
+          <p class="note sup-info" id="info-assess" hidden>Issues are what the monitor shows now; warnings are choices that are doing harm. The guidelines list the next steps in order. Reset treatment takes support, orders and the procedure away and lets the heart start over.</p>
           <div id="issues" class="issues"></div>
           <div id="warns" class="warns"></div>
           <div class="row"><button id="m_hint">What would the guidelines do?</button><button id="m_reset">Reset treatment</button></div>
           <div id="steps" class="steps" hidden></div>
-        </div>
+        </details>
       </div>
-
-        <div id="volume">
-          <p class="glabel">Volume and drugs</p>
-        <label for="bl" style="margin-top:0">Blood loss <span class="val" id="blv"></span></label>
-        <input id="bl" type="range" min="-20" max="50" value="0">
-        <label for="bb">Beta blocker <span class="val" id="bbv"></span></label>
-        <input id="bb" type="range" min="0" max="100" value="0">
-        <div class="row">
-          <button id="x_bleed">Bleed 20%</button>
-          <button id="x_reset">Reset</button>
-        </div>
-        <p class="note">Both ramp in over about 10 s. What follows is the patient's own response: watch the rate, the pressure and the pulse pressure.</p>
-        </div>
-        <div id="dpane-support"></div>
       </div>
     </section>
   </aside>
+  <!-- Workspace sits in the stage column so the Settings rail can stick beside it while the page scrolls. -->
+  <section class="ws-sec" hidden><h2>Live hemodynamics</h2><div id="workspace"></div></section>
 </main>
-<section class="ws-sec" hidden><h2>Live hemodynamics</h2><div id="workspace"></div></section>
 <!-- The cases' front door: over the blurred page until a case starts -->
 <div id="cgate" hidden>
   <div class="c-box">

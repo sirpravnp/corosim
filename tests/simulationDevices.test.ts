@@ -161,7 +161,7 @@ describe("IABP in an anterior STEMI (core engine)", () => {
 
 describe("legacy engine", () => {
   it("has no live devices; the boolean toggles keep the legacy numbers", () => {
-    const s = new Simulation({ seed: 3, support: { impella: true, iabp: true } });
+    const s = new Simulation({ seed: 3, support: { impella: true, iabp: true } }, { engine: "legacy" });
     expect(s.devices()).toBeNull();
     s.warmup(20);
     expect(s.circ.coronaryPressure - s.circ.map).toBeCloseTo(10, 6);

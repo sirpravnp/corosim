@@ -69,7 +69,7 @@ export interface OxygenReadout {
   spo2: number; pre: number; post: number; svo2: number;
   diff: DuctalDifference;
   do2: number; vo2: number; extraction: number; qpQs: number;
-  /** NaN until oxygen-in-time (E6). */
+  /** mmol/L from core E6 transport when present; NaN otherwise. */
   lactate: number;
   /** NaN when there is no ECMO console. */
   ecmoReturn: number; hasEcmo: boolean;

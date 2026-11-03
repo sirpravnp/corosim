@@ -31,7 +31,7 @@ export function controlsUi() {
   $("risk").textContent = S.hide ? "—" : risk.toFixed(0) + "%"; $("risk").style.color = S.hide ? "var(--muted)" : risk > 25 ? "var(--bad)" : risk > 0 ? "var(--warn)" : "var(--ok)";
   $("ffr").textContent = S.ds > 0 && !S.occ && !S.hide ? A.ffr[0].toFixed(2) : "—";
   $("ffr").style.color = A.ffr[0] < 0.8 && !S.hide ? "var(--bad)" : "var(--ink)";
-  $("tag").textContent = S.hide ? `${tree.segments.length} arteries · click the culprit · drag to orbit` : `${tree.segments.length} arteries · radius ×${S.exag} · click a vessel · drag to orbit`;
+  $("tag").textContent = S.hide ? `${tree.segments.length} arteries, click the culprit, drag to orbit` : `${tree.segments.length} arteries, radius ×${S.exag}, click a vessel, drag to orbit`;
 }
 
 export const rhythmLabel = (r: ReturnType<EcgStrip["rhythm"]>, rs: RhythmState | null) => {
@@ -58,12 +58,11 @@ export function vitalsUi() {
   const hr = vit && Math.round(vit.hr) > 0 ? Math.round(vit.hr) : Math.round(ecg.rhythm().hr);
   $("hr").textContent = hr ? hr + " bpm" : "…";
   $("hr").style.color = hr && (hr < 50 || hr > 110) ? "var(--bad)" : hr && (hr < 60 || hr > 100) ? "var(--warn)" : "var(--ink)";
-  if (vit && mt) { const ef = $("m_ef"); ef.textContent = mt.ef; ef.classList.toggle("bad", Number.isFinite(vit.lvEf) && vit.lvEf < 0.4); }
   if (circ) {
     const mapSm = vit ? vit.map : sim.map, lb = sim.history[sim.history.length - 1], roll = sim.rolling(10); // legacy (the game): this beat's own pressure; output over 10 s
     $("bp").textContent = mt ? mt.bp : lb ? `${Math.round(lb.sbp)}/${Math.round(lb.dbp)} (${Math.round(mapSm)})` : `— (${Math.round(mapSm)})`;
     $("bp").style.color = mapSm < CIRC.shockMap ? "var(--bad)" : mapSm < CIRC.hypotensionMap ? "var(--warn)" : "var(--ink)";
-    $("co").textContent = mt ? mt.co : Number.isFinite(roll.cardiacOutput) ? `${roll.cardiacOutput.toFixed(1)} L/min · SV ${Math.round(roll.sv)} ml` : "…";
+    $("co").textContent = mt ? mt.co : Number.isFinite(roll.cardiacOutput) ? `${roll.cardiacOutput.toFixed(1)} L/min, SV ${Math.round(roll.sv)} ml` : "…";
     const st8 = mapSm < CIRC.shockMap ? "Shock" : mapSm < CIRC.hypotensionMap ? "Hypotension" : "Stable";
     const why = circ.rvIschemia > 0.3 ? "RV involvement" : circ.lvIschemia > 0.35 ? "LV pump failure" : (vit ? vit.hr : circ.hr) < 50 ? "bradycardia" : "";
     $("circ").textContent = st8 + (st8 !== "Stable" && why ? `, ${why}` : "");

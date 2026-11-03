@@ -32,8 +32,6 @@ cathLinkUi();
 // One Simulator: every control is always there (the separate "Playground" mode is gone), on /cases/ too.
 $("pgentry").hidden = true;
 pgShow(true);
-// Impella and balloon pump have one place: Patient, Mechanical support (with model, level and timing). Hide Management's duplicate switches.
-for (const id of ["m_iabp", "m_impella"]) { const b = $(id); for (const el of [b.previousElementSibling, b, b.nextElementSibling]) if (el) (el as HTMLElement).hidden = true; }
 mountPanels();
 void shell.ai.start();
 /** Handle for scripts and browser-driving assistants: corosim.sim, corosim.load(scenario), corosim.live. */

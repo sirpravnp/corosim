@@ -1,4 +1,6 @@
 import { ACTIVATION as A } from "../../config/structural";
+import { ISCHEMIA, REGIONAL } from "../../config/ischemia";
+import { regionalActiveScale, regionalDeadVolume, type RegionalSegment } from "../regional";
 import type { HeartEvent, NodeModel, Tunable } from "./types";
 
 /** Duration ta (s) of atrial activation after an atrial event that follows the previous one by `interval` s (the preceding atrial interval). */
@@ -36,7 +38,7 @@ export interface ElastanceParams { v0: number; ees: number; a: number; b: number
 export type ChamberKind = "ventricular" | "atrial";
 
 /**
- * Time-varying elastance chamber: P = (1−e)·a·(exp(min(b·x,30))−1) + e·Ees·g·max(x,0), x = V − V0, with the activation
+ * Time-varying elastance chamber: P = (1−e)·a·(exp(min(b·x,30))−1) + e·Ees·g·α·max(x,0), x = V − V0 − Vdead, with the activation
  * e ∈ [0,1] a function of the time since this chamber's last event (scaled by the event's strength when it is below 1) and g = max(1, strength); the chamber knows no beat period:
  *  - ventricular: double-Hill curve of the time τ since the event, normalised by its peak, with its time scale set by the RR
  *    interval preceding the event (this event minus the previous ventricular one; `defaultInterval` for the first). Shorter RR
@@ -44,6 +46,9 @@ export type ChamberKind = "ventricular" | "atrial";
  *    time tp, τ is replaced by tp + (τ − tp)/relaxScale;
  *  - atrial: sin(πτ/ta) for 0 ≤ τ ≤ ta, else 0, with ta from the preceding atrial interval (`atrialDuration`).
  * Before its first event the chamber is passive.
+ *
+ * Regional segments (E3). `setRegional` maps coronary beds onto this ventricle: α = Σ w·(1 − eesLoss·injury) floored, and
+ * Vdead = bulgeMl · Σ w·injury (dyskinetic bulge). With no segments α = 1 and Vdead = 0 (A7 global `setVentricleFactors` path).
  */
 export class ElastanceChamber implements NodeModel, Tunable<ElastanceParams> {
   readonly params: ElastanceParams;
@@ -52,13 +57,42 @@ export class ElastanceChamber implements NodeModel, Tunable<ElastanceParams> {
   private strength = 1;
   private readonly curve = new VentCurve();
   private ta: number;
+  /** Regional bed segments (E3); null = lumped chamber (A7 factors own ischemia). */
+  private segments: RegionalSegment[] | null = null;
+  /** Active elastance scale α from the segments (1 when regional is off). */
+  private activeScale = 1;
+  /** Dead volume from dyskinetic bulge, ml (0 when regional is off). */
+  private deadMl = 0;
+  private eesLoss = ISCHEMIA.lvEesLoss;
+  private eesFloor = ISCHEMIA.eesFloor;
+  private bulgeMl = REGIONAL.lvBulgeMl;
   /** `defaultInterval`: the preceding interval assumed for the first event (s). */
   constructor(readonly name: string, params: ElastanceParams, readonly kind: ChamberKind, private readonly defaultInterval: number) {
     this.params = { v0: params.v0, ees: params.ees, a: params.a, b: params.b, relaxScale: params.relaxScale ?? 1 };
     this.ta = atrialDuration(defaultInterval);
     if (kind === "ventricular") this.curve.setRR(defaultInterval);
+    if (name === "RV") { this.eesLoss = ISCHEMIA.rvEesLoss; this.bulgeMl = REGIONAL.rvBulgeMl; }
   }
   set(patch: Partial<ElastanceParams>) { Object.assign(this.params, patch); }
+  /**
+   * Drive this ventricle from coronary-bed segments (E3). Pass null/empty to clear and fall back to a lumped law
+   * (ischemia then belongs in `LiveHeart.setVentricleFactors` again). Optional overrides keep tests free of config coupling.
+   */
+  setRegional(segs: readonly RegionalSegment[] | null | undefined, opts?: { eesLoss?: number; eesFloor?: number; bulgeMl?: number }) {
+    if (opts?.eesLoss !== undefined) this.eesLoss = opts.eesLoss;
+    if (opts?.eesFloor !== undefined) this.eesFloor = opts.eesFloor;
+    if (opts?.bulgeMl !== undefined) this.bulgeMl = opts.bulgeMl;
+    if (!segs || segs.length === 0) { this.segments = null; this.activeScale = 1; this.deadMl = 0; return; }
+    this.segments = segs.map((s) => ({ key: s.key, weight: s.weight, injury: Math.min(1, Math.max(0, s.injury)) }));
+    this.activeScale = regionalActiveScale(this.segments, this.eesLoss, this.eesFloor);
+    this.deadMl = regionalDeadVolume(this.segments, this.bulgeMl);
+  }
+  /** Current regional segments, or null when the chamber is lumped. */
+  get regional(): readonly RegionalSegment[] | null { return this.segments; }
+  /** Active elastance scale α from regional segments (1 when off). */
+  get regionalActive(): number { return this.activeScale; }
+  /** Dead volume (ml) from regional dyskinesis (0 when off). */
+  get regionalDeadVolume(): number { return this.deadMl; }
   /** Ventricles: time (s) after the event at which activation peaks, for the current RR (the falling limb, stretched by `relaxScale`, starts here). */
   get peakTime(): number { return this.curve.tPeak; }
   onEvent(ev: HeartEvent) {
@@ -86,15 +120,15 @@ export class ElastanceChamber implements NodeModel, Tunable<ElastanceParams> {
   pressure(volume: number, t: number): number { return this.pressureAt(volume, this.activation(t)); }
   /** Pressure (mmHg) at volume (ml) for a given activation e (the part of `pressure` that does not depend on time). */
   pressureAt(volume: number, e: number): number {
-    const { v0, ees, a, b } = this.params, x = volume - v0;
-    return (1 - e) * a * (Math.exp(Math.min(b * x, 30)) - 1) + e * ees * this.eesGain * Math.max(x, 0);
+    const { v0, ees, a, b } = this.params, x = volume - v0 - this.deadMl;
+    return (1 - e) * a * (Math.exp(Math.min(b * x, 30)) - 1) + e * ees * this.activeScale * this.eesGain * Math.max(x, 0);
   }
-  /** Volume (ml) at which the relaxed chamber (e = 0) holds pressure `p`: V0 + ln(1 + p/a)/b, the inverse of the passive curve (V0 at p = 0). */
-  restVolume(p: number): number { const { v0, a, b } = this.params; return v0 + Math.log(Math.max(1 + p / a, 1e-12)) / b; }
+  /** Volume (ml) at which the relaxed chamber (e = 0) holds pressure `p`: V0 + Vdead + ln(1 + p/a)/b. */
+  restVolume(p: number): number { const { v0, a, b } = this.params; return v0 + this.deadMl + Math.log(Math.max(1 + p / a, 1e-12)) / b; }
   /** dP/dV (mmHg/ml) at volume (ml) for activation e; zero slope of the passive part beyond the exponent clamp, as in `pressureAt`. */
   slopeAt(volume: number, e: number): number {
-    const { v0, ees, a, b } = this.params, x = volume - v0;
-    return (1 - e) * (b * x < 30 ? a * b * Math.exp(b * x) : 0) + (x > 0 ? e * ees * this.eesGain : 0);
+    const { v0, ees, a, b } = this.params, x = volume - v0 - this.deadMl;
+    return (1 - e) * (b * x < 30 ? a * b * Math.exp(b * x) : 0) + (x > 0 ? e * ees * this.activeScale * this.eesGain : 0);
   }
 }
 

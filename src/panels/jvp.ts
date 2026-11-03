@@ -70,7 +70,7 @@ export const jvpPanel: PanelDef = {
       g.strokeStyle = "#232323"; g.lineWidth = 1;
       const step = hi - lo > 20 ? 10 : hi - lo > 10 ? 5 : 2;
       for (let p = Math.ceil(lo / step) * step; p <= hi; p += step) { g.beginPath(); g.moveTo(L, y(p)); g.lineTo(R, y(p)); g.stroke(); g.fillText(String(p), 6, y(p) + 4); }
-      g.fillText("RA · mmHg", L, 12);
+      g.fillText("RA, mmHg", L, 12);
       // ventricular event (t = 0) and atrial activations
       g.strokeStyle = "#444"; g.setLineDash([3, 3]);
       g.beginPath(); g.moveTo(x(0), T); g.lineTo(x(0), B); g.stroke();

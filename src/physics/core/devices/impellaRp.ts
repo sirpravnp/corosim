@@ -46,6 +46,12 @@ export class ImpellaRp extends RotaryPump {
   }
   onEvent(ev: HeartEvent) { if (ev.kind === "ventricular") this.beats++; }
   flow(ctx: Ctx, out: Rates) {
+    if (this.lvl === 0) {
+      const Q = ctx.y[this.idx], L = Math.max(this.params.L, 1e-6);
+      out.flow(this.from, this.to, Q);
+      out.rate(this.idx, -Q / L);
+      return;
+    }
     const p = this.params, Q = ctx.y[this.idx], pIn = ctx.P[this.from], vIn = ctx.V[this.from], S = IMPELLA_RP.suction;
     const rIn = Q > 0 ? inflowResistance(p, pIn, vIn) : p.R0;
     out.flow(this.from, this.to, Q);
