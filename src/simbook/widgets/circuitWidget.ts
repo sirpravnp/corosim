@@ -1,7 +1,8 @@
 import { SIMBOOK_CIRCUIT as C } from "../../config/simbook";
 import { solveAutoreg } from "../autoreg";
 import { CircuitParams, OrganId, defaultCircuit, resistanceFromRadius, solveCircuit } from "../circuit";
-import { fitCanvas, palette, wash } from "./canvasKit";
+import { FONT_DATA, FONT_UI, fitCanvas, palette, wash } from "./canvasKit";
+import { meas, tile } from "./meas";
 
 export type CircuitWidgetMode = "autoreg" | "pump";
 
@@ -11,6 +12,7 @@ export interface CircuitWidgetOptions {
   coRange: [number, number];
   radiusRange: [number, number];
   mapRange: [number, number];
+  tableNo?: number;
 }
 
 const DEFAULT_OPTS: CircuitWidgetOptions = {
@@ -19,6 +21,7 @@ const DEFAULT_OPTS: CircuitWidgetOptions = {
   coRange: [2, 8],
   radiusRange: [0.4, 1.4],
   mapRange: [45, 110],
+  tableNo: 1,
 };
 
 export class CircuitWidget {
@@ -49,6 +52,11 @@ export class CircuitWidget {
 
   getParams(): CircuitParams {
     return structuredClone(this.params);
+  }
+
+  private tableCaption(label: string): string {
+    const n = this.opts.tableNo ?? 1;
+    return `<caption><b>Table ${n}.</b> ${label}</caption>`;
   }
 
   private buildControls() {
@@ -82,7 +90,7 @@ export class CircuitWidget {
       this.syncControls(false);
       this.draw();
     });
-      rad.addEventListener("input", () => {
+    rad.addEventListener("input", () => {
       ed.radius = +rad.value;
       this.syncControls(false);
       this.draw();
@@ -101,13 +109,14 @@ export class CircuitWidget {
       const sol = solveAutoreg(this.mapMmHg, this.params.organs, this.params.cvpMmHg);
       const statusLabel = (s: string) => ({ plateau: "on plateau", below: "below range", above: "above range", passive: "passive" })[s] ?? s;
       this.readout.innerHTML = `
-        <dl class="sb-meas">
-          <div><dt>MAP</dt><dd>${sol.mapMmHg.toFixed(0)} mmHg</dd></div>
-          <div><dt>CVP</dt><dd>${sol.cvpMmHg.toFixed(0)} mmHg</dd></div>
-          <div><dt>CO (Σ flows)</dt><dd>${sol.cardiacOutputLMin.toFixed(2)} L/min</dd></div>
-          <div><dt>ΔP</dt><dd>${sol.deltaPMmHg.toFixed(0)} mmHg</dd></div>
-        </dl>
-        <table class="sb-flows" aria-label="Organ flows">
+        ${meas(
+          tile("MAP", `${sol.mapMmHg.toFixed(0)} mmHg`),
+          tile("CVP", `${sol.cvpMmHg.toFixed(0)} mmHg`),
+          tile("CO (Σ flows)", `${sol.cardiacOutputLMin.toFixed(2)} L/min`),
+          tile("ΔP", `${sol.deltaPMmHg.toFixed(0)} mmHg`),
+        )}
+        <table class="sb-flows">
+          ${this.tableCaption("Organ flows under autoregulation")}
           <thead><tr><th>Organ</th><th>R (effective)</th><th>Flow</th><th>Autoreg</th></tr></thead>
           <tbody>
             ${this.params.organs.map((org) => {
@@ -134,15 +143,16 @@ export class CircuitWidget {
     const sol = solveCircuit(this.params);
     const rRatio = resistanceFromRadius(ed.r0, ed.radius) / ed.r0;
     this.readout.innerHTML = `
-      <dl class="sb-meas">
-        <div><dt>MAP</dt><dd>${sol.mapMmHg.toFixed(0)} mmHg</dd></div>
-        <div><dt>CVP</dt><dd>${sol.cvpMmHg.toFixed(0)} mmHg</dd></div>
-        <div><dt>CO</dt><dd>${this.params.cardiacOutputLMin.toFixed(2)} L/min</dd></div>
-        <div><dt>SVR</dt><dd>${sol.svr.toFixed(1)} mmHg·min/L</dd></div>
-        <div><dt>MAP − CVP</dt><dd>${sol.deltaPMmHg.toFixed(0)} mmHg</dd></div>
-        <div><dt>CO × SVR</dt><dd>${(this.params.cardiacOutputLMin * sol.svr).toFixed(0)} mmHg</dd></div>
-      </dl>
-      <table class="sb-flows" aria-label="Organ flows">
+      ${meas(
+        tile("MAP", `${sol.mapMmHg.toFixed(0)} mmHg`),
+        tile("CVP", `${sol.cvpMmHg.toFixed(0)} mmHg`),
+        tile("CO", `${this.params.cardiacOutputLMin.toFixed(2)} L/min`),
+        tile("SVR", `${sol.svr.toFixed(1)} mmHg·min/L`),
+        tile("MAP − CVP", `${sol.deltaPMmHg.toFixed(0)} mmHg`),
+        tile("CO × SVR", `${(this.params.cardiacOutputLMin * sol.svr).toFixed(0)} mmHg`),
+      )}
+      <table class="sb-flows">
+        ${this.tableCaption("Organ flows in the parallel circuit")}
         <thead><tr><th>Organ</th><th>R</th><th>Flow</th></tr></thead>
         <tbody>
           ${this.params.organs.map((org) => {
@@ -249,10 +259,10 @@ export class CircuitWidget {
     ctx.bezierCurveTo(cx + 6, cy + 16, cx - 6, cy + 16, cx - 16, cy + 4);
     ctx.fill();
     ctx.fillStyle = pal.ink;
-    ctx.font = "600 13px Helvetica Neue, Helvetica, Arial, sans-serif";
+    ctx.font = `600 13px ${FONT_UI}`;
     ctx.textAlign = "center";
     ctx.fillText(this.mode === "autoreg" ? "Arterial pressure" : "Pump", cx, cy + loopR + 28);
-    ctx.font = "12px IBM Plex Mono, monospace";
+    ctx.font = `12px ${FONT_DATA}`;
     ctx.fillStyle = pal.muted;
     ctx.fillText(this.mode === "autoreg" ? `${hdr.map.toFixed(0)} mmHg` : `${hdr.co.toFixed(1)} L/min`, cx, cy + loopR + 46);
 
@@ -270,31 +280,31 @@ export class CircuitWidget {
       ctx.fillStyle = org.highlight ? (this.mode === "autoreg" ? pal.warn : pal.accent) : pal.down;
       ctx.globalAlpha = 0.9;
       ctx.beginPath();
-      ctx.roundRect(organX, y - 9, Math.max(6, bar), 18, 6);
+      ctx.roundRect(organX, y - 9, Math.max(6, bar), 18, 2);
       ctx.fill();
       ctx.globalAlpha = 1;
       ctx.strokeStyle = "rgba(255,255,255,0.2)";
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.roundRect(organX, y - 9, organW * 0.62, 18, 6);
+      ctx.roundRect(organX, y - 9, organW * 0.62, 18, 2);
       ctx.stroke();
       ctx.fillStyle = pal.ink;
-      ctx.font = "13px Helvetica Neue, Helvetica, Arial, sans-serif";
+      ctx.font = `13px ${FONT_UI}`;
       ctx.textAlign = "left";
       ctx.fillText(org.label, organX, y - 16);
       ctx.fillStyle = pal.muted;
-      ctx.font = "12px IBM Plex Mono, monospace";
+      ctx.font = `12px ${FONT_DATA}`;
       ctx.fillText(`${org.q.toFixed(2)}`, organX + organW * 0.66, y + 4);
     });
 
     ctx.textAlign = "left";
     ctx.fillStyle = pal.ink;
-    ctx.font = "600 13px Helvetica Neue, Helvetica, Arial, sans-serif";
+    ctx.font = `600 13px ${FONT_UI}`;
     ctx.fillText(`MAP  ${hdr.map.toFixed(0)}`, 18, 26);
     ctx.fillStyle = pal.down;
     ctx.fillText(`CVP  ${hdr.cvp.toFixed(0)}`, 18, 46);
     ctx.fillStyle = pal.ok;
-    ctx.font = "12px IBM Plex Mono, monospace";
+    ctx.font = `12px ${FONT_DATA}`;
     ctx.fillText(hdr.foot, 18, h - 18);
   }
 }

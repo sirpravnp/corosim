@@ -1,5 +1,6 @@
 import { defaultStarling, starlingProfile, StarlingParams } from "../starlingCapillary";
-import { fitCanvas, palette, wash } from "./canvasKit";
+import { FONT_UI, fitCanvas, palette, wash } from "./canvasKit";
+import { meas, tile } from "./meas";
 
 export class StarlingWidget {
   private params: StarlingParams = defaultStarling();
@@ -60,12 +61,12 @@ export class StarlingWidget {
     const filt = prof.stations.filter((s) => s.jvMlMin > 0).length;
     const reabs = prof.stations.filter((s) => s.jvMlMin < 0).length;
     this.readout.innerHTML = `
-      <dl class="sb-meas">
-        <div><dt>Net filtration</dt><dd>${prof.netFiltrationMlMin.toFixed(3)} ml/min</dd></div>
-        <div><dt>Lymph return</dt><dd>${prof.lymphReturnMlMin.toFixed(2)} ml/min</dd></div>
-        <div><dt>πc / πi</dt><dd>${prof.piCapMmHg.toFixed(0)} / ${prof.piInterMmHg.toFixed(0)} mmHg</dd></div>
-        <div><dt>Edema</dt><dd>${prof.edema ? "yes" : "no"}</dd></div>
-      </dl>
+      ${meas(
+        tile("Net filtration", `${prof.netFiltrationMlMin.toFixed(3)} ml/min`),
+        tile("Lymph return", `${prof.lymphReturnMlMin.toFixed(2)} ml/min`),
+        tile("πc / πi", `${prof.piCapMmHg.toFixed(0)} / ${prof.piInterMmHg.toFixed(0)} mmHg`),
+        tile("Edema", prof.edema ? "yes" : "no", prof.edema ? "bad" : ""),
+      )}
       <p class="sb-note">Filtration at ${filt} stations, reabsorption at ${reabs}. Arteriolar → venular left to right.</p>`;
   }
 
@@ -85,7 +86,7 @@ export class StarlingWidget {
     g.addColorStop(1, c.down);
     ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.roundRect(capX, capY - tube / 2, capL, tube, 9);
+    ctx.roundRect(capX, capY - tube / 2, capL, tube, 2);
     ctx.fill();
 
     const n = 8;
@@ -99,7 +100,7 @@ export class StarlingWidget {
 
     if (prof.edema) {
       const excess = Math.min(1, (prof.netFiltrationMlMin - prof.lymphReturnMlMin) / 0.4);
-      ctx.fillStyle = `rgba(255, 122, 110, ${0.12 + 0.28 * excess})`;
+      ctx.fillStyle = `rgba(255, 107, 94, ${0.12 + 0.28 * excess})`;
       ctx.beginPath();
       ctx.ellipse(capX + capL * 0.55, capY + 54, 70 + 40 * excess, 16 + 10 * excess, 0, 0, Math.PI * 2);
       ctx.fill();
@@ -159,13 +160,13 @@ export class StarlingWidget {
     });
     ctx.stroke();
 
-    ctx.font = "12px Helvetica Neue, Helvetica, Arial, sans-serif";
+    ctx.font = `12px ${FONT_UI}`;
     ctx.fillStyle = c.muted;
     ctx.fillText("Arteriole", capX, capY - 28);
     ctx.fillText("Venule", capX + capL - 42, capY - 28);
     ctx.fillText("Jv  (out above the line)", capX, base + 22);
     ctx.fillStyle = prof.edema ? c.bad : c.ok;
-    ctx.font = "600 13px Helvetica Neue, Helvetica, Arial, sans-serif";
+    ctx.font = `600 13px ${FONT_UI}`;
     ctx.fillText(prof.edema ? "Edema — filtration exceeds lymph" : "Lymph return keeps up", capX + capL - 250, h - 18);
   }
 }

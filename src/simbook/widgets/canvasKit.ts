@@ -10,19 +10,22 @@ export interface Palette {
   o2: string;
 }
 
+export const FONT_UI = "Hanken Grotesk, Helvetica Neue, Helvetica, Arial, sans-serif";
+export const FONT_DATA = "JetBrains Mono, ui-monospace, Menlo, Consolas, monospace";
+
 export function palette(el: HTMLElement): Palette {
   const s = getComputedStyle(el);
   const g = (name: string, fallback: string) => s.getPropertyValue(name).trim() || fallback;
   return {
-    ink: g("--ink", "#f3f0ea"),
-    muted: g("--muted", "#9aa3b8"),
-    accent: g("--accent", "#e24b3c"),
-    down: g("--down", "#6aa7ff"),
-    ok: g("--ok", "#6dcaa0"),
+    ink: g("--ink", "#f4f1ea"),
+    muted: g("--muted", "#98a0b8"),
+    accent: g("--accent", "#b8372e"),
+    down: g("--down", "#3d8bff"),
+    ok: g("--ok", "#c9c6bd"),
     warn: g("--warn", "#e0a447"),
     bad: g("--bad", "#ff6b5e"),
-    stage: g("--stage", "#0a0c12"),
-    o2: g("--o2", "#7fd4ff"),
+    stage: g("--stage", "#000000"),
+    o2: g("--o2", g("--down", "#3d8bff")),
   };
 }
 
@@ -41,9 +44,12 @@ export function fitCanvas(canvas: HTMLCanvasElement): { ctx: CanvasRenderingCont
   return { ctx, w, h };
 }
 
+/** Flat stage wash. Depth comes from the room/stage tokens, not a decorative glow. */
 export function wash(ctx: CanvasRenderingContext2D, w: number, h: number, stage: string) {
-  const g = ctx.createRadialGradient(w * 0.45, h * 0.4, 20, w * 0.5, h * 0.5, Math.max(w, h) * 0.72);
-  g.addColorStop(0, "#161a24");
+  ctx.fillStyle = stage;
+  ctx.fillRect(0, 0, w, h);
+  const g = ctx.createRadialGradient(w * 0.45, h * 0.38, 12, w * 0.5, h * 0.5, Math.max(w, h) * 0.7);
+  g.addColorStop(0, "#17181d");
   g.addColorStop(1, stage);
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);

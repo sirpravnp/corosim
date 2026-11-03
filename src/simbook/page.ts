@@ -22,11 +22,11 @@ let raf = 0;
 let lastT = 0;
 
 const CAPTION: Record<string, string> = {
-  diffusion: "Tissue slab",
-  fick: "Diffusion across a membrane",
-  starling: "Fluid across a capillary",
-  "circuit|autoreg": "Pressure and organ flow",
-  "circuit|pump": "The circuit",
+  diffusion: "Oxygen across a tissue slab from a capillary on the left. Density shortens the path; metabolism eats the profile.",
+  fick: "Fick's law across a membrane: flux rises with area and gradient, and falls as the membrane thickens.",
+  starling: "Starling filtration along a capillary from arteriole to venule. Edema when net filtration outruns lymph return.",
+  "circuit|autoreg": "Organ beds under autoregulation. Drop mean arterial pressure and watch gut leave the plateau before brain and kidney.",
+  "circuit|pump": "A parallel Ohm/Poiseuille circuit. Cardiac output and one organ radius set the pressures and branch flows.",
 };
 
 function defaultChapterId(): string {
@@ -39,7 +39,7 @@ function renderList() {
   $("list").innerHTML = `<h3>Chapters</h3>` + CHAPTERS.map((ch) => {
     const on = ch.id === cur ? " on" : "";
     const href = ch.ready ? `#${ch.id}` : "#";
-    return `<a href="${href}" class="${on.trim()}${ch.ready ? "" : " disabled"}" data-id="${ch.id}" aria-disabled="${ch.ready ? "false" : "true"}"><b>${ch.number}. ${esc(ch.title)}</b><small>${esc(ch.subtitle)}</small></a>`;
+    return `<a href="${href}" class="${on.trim()}${ch.ready ? "" : " disabled"}" data-id="${ch.id}" aria-disabled="${ch.ready ? "false" : "true"}"${ch.id === cur ? ` aria-current="page"` : ""}><b>${ch.number}. ${esc(ch.title)}</b><small>${esc(ch.subtitle)}</small></a>`;
   }).join("");
 }
 
@@ -67,7 +67,7 @@ function renderQuestions() {
     ${close.length ? `<div class="sb-close">${close.map((p) => `<p>${esc(p)}</p>`).join("")}</div>` : ""}`;
 }
 
-function mountOne(block: Extract<Block, { kind: "widget" }>, canvas: HTMLCanvasElement, readout: HTMLElement, controls: HTMLElement): Tickable | null {
+function mountOne(block: Extract<Block, { kind: "widget" }>, canvas: HTMLCanvasElement, readout: HTMLElement, controls: HTMLElement, tableNo: number): Tickable | null {
   if (block.id === "diffusion") return new DiffusionWidget(canvas, readout, controls);
   if (block.id === "fick") return new FickWidget(canvas, readout, controls);
   if (block.id === "starling") return new StarlingWidget(canvas, readout, controls);
@@ -78,6 +78,7 @@ function mountOne(block: Extract<Block, { kind: "widget" }>, canvas: HTMLCanvasE
       coRange: [2, 8],
       radiusRange: [0.4, 1.4],
       mapRange: [45, 110],
+      tableNo,
     });
   }
   return null;
@@ -88,17 +89,32 @@ function mountSims(ch: ChapterDef) {
   widgets = [];
   const root = $("sb-sims");
   root.innerHTML = "";
+  let fig = 0;
+  let table = 0;
   ch.blocks.forEach((b) => {
     if (b.kind !== "widget") return;
     const key = b.mode ? `${b.id}|${b.mode}` : b.id;
+    fig += 1;
+    const needsTable = b.id === "circuit";
+    if (needsTable) table += 1;
+    const caption = CAPTION[key] ?? "Live model.";
     const sec = document.createElement("section");
-    sec.className = "sb-sim";
-    sec.innerHTML = `<h2>${esc(CAPTION[key] ?? "Model")}</h2>
-      <div class="sb-screen"><canvas width="960" height="360" aria-label="${esc(CAPTION[key] ?? "Model")}"></canvas></div>
+    sec.className = "sb-block";
+    sec.innerHTML = `
+      <figure class="sb-sim">
+        <div class="sb-screen"><canvas width="960" height="360" aria-label="${esc(caption)}"></canvas></div>
+        <figcaption><b>Figure ${fig}.</b> ${esc(caption)}</figcaption>
+      </figure>
       <div class="sb-controls"></div>
       <div class="sb-readout"></div>`;
     root.appendChild(sec);
-    const widget = mountOne(b, sec.querySelector("canvas")!, sec.querySelector(".sb-readout")!, sec.querySelector(".sb-controls")!);
+    const widget = mountOne(
+      b,
+      sec.querySelector("canvas")!,
+      sec.querySelector(".sb-readout")!,
+      sec.querySelector(".sb-controls")!,
+      table,
+    );
     if (widget) widgets.push(widget);
   });
   lastT = performance.now();

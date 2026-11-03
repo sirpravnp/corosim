@@ -1,5 +1,6 @@
 import { defaultDiffusion, DiffusionParams, DiffusionSample, o2Profile } from "../diffusion";
-import { fitCanvas, palette, wash } from "./canvasKit";
+import { FONT_DATA, FONT_UI, fitCanvas, palette, wash } from "./canvasKit";
+import { meas, tile } from "./meas";
 
 function at(sample: DiffusionSample, xUm: number): number {
   const L = sample.effectiveThicknessUm || 1;
@@ -73,12 +74,12 @@ export class DiffusionWidget {
     const anox = sample.anoxicDepthUm;
     const doubled = o2Profile({ ...this.params, thicknessUm: this.params.thicknessUm * 2 });
     this.readout.innerHTML = `
-      <dl class="sb-meas">
-        <div><dt>Capillary O₂</dt><dd>${sample.capConc.toFixed(2)}</dd></div>
-        <div><dt>Path</dt><dd>${sample.effectiveThicknessUm.toFixed(0)} µm</dd></div>
-        <div><dt>Anoxic at</dt><dd>${anox == null ? "none" : `${anox.toFixed(0)} µm`}</dd></div>
-        <div><dt>t ≈ x²/2D</dt><dd>${sample.diffusionTimeS.toFixed(2)} s</dd></div>
-      </dl>
+      ${meas(
+        tile("Capillary O₂", sample.capConc.toFixed(2)),
+        tile("Path", `${sample.effectiveThicknessUm.toFixed(0)} µm`),
+        tile("Anoxic at", anox == null ? "none" : `${anox.toFixed(0)} µm`, anox == null ? "" : "bad"),
+        tile("t ≈ x²/2D", `${sample.diffusionTimeS.toFixed(2)} s`),
+      )}
       <p class="sb-note">${anox == null ? "Oxygen reaches the core." : "The core past the dashed line is anoxic."} Doubling thickness would make the same path take ${doubled.diffusionTimeS.toFixed(1)} s.</p>`;
   }
 
@@ -105,9 +106,10 @@ export class DiffusionWidget {
       const xUm = (L * (i + 0.5)) / cols;
       const o2 = at(sample, xUm) / maxC;
       const dead = o2 < 0.04;
+      // Thermal ramp: cool muscle when starved, warmer as O₂ rises.
       ctx.fillStyle = dead
         ? "#3a1820"
-        : `rgb(${Math.round(48 + 90 * o2)}, ${Math.round(24 + 150 * o2)}, ${Math.round(36 + 190 * o2)})`;
+        : `rgb(${Math.round(40 + 140 * o2)}, ${Math.round(28 + 70 * o2)}, ${Math.round(48 + 40 * (1 - o2))})`;
       ctx.fillRect(padL + (i * slabW) / cols, top, slabW / cols + 1, slabH);
     }
 
@@ -121,13 +123,13 @@ export class DiffusionWidget {
         const cy = top + ((row + 0.5) / cellRows) * slabH;
         ctx.beginPath();
         ctx.arc(cx, cy, 7, 0, Math.PI * 2);
-        ctx.fillStyle = o2 < 0.05 ? c.bad : `rgba(190, 230, 255, ${0.25 + 0.6 * o2})`;
+        ctx.fillStyle = o2 < 0.05 ? c.bad : `rgba(157, 190, 255, ${0.22 + 0.55 * o2})`;
         ctx.fill();
       }
     }
 
     ctx.fillStyle = this.params.flowOn ? c.accent : "#5a3034";
-    round(ctx, padL - 22, top, 22, slabH, 8);
+    round(ctx, padL - 22, top, 22, slabH, 2);
     ctx.fill();
     const dots = 10;
     for (let i = 0; i < dots; i++) {
@@ -162,13 +164,13 @@ export class DiffusionWidget {
     ctx.stroke();
 
     ctx.fillStyle = c.muted;
-    ctx.font = "12px Helvetica Neue, Helvetica, Arial, sans-serif";
+    ctx.font = `12px ${FONT_UI}`;
     ctx.fillText("Capillary", 16, top + 16);
     ctx.fillText("0", padL, h - 18);
     ctx.fillText(`${Math.round(L)} µm`, padL + slabW - 28, h - 18);
     ctx.fillText(`${this.axisUm} µm scale`, padL + track - 88, h - 18);
     ctx.fillStyle = c.ink;
-    ctx.font = "600 13px Helvetica Neue, Helvetica, Arial, sans-serif";
+    ctx.font = `600 13px ${FONT_UI}`;
     ctx.fillText("Oxygen across the slab", padL, 28);
   }
 }

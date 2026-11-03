@@ -1,5 +1,6 @@
 import { defaultFick, fickFlux, FickParams } from "../fick";
-import { fitCanvas, palette, wash } from "./canvasKit";
+import { FONT_DATA, FONT_UI, fitCanvas, palette, wash } from "./canvasKit";
+import { meas, tile } from "./meas";
 
 export class FickWidget {
   private params: FickParams = defaultFick();
@@ -59,12 +60,12 @@ export class FickWidget {
     const flux = fickFlux(this.params);
     const rest = fickFlux(defaultFick());
     this.readout.innerHTML = `
-      <dl class="sb-meas">
-        <div><dt>Flux J</dt><dd>${flux.toFixed(1)}</dd></div>
-        <div><dt>Vs rest</dt><dd>${(flux / rest).toFixed(2)}×</dd></div>
-        <div><dt>D·A·ΔC</dt><dd>${(this.params.d * this.params.areaCm2 * this.params.deltaC).toFixed(1)}</dd></div>
-        <div><dt>x</dt><dd>${this.params.thicknessUm.toFixed(2)} µm</dd></div>
-      </dl>
+      ${meas(
+        tile("Flux J", flux.toFixed(1)),
+        tile("Vs rest", `${(flux / rest).toFixed(2)}×`),
+        tile("D·A·ΔC", (this.params.d * this.params.areaCm2 * this.params.deltaC).toFixed(1)),
+        tile("x", `${this.params.thicknessUm.toFixed(2)} µm`),
+      )}
       <p class="sb-note">Molecules cross in proportion to J. A thicker membrane (fibrosis, edema) slows them at the same gradient.</p>`;
   }
 
@@ -85,14 +86,14 @@ export class FickWidget {
     const chH = chamberH * areaScale;
 
     const leftG = ctx.createLinearGradient(left - 70, 0, mid, 0);
-    leftG.addColorStop(0, "rgba(127, 212, 255, 0.55)");
-    leftG.addColorStop(1, "rgba(127, 212, 255, 0.08)");
+    leftG.addColorStop(0, "rgba(61, 139, 255, 0.45)");
+    leftG.addColorStop(1, "rgba(61, 139, 255, 0.06)");
     ctx.fillStyle = leftG;
     ctx.fillRect(left - 90, my - chH / 2, mid - left + 40, chH);
 
     const rightG = ctx.createLinearGradient(mid, 0, right + 70, 0);
-    rightG.addColorStop(0, "rgba(226, 75, 60, 0.05)");
-    rightG.addColorStop(1, `rgba(226, 75, 60, ${0.15 + 0.25 * this.params.deltaC})`);
+    rightG.addColorStop(0, "rgba(184, 55, 46, 0.05)");
+    rightG.addColorStop(1, `rgba(184, 55, 46, ${0.12 + 0.22 * this.params.deltaC})`);
     ctx.fillStyle = rightG;
     ctx.fillRect(mid - 20, my - chH / 2, right - mid + 110, chH);
 
@@ -123,21 +124,21 @@ export class FickWidget {
     ctx.fillRect(meterX, 28, meterW * frac, 8);
 
     ctx.fillStyle = c.ink;
-    ctx.font = "600 13px Helvetica Neue, Helvetica, Arial, sans-serif";
+    ctx.font = `600 13px ${FONT_UI}`;
     ctx.textAlign = "left";
     ctx.fillText("High concentration", left - 70, my - chH / 2 - 14);
     ctx.textAlign = "right";
     ctx.fillText("Low concentration", right + 70, my - chH / 2 - 14);
     ctx.textAlign = "center";
     ctx.fillStyle = c.muted;
-    ctx.font = "12px Helvetica Neue, Helvetica, Arial, sans-serif";
+    ctx.font = `12px ${FONT_UI}`;
     ctx.fillText(`membrane  ${this.params.thicknessUm.toFixed(1)} µm`, mid, my + chH / 2 + 28);
     ctx.fillStyle = c.ok;
-    ctx.font = "600 15px IBM Plex Mono, monospace";
+    ctx.font = `600 15px ${FONT_DATA}`;
     ctx.fillText(`J = ${flux.toFixed(1)}`, mid, h - 28);
     ctx.textAlign = "left";
     ctx.fillStyle = c.muted;
-    ctx.font = "11px Helvetica Neue, Helvetica, Arial, sans-serif";
+    ctx.font = `11px ${FONT_UI}`;
     ctx.fillText("Flux vs 2× rest", meterX, 22);
   }
 }
