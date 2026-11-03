@@ -134,7 +134,7 @@ A near-monochrome palette. Color carries physiology, not decoration.
 
 ## Layout
 
-Home is a full-viewport overlay on a fixed canvas: header top-left, fact card top-right, doors bottom-left, legend bottom-right on desktop; a single stacked column on phones. The workbench is a two-column grid: a flexible left column (3D heart, 12-lead) and a 330px right rail of readouts and controls, collapsing to one column at 980px. Body is capped at 1320px with 20px side gutters. Spacing rhythm is 8 / 14 / 20 / 24px.
+Home is a full-viewport overlay on a fixed canvas: header top-left, fact card top-right, doors bottom-left, legend bottom-right on desktop; a single stacked column on phones. The workbench is a two-column grid: a flexible left column (3D heart, 12-lead) and a 360px right rail of readouts and controls, collapsing to one column at 980px. Body is capped at 1680px with 20px side gutters so the stage and Settings are not squeezed by empty margins on a wide screen. Spacing rhythm is 8 / 14 / 20 / 24px.
 
 ## Elevation & Depth
 

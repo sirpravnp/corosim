@@ -46,7 +46,7 @@
 html { background: var(--bg); }
 body {
   margin: 0 auto;
-  max-width: 1320px;
+  max-width: 1680px;
   padding-inline: 20px;
   padding-block: 0 48px;
   background: var(--bg);
@@ -60,7 +60,7 @@ body {
    like a shopping-site filter column while the stage scrolls. */
 main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 330px;
+  grid-template-columns: minmax(0, 1fr) 360px;
   gap: 24px;
   margin-top: 20px;
   align-items: start;
