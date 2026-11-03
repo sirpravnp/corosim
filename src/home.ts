@@ -1,7 +1,7 @@
 // The homepage: a different heart each day, stippled as a thermogram. The dots settle on load and stand still; a cursor
 // over them stirs them, and they flow back. The menu, the title and the fact are laid over the picture (home.css).
 import { mountAi } from "./shell/ai";
-import { mountShare } from "./shell/share";
+import { mountTheme } from "./shell/theme";
 import { PAGES, icon } from "./shell/shell";
 import { Placement, Stipple, draw, dotsFor, thermalGradient } from "./stipple";
 import { fieldFor, usesLogo } from "./specimenArt";
@@ -19,9 +19,10 @@ $("bar").style.background = thermalGradient();
 $("home-top").innerHTML = `
   <a class="shell-brand" href="./" aria-label="CoroSim home"><img src="logo-transparent.png" alt="" width="32" height="32"><span>CoroSim</span></a>
   <nav class="shell-nav" aria-label="Pages">${PAGES.map((p) => `<a data-page="${p.id}" href="${p.path}" title="${p.blurb}">${icon(p.id)}<span>${p.label}</span></a>`).join("")}</nav>
-  <div class="shell-share"></div>
+  <div class="shell-theme"></div>
   <div class="shell-ai"></div>`;
-mountShare($("home-top").querySelector<HTMLElement>(".shell-share")!);
+$("home-top").classList.add("no-share");
+mountTheme($("home-top").querySelector<HTMLElement>(".shell-theme")!);
 void mountAi($("home-top").querySelector<HTMLElement>(".shell-ai")!, "./").start();
 
 // ?heart=<id> or ?day=YYYY-MM-DD pick a heart; with neither it is today's.

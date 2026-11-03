@@ -100,6 +100,7 @@ Keep it to **one machine**: a page's live line is held by one process. Scale up 
 | `COROSIM_APP_URL` | `https://corosim.com/sim/` | The simulator page; `corosim_open_link` builds its `#s=` links on it. |
 | `COROSIM_DATA_DIR` / `COROSIM_DB` | memory only | SQLite location (`/data/corosim.db` in the image). |
 | `GITHUB_CLIENT_ID/_SECRET`, `GOOGLE_CLIENT_ID/_SECRET` | none | Sign-in providers; each optional. |
+| `COROSIM_CASE_PASSCODE` | none | The passcode for writing and publishing cases (the library's `PUT`/`DELETE`/drafts); without it the case library is read-only. |
 | `COROSIM_ALLOWED_ORIGINS` | corosim.com, www.corosim.com, localhost | Sites that may open a line and receive sign-ins. |
 | `COROSIM_CALLS_PER_DAY` | 2000 | Per-account daily allowance. |
 | `COROSIM_TRUST_PROXY` | off (`1` in `fly.toml`) | Take client addresses from the proxy's header. |

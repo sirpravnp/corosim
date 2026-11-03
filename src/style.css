@@ -46,7 +46,7 @@
 html { background: var(--bg); }
 body {
   margin: 0 auto;
-  max-width: 1320px;
+  max-width: 1680px;
   padding-inline: 20px;
   padding-block: 0 48px;
   background: var(--bg);
@@ -56,14 +56,40 @@ body {
 
 #cases[hidden] { display: none; }
 
-/* Layout */
-main { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 24px; margin-top: 20px; align-items: start; }
+/* Layout: stage column (heart + live hemodynamics) | Settings rail. The rail spans both rows and sticks
+   like a shopping-site filter column while the stage scrolls. */
+main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 24px;
+  margin-top: 20px;
+  align-items: start;
+}
+main > aside {
+  grid-column: 2;
+  grid-row: 1 / -1; /* span the heart row and the live-hemodynamics row */
+  align-self: start;
+  position: sticky;
+  top: 12px;
+  z-index: 3;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+}
+main > .ws-sec { grid-column: 1; margin-top: 0; }
 @media (max-width: 980px) {
   main { grid-template-columns: minmax(0, 1fr); }
-  /* one column: the game panel first, so a call can be made without scrolling past the displays; then the displays; then the rail */
-  main > aside { display: contents; }
-  main > section { order: 0; }
+  /* one column: cases, displays, rail, then live hemodynamics */
+  main > aside {
+    display: contents;
+    grid-column: auto;
+    grid-row: auto;
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+  main > section:not(.ws-sec) { order: 0; }
   aside > * { order: 1; }
+  main > .ws-sec { order: 2; grid-column: auto; }
   #cases { order: -1; }
 }
 main > section, aside { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }

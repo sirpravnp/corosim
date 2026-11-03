@@ -15,6 +15,8 @@ export const AF_HF: CaseDef = {
   id: "af-hf",
   title: "Short of breath and racing",
   tier: "medium",
+  complaint: "Shortness of breath",
+  devices: [],
   blurb: "Fast AF in a man whose weak heart is already failing.",
   card: {
     presents: "66-year-old man with five days of worsening breathlessness, needing to sleep upright, with swollen legs and a racing, irregular heartbeat. He is using his neck muscles to breathe. Heart rate 158, BP 83/69, crackles to the mid-chest.",
