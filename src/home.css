@@ -37,8 +37,9 @@ body.home { --bg: #000; --panel: #0b0d14; --ink: #f4f1ea; --muted: #98a0b8; --ru
 
 /* Connect your AI: the same control as every other page, over the thermogram */
 /* The page menu across the top: the same header every other page has (shell.css), fixed over the thermogram. */
-.home-top { position: fixed; z-index: 4; top: 0; left: 0; right: 0; padding: 0 40px; background: #000; --sh-press: #fff; }
-@media (max-width: 819px) { .home-top { position: absolute; padding: 0 16px; } }
+/* same container as the other pages' header: 1440px wide at most, centered, with 20px gutters */
+.home-top { position: fixed; z-index: 4; top: 0; left: 0; right: 0; padding: 0 max(20px, calc((100% - 1440px) / 2 + 20px)); background: #000; --sh-press: #fff; }
+@media (max-width: 819px) { .home-top { position: absolute; } }
 
 /* Below the fold: what the site does, one tool at a time, shown with the tool itself. The thermogram stays pinned and the story slides over it. */
 .story { position: relative; z-index: 2; background: #000; border-top: 1px solid var(--rule); }
