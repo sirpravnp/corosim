@@ -1,6 +1,8 @@
 /**
  * Proximal LAD stenosis ladder on the core engine: transmurality thresholds should ramp ST in V2
- * when ischemic mass is already high (85%). A 70% lesion may carry a small severity-weighted mass and must not elevate V2. Occlusion stays in the anterior STEMI range.
+ * when ischemic mass is already high (85%). A 70% lesion may carry a small severity-weighted mass
+ * (E6 soft MVO₂/debt can deepen mild lesions a little past the pre-E6 ~0.15 band) and must not
+ * elevate V2. Occlusion stays in the anterior STEMI range.
  */
 import { describe, it, expect } from "vitest";
 import { runOne } from "../scripts/eval/engine";
@@ -39,7 +41,7 @@ describe("proximal LAD ST transmurality ramp (core engine, seed 1, 180 s)", () =
   it("70% is only partly ischemic and does not elevate V2", () => {
     const m = mass(ladStenosis(0.7));
     expect(m).toBeGreaterThan(0.02);
-    expect(m).toBeLessThan(0.15);
+    expect(m).toBeLessThan(0.22);
     expect(Math.abs(v2(ladStenosis(0.7)))).toBeLessThan(0.5);
   });
 
