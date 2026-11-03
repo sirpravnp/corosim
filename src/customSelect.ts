@@ -3,7 +3,10 @@
    options and listening for "change"; the custom control mirrors all of that. */
 const valueDesc = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!;
 
+let autoId = 0;
 function enhance(sel: HTMLSelectElement) {
+  if (sel.classList.contains("dd-native") || sel.multiple) return; // already enhanced (or a list box, which stays native)
+  if (!sel.id) sel.id = `dd-auto-${++autoId}`;
   const wrap = document.createElement("div");
   wrap.className = "dd";
   const btn = document.createElement("button");
@@ -44,6 +47,7 @@ function enhance(sel: HTMLSelectElement) {
       }
       group = g;
       const li = document.createElement("li");
+      li.hidden = o.hidden; // an option the page hides (e.g. "custom" until a link brings one); kept so indices match
       li.setAttribute("role", "option");
       li.textContent = o.textContent;
       li.dataset.i = String(i);
@@ -51,6 +55,7 @@ function enhance(sel: HTMLSelectElement) {
       list.append(li);
     });
     btn.textContent = sel.selectedOptions[0]?.textContent ?? "";
+    btn.disabled = sel.disabled;
   }
   function highlight(i: number) {
     active = Math.max(0, Math.min(i, opts().length - 1));
@@ -115,8 +120,15 @@ function enhance(sel: HTMLSelectElement) {
     get() { return valueDesc.get!.call(this); },
     set(v: string) { valueDesc.set!.call(this, v); render(); },
   });
-  new MutationObserver(render).observe(sel, { childList: true });
+  new MutationObserver(render).observe(sel, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled", "hidden", "label"] });
   render();
 }
 
 document.querySelectorAll<HTMLSelectElement>("select").forEach(enhance);
+// Selects built later (the patient controls, panel pickers) get the same control as soon as they are in the page.
+new MutationObserver((records) => {
+  for (const r of records) for (const n of r.addedNodes) {
+    if (n instanceof HTMLSelectElement) enhance(n);
+    else if (n instanceof HTMLElement) n.querySelectorAll<HTMLSelectElement>("select").forEach(enhance);
+  }
+}).observe(document.body, { childList: true, subtree: true });

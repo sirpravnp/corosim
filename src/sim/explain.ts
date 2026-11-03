@@ -1,6 +1,11 @@
 import { Simulation } from "./simulation";
 import { AUTONOMIC } from "../physics/autonomic";
 import { CIRC } from "../physics/circulation";
+import { Ectopy, EctopyPhase } from "../physics/ectopy";
+import { ECTOPY } from "../config/ectopy";
+import { libraryRhythm } from "../physics/rhythmSource";
+import type { Arrhythmia, RunCause } from "../physics/arrhythmia";
+import { arrestSentence, arrestWords } from "./narrate";
 
 export interface Explanation {
   headline: string;
@@ -9,6 +14,54 @@ export interface Explanation {
   mechanisms: string[];
   teachingPoints: string[];
   caveats: string[];
+}
+
+const PHASE_WHY: Record<EctopyPhase, string> = {
+  none: "",
+  hyperacute: "ischemic ectopy peaks in the first hour or two after onset",
+  subacute: "ischemic ectopy falls over the hours after onset",
+  late: "many hours after onset, ischemic ectopy has settled to a low level",
+  reperfusion: "reperfusion of ischemic muscle brings a burst of ectopy that settles over tens of minutes, then a slow tail over hours",
+};
+
+/**
+ * The core engine's ectopy (B3a) as measured over the last minute of beats: frequent, occasional or none, with the phase that
+ * explains it. Nothing when the heart has no ischemic history (no ectopy to speak of).
+ */
+export function ectopyStatement(e: Ectopy, t: number): string | null {
+  const phase = e.phase(), r = e.recent(t);
+  if (phase === "none" && r.pvcs === 0) return null;
+  const why = PHASE_WHY[phase], per = `${r.pvcs} of the last ${r.beats} beats (${Math.round(r.share * 100)}%)`;
+  const pause = "each is followed by a compensatory pause and a stronger next beat";
+  if (r.pvcs === 0) return `No premature ventricular beats over the last minute${why ? `, although ${why}` : ""}; how many a patient has varies widely between patients.`;
+  if (r.share >= ECTOPY.frequent) return `Frequent premature ventricular beats: ${per}${why ? `; ${why}` : ""}; ${pause}.`;
+  return `Occasional premature ventricular beats: ${per}${why ? `; ${why}` : ""}; ${pause}.`;
+}
+
+export const CAUSE_WHY: Record<RunCause, string> = {
+  ischemia: "a premature beat on the vulnerable phase of acutely ischemic myocardium started it",
+  reperfusion: "it came with reperfusion of the ischemic muscle",
+  scar: "a re-entry circuit around healed infarct scar runs it",
+  electrolyte: "severe hyper- or hypokalaemia made the ventricle irritable, without an acute ischemic territory",
+  degeneration: "a ventricular tachycardia broke up into fibrillation",
+  induced: "it was started on purpose",
+};
+
+/** The core engine's VT/VF and AIVR (B3b): what runs now, or the last run in the past minute. Nothing when nothing happened. */
+export function arrhythmiaStatement(a: Arrhythmia, t: number): string | null {
+  const s = a.state(t), cur = s.current;
+  if (cur) {
+    const what = `${cur.label[0].toUpperCase()}${cur.label.slice(1)}${cur.rate ? ` at ${cur.rate}/min` : ""} for ${Math.round(cur.forS)} s`;
+    const tail = cur.kind === "vf" ? "no organized contraction and no cardiac output: cardiac arrest, treated with CPR and defibrillation"
+      : cur.kind === "aivr" ? "a benign reperfusion rhythm, slightly faster than the sinus node, which ends by itself"
+      : cur.kind === "poly" ? "chaotic contraction; it stops by itself or degenerates to ventricular fibrillation within seconds"
+      : "dyssynchronous contraction and short filling; it degenerates to ventricular fibrillation if the pressure collapses or while acute ischemia goes on";
+    return `${what}: ${CAUSE_WHY[cur.cause]}; ${tail}.`;
+  }
+  const l = s.last;
+  if (!l || t - (l.end ?? l.t) > 60) return null;
+  if (l.kind === "nsvt") return `A run of ${l.beats} beats of non-sustained ventricular tachycardia at ${l.rate}/min${l.couplingVsT !== undefined && l.couplingVsT < 1 ? ", started by an R-on-T premature beat" : ""}; ${CAUSE_WHY[l.cause]}.`;
+  return `${l.label[0].toUpperCase()}${l.label.slice(1)} ended (${l.outcome ?? "stopped"}) ${Math.round(t - (l.end ?? l.t))} s ago.`;
 }
 
 /**
@@ -36,12 +89,19 @@ export function explain(sim: Simulation): Explanation {
     } else if (sim.t > 0) mech.push("No bed is ischemic yet: autoregulation is still meeting demand despite the lesion, or ischemia has not had time to develop (it takes about 20 s).");
   }
   if (st.rhythm.avBlock) mech.push(`AV-node artery ischemia has caused ${st.rhythm.label}; the ventricular rate is set by the block, not the sinus node.`);
-  if (st.rhythm.pvcSeverity > 0.6) mech.push("Ischemic burden is above the ectopy threshold, so premature ventricular beats occur; each is followed by a compensatory pause and a stronger next beat.");
+  const ect = sim.stream.ectopy;
+  if (ect) { const e = ectopyStatement(ect, sim.t); if (e) mech.push(e); } // core engine (B3a): what the monitor actually showed
+  const aw = arrestWords(st.arrest);
+  if (aw) mech.push(arrestSentence(aw)); // core engine (B4b)
+  if (sim.arrhythmia) { const a = arrhythmiaStatement(sim.arrhythmia, sim.t); if (a) mech.push(a); } // core engine (B3b)
+  else if (st.rhythm.pvcSeverity > 0.6) mech.push("Ischemic burden is above the ectopy threshold, so premature ventricular beats occur; each is followed by a compensatory pause and a stronger next beat.");
 
   const rs = sim.rstate, sup = st.support, v = st.ventricle;
+  const lib = libraryRhythm(rs.rhythm);
+  if (lib) mech.push(`${lib.name} (from the EKG library; it sets the beats the ventricles get): ${lib.summary}${/^(vf|asystole)/.test(lib.id) ? " The ventricles do not contract: there is no output and the pressure falls to the mean filling pressure." : ""}`);
   if (rs.rhythm === "af") mech.push("Atrial fibrillation: no P waves, an irregular ventricular response set by the AV node, and no atrial kick (each beat fills less).");
   if (rs.bbb !== "none") mech.push(`Pre-existing ${rs.bbb === "lbbb" ? "left" : "right"} bundle branch block widens the QRS${rs.bbb === "lbbb" ? " and masks ST changes" : ""}.`);
-  if (v.lvInfarctFraction > 0.02) mech.push(`Irreversible injury: ${Math.round(v.lvInfarctFraction * 100)}% of the left ventricle has infarcted (${st.clinicalMinutes} clinical minutes of evolution); estimated LVEF ${Math.round(v.ejectionFraction * 100)}%. Reperfusion stops further loss but does not restore it.`);
+  if (v.lvInfarctFraction > 0.02) mech.push(`Irreversible injury: ${Math.round(v.lvInfarctFraction * 100)}% of the left ventricle has infarcted (${st.clinicalMinutes} clinical minutes of evolution); LVEF (aortic-valve estimate) ${Math.round(v.ejectionFraction * 100)}%. Reperfusion stops further loss but does not restore it.`);
   if (sup.norepinephrine) mech.push(`Norepinephrine (${Math.round(sup.norepinephrine * 100)}%) raises resistance and pressure, and adds afterload and oxygen demand to an ischemic ventricle.`);
   if (sup.dobutamine) mech.push(`Dobutamine (${Math.round(sup.dobutamine * 100)}%) restores some lost contractility at the cost of oxygen demand and more ectopy.`);
   if (sup.nitroglycerin) mech.push(`Nitroglycerin lowers preload${v.rvIschemia > 0.3 ? "; with right-ventricular ischemia this preload loss is large and dangerous" : ""}.`);

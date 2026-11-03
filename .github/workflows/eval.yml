@@ -1,0 +1,62 @@
+name: Core engine evaluation
+
+# Nightly and on demand. Not a deploy gate: the deploy workflows only run the fast tests.
+# Shards the default suites (standard, edge, valve, stochastic) at 8 seeds, then checks
+# expectations and invariants. The input sweep is a separate job (one seed per field value).
+# The probe suite (scripts/eval/probe.ts) is not in this workflow: run it with --suite probe.
+# A failure is an invariant violation, a crash, or a filled spec cell that does not hold.
+# Panel cross-checks are logged and do not fail the job.
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    name: eval (shard ${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsx scripts/eval/run.ts observe --seeds 8 --jobs 2 --shard ${{ matrix.shard }}/4
+      - run: npx tsx scripts/eval/run.ts check --shard ${{ matrix.shard }}/4
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-out-${{ matrix.shard }}
+          path: scripts/eval/out/
+          if-no-files-found: warn
+
+  sweep:
+    name: input sweep
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsx scripts/eval/run.ts observe --suite sweep --jobs 2
+      - run: npx tsx scripts/eval/run.ts check --suite sweep --invariants-only
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-out-sweep
+          path: scripts/eval/out/
+          if-no-files-found: warn

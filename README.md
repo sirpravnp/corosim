@@ -11,9 +11,9 @@ are assumptions, marked as such in the code. It has not been compared with patie
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173 (homepage), /sim/ (simulator), /game/ (the daily game)
+npm run dev        # http://localhost:5173 (homepage), /sim/ (simulator), /cases/ (the cases)
 npm test           # 280+ tests
-npm run build      # static site in dist/: index.html, sim/index.html, game/index.html
+npm run build      # static site in dist/: index.html, sim/index.html, cases/index.html
 ```
 
 ## How it works
@@ -63,15 +63,14 @@ display sections fold away with their state in the header.
   and a button for the guideline order of steps, so a learner can decide first and check after.
 
 Choices are the teaching points of STEMI and infarct shock care (ACC/AHA; SHOCK, IABP-SHOCK II), not a decision aid.
-In the daily game the treatment is the second half of the case (below).
 
 ## Three pages
 
 One build, a few front doors. `corosim.com` is the homepage: the title, a heart as a stippled thermogram, a fact about
-it, and the links. `corosim.com/sim` is the simulator alone; `corosim.com/game` is "Find the culprit", the simulator with the
-game panel at the top of the right-hand rail. The switch in the masthead moves between the two, and the logo goes
+it, and the links. `corosim.com/sim` is the simulator alone; `corosim.com/cases` is the cases: the simulator with a scripted patient, a case panel at the top of the right-hand rail,
+and questions that stop the clock. The switch in the masthead moves between the two, and the logo goes
 home. The homepage is `index.html` (`src/home.ts`, `src/stipple.ts`); the simulator is `sim/index.html`, and the build
-writes the same page to `dist/game/index.html` (see `vite.config.ts`), which the dev server serves at `/game/` by a
+writes the same page to `dist/cases/index.html` (see `vite.config.ts`), which the dev server serves at `/cases/` by a
 rewrite. Older share links of the form `corosim.com/#s=…` are forwarded by the homepage to `/sim/#s=…`.
 
 ### The heart of the day
@@ -90,45 +89,32 @@ outline, with the arteries that make the variant what it is hottest. That outlin
 (`src/heartOutline.ts`, by `scripts/bake-home-outline.ts`: run it after changing `src/anatomy/heartSurface.ts`;
 a test fails when it is out of date). The textbook heart is the logo.
 
-## Game mode: find the culprit
+## Cases
 
-The simulator run backwards, one case a day. "Find the culprit" draws the day's lesion from the date (so everyone
-gets the same case) and hides it: the vessel lumen, vessel shading, lesion marker, perfusion table and the pressure,
-velocity, wall-shear and flow displays all keep the secret, the heart does not darken, and the monitor shows only rate,
-cardiac output and blood pressure. The case can be any anatomic variant and any vessel, the nodal arteries included,
-with a complete occlusion or a tight stenosis under exertion, on a patient who may already be in atrial fibrillation
-or have a bundle branch block. Posterior leads V7–V9 are on. You read the tracing, press the spot on the vessel where
-you think the lesion is, and lock in.
+`corosim.com/cases` replaces the old "Find the culprit" game. A case is the simulator with a patient already in trouble:
+the page opens on a list, each case has a short card (what the patient came in with, a brief history, a line or two of
+other facts), and Begin starts the simulator from a fixed starting patient. Everything on the page is live: the
+Support, Patient and arrest panels work as they do in the simulator, and the lesion is kept off the displays until the
+team has found it.
 
-Then a second question: is the right ventricle involved? Yes or no, 10 points either way, judged by the circulation
-model's own right-ventricular ischemia (the monitor's "RV involvement" line).
+At the points that matter the case stops and asks a question. **A prompt holds the clock** (the simulation does not
+advance until you answer). Answers branch: a choice can reveal a finding, change the patient (a device goes in, a rhythm
+returns, a complication begins), set a flag that a later question depends on, order a procedure, or end the case.
+Checkpoints are gated by outcomes: the question about the artery only comes once support is running, a complication of
+ECMO alone brings its own question about venting the left ventricle, and so on.
 
-Then the case goes on: the lesion is shown and the player treats the patient. The Management panel is live (its
-assessment tab is not: that is the answer), a clinical clock runs at 2 minutes a second, orders take their clinical time
-to arrive, and muscle dies while the artery stays closed. The phase ends 20 clinical minutes after reperfusion, at 150
-minutes, or when the player hands over. Up to 40 points for the muscle saved, judged against the infarct that immediate
-PCI would have left (all the points) and that no reperfusion would have (none); the baselines are computed from the
-state at the moment of the call, so a slow find does not count twice. Up to 20 points for the share of the phase spent
-out of shock, less the share spent doing harm (a nitrate in a right-ventricular infarct, volume into congested lungs,
-and the other warnings the assessment would have raised). The debrief then says what was done and when, the infarct
-against both baselines, the harm by name, and what the guidelines would have done at the start. A case is out of 170. The card at
-`/game` keeps a streak of days played on their own day, with the last seven as bars; `/game?day=YYYY-MM-DD` opens an
-earlier case from the archive, scored but outside the streak.
+Grading keeps the old treatment scoring's spirit: a case ends in success, death or time-out, and the score is survival,
+the share of the time the patient was held stable (pressure at 60 or more and not in arrest), points for each choice,
+and a deduction for time spent doing harm. The debrief lists each choice with its teaching point and anything the case
+expected that was not done. Best scores are kept in the browser.
 
-Every case is solvable. The draw is checked against the physics: at full ischemia some lead must reach 1 mm of ST
-shift, or the AV node must block, or the sinus rate must move by 12 bpm; a draw that does none of these (a conus
-branch, or the SA-node artery in a patient in fibrillation) is thrown away and the next from the same seed taken, so
-the day's case is still the same for everyone.
+The cases so far, easy to hard: Pressure in the chest (anterior STEMI), Racing heart (AF with RVR in a stable patient: rate control, then the anticoagulation question), Slow and low (inferior STEMI with right-ventricular infarct and heart block), Short of breath and racing (fast AF in a failing ventricle: diltiazem is the trap, cardioversion the route), Cold and wet (left main shock) and Collapse at home (refractory VF, ECPELLA). Harms are scored by a shared list in `src/cases/harms.ts` (a drug given into a physiology it makes worse); a case adds its own or skips a generic one.
 
-Up to 100 points: the location score is full anywhere on the lesion (within 7 mm, its own half-length) and falls off as
-a Gaussian (σ 20 mm) with distance from it *along the vessels*, so a call just distal to a branch is far from one just
-proximal, as the physiology is, but never below 25 while the call is in the culprit's own system (LAD, circumflex or
-RCA); that score is then multiplied by exp(−t/150 s), t being the patient's time since the occlusion. The clock runs at
-3× during a case so scores compare. The reveal shows the lesion, your call, and a short debrief: what the lesion did to
-the tracing and why. The day's result is kept in the browser, so a day is played once and can be looked at again,
-and "Share your score" copies a spoiler-free line (the case number, the score, how close and how soon) to paste anywhere.
-
-Case drawing, scoring and the debrief live in `src/game.ts`; the display logic is in `src/app.ts`.
+The engine is `src/cases/engine.ts` (pure: a `CaseRunner` fed a `Probe` of the patient each frame; tests in
+`tests/cases.test.ts`), the cases are one file each in `src/cases/` (list them in `src/cases/index.ts`), and the page is
+`src/page/cases.ts`. A case is a `PatientSpec` to start from, a card, an optional opening (rhythm, CPR, drugs already
+given), and a list of checkpoints (`atS`, `when`/`forS`, `requires`/`forbids`, a `prompt` with options or a bare
+`outcome`). Devices a case will place are built into the starting patient switched off, so placing them is a live change.
 
 ## EKG: simulated 12-leads
 

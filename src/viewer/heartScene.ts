@@ -20,7 +20,13 @@ const PART_COLOR: Record<Part, THREE.Color> = {
   [Part.Aorta]: new THREE.Color(0xd2a08f),
 };
 const FAT = new THREE.Color(0xc9a564), DUSKY = new THREE.Color(0x3f3150), SCAR = new THREE.Color(0x2a2230);
-const NB = 4, M = 18, EXAG = 2.5;
+const NB = 4, M = 18;
+const GROUP_COLOR: Record<string, THREE.Color> = { LAD: new THREE.Color(0xe0574c), LCx: new THREE.Color(0x4c8be0), RCA: new THREE.Color(0xe0b23c) };
+const HEAT = [new THREE.Color(0x3fa66b), new THREE.Color(0xe6c34a), new THREE.Color(0xe0392f), new THREE.Color(0x7d1d6b)];
+/** Heat map colour for 0..1. */
+const heat = (k: number, out: THREE.Color) => { const x = Math.min(1, Math.max(0, k)) * 3, i = Math.min(2, Math.floor(x)); return out.copy(HEAT[i]).lerp(HEAT[i + 1], x - i); };
+/** Colourings the replay can compute; the rest (pressure, velocity, wall shear, O2) belong to the website page. */
+export const VESSEL_MODES = ["real", "isch", "anat"];
 const TARGET = new THREE.Vector3(-6, 14, -4);
 export const VIEWS: Record<string, [number, number, number]> = {
   anterior: [0, 30, 330], left: [320, 25, 10], posterior: [0, 30, -330], inferior: [20, -320, 90], right: [-320, 25, 10],
@@ -40,6 +46,11 @@ export class HeartScene {
   private fatK = new Float32Array(0); private grain = new Float32Array(0); private cover = new Float32Array(0);
   private bedIdx = new Int16Array(0); private bedW = new Float32Array(0);
   private vessels: Vessel[] = [];
+  private heartMesh!: THREE.Mesh;
+  private exag = 2.5;
+  private mode = "real";
+  private labelHost: HTMLElement | null = null;
+  private labels: { el: HTMLElement; pos: THREE.Vector3 }[] = [];
   private vesselGroup = new THREE.Group();
   private vesselMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.3, clearcoat: 0.75, clearcoatRoughness: 0.18 });
 
@@ -73,7 +84,8 @@ export class HeartScene {
     this.heartGeo.setIndex(new THREE.BufferAttribute(m.indices, 1));
     const heartMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.55, clearcoat: 0.45, clearcoatRoughness: 0.3, sheen: 0.35, sheenColor: new THREE.Color(0xffc9b8), sheenRoughness: 0.6 });
     this.heartMat = heartMat;
-    this.group.add(new THREE.Mesh(this.heartGeo, heartMat), this.vesselGroup);
+    this.heartMesh = new THREE.Mesh(this.heartGeo, heartMat);
+    this.group.add(this.heartMesh, this.vesselGroup);
     this.view("anterior");
     new ResizeObserver(() => this.resize()).observe(host);
     this.resize();
@@ -86,6 +98,36 @@ export class HeartScene {
 
   /** See-through muscle (1 = solid), so something drawn inside the heart shows. */
   setOpacity(k: number) { this.heartMat.transparent = k < 1; this.heartMat.opacity = k; this.heartMat.depthWrite = k >= 1; this.heartMat.needsUpdate = true; }
+
+  /** Heart muscle style (display.heart): solid, ghost (see-through) or none (arteries only). */
+  setHeartStyle(style: string) { this.heartMesh.visible = style !== "none"; this.setOpacity(style === "ghost" ? 0.3 : 1); }
+  /** What colours the arteries (display.mode). Returns false when the replay cannot draw that map. */
+  setMode(mode: string) { const ok = VESSEL_MODES.includes(mode); this.mode = ok ? mode : "real"; this.buildVessels(); return ok; }
+  /** Vessel size exaggeration (display.coronaryScale). */
+  setCoronaryScale(k: number) { this.exag = k; this.buildVessels(); }
+  setAutoRotate(on: boolean) { this.controls.autoRotate = on; this.controls.autoRotateSpeed = 2; }
+  /** Name the arteries and chambers (display.labels). */
+  setLabels(on: boolean, host: HTMLElement) {
+    this.labelHost = host; host.replaceChildren(); this.labels = [];
+    if (!on) return;
+    const add = (text: string, pos: THREE.Vector3, cls: string) => { const el = document.createElement("span"); el.className = `lbl ${cls}`; el.textContent = text; host.appendChild(el); this.labels.push({ el, pos }); };
+    for (const seg of this.sim.tree.segments) if (!seg.parent || seg.length > 40) add(seg.id, v3(rotateHeart(projectToEpicardium(seg.curve.at(0.5), 3).pos)), "art");
+    const names: [Part, string][] = [[Part.LV, "LV"], [Part.RV, "RV"], [Part.LA, "LA"], [Part.RA, "RA"], [Part.Aorta, "Aorta"]];
+    for (const [part, name] of names) {
+      const c = new THREE.Vector3(); let n = 0;
+      for (let i = 0; i < this.hRef.length; i++) if (this.hPart[i] === part) { c.add(v3(rotateHeart(this.hRef[i]))); n++; }
+      if (n) add(name, c.divideScalar(n), "ch");
+    }
+  }
+  private placeLabels() {
+    if (!this.labels.length) return;
+    const w = this.host.clientWidth, h = this.host.clientHeight, v = new THREE.Vector3();
+    for (const l of this.labels) {
+      v.copy(l.pos).project(this.camera);
+      l.el.style.display = v.z > 1 ? "none" : "";
+      l.el.style.transform = `translate(${((v.x + 1) / 2) * w}px, ${((1 - v.y) / 2) * h}px) translate(-50%, -50%)`;
+    }
+  }
 
   /** Draw something else in the same scene, in the patient frame (x left, y up, z anterior), centred on the heart. */
   addOverlay(obj: THREE.Object3D) { obj.position.add(TARGET); this.scene.add(obj); }
@@ -148,7 +190,10 @@ export class HeartScene {
   private buildVessels() {
     for (const v of this.vessels) { this.vesselGroup.remove(v.mesh); v.mesh.geometry.dispose(); }
     this.vessels = [];
-    const { tree, analysis } = this.sim;
+    const { tree, analysis } = this.sim, EXAG = this.exag;
+    // worst ischemia in the bed downstream of each segment (isch map): a bed counts for its own artery and every ancestor
+    const down: Record<string, number> = {};
+    for (const s of this.sim.sites) { let id: string | null = s.key.split("#")[0]; const k = this.sim.sev[s.key] ?? 0; while (id) { down[id] = Math.max(down[id] ?? 0, k); id = tree.byId[id]?.parent ?? null; } }
     for (const seg of tree.segments) {
       const r = analysis.cond.seg[seg.id], n = r.s.length, L = seg.length, ph = hash(seg.id) * 6.283;
       const placed = r.s.map((s) => projectToEpicardium(seg.curve.at(s / L), 0.6));
@@ -174,7 +219,9 @@ export class HeartScene {
         const cx = ctr[i].x + out[i].x * lift, cy = ctr[i].y + out[i].y * lift, cz = ctr[i].z + out[i].z * lift;
         const blocked = wholly || (r.blockedFrom !== null && s > r.blockedFrom);
         c.copy(blocked ? BLOCKED : ARTERY).lerp(ARTERY_DEEP, blocked ? 0.2 : 0.35 * (1 - r.d[i] / Math.max(...r.d)));
-        if (!blocked && r.d[i] < 0.6 * diameterAt(tree, seg, s)) c.lerp(new THREE.Color(0xf2c14e), 0.55); // a narrowing shows up
+        if (!blocked && this.mode === "isch") heat(down[seg.id] ?? 0, c);
+        else if (!blocked && this.mode === "anat") c.copy(GROUP_COLOR[seg.group] ?? ARTERY);
+        else if (!blocked && r.d[i] < 0.6 * diameterAt(tree, seg, s)) c.lerp(new THREE.Color(0xf2c14e), 0.55); // a narrowing shows up
         for (let j = 0; j <= M; j++) {
           const th = (j / M) * Math.PI * 2, cs = Math.cos(th) * R, sn = Math.sin(th) * R, o = (i * (M + 1) + j) * 3;
           pos[o] = cx + nv.x * cs + bin.x * sn; pos[o + 1] = cy + nv.y * cs + bin.y * sn; pos[o + 2] = cz + nv.z * cs + bin.z * sn;
@@ -191,5 +238,5 @@ export class HeartScene {
     }
   }
 
-  render() { this.controls.update(); this.renderer.render(this.scene, this.camera); }
+  render() { this.controls.update(); this.renderer.render(this.scene, this.camera); this.placeLabels(); }
 }

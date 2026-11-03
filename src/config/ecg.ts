@@ -82,7 +82,11 @@ export const AF = {
   fWaveHz: 6.5, // ~390/min
   slowedBy: [1, 0.78, 0.58, 0] as const, // ventricular response × this at AV-node ischemia degree 0..2; degree 3 is a regular escape
 };
-export type Rhythm = "sinus" | "af";
+/**
+ * The patient's rhythm: "sinus" and "af" are the coronary model's own (rate and conduction from the ischemia and the reflexes);
+ * any other value is the id of an EKG-library rhythm the Simulator runs (core engine only, physics/rhythmSource.ts `SIM_RHYTHMS`).
+ */
+export type Rhythm = "sinus" | "af" | (string & {});
 
 export const RHYTHM = {
   baseHr: 72,
@@ -100,3 +104,21 @@ export const ISCHEMIA = {
   recoveryTau: 8, // doc: τ ≈ 8 s after reperfusion
   fullAtSupplyDemand: 0.4, // severity reaches 1 when supply/demand falls to this ratio
 };
+
+/** Serum potassium (mmol/l) morph of the coronary model's sinus/AF beats (not library rhythm painters). */
+export const POTASSIUM_ECG = {
+  normal: 4.2,
+  hiFrom: 4.8,
+  hiTo: 7.5,
+  loFrom: 3.5,
+  loTo: 2.0,
+  /** P-wave amplitude scales as 1 − pAmpHi × hi(K). */
+  pAmpHi: 0.85,
+  /** T amplitude: 1 + tAmpHi × hi(K) − tAmpLo × lo(K). */
+  tAmpHi: 0.5,
+  tAmpLo: 0.4,
+  /** T Gaussian σ scales as 1 − tWidthNarrow × hi(K). */
+  tWidthNarrow: 0.55,
+  /** Q/R/S width σ scales as 1 + qrsWide × hi(K). */
+  qrsWide: 2.5,
+} as const;

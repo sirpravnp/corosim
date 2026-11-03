@@ -2,7 +2,8 @@ import "../cath/cath.css";
 import "./structural.css";
 import { mountShell } from "../shell/shell";
 import { readout } from "../readout";
-import { assess, defaults, lesionHash, LESIONS, LESION_BY_ID, LesionDef, parseLesionHash, StructuralFindings, ValveFinding } from "../sim/structural";
+import { mountCrossLinks } from "../shell/crossLinkRow";
+import { assess, defaults, lesionHash, LESIONS, LESION_BY_ID, LesionDef, parseLesionHash, patientFromLesionHash, StructuralFindings, ValveFinding } from "../sim/structural";
 import { NodeName } from "../physics/structural";
 import { morphFor, satMap } from "./morph";
 import { buildProps } from "./props";
@@ -22,6 +23,8 @@ const pct = (x: number) => (Number.isFinite(x) ? `${(x * 100).toFixed(0)}%` : "â
 let def: LesionDef = LESIONS[0];
 let values: Record<string, number> = defaults(def);
 let result!: StructuralFindings;
+/** "Open inâ€¦" links: the lesion on screen with its slider values, as a PatientSpec. */
+const links = mountCrossLinks($("xlinks"), "structural", "../", () => patientFromLesionHash(lesionHash(def.id, values)), { skip: () => (def.patient === "adult" ? [] : ["sim", "cath"]) }); // a newborn lesson has no Simulator or cath-lab patient
 let heart: StructuralHeartView | null = null;
 try { heart = new StructuralHeartView($("view3d")); $("satbar").style.background = legendGradient(); } catch { $("view3d").textContent = "3D view needs WebGL."; document.querySelectorAll<HTMLElement>(".views button, #cut").forEach((el) => ((el as HTMLButtonElement | HTMLInputElement).disabled = true)); }
 
@@ -95,6 +98,7 @@ function refresh(push = false) {
   const w = $("warn"); w.hidden = !r.warnings.length; w.textContent = r.warnings.join(" ");
   $("notes").replaceChildren(...result.notes.map((n) => Object.assign(document.createElement("li"), { textContent: n })));
   draw();
+  links.repoint();
   const h = lesionHash(def.id, values);
   if (location.hash !== h) (push ? history.pushState : history.replaceState).call(history, null, "", h);
 }

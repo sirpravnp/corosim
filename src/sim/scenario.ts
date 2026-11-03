@@ -2,8 +2,11 @@ import { Variant, TYPICAL, buildTree } from "../anatomy/tree";
 import { Lesion } from "../physics/network";
 import { AutonomicControls, defaultControls } from "../physics/autonomic";
 import { Patient, HEALTHY } from "../physics/rhythm";
+import { simRhythmId } from "../physics/rhythmSource";
+import type { Rhythm } from "../config/ecg";
 import { Support, noSupport } from "../physics/support";
 import { SUPPORT } from "../config/management";
+import { ARRHYTHMIA } from "../config/arrhythmia";
 
 /**
  * The complete, serialisable description of a simulated patient and what is being done to them.
@@ -26,12 +29,30 @@ export interface Scenario {
     vasopressor?: number; // −1 (strong vasodilator) .. +1 (strong alpha agonist, e.g. phenylephrine)
   };
   autonomic?: Partial<Pick<AutonomicControls, "baroreflexGain" | "respRate" | "respDepth" | "setPointShift">> & { noise?: number };
-  /** What the patient brought with them. */
-  patient?: { rhythm?: "sinus" | "af"; bbb?: "none" | "rbbb" | "lbbb" };
+  /**
+   * What the patient brought with them. `rhythm`: "sinus" or "af" (the coronary model's own: rate and conduction follow the
+   * ischemia and the reflexes), or the id of any EKG-library rhythm of the Simulator's categories (physics/rhythmSource.ts
+   * `SIM_RHYTHMS`: "flutter-21", "svt", "vt-mono", "vf-coarse", "chb", "paced"...; "nsr" means "sinus"). Library rhythms run on the
+   * core engine only; the legacy engine runs sinus instead and warns.
+   */
+  patient?: { rhythm?: Rhythm; bbb?: "none" | "rbbb" | "lbbb" };
   /** Hemodynamic support the team is giving (the app's management panel). Atropine lives in `drugs`. */
   support?: SupportSpec;
   /** Seed for every random process; the same scenario and seed give the same beats. */
   seed?: number;
+  /**
+   * Teaching override of the patient's tendency to ischemic ectopy (core engine; the legacy engine ignores it): 0..3, a multiplier
+   * on the susceptibility the seed gives the patient (physics/ectopy.ts). 0 = never any PVC, 1 = as the seed has it (default).
+   */
+  ectopyTendency?: number;
+  /**
+   * Teaching override of the patient's tendency to ventricular tachycardia, fibrillation and accelerated idioventricular rhythm (core
+   * engine, physics/arrhythmia.ts): 0..3, a multiplier on the susceptibility the seed gives. 0 = never any (PVCs still come, see
+   * `ectopyTendency`), 1 = as the seed has it (default).
+   */
+  arrhythmiaTendency?: number;
+  /** Serum electrolytes, mmol/l (core engine): potassium (2..7.5, default 4.2) and magnesium (0.2..3, default 0.9); low or high values raise the VT/VF hazard and the PVCs. */
+  electrolytes?: { potassium?: number; magnesium?: number };
 }
 
 export interface LesionSpec {
@@ -44,6 +65,8 @@ export interface LesionSpec {
 export interface SupportSpec {
   fluids?: number; // litres given, 0..3
   norepinephrine?: number; dobutamine?: number; nitroglycerin?: number; // 0..1 of a full dose
+  /** Receptor-level drugs of the core engine (0..1 of a full dose; the legacy engine ignores them). */
+  epinephrine?: number; milrinone?: number; vasopressin?: number; nitroprusside?: number; furosemide?: number; diltiazem?: number;
   pacing?: boolean; paceRate?: number; // bpm, 40..120
   iabp?: boolean; impella?: boolean;
 }
@@ -69,6 +92,9 @@ export interface Normalized {
     autonomic: AutonomicControls;
     patient: Patient;
     support: Support; // atropine here is always false: it is derived from drugs.atropine
+    ectopyTendency: number;
+    arrhythmiaTendency: number;
+    electrolytes: { potassium: number; magnesium: number };
   };
   warnings: string[];
 }
@@ -104,7 +130,11 @@ export function normalizeScenario(input: Scenario = {}, base?: Normalized["scena
     if (!id) { warnings.push(`lesion on "${l.artery}" dropped: no such artery in this anatomy`); continue; }
     if (specs.some((s) => s.artery === id)) { warnings.push(`second lesion on ${id} dropped: one lesion per artery`); continue; }
     const occluded = !!l.occluded;
-    const stenosis = occluded ? 1 : clamp(num(l.stenosis) ? l.stenosis : 0.7, 0, 0.99);
+    if (l.stenosis !== undefined && !num(l.stenosis) && !occluded) {
+      warnings.push(`${id} stenosis is not a number; lesion dropped`);
+      continue;
+    }
+    const stenosis = occluded ? 1 : clamp(l.stenosis !== undefined ? l.stenosis! : 0.7, 0, 0.99);
     if (num(l.stenosis) && l.stenosis !== stenosis && !occluded) warnings.push(`${id} stenosis clamped to ${stenosis}`);
     specs.push({ artery: id, stenosis, occluded, position: clamp(num(l.position) ? l.position : 0.15, 0, 1) });
   }
@@ -132,7 +162,7 @@ export function normalizeScenario(input: Scenario = {}, base?: Normalized["scena
     if (a.noise !== undefined) autonomic.noiseScale = clamp(num(a.noise) ? a.noise : 1, 0, 3);
   }
   const patient: Patient = { ...(base?.patient ?? HEALTHY) };
-  if (input.patient?.rhythm !== undefined) { if (input.patient.rhythm === "af" || input.patient.rhythm === "sinus") patient.rhythm = input.patient.rhythm; else warnings.push(`patient.rhythm="${input.patient.rhythm}" is not sinus|af; ignored`); }
+  if (input.patient?.rhythm !== undefined) { const id = typeof input.patient.rhythm === "string" ? simRhythmId(input.patient.rhythm) : null; if (id) patient.rhythm = id; else warnings.push(`patient.rhythm="${input.patient.rhythm}" is not sinus, af or a Simulator rhythm of the EKG library; ignored`); }
   if (input.patient?.bbb !== undefined) { if (["none", "rbbb", "lbbb"].includes(input.patient.bbb)) patient.bbb = input.patient.bbb; else warnings.push(`patient.bbb="${input.patient.bbb}" is not none|rbbb|lbbb; ignored`); }
 
   const support: Support = { ...(base?.support ?? noSupport()), atropine: false };
@@ -147,6 +177,12 @@ export function normalizeScenario(input: Scenario = {}, base?: Normalized["scena
     support.norepi = level(sp.norepinephrine, "norepinephrine", 1) ?? support.norepi;
     support.dobutamine = level(sp.dobutamine, "dobutamine", 1) ?? support.dobutamine;
     support.nitro = level(sp.nitroglycerin, "nitroglycerin", 1) ?? support.nitro;
+    support.epi = level(sp.epinephrine, "epinephrine", 1) ?? support.epi;
+    support.milrinone = level(sp.milrinone, "milrinone", 1) ?? support.milrinone;
+    support.vasopressin = level(sp.vasopressin, "vasopressin", 1) ?? support.vasopressin;
+    support.nitroprusside = level(sp.nitroprusside, "nitroprusside", 1) ?? support.nitroprusside;
+    support.furosemide = level(sp.furosemide, "furosemide", 1) ?? support.furosemide;
+    support.diltiazem = level(sp.diltiazem, "diltiazem", 1) ?? support.diltiazem;
     if (sp.pacing !== undefined) support.pacing = !!sp.pacing;
     if (sp.paceRate !== undefined) { const r = num(sp.paceRate) ? clamp(Math.round(sp.paceRate), SUPPORT.paceMin, SUPPORT.paceMax) : support.paceRate; if (r !== sp.paceRate) warnings.push(`support.paceRate set to ${r}`); support.paceRate = r; }
     if (sp.iabp !== undefined) support.iabp = !!sp.iabp;
@@ -156,9 +192,27 @@ export function normalizeScenario(input: Scenario = {}, base?: Normalized["scena
   const bl = input.bloodLoss ?? base?.bloodLoss ?? 0;
   const bloodLoss = clamp(num(bl) ? bl : 0, -0.3, 0.6);
   if (bloodLoss !== bl) warnings.push(`bloodLoss clamped to ${bloodLoss}`);
+  let ectopyTendency = base?.ectopyTendency ?? 1;
+  if (input.ectopyTendency !== undefined) {
+    if (!num(input.ectopyTendency)) warnings.push("ectopyTendency is not a number; ignored");
+    else { ectopyTendency = clamp(input.ectopyTendency, 0, 3); if (ectopyTendency !== input.ectopyTendency) warnings.push(`ectopyTendency clamped to ${ectopyTendency} (range 0..3)`); }
+  }
+  let arrhythmiaTendency = base?.arrhythmiaTendency ?? 1;
+  if (input.arrhythmiaTendency !== undefined) {
+    if (!num(input.arrhythmiaTendency)) warnings.push("arrhythmiaTendency is not a number; ignored");
+    else { arrhythmiaTendency = clamp(input.arrhythmiaTendency, 0, 3); if (arrhythmiaTendency !== input.arrhythmiaTendency) warnings.push(`arrhythmiaTendency clamped to ${arrhythmiaTendency} (range 0..3)`); }
+  }
+  const electrolytes = { ...(base?.electrolytes ?? { potassium: ARRHYTHMIA.potassium.normal, magnesium: ARRHYTHMIA.magnesium.normal }) };
+  for (const [k, R] of [["potassium", ARRHYTHMIA.potassium], ["magnesium", ARRHYTHMIA.magnesium]] as const) {
+    const v = input.electrolytes?.[k];
+    if (v === undefined) continue;
+    if (!num(v)) { warnings.push(`electrolytes.${k} is not a number; ignored`); continue; }
+    electrolytes[k] = clamp(v, R.min, R.max);
+    if (electrolytes[k] !== v) warnings.push(`electrolytes.${k} clamped to ${electrolytes[k]} (range ${R.min}..${R.max} mmol/l)`);
+  }
   return {
     scenario: {
-      anatomy: variant, lesions, lesionSpecs: specs, drugs, autonomic, bloodLoss, patient, support,
+      anatomy: variant, lesions, lesionSpecs: specs, drugs, autonomic, bloodLoss, patient, support, ectopyTendency, arrhythmiaTendency, electrolytes,
       exertion: input.exertion ?? base?.exertion ?? false, seed: Math.trunc(input.seed ?? base?.seed ?? 1) >>> 0,
     },
     warnings,
@@ -175,10 +229,15 @@ export function toScenario(n: Normalized["scenario"]): Scenario {
     patient: { ...n.patient },
     support: supportSpec(n.support),
     seed: n.seed,
+    ...(n.ectopyTendency !== 1 ? { ectopyTendency: n.ectopyTendency } : {}), // only when set: the plain spec stays as it was
+    ...(n.arrhythmiaTendency !== 1 ? { arrhythmiaTendency: n.arrhythmiaTendency } : {}),
+    ...(n.electrolytes.potassium !== ARRHYTHMIA.potassium.normal || n.electrolytes.magnesium !== ARRHYTHMIA.magnesium.normal ? { electrolytes: { ...n.electrolytes } } : {}),
   };
 }
 
 /** Scenario form of a Support (the model's own names are short). */
 export function supportSpec(s: Support): SupportSpec {
-  return { fluids: s.fluids, norepinephrine: s.norepi, dobutamine: s.dobutamine, nitroglycerin: s.nitro, pacing: s.pacing, paceRate: s.paceRate, iabp: s.iabp, impella: s.impella };
+  const out: SupportSpec = { fluids: s.fluids, norepinephrine: s.norepi, dobutamine: s.dobutamine, nitroglycerin: s.nitro, pacing: s.pacing, paceRate: s.paceRate, iabp: s.iabp, impella: s.impella };
+  for (const [k, v] of [["epinephrine", s.epi], ["milrinone", s.milrinone], ["vasopressin", s.vasopressin], ["nitroprusside", s.nitroprusside], ["furosemide", s.furosemide], ["diltiazem", s.diltiazem]] as const) if (v > 0) out[k] = v; // only when given: the plain spec stays as it was
+  return out;
 }

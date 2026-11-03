@@ -47,13 +47,29 @@ export const TAPS: Record<string, { frac: number; n: number }> = {
 export const ECG_LINK = {
   gainMv: 1.4,
   burdenForFullEffect: 0.3, // ischemic mass fraction at which rate rise and ectopy are maximal
-  // Subendocardial vs transmural ischemia. A bed whose supply still meets a quarter or more of its demand is ischemic only in
+  // Subendocardial vs transmural ischemia. A bed whose supply still meets about a third or more of its demand is ischemic only in
   // the subendocardium; one getting a twentieth or less (near-critical stenosis, or occlusion) is ischemic through the
-  // wall; in between it blends, so tightening a stenosis turns ST depression into localizing ST elevation. Subendocardial injury current does not localize: it sums into one global vector that gives
+  // wall; in between it blends, so tightening a stenosis turns ST depression into localizing ST elevation. On the core engine,
+  // a proximal LAD 85% lesion at rest leaves downstream beds near 0.23–0.28 supply/demand while the territory is already
+  // fully ischemic, so the upper threshold is set from those measured ratios rather than a textbook 0.25. Subendocardial injury current does not localize: it sums into one global vector that gives
   // ST depression in II and V4–V6 with reciprocal elevation in aVR (and V1), whatever the territory. [assumed
   // thresholds; direction and non-localization from exercise-ECG and animal studies]
-  subendocardialAbove: 0.25, // supply/demand at or above which a bed is purely subendocardial
-  transmuralBelow: 0.05, // at or below which it is fully transmural (in the model, ~93%+ stenosis on exertion, or occlusion)
+  subendocardialAbove: 0.36, // supply/demand at or above which a bed is purely subendocardial
+  transmuralBelow: 0.05, // at or below which it is fully transmural (in the model, ~90%+ stenosis on exertion at rest, or occlusion)
   subendocardialGainMv: 0.5, // gives 1–3 mm of depression for a large demand-ischemic territory
   subendocardialDir: [-0.866, -0.5, 0] as const, // toward aVR: depression in I, II, V4–V6
+};
+
+// Display-only side branches drawn from the taps (never read by the physics). Diameters follow Murray's law, d ∝ mass^(1/3).
+export const BRANCHES = {
+  minDiameter: 0.3, // mm: thinnest branch worth drawing (before the radius scale)
+  refMass: 0.05, refDiameter: 1.0, // a branch feeding 5% of the myocardium is ~1.0 mm at its root [assumed, schematic]
+  childRatio: 0.75, // a branch is at most this fraction of its parent's diameter at the junction (Finet: child ~ 0.68-0.8 of the parent)
+  tipMass: 0.3, // share of its mass a branch still feeds at its tip (diameter goes with that^(1/3))
+  ringSpacing: 2.2, // mm between tube rings
+  minLength: 8, lengthPerSqrtMass: 70, maxLength: 40, // length = 8 + 70*sqrt(mass) mm, capped
+  secondaryMinMass: 0.01, // taps feeding at least this much sprout generation-2 twigs
+  tertiaryMinMass: 0.03, // ...and at least this much, generation-3 twigs from those
+  twigShare: 0.3, // share of the parent branch's mass each twig takes off
+  perforators: { perMm: 1 / 16, min: 3, max: 5, depthLad: 9, depthPda: 6, diameter: 0.55 }, // septal stubs per vessel length; dive depth (mm)
 };

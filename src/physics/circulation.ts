@@ -29,7 +29,7 @@ export const CIRC = {
   shockMap: 65,
   hypotensionMap: 75,
 };
-const BASE_SVR = CIRC.baseMap / ((CIRC.baseRate * CIRC.baseStrokeVolume) / 1000); // mmHg·min/L
+export const BASE_SVR = CIRC.baseMap / ((CIRC.baseRate * CIRC.baseStrokeVolume) / 1000); // mmHg·min/L
 
 /** Right-ventricular beds: the acute marginal, the conus, and the RCA's own small branches. */
 export const isRightVentricular = (key: string) => /^(AM|CONUS|RCA)#/.test(key);

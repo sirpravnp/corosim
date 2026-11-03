@@ -16,7 +16,7 @@ the clock and read back what the model computed, all through tools. Using it fro
 
 The AI works on **your account's patient**. With CoroSim open, that is the patient on your screen and you watch every
 change. With it closed, the AI works on your saved patient, and CoroSim picks it up next time you open it, on any
-device you sign in on. While a Find the culprit case is running the AI is paused, since it could read the lesion.
+device you sign in on. While a case is running the AI is paused, since it could read the diagnosis.
 
 **Connect AI** also lists which AIs are connected, **Disconnect AIs** revokes them all, and **Delete my account**
 removes the account, the saved patient and every connection at once.

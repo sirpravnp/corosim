@@ -1,0 +1,111 @@
+// Shared state of the Simulator and cases page: the singletons every page module reads and writes, so no module has to import another
+// just to reach them. Values that are reassigned (tree, A, sites, rstate, circ, inCases, panelSource) are `let` exports with a
+// setter here: importers see the current value through the ES live binding but only this file may assign it.
+import { Tree, Variant, TYPICAL } from "../anatomy/tree";
+import { Bbb, Rhythm } from "../config/ecg";
+import { Analysis } from "../physics/network";
+import { Circulation } from "../physics/circulation";
+import { BedSite } from "../physics/ecgLink";
+import { EcgStrip } from "../ecgStrip";
+import { RhythmState } from "../physics/rhythm";
+import type { Vitals } from "../sim/vitals";
+import { noSupport } from "../physics/support";
+import { Pending, Treated, untreated } from "../physics/revasc";
+import { Simulation } from "../sim/simulation";
+import { PlayClock } from "../panels/timeControl";
+import type { CaseDef, CaseRunner } from "../cases/engine";
+import type { PatientSpec } from "../sim/patient";
+import type { HemoSource } from "../sim/hemoSource";
+
+export const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+export const MMHG = 133.322;
+export type Mode = "real" | "anat" | "pressure" | "velocity" | "wss" | "o2" | "isch";
+export type HeartView = "solid" | "ghost" | "none";
+
+
+export const V: Variant = { ...TYPICAL };
+export const S = {
+  lesionSeg: "LAD", pos: 0.15, ds: 0, occ: false, exert: false, speed: 1,
+  mode: "real" as Mode, heart: "solid" as HeartView, exag: 2.5, flow: false, selected: "",
+  hide: false, // game: the lesion is kept out of every display (lumen, vessel shading, marker, perfusion table)
+  hideIsch: false, // game: the myocardium does not darken either
+  rhythm: "sinus" as Rhythm, bbb: "none" as Bbb, // what the patient brought with them
+  props: false, // structural valves, defects and jets inside the heart (not in the game)
+  posterior: false, // show V7–V9 as a fifth column
+  labels: false, // name the arteries and chambers in the 3D view
+};
+// The physics lives in the shared headless Simulation (the MCP server and the tests step the same object);
+// the page modules draw it, feed it the controls, and run the game and the management panel around it.
+// The page runs the beat-by-beat core engine (task P16: cannon a waves, PVC loops, AF, device waveforms, pericardium, ventilation, ECMO, arrest).
+// Its build and warm-up (about 1.3 s of work) run in chunks between frames (`sim.settleStep`, in `frame`), so the page paints and answers at once.
+export const sim = new Simulation({ seed: 1 }, { engine: "core", deferCore: true });
+export let tree: Tree = sim.tree, A: Analysis = sim.analysis, sites: BedSite[] = sim.sites;
+/** Re-read the tree and its bed sites from the simulation (after an anatomy change). */
+export const takeTree = () => { tree = sim.tree; sites = sim.sites; };
+/** Re-read the coronary analysis from the simulation (after a lesion, perfusion pressure or demand change). */
+export const takeAnalysis = () => { A = sim.analysis; };
+export const sev = sim.sev; // per-bed ischemia state (0..1), evolves in time; the simulation clears it in place
+
+// ---------------------------------------------------------------- management: support, orders, infarct
+export const T = {
+  support: noSupport(),
+  pending: null as Pending | null,
+  treated: untreated() as Treated,
+  ischemicMin: 0, // clinical minutes with ischemia present
+  seed: 11, // fixes whether this patient's clot lyses
+  lastResult: "",
+  hint: false,
+  original: null as null | { seg: string; pos: number; ds: number; occ: boolean }, // the lesion before any procedure changed it
+};
+export const nec = sim.scar; // irreversible injury per bed, 0..1 (the simulation steps it on the clinical clock)
+export const clearTreatment = () => {
+  T.support = noSupport(); T.pending = null; T.treated = untreated(); T.ischemicMin = 0; T.lastResult = ""; T.hint = false; T.original = null;
+  for (const k of Object.keys(nec)) delete nec[k];
+};
+// Lesion/anatomy edits are applied once per frame: the controls only mark what changed (model.ts `flush` does the work).
+export const pend = { anatomy: false, lesion: false };
+export const scheduleAnatomy = () => { pend.anatomy = true; };
+export const scheduleLesion = () => { pend.lesion = true; };
+export const clearPending = () => { pend.anatomy = pend.lesion = false; };
+
+// ---------------------------------------------------------------- DOM helpers
+export const on = (id: string, f: () => void) => $(id).addEventListener("click", f);
+export const sel = (id: string, f: (v: string) => void) => $<HTMLSelectElement>(id).addEventListener("change", (e) => f((e.target as HTMLSelectElement).value));
+export const range = (id: string, f: (v: number) => void) => $<HTMLInputElement>(id).addEventListener("input", (e) => f(+(e.target as HTMLInputElement).value));
+
+// ---------------------------------------------------------------- cases: a patient, a card, and checkpoints (src/cases)
+type CasePhase = "idle" | "run" | "over";
+export const K = {
+  phase: "idle" as CasePhase,
+  def: null as CaseDef | null, // the case chosen (shown on its card before it starts)
+  runner: null as CaseRunner | null,
+};
+/** The page at /cases (set by connect.ts `applyMode`). */
+export let inCases = false;
+export const setInCases = (v: boolean) => { inCases = v; };
+
+// ---------------------------------------------------------------- volume and drugs
+// The reflexes themselves are not shown or controlled here: they are the physiology, and show up in rate and pressure.
+export const PHYS_REST = { bl: 0, bb: 0 };
+export const PHYS = { ...PHYS_REST };
+/** The whole PatientSpec on screen (the structural fields the Scenario does not carry), handed to the core engine (`sim.setPatient`) and the props view. */
+export const patientOpts: { patient?: PatientSpec } = {};
+
+export const ecg = new EcgStrip($<HTMLCanvasElement>("ecg"), sim.stream);
+/** Pause, slow motion and step-one-beat for the Simulator page (task P13); scales heartbeat time only. */
+export const playClock = new PlayClock();
+export let rstate: RhythmState | null = sim.rstate, circ: Circulation | null = sim.circ;
+/** Re-read the rhythm and circulation state from the simulation (once per frame). */
+export const takeRC = () => { rstate = sim.rstate; circ = sim.circ; };
+/** What the 3D view's O2 mode and the panels read from: the live core engine (workspace.ts `syncSource`). */
+export let panelSource: HemoSource | null = null;
+export const setPanelSource = (s: HemoSource | null) => { panelSource = s; };
+/**
+ * The page's one vital-signs snapshot (sim/vitals.ts): what the Monitor, the Hemodynamics table and the cath panels all show. Null where there
+ * is no live source (the game's legacy engine) or before the first beat, so those keep their existing readouts.
+ */
+export function pageVitals(): Vitals | null {
+  if (sim.engine !== "core" || !panelSource) return null;
+  const v = panelSource.vitals();
+  return Number.isFinite(v.map) && Number.isFinite(v.hr) ? v : null;
+}

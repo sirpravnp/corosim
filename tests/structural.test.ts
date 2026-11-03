@@ -41,8 +41,11 @@ describe("normal heart", () => {
     expect(perKg).toBeGreaterThan(160); expect(perKg).toBeLessThan(240);
     expect(neo.warnings).toEqual([]);
   });
-  it("conserves flow: both ventricles eject the same volume and the lungs pass what the body does", () => {
-    expect(Math.abs(adult.lvForwardMl - adult.rvForwardMl)).toBeLessThan(0.5);
+  it("conserves flow: the LV ejects what the RV does plus the bronchial return (1 % of the output), and the lungs pass what the body does", () => {
+    // bronchial/Thebesian blood goes aorta -> pulmonary veins: it passes the LV but not the lungs, so LV = RV + BRON (D6b)
+    const bron = adult.lvForwardMl - adult.rvForwardMl;
+    expect(bron).toBeGreaterThan(0.005 * adult.rvForwardMl); expect(bron).toBeLessThan(0.02 * adult.rvForwardMl);
+    expect(Math.abs(adult.lvOutput - adult.qs - (adult.lvForwardMl - adult.rvForwardMl) * adult.hr / 1000)).toBeLessThan(0.02);
     expect(Math.abs(adult.qp - adult.qs)).toBeLessThan(0.02);
   });
 });
