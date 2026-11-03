@@ -29,14 +29,28 @@ const CAPTION: Record<string, string> = {
   "circuit|pump": "A parallel Ohm/Poiseuille circuit. Cardiac output and one organ radius set the pressures and branch flows.",
 };
 
-function defaultChapterId(): string {
-  const hash = location.hash.replace(/^#/, "");
-  return chapterById(hash)?.ready ? hash : CHAPTERS.find((c) => c.ready)?.id ?? CHAPTERS[0]!.id;
+const hashId = () => location.hash.replace(/^#/, "");
+
+function showIntro() {
+  chapter = null;
+  cancelAnimationFrame(raf);
+  document.body.dataset.view = "intro";
+  document.title = "SimBook: a hemodynamic simulation ebook";
+  renderToc();
+}
+
+function renderToc() {
+  $("sb-toc").innerHTML = `<ol class="sb-toc">${CHAPTERS.map((ch) => {
+    const body = `<span class="n">${ch.number}</span><span class="t"><b>${esc(ch.title)}</b><small>${esc(ch.subtitle)}</small></span>`;
+    return ch.ready
+      ? `<li><a href="#${ch.id}" data-id="${ch.id}">${body}</a></li>`
+      : `<li class="soon">${body}</li>`;
+  }).join("")}</ol>`;
 }
 
 function renderList() {
   const cur = chapter?.id ?? "";
-  $("list").innerHTML = `<h3>Chapters</h3>` + CHAPTERS.map((ch) => {
+  $("list").innerHTML = `<h3>SimBook</h3><a href="#" class="intro-link" data-intro="1"><b>Contents</b><small>Cover and chapter list</small></a>` + CHAPTERS.map((ch) => {
     const on = ch.id === cur ? " on" : "";
     const href = ch.ready ? `#${ch.id}` : "#";
     return `<a href="${href}" class="${on.trim()}${ch.ready ? "" : " disabled"}" data-id="${ch.id}" aria-disabled="${ch.ready ? "false" : "true"}"${ch.id === cur ? ` aria-current="page"` : ""}><b>${ch.number}. ${esc(ch.title)}</b><small>${esc(ch.subtitle)}</small></a>`;
@@ -132,7 +146,9 @@ function loadChapter(id: string) {
   if (!ch?.ready) return;
   chapter = ch;
   choices.clear();
-  location.hash = id;
+  document.body.dataset.view = "chapter";
+  document.title = `${ch.number}. ${ch.title}: SimBook`;
+  if (hashId() !== id) location.hash = id;
   $("title").textContent = `${ch.number}. ${ch.title}`;
   $("summary").textContent = ch.subtitle;
   renderList();
@@ -142,6 +158,13 @@ function loadChapter(id: string) {
 }
 
 $("list").addEventListener("click", (e) => {
+  if ((e.target as HTMLElement).closest("a[data-intro]")) {
+    e.preventDefault();
+    history.pushState(null, "", location.pathname);
+    showIntro();
+    renderList();
+    return;
+  }
   const a = (e.target as HTMLElement).closest<HTMLAnchorElement>("a[data-id]");
   if (!a) return;
   e.preventDefault();
@@ -155,10 +178,17 @@ $("sb-questions").addEventListener("click", (e) => {
   choices.set(+btn.dataset.q!, +btn.dataset.i!);
   renderQuestions();
 });
-addEventListener("hashchange", () => {
-  const id = location.hash.replace(/^#/, "");
-  if (id && id !== chapter?.id && chapterById(id)?.ready) loadChapter(id);
-});
+const openFromHash = () => {
+  const id = hashId();
+  if (chapterById(id)?.ready) {
+    if (id !== chapter?.id && chapterById(id)!.id !== chapter?.id) loadChapter(id);
+  } else {
+    showIntro();
+    renderList();
+  }
+};
+addEventListener("hashchange", openFromHash);
+addEventListener("popstate", openFromHash);
 
+openFromHash();
 renderList();
-loadChapter(defaultChapterId());
