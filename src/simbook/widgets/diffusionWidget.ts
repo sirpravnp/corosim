@@ -1,5 +1,5 @@
 import { defaultDiffusion, DiffusionParams, DiffusionSample, o2Profile } from "../diffusion";
-import { FONT_DATA, FONT_UI, fitCanvas, palette, wash } from "./canvasKit";
+import { FONT_UI, axisX, axisY, fitCanvas, legend, palette, thermal, wash } from "./canvasKit";
 import { meas, tile } from "./meas";
 
 function at(sample: DiffusionSample, xUm: number): number {
@@ -15,7 +15,6 @@ function at(sample: DiffusionSample, xUm: number): number {
 export class DiffusionWidget {
   private params: DiffusionParams = defaultDiffusion();
   private anim = 0;
-  private readonly axisUm = 480;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -80,7 +79,7 @@ export class DiffusionWidget {
         tile("Anoxic at", anox == null ? "none" : `${anox.toFixed(0)} µm`, anox == null ? "" : "bad"),
         tile("t ≈ x²/2D", `${sample.diffusionTimeS.toFixed(2)} s`),
       )}
-      <p class="sb-note">${anox == null ? "Oxygen reaches the core." : "The core past the dashed line is anoxic."} Doubling thickness would make the same path take ${doubled.diffusionTimeS.toFixed(1)} s.</p>`;
+      <p class="sb-note">${anox == null ? "Oxygen reaches the core." : "Tissue past the dashed line is anoxic."} Doubling thickness would make the same path take ${doubled.diffusionTimeS.toFixed(1)} s.</p>`;
   }
 
   private draw() {
@@ -89,98 +88,116 @@ export class DiffusionWidget {
     const c = palette(this.canvas);
     wash(ctx, w, h, c.stage);
 
-    const padL = 78;
+    const padL = 70;
     const padR = 28;
-    const top = 48;
-    const slabH = h - 108;
     const track = w - padL - padR;
     const L = sample.effectiveThicknessUm;
-    const slabW = Math.max(24, (L / this.axisUm) * track);
+    const axisUm = Math.max(400, Math.ceil(L / 50) * 50);
+    const px = (um: number) => padL + (um / axisUm) * track;
+    const slabTop = 44;
+    const slabH = 104;
+    const plotTop = 188;
+    const plotBottom = 292;
+    const anox = sample.anoxicDepthUm;
 
-    ctx.fillStyle = "#1a1014";
-    ctx.fillRect(padL, top, slabW, slabH);
-
-    const cols = Math.max(24, Math.round(slabW));
-    const maxC = Math.max(sample.capConc, 0.2);
+    // Slab heat map: O2 on the thermal ramp (cold is starved).
+    const cols = Math.max(24, Math.round(px(L) - padL));
     for (let i = 0; i < cols; i++) {
-      const xUm = (L * (i + 0.5)) / cols;
-      const o2 = at(sample, xUm) / maxC;
-      const dead = o2 < 0.04;
-      // Thermal ramp: cool muscle when starved, warmer as O₂ rises.
-      ctx.fillStyle = dead
-        ? "#3a1820"
-        : `rgb(${Math.round(40 + 140 * o2)}, ${Math.round(28 + 70 * o2)}, ${Math.round(48 + 40 * (1 - o2))})`;
-      ctx.fillRect(padL + (i * slabW) / cols, top, slabW / cols + 1, slabH);
+      const um = (L * (i + 0.5)) / cols;
+      ctx.fillStyle = thermal(at(sample, um));
+      ctx.fillRect(padL + (i * (px(L) - padL)) / cols, slabTop, (px(L) - padL) / cols + 1, slabH);
     }
+    ctx.strokeStyle = "rgba(152,160,184,0.55)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(padL + 0.5, slabTop + 0.5, px(L) - padL, slabH);
+    if (anox != null) this.hatch(ctx, px(anox), slabTop, px(L) - px(anox), slabH, c.bad);
 
-    const cellRows = 5;
-    const cellCols = Math.max(3, Math.round(slabW / 36));
-    for (let row = 0; row < cellRows; row++) {
-      for (let col = 0; col < cellCols; col++) {
-        const xUm = (L * (col + 0.5)) / cellCols;
-        const o2 = at(sample, xUm) / maxC;
-        const cx = padL + ((col + 0.5) / cellCols) * slabW;
-        const cy = top + ((row + 0.5) / cellRows) * slabH;
-        ctx.beginPath();
-        ctx.arc(cx, cy, 7, 0, Math.PI * 2);
-        ctx.fillStyle = o2 < 0.05 ? c.bad : `rgba(157, 190, 255, ${0.22 + 0.55 * o2})`;
-        ctx.fill();
-      }
+    // Capillary face on the left.
+    ctx.fillStyle = this.params.flowOn ? c.accent : "#3a2a2e";
+    ctx.fillRect(padL - 16, slabTop, 16, slabH);
+    const speed = this.params.flowOn ? 0.35 : 0;
+    for (let i = 0; i < 6; i++) {
+      const u = (i / 6 + this.anim * speed) % 1;
+      ctx.fillStyle = this.params.flowOn ? "#f4f1ea" : "#6d5559";
+      ctx.fillRect(padL - 10, slabTop + 6 + u * (slabH - 16), 4, 4);
     }
-
-    ctx.fillStyle = this.params.flowOn ? c.accent : "#5a3034";
-    round(ctx, padL - 22, top, 22, slabH, 2);
-    ctx.fill();
-    const dots = 10;
-    for (let i = 0; i < dots; i++) {
-      const speed = this.params.flowOn ? 0.35 : 0;
-      const u = (i / dots + this.anim * speed) % 1;
-      ctx.beginPath();
-      ctx.arc(padL - 11, top + 10 + u * (slabH - 20), 2.4, 0, Math.PI * 2);
-      ctx.fillStyle = this.params.flowOn ? "#ffe8e4" : "#8a6064";
-      ctx.fill();
-    }
-
-    if (sample.anoxicDepthUm != null && sample.anoxicDepthUm < L - 1) {
-      const ax = padL + (sample.anoxicDepthUm / L) * slabW;
-      ctx.strokeStyle = c.bad;
-      ctx.setLineDash([4, 5]);
-      ctx.beginPath();
-      ctx.moveTo(ax, top);
-      ctx.lineTo(ax, top + slabH);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-
-    ctx.strokeStyle = "#ffffffcc";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    sample.xUm.forEach((x, i) => {
-      const px = padL + (x / L) * slabW;
-      const py = top + 16 + (1 - sample.conc[i]! / maxC) * (slabH - 32);
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
-    });
-    ctx.stroke();
-
     ctx.fillStyle = c.muted;
-    ctx.font = `12px ${FONT_UI}`;
-    ctx.fillText("Capillary", 16, top + 16);
-    ctx.fillText("0", padL, h - 18);
-    ctx.fillText(`${Math.round(L)} µm`, padL + slabW - 28, h - 18);
-    ctx.fillText(`${this.axisUm} µm scale`, padL + track - 88, h - 18);
+    ctx.font = `11px ${FONT_UI}`;
+    ctx.textAlign = "right";
+    ctx.fillText("Capillary", padL - 22, slabTop + 14);
+    ctx.fillText(this.params.flowOn ? "flow on" : "flow off", padL - 22, slabTop + 28);
+    ctx.textAlign = "left";
     ctx.fillStyle = c.ink;
     ctx.font = `600 13px ${FONT_UI}`;
     ctx.fillText("Oxygen across the slab", padL, 28);
-  }
-}
 
-function round(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
+    // Profile plot sharing the distance axis.
+    const yOf = axisY(ctx, padL, plotTop, plotBottom, 0, 1.05, [0, 0.5, 1], c.muted, (v) => v.toFixed(1));
+    const ticks: number[] = [];
+    for (let v = 0; v <= axisUm; v += axisUm > 400 ? 100 : 50) ticks.push(v);
+    axisX(ctx, plotBottom, padL, padL + track, 0, axisUm, ticks, c.muted, (v) => `${v}`);
+    ctx.fillStyle = c.muted;
+    ctx.font = `11px ${FONT_UI}`;
+    ctx.textAlign = "right";
+    ctx.fillText("Distance from capillary, µm", padL + track, plotBottom + 34);
+    ctx.save();
+    ctx.translate(14, (plotTop + plotBottom) / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = "center";
+    ctx.fillText("O₂ (rest = 1)", 0, 0);
+    ctx.restore();
+    ctx.textAlign = "left";
+
+    if (anox != null) this.hatch(ctx, px(anox), plotTop, px(L) - px(anox), plotBottom - plotTop, c.bad);
+    ctx.beginPath();
+    sample.xUm.forEach((x, i) => {
+      const X = px(x), Y = yOf(Math.min(1.05, sample.conc[i]!));
+      if (i === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y);
+    });
+    ctx.lineTo(px(L), plotBottom);
+    ctx.lineTo(px(0), plotBottom);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(224,164,71,0.12)";
+    ctx.fill();
+    ctx.beginPath();
+    sample.xUm.forEach((x, i) => {
+      const X = px(x), Y = yOf(Math.min(1.05, sample.conc[i]!));
+      if (i === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y);
+    });
+    ctx.strokeStyle = c.ink;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    if (anox != null) {
+      ctx.strokeStyle = c.bad;
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(px(anox) + 0.5, slabTop - 6);
+      ctx.lineTo(px(anox) + 0.5, plotBottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = c.bad;
+      ctx.font = `600 12px ${FONT_UI}`;
+      ctx.fillText(`Anoxic past ${anox.toFixed(0)} µm`, Math.min(px(anox) + 6, w - padR - 120), plotTop + 14);
+    }
+    legend(ctx, w - padR - 150, 12, 150, "O₂ low", "high", c.muted);
+  }
+
+  private hatch(ctx: CanvasRenderingContext2D, x: number, y: number, wd: number, ht: number, color: string) {
+    if (wd <= 0) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, wd, ht);
+    ctx.clip();
+    ctx.fillStyle = "rgba(5,6,10,0.55)";
+    ctx.fillRect(x, y, wd, ht);
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let k = -ht; k < wd; k += 9) { ctx.moveTo(x + k, y + ht); ctx.lineTo(x + k + ht, y); }
+    ctx.stroke();
+    ctx.restore();
+  }
 }

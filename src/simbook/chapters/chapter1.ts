@@ -38,13 +38,13 @@ export const CHAPTER_1: ChapterDef = {
       ],
       reveal: [
         "A thicker slab increases the effective diffusion path. The anoxic boundary moves toward the capillary when consumption wins, and the time to equilibrate scales with distance squared.",
-        "Turning flow on or raising capillary density shortens the effective path (√density) and raises capillary O₂ — both push the anoxic boundary back toward the core.",
+        "Turning flow on raises capillary O₂, and raising capillary density shortens the effective path (√density). Both push the anoxic boundary back toward the core.",
       ],
     },
     {
       kind: "reveal",
       paragraphs: [
-        "This slab is a steady-state teaching model: fixed D, zero-order consumption, one capillary face. Real tissue has branching networks and pulsatile flow.",
+        "This slab is a steady-state teaching model: fixed D, zero-order consumption, one capillary face, and no flux at the core. Past the critical depth √(2D·C/q) the tissue is anoxic. Real tissue has branching networks and pulsatile flow.",
         "The lesson: bulk transport exists because diffusion is too slow over organ-scale distances — the rest of Simbook builds the pressurized circuit that makes flow possible.",
       ],
     },

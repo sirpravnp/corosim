@@ -10,6 +10,7 @@ import { advance, initChapter, recordPredictChoice, canAdvance } from "../src/si
 import { defaultDiffusion, o2Profile } from "../src/simbook/diffusion";
 import { defaultFick, fickFlux } from "../src/simbook/fick";
 import { defaultStarling, starlingProfile } from "../src/simbook/starlingCapillary";
+import { SIMBOOK_AUTOREG as A } from "../src/config/simbook";
 import { CHAPTER_1 } from "../src/simbook/chapters/chapter1";
 import { CHAPTER_3 } from "../src/simbook/chapters/chapter3";
 import { chapterById, CHAPTERS } from "../src/simbook/chapters";
@@ -66,6 +67,23 @@ describe("simbook autoreg", () => {
     expect(s.organs.gut.flowLMin).toBeLessThan(targets.gut * 0.95);
   });
 
+  it("flow is continuous across both plateau edges", () => {
+    for (const id of ["brain", "kidney", "gut"] as const) {
+      const lo = A.mapLow[id], hi = A.mapHigh[id];
+      expect(Math.abs(solveAutoreg(hi + 0.01).organs[id].flowLMin - solveAutoreg(hi - 0.01).organs[id].flowLMin)).toBeLessThan(0.01);
+      expect(Math.abs(solveAutoreg(lo + 0.01).organs[id].flowLMin - solveAutoreg(lo - 0.01).organs[id].flowLMin)).toBeLessThan(0.01);
+    }
+  });
+
+  it("flow never falls as MAP rises for passive and autoregulated beds", () => {
+    let prev = solveAutoreg(40);
+    for (let m = 41; m <= 160; m++) {
+      const s = solveAutoreg(m);
+      for (const id of ["brain", "kidney", "gut", "muscle"] as const) expect(s.organs[id].flowLMin).toBeGreaterThanOrEqual(prev.organs[id].flowLMin - 1e-9);
+      prev = s;
+    }
+  });
+
   it("branch flows sum to reported CO", () => {
     const s = solveAutoreg(75);
     const sum = (["brain", "kidney", "gut", "muscle"] as const).reduce((a, id) => a + s.organs[id].flowLMin, 0);
@@ -74,18 +92,45 @@ describe("simbook autoreg", () => {
 });
 
 describe("simbook diffusion", () => {
-  it("anoxic depth grows with consumption and shrinks when flow is on", () => {
-    const high = o2Profile({ ...defaultDiffusion(), consumption: 2 });
-    const low = o2Profile({ ...defaultDiffusion(), consumption: 0.5 });
-    expect((high.anoxicDepthUm ?? 999) < (low.anoxicDepthUm ?? 999) || high.anoxicDepthUm != null).toBe(true);
-    const off = o2Profile({ ...defaultDiffusion(), flowOn: false });
-    const on = o2Profile({ ...defaultDiffusion(), flowOn: true });
-    expect(on.capConc).toBeGreaterThan(off.capConc);
+  it("consumption lowers oxygen and never lifts it above the capillary value", () => {
+    const lo = o2Profile({ ...defaultDiffusion(), consumption: 0.5 });
+    const hi = o2Profile({ ...defaultDiffusion(), consumption: 2 });
+    expect(Math.max(...hi.conc)).toBeLessThanOrEqual(hi.capConc + 1e-9);
+    expect(hi.conc[40]!).toBeLessThan(lo.conc[40]!);
+    expect(hi.conc[hi.conc.length - 1]!).toBeLessThan(lo.conc[lo.conc.length - 1]!);
   });
 
-  it("doubling effective distance quadruples diffusion time scale", () => {
-    const a = o2Profile({ ...defaultDiffusion(), thicknessUm: 100 });
-    const b = o2Profile({ ...defaultDiffusion(), thicknessUm: 200 });
+  it("oxygen falls monotonically from the capillary toward the core", () => {
+    const s = o2Profile(defaultDiffusion());
+    for (let i = 1; i < s.conc.length; i++) expect(s.conc[i]!).toBeLessThanOrEqual(s.conc[i - 1]! + 1e-12);
+  });
+
+  it("rest reaches the core; a thick slab, no flow or high metabolism goes anoxic", () => {
+    expect(o2Profile(defaultDiffusion()).anoxicDepthUm).toBeNull();
+    const thick = o2Profile({ ...defaultDiffusion(), thicknessUm: 240 });
+    expect(thick.anoxicDepthUm).not.toBeNull();
+    expect(thick.anoxicDepthUm!).toBeLessThan(thick.effectiveThicknessUm);
+    expect(o2Profile({ ...defaultDiffusion(), flowOn: false }).anoxicDepthUm).not.toBeNull();
+    expect(o2Profile({ ...defaultDiffusion(), consumption: 2.5 }).anoxicDepthUm).not.toBeNull();
+  });
+
+  it("denser capillaries pull the anoxic boundary back out", () => {
+    const sparse = o2Profile({ ...defaultDiffusion(), thicknessUm: 200, density: 1 });
+    const dense = o2Profile({ ...defaultDiffusion(), thicknessUm: 200, density: 2.5 });
+    expect(dense.anoxicDepthUm).toBeNull();
+    expect(sparse.anoxicDepthUm).not.toBeNull();
+  });
+
+  it("flow on raises capillary O₂", () => {
+    expect(o2Profile({ ...defaultDiffusion(), flowOn: true }).capConc).toBeGreaterThan(o2Profile({ ...defaultDiffusion(), flowOn: false }).capConc);
+  });
+
+  it("doubling the diffusion distance quadruples the diffusion time scale", () => {
+    const base = { ...defaultDiffusion(), consumption: 0.4 };
+    const a = o2Profile({ ...base, thicknessUm: 100 });
+    const b = o2Profile({ ...base, thicknessUm: 200 });
+    expect(a.anoxicDepthUm).toBeNull();
+    expect(b.anoxicDepthUm).toBeNull();
     expect(b.diffusionTimeS / a.diffusionTimeS).toBeCloseTo(4, 1);
   });
 });
@@ -103,6 +148,19 @@ describe("simbook starling", () => {
     const p = starlingProfile(defaultStarling());
     expect(p.stations[0]!.jvMlMin).toBeGreaterThan(0);
     expect(p.stations[p.stations.length - 1]!.jvMlMin).toBeLessThan(0);
+  });
+
+  it("rest is balanced: some filtration, lymph keeps up, no edema", () => {
+    const p = starlingProfile(defaultStarling());
+    expect(p.netFiltrationMlMin).toBeGreaterThan(0);
+    expect(p.netFiltrationMlMin).toBeLessThan(p.lymphReturnMlMin);
+    expect(p.edema).toBe(false);
+  });
+
+  it("high venous pressure, low albumin or leaky capillaries each cause edema", () => {
+    expect(starlingProfile({ ...defaultStarling(), venousPressureMmHg: 14 }).edema).toBe(true);
+    expect(starlingProfile({ ...defaultStarling(), albuminScale: 0.5 }).edema).toBe(true);
+    expect(starlingProfile({ ...defaultStarling(), kfScale: 2.5 }).edema).toBe(true);
   });
 
   it("net filtration rises with venous pressure and falling albumin", () => {

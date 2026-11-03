@@ -71,7 +71,8 @@ export function solveAutoreg(mapMmHg: number, organs: OrganParams[] = defaultOrg
       q = flowOnPlateau(target, mapMmHg, cvp, lo);
       status = "below";
     } else {
-      q = deltaP > 0 ? deltaP / rPassive : 0;
+      // Above the plateau flow rises with pressure again, continuing from the plateau's target at its upper edge.
+      q = target * (deltaP / (hi - cvp));
       status = "above";
     }
     const rEff = q > 1e-6 ? deltaP / q : Infinity;

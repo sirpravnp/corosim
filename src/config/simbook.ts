@@ -35,7 +35,8 @@ export const SIMBOOK_DIFFUSION = {
   capConcBase: 1,
   /** Capillary O₂ when flow is off (diffusion-limited delivery). */
   flowOffFactor: 0.35,
-  consumptionBase: 1,
+  /** Zero-order consumption, conc/s. With D above, the critical (Krogh) depth √(2D·C/q) is ~137 µm at rest. */
+  consumptionBase: 0.15,
   thicknessBaseUm: 120,
   densityBase: 1,
 };
@@ -55,9 +56,10 @@ export const SIMBOOK_STARLING = {
   piInterstitial: -2,
   albuminRestGdl: 7,
   interstitialProteinGdl: 2.5,
-  kfBase: 0.85,
+  /** Calibrated so rest filters a little less than lymph returns (balanced, no edema). */
+  kfBase: 0.04,
   sigma: 0.9,
   /** Fixed lymphatic return for this bed (ml/min); not a learner lever. */
-  lymphReturnMlMin: 0.12,
+  lymphReturnMlMin: 0.4,
   pvRest: 6,
 };

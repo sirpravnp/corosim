@@ -23,6 +23,8 @@ export interface StarlingProfile {
   edema: boolean;
   piCapMmHg: number;
   piInterMmHg: number;
+  /** Pressure opposing filtration, Pi-adjusted: σ(πc − πi) + Pi. Filtration where Pc exceeds it. */
+  opposingMmHg: number;
 }
 
 export function defaultStarling(): StarlingParams {
@@ -54,5 +56,6 @@ export function starlingProfile(p: StarlingParams, n = 40): StarlingProfile {
     edema: net > S.lymphReturnMlMin,
     piCapMmHg: piCap,
     piInterMmHg: piInter,
+    opposingMmHg: S.sigma * (piCap - piInter) + S.piInterstitial,
   };
 }

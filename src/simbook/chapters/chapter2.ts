@@ -57,6 +57,7 @@ export const CHAPTER_2: ChapterDef = {
       kind: "reveal",
       paragraphs: [
         "Fick and Starling apply at the same barrier for different quantities: dissolved gas vs bulk fluid. The Starling widget uses the same oncotic curve as the simulator's fluid compartments (`physics/core/fluids.ts`).",
+        "The \"filter early, reabsorb late\" picture is the classic one. Modern work (Levick and Michel) finds less reabsorption at steady state, with lymph returning most of the filtrate; the widget keeps the classic profile for teaching.",
         "Lymph is a fixed background return here — not a slider — so you can focus on pressures, protein, and permeability.",
       ],
     },

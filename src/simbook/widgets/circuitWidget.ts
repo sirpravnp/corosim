@@ -1,5 +1,5 @@
 import { SIMBOOK_CIRCUIT as C } from "../../config/simbook";
-import { solveAutoreg } from "../autoreg";
+import { nominalOrganFlows, solveAutoreg } from "../autoreg";
 import { CircuitParams, OrganId, defaultCircuit, resistanceFromRadius, solveCircuit } from "../circuit";
 import { FONT_DATA, FONT_UI, fitCanvas, palette, wash } from "./canvasKit";
 import { meas, tile } from "./meas";
@@ -225,18 +225,23 @@ export class CircuitWidget {
     const hdr = this.headerPressures();
     const rows = this.organFlows();
     const widths = this.calibers();
-    const maxQ = Math.max(...rows.map((r) => r.q), 0.01);
+    const nominal = nominalOrganFlows();
+    const maxQ = Math.max(...Object.values(nominal)) * 1.9;
     const a0 = -Math.PI * 0.2;
     const a1 = Math.PI * 1.2;
 
-    const grad = ctx.createLinearGradient(cx - loopR, cy, cx + loopR, cy);
-    grad.addColorStop(0, pal.accent);
-    grad.addColorStop(0.5, pal.accent);
-    grad.addColorStop(0.62, pal.down);
-    grad.addColorStop(1, pal.down);
-    ctx.strokeStyle = grad;
+    const midAng = a0 + (a1 - a0) * 0.5;
     ctx.lineWidth = 14;
-    ctx.lineCap = "round";
+    ctx.lineCap = "butt";
+    ctx.strokeStyle = pal.accent;
+    ctx.beginPath();
+    ctx.arc(cx, cy, loopR, a0, midAng);
+    ctx.stroke();
+    ctx.strokeStyle = pal.down;
+    ctx.beginPath();
+    ctx.arc(cx, cy, loopR, midAng, a1);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(0,0,0,0)";
     ctx.beginPath();
     ctx.arc(cx, cy, loopR, a0, a1);
     ctx.stroke();
@@ -270,24 +275,27 @@ export class CircuitWidget {
       const y = h * 0.16 + (i / (rows.length - 1 || 1)) * h * 0.68;
       const bar = (org.q / maxQ) * (organW * 0.62);
       const wide = widths[i] ?? 4;
-      ctx.strokeStyle = org.highlight ? (this.mode === "autoreg" ? pal.warn : pal.accent) : pal.down;
+      ctx.strokeStyle = org.highlight && this.mode === "autoreg" ? pal.warn : pal.accent;
       ctx.lineWidth = wide;
-      ctx.lineCap = "round";
+      ctx.lineCap = "butt";
       ctx.beginPath();
       ctx.moveTo(cx + loopR * 0.72, cy);
       ctx.quadraticCurveTo((cx + organX) / 2, y, organX - 6, y);
       ctx.stroke();
-      ctx.fillStyle = org.highlight ? (this.mode === "autoreg" ? pal.warn : pal.accent) : pal.down;
-      ctx.globalAlpha = 0.9;
-      ctx.beginPath();
-      ctx.roundRect(organX, y - 9, Math.max(6, bar), 18, 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-      ctx.strokeStyle = "rgba(255,255,255,0.2)";
+      ctx.fillStyle = org.highlight && this.mode === "autoreg" ? pal.warn : pal.ink;
+      ctx.fillRect(organX, y - 9, Math.max(2, bar), 18);
+      ctx.strokeStyle = "rgba(152,160,184,0.5)";
       ctx.lineWidth = 1;
+      ctx.strokeRect(organX + 0.5, y - 8.5, organW * 0.62, 17);
+      // Resting flow tick: the bar is on a fixed scale, so shortfalls and surpluses read against rest.
+      const tickX = Math.round(organX + (nominal[org.id] / maxQ) * (organW * 0.62)) + 0.5;
+      ctx.strokeStyle = pal.accent;
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.roundRect(organX, y - 9, organW * 0.62, 18, 2);
+      ctx.moveTo(tickX, y - 13);
+      ctx.lineTo(tickX, y + 13);
       ctx.stroke();
+      ctx.lineWidth = 1;
       ctx.fillStyle = pal.ink;
       ctx.font = `13px ${FONT_UI}`;
       ctx.textAlign = "left";
@@ -306,5 +314,10 @@ export class CircuitWidget {
     ctx.fillStyle = pal.ok;
     ctx.font = `12px ${FONT_DATA}`;
     ctx.fillText(hdr.foot, 18, h - 18);
+    ctx.textAlign = "right";
+    ctx.fillStyle = pal.muted;
+    ctx.font = `11px ${FONT_UI}`;
+    ctx.fillText("L/min   red tick = resting flow", w - 18, h - 18);
+    ctx.textAlign = "left";
   }
 }
