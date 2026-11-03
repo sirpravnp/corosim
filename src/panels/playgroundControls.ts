@@ -235,15 +235,15 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
   }
   layout = "stack";
 
-  // ---- Hemodynamic baseline (Patient tab): its own group, added after the tab's other content ----------------------------------
-  {
-    const { box, body } = group("Hemodynamic baseline", null, true);
-    buildBaseline({ body, ...valvesCtx });
-    mounts.patient.append(box);
-  }
-  // ---- Patient tab, last: the Advanced group (fields that were chat-only), collapsed ----------------------------------------
+  // ---- Patient tab, last: the Advanced group (the hemodynamic baseline and the fields that were chat-only), collapsed ----------
   const scenarioSyncs: ((sc: Scenario) => void)[] = [];
-  mounts.patient.append(buildAdvanced({ h, ctlId, fields, scenarioSyncs, scenario: () => host.scenario?.() ?? {}, patch: (p) => host.patch?.(p), reseed: (n) => host.reseed?.(n), legacy: host.legacy }));
+  // the hemodynamic baseline (systemic and pulmonary circulation) lives in Advanced, right under the group's opening note
+  const baseline = (body: HTMLElement) => {
+    const sub = h("div", { className: "pg-baseline pg-body" }, h("h3", { textContent: "Hemodynamic baseline" }));
+    buildBaseline({ body: sub, ...valvesCtx });
+    body.append(sub);
+  };
+  mounts.patient.append(buildAdvanced({ h, ctlId, fields, scenarioSyncs, scenario: () => host.scenario?.() ?? {}, patch: (p) => host.patch?.(p), reseed: (n) => host.reseed?.(n), legacy: host.legacy, intro: baseline }));
 
   return {
     mounts, fields,
