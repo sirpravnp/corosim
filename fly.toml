@@ -21,7 +21,7 @@ primary_region = "iad"
   COROSIM_DATA_DIR = "/data"
   COROSIM_TRUST_PROXY = "1"
   # Secrets, set with fly secrets set (never in this file): GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET,
-  # GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+  # GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, COROSIM_CASE_PASSCODE
 
 [mounts]
   source = "corosim_data"

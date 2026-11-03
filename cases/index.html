@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="/favicon.ico" sizes="any" />
+<link rel="icon" type="image/png" href="/favicon.png" />
+<title>CoroSim Cases</title>
+<meta name="description" content="Patients to keep alive, with decisions along the way. Browse the cases by difficulty, chief complaint or device.">
+<script>try{var t=localStorage.getItem("corosim-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Doto:wght@400;800&display=swap">
+</head>
+<body>
+<div class="app" id="app">
+<header id="shell-head"></header>
+
+<main class="libmain" id="lib">
+  <aside class="facets" aria-label="Filters">
+    <div id="facets"></div>
+    <button id="clear" type="button" hidden>Clear filters</button>
+  </aside>
+
+  <section class="results">
+    <div class="lib-top">
+      <div>
+        <h1>Cases</h1>
+        <p class="lead">A patient arrives, the simulator runs, and you keep them alive. Each case stops to ask what you are thinking at the decisions that matter.</p>
+      </div>
+      <div class="editbar" id="editbar"></div>
+    </div>
+    <div class="lib-tools">
+      <label class="find"><span>Search</span><input id="q" type="search" placeholder="Title, complaint or device" autocomplete="off"></label>
+      <div class="groupby" role="group" aria-label="Group by">
+        <span>Group by</span>
+        <button type="button" data-g="tier" aria-pressed="true">Difficulty</button>
+        <button type="button" data-g="complaint" aria-pressed="false">Chief complaint</button>
+        <button type="button" data-g="device" aria-pressed="false">Device</button>
+        <button type="button" data-g="none" aria-pressed="false">None</button>
+      </div>
+    </div>
+    <p class="status" id="status" role="status"></p>
+    <div id="list"></div>
+    <p class="cap" id="cap"></p>
+  </section>
+</main>
+
+<main class="buildmain" id="build" hidden></main>
+</div>
+<dialog id="gate" aria-labelledby="gate-h">
+  <form method="dialog" id="gateform">
+    <h2 id="gate-h">Edit cases</h2>
+    <p>Enter the passcode to create, edit and publish cases.</p>
+    <label>Passcode<input id="pass" type="password" autocomplete="off" required></label>
+    <p class="err" id="gate-err" role="alert"></p>
+    <div class="row"><button class="primary" type="submit">Continue</button><button type="button" id="gate-cancel">Cancel</button></div>
+  </form>
+</dialog>
+<footer id="shell-foot"></footer>
+<script type="module" src="../src/library/page.ts"></script>
+</body>
+</html>

@@ -10,6 +10,8 @@ export const AF_RVR: CaseDef = {
   id: "af-rvr",
   title: "Racing heart",
   tier: "easy",
+  complaint: "Palpitations",
+  devices: [],
   blurb: "Palpitations for three days and a fast, irregular pulse in a woman who feels otherwise well.",
   card: {
     presents: "71-year-old woman with three days of palpitations and tiredness. She is comfortable, breathing easily, and talking in full sentences. Irregularly irregular pulse at 146, BP 98/76, oxygen saturation 97%.",

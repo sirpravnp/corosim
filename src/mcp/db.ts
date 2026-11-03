@@ -49,6 +49,7 @@ export class Store {
       CREATE TABLE IF NOT EXISTS oauth_codes (hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, redirect_uri TEXT NOT NULL, challenge TEXT NOT NULL, resource TEXT, expires_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS oauth_tokens (hash TEXT PRIMARY KEY, kind TEXT NOT NULL, client_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, resource TEXT, expires_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS patients (user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, scenario TEXT NOT NULL, at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS cases (id TEXT PRIMARY KEY, spec TEXT NOT NULL, published INTEGER NOT NULL, at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS usage (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, day TEXT NOT NULL, calls INTEGER NOT NULL, PRIMARY KEY (user_id, day));
     `);
   }
@@ -168,6 +169,17 @@ export class Store {
   savePatient(userId: string, scenario: Scenario, at = now()) {
     this.db.prepare("INSERT INTO patients (user_id, scenario, at) VALUES (?, ?, ?) ON CONFLICT (user_id) DO UPDATE SET scenario = excluded.scenario, at = excluded.at").run(userId, JSON.stringify(scenario), at);
   }
+
+  // ---------------------------------------------------------------- authored cases (shared by everyone; written only with the case passcode)
+  /** Authored cases as stored JSON: only the published ones, or all of them for an editor. */
+  listCases(all: boolean): unknown[] {
+    const rows = this.db.prepare(`SELECT spec FROM cases ${all ? "" : "WHERE published = 1"} ORDER BY at DESC`).all() as { spec: string }[];
+    return rows.map((r) => JSON.parse(r.spec));
+  }
+  saveCase(id: string, spec: unknown, published: boolean, at = now()) {
+    this.db.prepare("INSERT INTO cases (id, spec, published, at) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET spec = excluded.spec, published = excluded.published, at = excluded.at").run(id, JSON.stringify(spec), published ? 1 : 0, at);
+  }
+  deleteCase(id: string): boolean { return Number(this.db.prepare("DELETE FROM cases WHERE id = ?").run(id).changes) > 0; }
 
   // ---------------------------------------------------------------- usage
   /** Count one tool call against today's allowance; false when the account is over it. */

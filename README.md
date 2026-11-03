@@ -11,7 +11,7 @@ are assumptions, marked as such in the code. It has not been compared with patie
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173 (homepage), /sim/ (simulator), /cases/ (the cases)
+npm run dev        # http://localhost:5173 (homepage), /sim/ (simulator), /cases/ (the case library), /case/?id=… (a case being played)
 npm test           # 280+ tests
 npm run build      # static site in dist/: index.html, sim/index.html, cases/index.html
 ```
@@ -67,11 +67,10 @@ Choices are the teaching points of STEMI and infarct shock care (ACC/AHA; SHOCK,
 ## Three pages
 
 One build, a few front doors. `corosim.com` is the homepage: the title, a heart as a stippled thermogram, a fact about
-it, and the links. `corosim.com/sim` is the simulator alone; `corosim.com/cases` is the cases: the simulator with a scripted patient, a case panel at the top of the right-hand rail,
-and questions that stop the clock. The switch in the masthead moves between the two, and the logo goes
-home. The homepage is `index.html` (`src/home.ts`, `src/stipple.ts`); the simulator is `sim/index.html`, and the build
-writes the same page to `dist/cases/index.html` (see `vite.config.ts`), which the dev server serves at `/cases/` by a
-rewrite. Older share links of the form `corosim.com/#s=…` are forwarded by the homepage to `/sim/#s=…`.
+it, and the links. `corosim.com/sim` is the simulator alone; `corosim.com/cases` is the case library, and `corosim.com/case/?id=…` plays one: the simulator with a scripted patient, a case panel at the top of the right-hand rail,
+and questions that stop the clock. The logo goes home. The homepage is `index.html` (`src/home.ts`, `src/stipple.ts`); the simulator is `sim/index.html`, and the build
+writes the same page to `dist/case/index.html` (see `vite.config.ts`), which the dev server serves at `/case/` by a
+rewrite. The library is its own page, `cases/index.html` (`src/library`). Older share links of the form `corosim.com/#s=…` are forwarded by the homepage to `/sim/#s=…`.
 
 ### The heart of the day
 
@@ -92,7 +91,7 @@ a test fails when it is out of date). The textbook heart is the logo.
 ## Cases
 
 `corosim.com/cases` replaces the old "Find the culprit" game. A case is the simulator with a patient already in trouble:
-the page opens on a list, each case has a short card (what the patient came in with, a brief history, a line or two of
+the library lists the cases, filtered and grouped by difficulty, chief complaint and device; each case has a short card (what the patient came in with, a brief history, a line or two of
 other facts), and Begin starts the simulator from a fixed starting patient. Everything on the page is live: the
 Support, Patient and arrest panels work as they do in the simulator, and the lesion is kept off the displays until the
 team has found it.
@@ -201,3 +200,14 @@ with no atrial ischemia or thrombus. Variant frequencies in the literature vary 
 ## Third-party
 
 three.js (MIT). Cath-lab heart anatomy: Rodero et al. 2021, CC BY 4.0 (see Cath lab above). Fonts: Public Sans and IBM Plex Mono (SIL Open Font License), loaded from Google Fonts.
+
+### Writing cases
+
+People with the case passcode write cases on the library page: **Edit cases**, then **New case**, **Import a file** or **Edit** on a case they wrote. A case is plain data (`src/cases/spec.ts`):
+a `CaseDef` whose conditions are written as text (`map < 62`, `pci`, `rhythm = vf`), stored as JSON in the server's SQLite file and compiled to the same `CaseDef` the engine runs. Drafts are
+private to editors; **Publish** makes a case playable by everyone, and only a complete case can be published. The builder's **Test** plays the draft in `/case/` before anything is public.
+
+**Import and export** use a plain text format (`src/cases/markdown.ts`, described at the top of that file; **Download template** gives a worked example). It is read by rules, not by a
+model: what cannot be read is reported with its line number. The six built-in cases are code, so they are not editable or exportable.
+
+The passcode is the server secret `COROSIM_CASE_PASSCODE` (`fly secrets set COROSIM_CASE_PASSCODE=… --app corosim-mcp`); without it the library is read-only. The server checks it on every write.

@@ -12,6 +12,7 @@ import { buildServer, startHttp } from "./server";
 //   COROSIM_DEV_LOGIN=1            development sign-in, honoured only when the public URL is localhost
 //   COROSIM_ALLOWED_ORIGINS        comma-separated site origins (default corosim.com, www.corosim.com, localhost)
 //   COROSIM_CALLS_PER_DAY          per-account daily allowance (default 2000)
+//   COROSIM_CASE_PASSCODE          the passcode for editing and publishing cases (without it the case library is read-only)
 //   COROSIM_TRUST_PROXY=1          take client addresses from the proxy's header (set on Fly)
 const env = process.env;
 const i = process.argv.indexOf("--http");
@@ -26,6 +27,7 @@ if (i >= 0) {
     allowedOrigins: env.COROSIM_ALLOWED_ORIGINS?.split(",").map((s) => s.trim()).filter(Boolean),
     callsPerDay: Number(env.COROSIM_CALLS_PER_DAY) || undefined,
     trustProxy: env.COROSIM_TRUST_PROXY === "1",
+    casePasscode: env.COROSIM_CASE_PASSCODE || undefined,
   });
   const stop = () => { void srv.close().then(() => process.exit(0)); };
   process.on("SIGTERM", stop); process.on("SIGINT", stop);

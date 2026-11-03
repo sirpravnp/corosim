@@ -75,6 +75,8 @@ export interface Harm { tag: string; label: string; when: Cond }
 export interface CaseDef {
   id: string; title: string; tier: "easy" | "medium" | "hard"; blurb: string;
   card: CaseCard;
+  /** For the landing page: the chief complaint the case opens with, and the devices it brings in ("ECMO", "Impella", "IABP", "Pacing"). */
+  complaint?: string; devices?: string[];
   start: PatientSpec;
   /** What the team has already done when the case opens. */
   opening?: { rhythm?: string; cpr?: boolean; drugs?: { drug: "epinephrine" | "amiodarone" | "lidocaine"; mg: number }[] };
