@@ -16,7 +16,7 @@
 /* Cells are one width (never wider than 150px) and sit together after the brand, so the spacing is even and the gap falls at the right end, before Share. */
 .shell-nav { display: grid; grid-template-columns: repeat(6, minmax(0, 150px)); justify-content: start; }
 .shell-nav a:last-child { border-right: 1px solid var(--sh-line); }
-.shell-nav a { display: flex; flex-direction: column; justify-content: space-between; gap: 10px; min-height: 72px; padding: 12px 14px; color: var(--muted); text-decoration: none; border-left: 1px solid var(--sh-line); font: 300 16px/1.1 var(--font-ui); letter-spacing: -0.01em; transition: color 0.15s var(--sh-ease); }
+.shell-nav a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; min-height: 72px; padding: 12px 8px; color: var(--muted); text-decoration: none; border-left: 1px solid var(--sh-line); font: 300 16px/1.1 var(--font-ui); letter-spacing: -0.01em; transition: color 0.15s var(--sh-ease); }
 .shell-nav a:hover { color: var(--ink); }
 .shell-nav a:active, .shell-nav a:active svg { color: var(--sh-press, var(--ink)); }
 .shell-nav a[aria-current="page"] { color: var(--ink); }
