@@ -10,7 +10,8 @@
 }
 
 /* Header: a row of ruled cells, each a line pictogram over a light, lowercase name. The page you are on takes the accent. */
-.shell-head { position: relative; z-index: 30; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: stretch; border-bottom: 1px solid var(--sh-line); }
+.shell-head { position: relative; z-index: 30; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; align-items: stretch; border-bottom: 1px solid var(--sh-line); }
+.shell-head.no-share { grid-template-columns: auto minmax(0, 1fr) auto auto; }
 .shell-brand { display: flex; align-items: center; gap: 10px; padding: 14px 18px 14px 14px; border-left: 1px solid var(--sh-line); color: var(--ink); text-decoration: none; font: 650 20px/1 var(--font-ui); letter-spacing: -0.02em; }
 .shell-brand img { display: block; width: 32px; height: 32px; }
 /* Cells are one width (never wider than 150px) and sit together after the brand, so the spacing is even and the gap falls at the right end, before Share. */
@@ -23,15 +24,16 @@
 .shell-nav a[aria-current="page"] svg { color: var(--accent); }
 .shell-nav svg { flex: none; }
 /* Every cell is ruled on both sides and its content has the same 14px each way, so nothing touches a line. */
-.shell-share, .shell-ai { display: flex; align-items: center; padding: 0 14px; border-left: 1px solid var(--sh-line); }
+.shell-share, .shell-theme, .shell-ai { display: flex; align-items: center; padding: 0 14px; border-left: 1px solid var(--sh-line); }
+.shell-share[hidden] { display: none; }
 .shell-ai { border-right: 1px solid var(--sh-line); }
-.ai-btn, .share-btn {
+.ai-btn, .share-btn, .theme-btn {
   display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; font: 400 14px/1 var(--font-ui); letter-spacing: 0; text-transform: none;
   color: var(--ink); background: transparent; border: 1px solid var(--sh-line-strong); border-radius: var(--sh-radius); cursor: pointer;
   transition: background-color 0.15s var(--sh-ease), border-color 0.15s var(--sh-ease);
 }
-.ai-btn:hover, .share-btn:hover, .share-btn[aria-expanded="true"], .ai-btn[aria-expanded="true"] { background: var(--sh-hover); color: var(--ink); }
-.shell-nav a:focus-visible, .ai-btn:focus-visible, .share-btn:focus-visible, .share-url:focus-visible, .ai-panel button:focus-visible, .ai-primary:focus-visible, .shell-brand:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+.ai-btn:hover, .share-btn:hover, .share-btn[aria-expanded="true"], .ai-btn[aria-expanded="true"], .theme-btn:hover { background: var(--sh-hover); color: var(--ink); }
+.shell-nav a:focus-visible, .ai-btn:focus-visible, .share-btn:focus-visible, .theme-btn:focus-visible, .share-url:focus-visible, .ai-panel button:focus-visible, .ai-primary:focus-visible, .shell-brand:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
 
 .ai-panel { position: absolute; z-index: 40; background: var(--panel); border: 1px solid var(--sh-line-strong); border-radius: var(--sh-radius); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18), 0 18px 40px rgba(0, 0, 0, 0.28); }
 .ai-panel[hidden] { display: none; }
@@ -102,20 +104,24 @@
 .shell-foot a { color: var(--muted); text-underline-offset: 3px; }
 .shell-foot a:hover { color: var(--ink); }
 
-/* Between a phone and a laptop the bar is tight: the wordmark and the Share label give way so the six cells keep their room. */
+/* Between a phone and a laptop the bar is tight: the wordmark and the Share / theme labels give way so the six cells keep their room. */
 @media (min-width: 761px) and (max-width: 1100px) {
   .shell-brand span { display: none; }
   .shell-brand { padding-right: 14px; }
-  .share-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .share-label, .theme-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .shell-nav a { font-size: 14px; padding-inline: 4px; }
 }
 @media (max-width: 760px) {
-  .shell-head { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .shell-head { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+  .shell-head.no-share { grid-template-columns: minmax(0, 1fr) auto auto; }
   .shell-brand { grid-row: 1; grid-column: 1; padding: 12px 0; border-left: 0; }
-  .shell-share, .shell-ai { grid-row: 1; border: 0; padding: 0 0 0 10px; }
+  .shell-share, .shell-theme, .shell-ai { grid-row: 1; border: 0; padding: 0 0 0 10px; }
   .shell-share { grid-column: 2; }
-  .shell-ai { grid-column: 3; }
-  .share-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .shell-theme { grid-column: 3; }
+  .shell-ai { grid-column: 4; }
+  .shell-head.no-share .shell-theme { grid-column: 2; }
+  .shell-head.no-share .shell-ai { grid-column: 3; }
+  .share-label, .theme-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .shell-nav { grid-row: 2; grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--sh-line); }
   .shell-nav a { min-height: 64px; }
   .shell-nav a:nth-child(3n + 1) { border-left: 0; }

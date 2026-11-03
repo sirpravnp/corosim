@@ -1,5 +1,6 @@
 import { mountShare } from "./share";
 import { AiHandle, AiHooks, mountAi } from "./ai";
+import { SHARE_PAGES, mountTheme } from "./theme";
 
 export interface ShellPage { id: string; label: string; path: string; blurb: string }
 /** Every page of the site, in menu order. A new page (echo, structural) is one line here. */
@@ -26,34 +27,49 @@ const ICONS: Record<string, string> = {
 };
 export const icon = (id: string) => `<svg viewBox="0 0 26 26" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">${ICONS[id] ?? ""}</svg>`;
 
-export interface Shell { ai: AiHandle; menuLink(id: string): HTMLAnchorElement | null; setPage(id: string): void }
+export interface Shell {
+  ai: AiHandle;
+  menuLink(id: string): HTMLAnchorElement | null;
+  setPage(id: string): void;
+  /** Show or hide Share; cases hide it because the URL does not carry a shareable patient. */
+  setShare(on: boolean): void;
+}
 
 /**
  * The header and footer every page except the homepage shares. The page supplies `#shell-head` and `#shell-foot`
  * (empty elements) and the page it is; `root` is the path from that page to the site root ("../" from /ekg/).
+ * Share mounts only when the page has a shareable view (or when `share` is passed explicitly).
  */
-export function mountShell(opts: { page: string; root: string; ai?: AiHooks }): Shell {
+export function mountShell(opts: { page: string; root: string; ai?: AiHooks; share?: boolean }): Shell {
   const { root } = opts;
   const head = document.getElementById("shell-head")!, foot = document.getElementById("shell-foot")!;
   head.className = "shell-head";
+  const shareOn = opts.share ?? SHARE_PAGES.has(opts.page);
   head.innerHTML = `
     <a class="shell-brand" href="${root}" aria-label="CoroSim home"><img src="${root}logo-transparent.png" alt="" width="32" height="32"><span>CoroSim</span></a>
     <nav class="shell-nav" aria-label="Pages">
       ${PAGES.map((p) => `<a data-page="${p.id}" href="${root}${p.path}" title="${p.blurb}">${icon(p.id)}<span>${p.label}</span></a>`).join("")}
     </nav>
-    <div class="shell-share"></div>
+    <div class="shell-share" ${shareOn ? "" : "hidden"}></div>
+    <div class="shell-theme"></div>
     <div class="shell-ai"></div>`;
   foot.className = "shell-foot";
   foot.innerHTML = `<p>${DISCLAIMER}</p><a href="${root}privacy.html">Privacy</a>`;
 
   const items = () => Array.from(head.querySelectorAll<HTMLAnchorElement>(".shell-nav a"));
+  const shareHost = head.querySelector<HTMLElement>(".shell-share")!;
 
   function setPage(id: string) {
     for (const a of items()) { const on = a.dataset.page === id; if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); }
   }
+  function setShare(on: boolean) {
+    shareHost.hidden = !on;
+    head.classList.toggle("no-share", !on);
+    if (on && !shareHost.querySelector(".share-btn")) mountShare(shareHost);
+  }
   setPage(opts.page);
-
-  mountShare(head.querySelector<HTMLElement>(".shell-share")!);
+  setShare(shareOn);
+  mountTheme(head.querySelector<HTMLElement>(".shell-theme")!);
   const ai = mountAi(head.querySelector<HTMLElement>(".shell-ai")!, root, opts.ai);
-  return { ai, setPage, menuLink: (id) => head.querySelector<HTMLAnchorElement>(`.shell-nav a[data-page="${id}"]`) };
+  return { ai, setPage, setShare, menuLink: (id) => head.querySelector<HTMLAnchorElement>(`.shell-nav a[data-page="${id}"]`) };
 }
