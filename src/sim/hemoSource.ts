@@ -69,7 +69,7 @@ export interface Saturations {
   preductal: number; postductal: number;
   svo2: number; // mixed venous (pulmonary artery)
   do2: number; vo2: number; // ml O₂/min
-  lactate: number; // mmol/L, NaN until oxygen-in-time (E6)
+  lactate: number; // mmol/L from core E6 transport when present; NaN on legacy / before warm-up
   /** Per coronary bed: tissue oxygenation 0..1, and whether the value is physics or derived from ischemia severity. */
   bed: Record<string, number>;
   bedSource: "ischemia-derived" | "supply-demand";

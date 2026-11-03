@@ -60,8 +60,9 @@ interface Rec { lb: LiveBeat; rr: number; end: number; summary: BeatSummary | nu
  * Saturations. The oxygen model (`solveOxygen`, physics/structural.ts), fed with the forward and backward
  * volumes through every element over the same window instead of one steady-state beat: an Impella and an Impella RP are streams
  * between their nodes, an ECMO circuit the extra stream into the descending aorta through its oxygenator (`oxygenatorSat`), so
- * differential hypoxemia (upper body from the lungs, lower body from the circuit) appears. SpO2 = pre-ductal = AO; DO2, VO2 and the
- * per-bed tissue oxygenation placeholder (`bedOxygen`). Recomputed once per completed beat.
+ * differential hypoxemia (upper body from the lungs, lower body from the circuit) appears. SpO2 = pre-ductal = AO; DO2, VO2 from
+ * that solve. Lactate and per-bed myocardial tissue O₂ come from the core E6 transport (`sim.oxygenState`) when present, else
+ * the ischemia placeholder (`bedOxygen`) and NaN lactate. Recomputed once per completed beat.
  *
  * Devices. `sim.devices()` as DeviceConsoles: Impella (flow, speed, current, placement signal, suction; the placement trace of the
  * last seconds), IABP (settings, balloon, augmentation; the arterial trace), ECMO (flow, speed, sweep, FiO2, suction, return
@@ -227,10 +228,20 @@ export class LiveSource implements HemoSource {
   saturations(): Saturations {
     const live = this.sync(), { recs, flow: fb, key } = this.window();
     const base = PATIENTS.adult;
-    if (!live || !recs.length) return { node: NaNs(NODES), spo2: NaN, preductal: NaN, postductal: NaN, svo2: NaN, do2: NaN, vo2: NaN, lactate: NaN, bed: {}, bedSource: "ischemia-derived" };
+    const e6 = this.sim.oxygenState();
+    if (!live || !recs.length) return { node: NaNs(NODES), spo2: NaN, preductal: NaN, postductal: NaN, svo2: NaN, do2: NaN, vo2: NaN, lactate: e6?.lactate ?? NaN, bed: {}, bedSource: "ischemia-derived" };
     const ec = live.engine.elements.find((e) => e.name === "ecmo") as Ecmo | undefined;
-    const drop = this.sim.lungSatDrop(), bed = bedOxygen(this.sim), k = `${key}|${ec?.sweep}|${ec?.fio2}|${drop.toFixed(3)}`;
-    if (this.sat && this.satKey === k) return { ...this.sat, bed };
+    const drop = this.sim.lungSatDrop(), bed = bedOxygen(this.sim);
+    // E6: overlay myocardial tissue O₂ from evolving debt where tracked; otherwise keep the ischemia placeholder.
+    let bedSource: Saturations["bedSource"] = "ischemia-derived";
+    if (e6) {
+      for (const [bk, bv] of Object.entries(e6.bedTissue)) {
+        if (Number.isFinite(bv) && (e6.myocardialDebt[bk] ?? 0) > 1e-4) { bed[bk] = bv; bedSource = "supply-demand"; }
+      }
+    }
+    const lac = e6 && Number.isFinite(e6.lactate) ? e6.lactate : NaN;
+    const k = `${key}|${ec?.sweep}|${ec?.fio2}|${drop.toFixed(3)}|${lac.toFixed(2)}`;
+    if (this.sat && this.satKey === k) return { ...this.sat, bed, bedSource, lactate: lac };
     const T = fb.reduce((s, r) => s + r.rr, 0); // the oxygen solve takes its flows from every beat of the flow window
     const fwd: Record<string, number> = {}, bwd: Record<string, number> = {};
     for (const r of fb) for (const [src, dst] of [[r.lb.flows.fwd, fwd], [r.lb.flows.bwd, bwd]] as const) for (const [n, v] of Object.entries(src)) dst[n] = (dst[n] ?? 0) + v;
@@ -248,7 +259,7 @@ export class LiveSource implements HemoSource {
     this.satKey = k;
     this.sat = {
       node, satLung: m.patient.satLung, spo2: node.AO, preductal: node.AO, postductal: node.DAO, svo2: node.PA,
-      do2: n.co * base.hb * 10 * O2_PER_G_HB * node.AO, vo2: base.vo2PerKg * base.weightKg, lactate: NaN, bed, bedSource: "ischemia-derived",
+      do2: n.co * base.hb * 10 * O2_PER_G_HB * node.AO, vo2: base.vo2PerKg * base.weightKg, lactate: lac, bed, bedSource,
     };
     return this.sat;
   }

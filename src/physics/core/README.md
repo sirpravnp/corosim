@@ -52,7 +52,7 @@ Units: mmHg, ml, ml/s, s.
 | Fluid compartments, infusions, bleeding, urine (C2) | `Element` | flow to and from `OUTSIDE` | interstitial volume, lung water |
 | Venoconstriction (C1) | parameter of the venous `NodeModel` (unstressed volume) | pressure | none |
 | Drugs (E4) | outside the engine: map doses to parameter patches each step | none | effect-site levels (kept by the drug model) |
-| Oxygen transport (E6) | separate pass over `Sample.q` per step or per beat | none | content per node (kept by the O₂ model) |
+| Oxygen transport (E6) | separate pass over beat flow volumes (`LiveBeat.flows`) each completed beat; clinical minutes for lactate / myocardial debt (`OxygenTransport` in `core/oxygen.ts`, `sim.oxygenState()`) | none | content per node, lactate, per-bed myocardial O₂ debt (kept by the O₂ model) |
 | 1D arterial segment (F3) | an element whose ends are nodes; its interior is its own states | flow | A and Q per grid point |
 
 If a later task needs something this table cannot express, change `types.ts` in that task's PR and update this table.
