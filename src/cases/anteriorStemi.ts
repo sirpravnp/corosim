@@ -5,6 +5,8 @@ export const ANTERIOR_STEMI: CaseDef = {
   id: "anterior-stemi",
   title: "Pressure in the chest",
   tier: "easy",
+  complaint: "Chest pain",
+  devices: [],
   blurb: "An anterior STEMI in a man who is still holding his pressure.",
   card: {
     presents: "55-year-old man with 90 minutes of substernal pressure spreading to the jaw, sweating and nausea. Heart rate 102, BP 98/77, lungs clear.",

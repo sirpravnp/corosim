@@ -9,7 +9,7 @@ import { $, sim, K, inCases, setInCases, patientOpts } from "./state";
 import { casesUi } from "./cases";
 import { adoptSimState, loadScenario } from "./model";
 
-/** The page at /cases/ runs the cases; anywhere else (/sim/) it is the plain simulator. The links between them
+/** The page at /case/ runs a case; anywhere else (/sim/) it is the plain simulator. The links between them
  *  and to the homepage are relative, so the site still works under any URL. */
 /** The cath lab link opens the patient on screen (/cath/#s=…) when it is followed. In the cases it stays plain: the angiogram would show the diagnosis. */
 let cathBase = "./cath/";
@@ -26,12 +26,11 @@ export function cathLinkUi() {
   a.title = "Open this patient in the cath lab"; a.setAttribute("aria-label", "Open in cath lab");
 }
 export function applyMode() {
-  const cases = /\/cases(\/(index\.html)?)?$/.test(location.pathname); // /cases, /cases/ or /cases/index.html
-  const root = /\/(sim|cases)\/(index\.html)?$/.test(location.pathname) ? "../" : "./"; // the site's root: the homepage
+  const cases = /\/case(\/(index\.html)?)?$/.test(location.pathname); // /case, /case/ or /case/index.html
+  const root = /\/(sim|case)\/(index\.html)?$/.test(location.pathname) ? "../" : "./"; // the site's root: the homepage
   cathBase = root + "cath/";
   shell.menuLink("cath")!.href = cathBase; ($("openCath") as HTMLAnchorElement).href = cathBase;
   $("openCath").hidden = cases; // the cases keep the diagnosis hidden
-  (document.querySelector(".c-plain") as HTMLAnchorElement).href = root + "sim/";
   setInCases(cases);
   shell.setPage(cases ? "cases" : "sim");
   shell.ai.setHidden(cases); // the cases page has no AI line: an AI on the line could read the diagnosis

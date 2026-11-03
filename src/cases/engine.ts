@@ -51,6 +51,8 @@ export interface Outcome {
   order?: "pci";
   /** A shock the page delivers (`sim.shock`); what follows depends on whether it worked. */
   shock?: ShockOrder;
+  /** Chest compressions on or off (the team starts them at an arrest and stops them at ROSC). */
+  cpr?: boolean;
   /** Ends the case. */
   end?: "success" | "fail";
 }
@@ -73,6 +75,8 @@ export interface Harm { tag: string; label: string; when: Cond }
 export interface CaseDef {
   id: string; title: string; tier: "easy" | "medium" | "hard"; blurb: string;
   card: CaseCard;
+  /** For the landing page: the chief complaint the case opens with, and the devices it brings in ("ECMO", "Impella", "IABP", "Pacing"). */
+  complaint?: string; devices?: string[];
   start: PatientSpec;
   /** What the team has already done when the case opens. */
   opening?: { rhythm?: string; cpr?: boolean; drugs?: { drug: "epinephrine" | "amiodarone" | "lidocaine"; mg: number }[] };
@@ -94,6 +98,8 @@ export interface Logged { t: number; text: string }
 export interface Choice { id: string; prompt: string; label: string; points: number; correct?: boolean; why?: string }
 export interface Tick {
   patches: PatientSpec[]; reveals: string[]; orders: "pci"[]; shocks: ShockOrder[];
+  /** Compressions to start (true) or stop (false), when an outcome said so. */
+  cpr?: boolean;
   opened: { id: string; prompt: Prompt } | null;
   over: Result | null;
 }
@@ -142,6 +148,7 @@ export class CaseRunner {
     for (const f of o.flags ?? []) this.flags.add(f);
     if (o.order) into.orders.push(o.order);
     if (o.shock) into.shocks.push(o.shock);
+    if (o.cpr !== undefined) into.cpr = o.cpr;
     if (o.end) this.finish(o.end, into);
   }
   private finish(r: Result, into: Tick) { if (!this.result) { this.result = r; this.open = null; this.queue = []; into.over = r; } }

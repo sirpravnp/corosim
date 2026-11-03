@@ -18,6 +18,7 @@ import { SCENARIO_REFERENCE } from "../sim/llm";
 import { PROTOCOL_VERSION, PageToServer, ServerToPage } from "./protocol";
 import { Store } from "./db";
 import { Accounts, ProviderKeys, page } from "./accounts";
+import { handleCases } from "./caseRoutes";
 
 export const VERSION = "0.6.0";
 
@@ -266,6 +267,7 @@ export interface HttpOptions {
   trustProxy?: boolean; // behind Fly's proxy: take the client address from its header, not the socket
   log?: (m: string) => void; fetch?: typeof fetch;
   publicHost?: (host: string) => Promise<boolean>; // which hosts a client metadata document may come from (tests)
+  casePasscode?: string; // lets people with it edit and publish cases; without it the case library is read-only
 }
 
 /** Token bucket per key: bounds how fast one account or one address can call. */
@@ -292,9 +294,10 @@ export function startHttp(o: HttpOptions) {
   const patients: PatientStore = { get: (id) => store.patient(id), put: (id, sc, at) => store.savePatient(id, sc, at), persistent: store.persistent };
   const rooms = new Rooms(patients, o.callTimeoutMs);
   const perMinute = new Limiter(o.callsPerMinute ?? 60), perIp = new Limiter(o.requestsPerMinutePerAddress ?? 600), perDay = o.callsPerDay ?? 2000;
+  const caseTries = new Limiter(20); // passcode attempts and edits per minute from one address
   let accounts: Accounts | undefined;
 
-  const ANY = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET, POST, DELETE, OPTIONS", "access-control-expose-headers": "mcp-session-id, www-authenticate" };
+  const ANY = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS", "access-control-expose-headers": "mcp-session-id, www-authenticate" };
   const send = (res: ServerResponse, code: number, body: unknown, headers: Record<string, string> = ANY) => {
     if (res.headersSent) return;
     res.writeHead(code, { "content-type": "application/json", ...headers });
@@ -340,6 +343,7 @@ export function startHttp(o: HttpOptions) {
       }
       if (!perIp.take(ip(req))) return send(res, 429, { error: "Too many requests; slow down." });
       if (await accounts!.handle(req, res, url)) return;
+      if (await handleCases(req, res, url, store, { passcode: o.casePasscode, take: (k) => caseTries.take(k) }, ip(req), (r, c, b) => send(r, c, b), () => readJson(req))) return;
       if (url.pathname === "/openapi.json") return send(res, 200, openApi(accounts!.issuer));
       if (url.pathname === "/tools.openai.json") return send(res, 200, openAiTools());
       if (url.pathname === "/tools.anthropic.json") return send(res, 200, anthropicTools());

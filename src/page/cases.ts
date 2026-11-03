@@ -2,6 +2,8 @@
 // A case is the simulator page with a scripted patient: the page builds a Probe from the simulation each frame, the runner (src/cases/engine.ts)
 // decides what fires, and this module carries it out: a patch to the patient, a line of news, an order, a prompt that holds the clock.
 import { CASES } from "../cases";
+import { compileCase } from "../cases/spec";
+import { builtinEntries, getPreview, playable } from "../library/api";
 import { CaseDef, CaseRunner, Debrief, Probe, Tick } from "../cases/engine";
 import { $, K, S, sim, T, inCases, on } from "./state";
 import { arrestSync } from "./arrest";
@@ -18,6 +20,10 @@ const keep = (id: string, score: number) => { if (score > (best[id] ?? -1)) { be
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 const clock = (s: number) => { const t = Math.max(0, Math.round(s)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
 const TIER_LABEL = { easy: "Easy", medium: "Medium", hard: "Hard" } as const;
+/** Every case this page can run: the built-in ones, then (once fetched) a published one or a draft being tested. */
+let pool: CaseDef[] = [...CASES];
+let missing = false; // the address names a case that could not be found
+const CASES_URL = "../cases/";
 
 let debrief: Debrief | null = null;
 let opening = false; // the case's opening moves (rhythm, CPR, drugs given) are still to be made
@@ -50,6 +56,7 @@ function carry(t: Tick) {
     if (p.patient?.rhythm) S.rhythm = p.patient.rhythm; // the frame loop hands S.rhythm to the simulation
   }
   arrestSync();
+  if (t.cpr !== undefined) { if (t.cpr) sim.startCpr(); else sim.stopCpr(); arrestSync(); }
   for (const o of t.orders) if (o === "pci") orderProcedure("pci");
   for (const sh of t.shocks) {
     const r = sim.shock({ joules: sh.joules, sync: sh.sync });
@@ -154,28 +161,47 @@ export function casesUi() {
   if (!o) promptKey = "";
 }
 function doorUi() {
-  const sig = JSON.stringify(best) + introId;
+  const sig = introId + String(missing) + pool.length;
   if (sig === listSig) return;
   listSig = sig;
-  $("c_cards").innerHTML = CASES.map((c) => `<button class="c-case" data-id="${c.id}"><i class="tier ${c.tier}">${TIER_LABEL[c.tier]}</i><b>${esc(c.title)}</b><span>${esc(c.blurb)}</span>${best[c.id] !== undefined ? `<em>best ${best[c.id]}</em>` : ""}</button>`).join("");
-  $("c_list").hidden = !!introId; $("c_intro").hidden = !introId;
-  const def = CASES.find((c) => c.id === introId);
+  const def = pool.find((c) => c.id === introId);
+  $("ci_begin").hidden = !def;
   if (def) {
     $("ci_title").textContent = def.title; $("ci_tier").textContent = TIER_LABEL[def.tier];
     $("ci_presents").textContent = def.card.presents; $("ci_pmh").textContent = def.card.pmh;
     $("ci_info").innerHTML = (def.card.info ?? []).map((x) => `<li>${esc(x)}</li>`).join("");
+  } else {
+    $("ci_title").textContent = missing ? "That case was not found" : "Loading the case";
+    $("ci_tier").textContent = ""; $("ci_presents").textContent = missing ? "It may have been unpublished or removed. The Cases page lists what is available." : ""; $("ci_pmh").textContent = ""; $("ci_info").innerHTML = "";
   }
+}
+
+/** Find the case the address names (?id=…): built in, a published one from the server, or the draft the builder just handed over (&preview=1). */
+async function loadFromAddress() {
+  if (!/\/case(\/(index\.html)?)?$/.test(location.pathname)) return; // the plain simulator has no case to load
+  const q = new URLSearchParams(location.search), id = q.get("id");
+  if (!id) { location.replace(CASES_URL); return; }
+  introId = id;
+  if (!pool.some((c) => c.id === id)) {
+    try {
+      const draft = q.get("preview") ? getPreview() : undefined;
+      if (draft && draft.id === id) pool = [compileCase(draft), ...pool.filter((c) => c.id !== id)];
+      else { const all = await playable(); pool = [...builtinEntries(), ...all.filter((e) => e.source === "authored")].map((e) => e.def); }
+    } catch { /* the server is away: only the built-in cases */ }
+    missing = !pool.some((c) => c.id === id);
+  }
+  listSig = ""; casesUi();
 }
 
 /** The front door's cards, the prompt's options, and the buttons. */
 export function wireCases() {
-  $("c_cards").addEventListener("click", (e) => { const b = (e.target as HTMLElement).closest<HTMLElement>("[data-id]"); if (b) { introId = b.dataset.id!; listSig = ""; casesUi(); } });
-  on("ci_back", () => { introId = ""; listSig = ""; casesUi(); });
-  on("ci_begin", () => { const def = CASES.find((c) => c.id === introId); introId = ""; listSig = ""; if (def) startCase(def); });
+  void loadFromAddress();
+  on("ci_back", () => { location.href = CASES_URL; });
+  on("ci_begin", () => { const def = pool.find((c) => c.id === introId); listSig = ""; if (def) startCase(def); });
   $("cp_opts").addEventListener("click", (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>("[data-i]");
     if (b && K.runner) carry(K.runner.answer(+b.dataset.i!));
   });
-  on("c_quit", quit);
-  on("c_again", () => { const def = K.def; quit(); if (def) { introId = def.id; listSig = ""; casesUi(); } });
+  on("c_quit", () => { quit(); location.href = CASES_URL; });
+  on("c_again", () => { quit(); location.href = CASES_URL; });
 }

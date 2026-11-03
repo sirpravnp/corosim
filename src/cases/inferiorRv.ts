@@ -9,6 +9,8 @@ export const INFERIOR_RV: CaseDef = {
   id: "inferior-rv",
   title: "Slow and low",
   tier: "medium",
+  complaint: "Chest pain",
+  devices: ["Pacing"],
   blurb: "Chest pressure, a heart rate in the 40s and a falling blood pressure.",
   card: {
     presents: "64-year-old man with two hours of crushing chest pressure, nausea and sweating. He nearly fainted getting out of the car. Heart rate 42, BP 88/48, clear lungs, distended neck veins.",

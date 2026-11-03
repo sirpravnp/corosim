@@ -7,6 +7,8 @@ export const LM_SHOCK: CaseDef = {
   id: "lm-shock",
   title: "Cold and wet",
   tier: "hard",
+  complaint: "Chest pain",
+  devices: ["Impella"],
   blurb: "Chest pain, then breathlessness, in a woman whose pressure is falling.",
   card: {
     presents: "72-year-old woman with three hours of chest pain, now breathless and clammy with mottled skin. Heart rate 112, BP 77/64, crackles to the mid-lung fields.",
