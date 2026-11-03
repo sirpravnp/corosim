@@ -116,3 +116,31 @@ function start(logo: HTMLImageElement | null) {
   paint();
   requestAnimationFrame(frame);
 }
+
+// The burst behind the story rides down with the scroll: it eases toward the screenshot nearest the middle of the screen.
+{
+  const burst = document.querySelector<HTMLElement>(".burst"), figs = [...document.querySelectorAll<HTMLElement>(".story figure")];
+  if (burst && figs.length) {
+    let x = innerWidth * 0.65, y = innerHeight * 0.45, tx = x, ty = y, running = false;
+    const aim = () => {
+      const mid = innerHeight / 2;
+      let best = figs[0], bd = Infinity;
+      for (const f of figs) { const r = f.getBoundingClientRect(), d = Math.abs((r.top + r.bottom) / 2 - mid); if (d < bd) { bd = d; best = f; } }
+      const r = best.getBoundingClientRect();
+      tx = r.left + r.width / 2; ty = Math.min(Math.max(r.top + r.height / 2, innerHeight * 0.25), innerHeight * 0.75);
+    };
+    const set = () => { burst.style.setProperty("--bx", `${x}px`); burst.style.setProperty("--by", `${y}px`); };
+    const step = () => {
+      x += (tx - x) * 0.07; y += (ty - y) * 0.07; set();
+      if (Math.abs(tx - x) > 0.5 || Math.abs(ty - y) > 0.5) requestAnimationFrame(step); else running = false;
+    };
+    const wake = () => {
+      aim();
+      if (reduced) { x = tx; y = ty; set(); return; }
+      if (!running) { running = true; requestAnimationFrame(step); }
+    };
+    addEventListener("scroll", wake, { passive: true });
+    addEventListener("resize", wake);
+    wake();
+  }
+}

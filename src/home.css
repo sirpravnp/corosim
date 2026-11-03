@@ -43,7 +43,13 @@ body.home { --bg: #000; --panel: #0b0d14; --ink: #f4f1ea; --muted: #98a0b8; --ru
 
 /* Below the fold: what the site does, one tool at a time, shown with the tool itself. The thermogram stays pinned and the story slides over it. */
 .story { position: relative; z-index: 2; background: #000; border-top: 1px solid var(--rule); }
-.story-in { max-width: 1240px; margin: 0 auto; padding: 104px 24px 0; }
+.story-in { position: relative; z-index: 1; max-width: 1240px; margin: 0 auto; padding: 104px 24px 0; }
+/* A blurred burst of the thermal ramp that rides down the page behind the screenshots. The layer is pinned to the viewport
+   while the story scrolls; home.ts steers --bx and --by to the screenshot nearest the middle of the screen. */
+.burst { position: sticky; top: 0; height: 100vh; margin-bottom: -100vh; overflow: hidden; pointer-events: none; z-index: 0; --bx: 65vw; --by: 45vh; }
+.burst i { position: absolute; left: 0; top: 0; border-radius: 50%; filter: blur(80px); will-change: transform; }
+.burst .b1 { width: min(1040px, 150vw); height: min(760px, 105vw); background: radial-gradient(closest-side, #ffe9a8 0%, #ff9a3c 22%, #d4472f 46%, #7a1d14 70%, rgba(0, 0, 0, 0) 100%); opacity: 0.95; transform: translate(calc(var(--bx) - min(520px, 75vw)), calc(var(--by) - min(380px, 52vw))); }
+.burst .b2 { width: min(720px, 120vw); height: min(520px, 85vw); background: radial-gradient(closest-side, #ff9a3c 0%, #c8352c 40%, #5a140e 72%, rgba(0, 0, 0, 0) 100%); opacity: 0.8; transform: translate(calc(var(--bx) - min(230px, 40vw)), calc(var(--by) - min(80px, 12vw))); }
 .story h2 { margin: 0 0 16px; font: 300 clamp(28px, 3.4vw, 42px)/1.1 var(--font-ui); letter-spacing: -0.025em; color: var(--ink); }
 .story p { margin: 0; font: 400 16px/1.6 var(--font-ui); color: var(--muted); max-width: 40ch; text-wrap: pretty; }
 .story a { color: var(--ink); text-underline-offset: 4px; }
