@@ -46,7 +46,7 @@ npx tsx scripts/eval/run.ts timescale                     # hemorrhage, bleed an
 | Path | What it is | Used by |
 |---|---|---|
 | `core` engine | `LiveHeart`: beat-by-beat chamber/vessel model (`src/physics/core/`) | Simulator page (`src/page/state.ts`), cath lab page. **This is what the harness runs.** |
-| `legacy` engine | algebraic `circulation()` plus a per-beat Windkessel | `new Simulation()` defaults to it: the EKG page, a fresh MCP server (until `corosim_set_scenario` is given `engine: "core"`), regression fixtures |
+| `legacy` engine | algebraic `circulation()` plus a per-beat Windkessel | Opt-in via `engine: "legacy"` (ACS regression fixtures, comparison scripts). Fresh `Simulation` / MCP / EKG default to `core`. |
 | structural model, driven statically | `analyze()` / `simulate()` in `src/physics/structural.ts` | Structural tab, neonates, `structural.json` fixtures. **Not a separate solver:** since task A2 `simulate()` runs the core engine on the same chambers, vessels and valves, with a fixed rate and no reflexes, ischemia or rhythm model |
 
 The core engine is not fully independent of the legacy one. It still calls legacy `circulation()` for the ischemic fractions, the rate the rhythm implies and the oxygen-demand factor, and the ischemia, infarct, rhythm, ECG and coronary-network modules are shared by both engines. Before the first live beat, circulation values (including EF) are the legacy estimate.

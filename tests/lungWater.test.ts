@@ -58,7 +58,7 @@ describe("the lung compartment alone", () => {
 describe("in the core simulation", () => {
   const make = (spec: PatientSpec = {}) => { const s = new Simulation({}, { engine: "core" }); s.reset({ seed: 3, ...spec }, { settled: true }); s.warmup(40); return s; };
   const min = (s: Simulation, m: number) => s.step(m / s.minutesPerSecond / s.speed);
-  it("the legacy engine has no lung water and no desaturation", () => { const s = new Simulation({ seed: 1 }); expect(s.fluids()).toBeNull(); expect(s.lungSatDrop()).toBe(0); });
+  it("the legacy engine has no lung water and no desaturation", () => { const s = new Simulation({ seed: 1 }, { engine: "legacy" }); expect(s.fluids()).toBeNull(); expect(s.lungSatDrop()).toBe(0); });
   it("a normal patient stays dry: no lung water change, SpO2 unchanged", () => {
     const s = make(); min(s, 30);
     const f = s.fluids()!, sat = new LiveSource(s).saturations();

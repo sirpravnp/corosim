@@ -21,11 +21,11 @@ import { PATIENTS } from "../config/structural";
  * ventilation, devices). The tools remember them here, per Simulation, so the structural lesions survive between calls and
  * go into share links.
  *
- * Which engine: a server's patient may run on the legacy engine (the default) or the core engine. A core `Simulation` is read
- * directly, so the readings follow it as it runs. A legacy one has no live heart, so it gets a private core twin: the same
- * patient (Scenario plus the remembered fields) built on the core engine at its steady state and rebuilt when the patient
- * changes or the simulation is reloaded. The twin is not stepped by the other tools, so it shows the patient settled, not mid-way
- * through an evolving infarct.
+ * Which engine: a server's patient runs on the core engine by default, or the legacy engine when opted in with
+ * `engine: "legacy"`. A core `Simulation` is read directly, so the readings follow it as it runs. A legacy one has no live
+ * heart, so it gets a private core twin: the same patient (Scenario plus the remembered fields) built on the core engine at
+ * its steady state and rebuilt when the patient changes or the simulation is reloaded. The twin is not stepped by the other
+ * tools, so it shows the patient settled, not mid-way through an evolving infarct.
  *
  * Cost: the twin's build and warm-up take a fraction of a second to a few seconds. It is cached per Simulation; reading twice in a
  * row costs microseconds.

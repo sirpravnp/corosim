@@ -85,7 +85,7 @@ describe("setPatient", () => {
     x.apply({ heart: { valves: { av: { open: 0.4 } } } }); // same field again: nothing changes
   });
   it("the legacy engine ignores it", () => {
-    const l = new Simulation({ seed: 1 }); l.setPatient({ pericardium: { effusionMl: 300 } });
+    const l = new Simulation({ seed: 1 }, { engine: "legacy" }); l.setPatient({ pericardium: { effusionMl: 300 } });
     expect(l.live).toBeUndefined();
   });
   it("a patient the core cannot settle falls back to a plain adult with an explanation (or settles; never leaves the simulation without a heart)", () => {

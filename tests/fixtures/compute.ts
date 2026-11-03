@@ -60,7 +60,8 @@ export interface AcsSample { t: number; map: number | null; sbp: number | null; 
  * the monitor shows. Noise is left at the default: the Simulation is deterministic for a fixed seed, so no noise override is needed.
  */
 export function acsTrace(sc: Scenario): AcsSample[] {
-  const s = new Simulation();
+  // ACS fixtures pin the quarantined legacy path; opt in explicitly so the core default does not regenerate them.
+  const s = new Simulation({}, { engine: "legacy" });
   s.reset({ seed: ACS_SEED, ...sc }, { settled: true });
   s.warmup(ACS_WARMUP_S); s.history = [];
   const out: AcsSample[] = [];

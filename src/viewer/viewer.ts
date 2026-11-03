@@ -23,7 +23,7 @@ interface Reported { infarct?: number; problems?: string[]; steps?: string[]; na
 let reported: Reported = {};
 let speed = 1, findings: ValveFinding[] = [], murmur = "";
 
-function load(sc: PatientSpec, headline?: string, engine: "legacy" | "core" = "legacy") {
+function load(sc: PatientSpec, headline?: string, engine: "legacy" | "core" = "core") {
   sim.engine = engine; // takes effect at the reset: library rhythms, valves and arrest need the core engine
   sim.reset(sc, { settled: true });
   sim.warmup(20);
@@ -165,7 +165,7 @@ function receive(s: Structured) {
   const arrest = s.arrest ?? s.state?.arrest ?? null, dead = s.dead ?? s.state?.dead === true;
   reported = { infarct: s.state?.ventricle?.lvInfarctFraction, problems: s.assessment?.problems, steps: s.assessment?.guidelineNextSteps?.map((x) => x.step), narrative: s.narrative, rhythm: s.state?.rhythm, arrest, dead };
   // a dead patient's strip is a flat line: replay asystole (the rhythm row still names the rhythm they died in)
-  load(dead ? { ...sc, patient: { ...sc.patient, rhythm: "asystole" } } : sc, s.outcome?.result ?? s.explanation?.headline ?? "Your CoroSim patient", s.engine === "core" || arrest ? "core" : "legacy");
+  load(dead ? { ...sc, patient: { ...sc.patient, rhythm: "asystole" } } : sc, s.outcome?.result ?? s.explanation?.headline ?? "Your CoroSim patient", s.engine === "legacy" && !arrest ? "legacy" : "core");
   if (s.display) applyDisplay(s.display);
 }
 const embedded = window.parent !== window;

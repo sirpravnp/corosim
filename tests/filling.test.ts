@@ -129,7 +129,7 @@ describe("on the core simulation", () => {
   const make = (sc = {}) => { const s = new Simulation({}, { engine: "core" }); s.reset({ seed: 3, ...sc }, { settled: true }); s.warmup(30); return s; };
 
   it("is null on the legacy engine and reported on the core one, in hemo() and filling()", () => {
-    expect(new Simulation({ seed: 1 }).filling()).toBeNull();
+    expect(new Simulation({ seed: 1 }, { engine: "legacy" }).filling()).toBeNull();
     const s = make(); s.run(15);
     const f = s.filling()!, h = s.hemo(15)!.filling;
     expect(f.msfp).toBeGreaterThan(5); expect(f.msfp).toBeLessThan(9);
