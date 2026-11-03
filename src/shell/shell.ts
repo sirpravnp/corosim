@@ -6,6 +6,7 @@ export interface ShellPage { id: string; label: string; path: string; blurb: str
 export const PAGES: ShellPage[] = [
   { id: "sim", label: "Simulator", path: "sim/", blurb: "The 3D heart, ECG and monitor" },
   { id: "cases", label: "Cases", path: "cases/", blurb: "Patients to keep alive, with decisions along the way" },
+  { id: "simbook", label: "Simbook", path: "simbook/", blurb: "Preclinical cardiac physiology, one idea at a time" },
   { id: "ekg", label: "EKG", path: "ekg/", blurb: "Twelve-lead rhythms and mimics" },
   { id: "cath", label: "Cath lab", path: "cath/", blurb: "Angiogram and pressure wire" },
   { id: "structural", label: "Structural", path: "structural/", blurb: "Valve and congenital lesions" },
