@@ -11,7 +11,7 @@
 
 /* Header: a row of ruled cells, each a line pictogram over a light, lowercase name. The page you are on takes the accent. */
 .shell-head { position: relative; z-index: 30; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: stretch; border-bottom: 1px solid var(--sh-line); }
-.shell-brand { display: flex; align-items: center; gap: 10px; padding: 14px 18px 14px 0; color: var(--ink); text-decoration: none; font: 650 20px/1 var(--font-ui); letter-spacing: -0.02em; }
+.shell-brand { display: flex; align-items: center; gap: 10px; padding: 14px 18px 14px 14px; border-left: 1px solid var(--sh-line); color: var(--ink); text-decoration: none; font: 650 20px/1 var(--font-ui); letter-spacing: -0.02em; }
 .shell-brand img { display: block; width: 32px; height: 32px; }
 /* Cells are one width (never wider than 150px) and sit together after the brand, so the spacing is even and the gap falls at the right end, before Share. */
 .shell-nav { display: grid; grid-template-columns: repeat(6, minmax(0, 150px)); justify-content: start; }
@@ -22,7 +22,9 @@
 .shell-nav a[aria-current="page"] { color: var(--ink); }
 .shell-nav a[aria-current="page"] svg { color: var(--accent); }
 .shell-nav svg { flex: none; }
-.shell-share, .shell-ai { display: flex; align-items: center; padding-left: 14px; border-left: 1px solid var(--sh-line); }
+/* Every cell is ruled on both sides and its content has the same 14px each way, so nothing touches a line. */
+.shell-share, .shell-ai { display: flex; align-items: center; padding: 0 14px; border-left: 1px solid var(--sh-line); }
+.shell-ai { border-right: 1px solid var(--sh-line); }
 .ai-btn, .share-btn {
   display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; font: 400 14px/1 var(--font-ui); letter-spacing: 0; text-transform: none;
   color: var(--ink); background: transparent; border: 1px solid var(--sh-line-strong); border-radius: var(--sh-radius); cursor: pointer;
@@ -102,8 +104,8 @@
 
 @media (max-width: 760px) {
   .shell-head { grid-template-columns: minmax(0, 1fr) auto auto; }
-  .shell-brand { grid-row: 1; grid-column: 1; padding: 12px 0; }
-  .shell-share, .shell-ai { grid-row: 1; border-left: 0; }
+  .shell-brand { grid-row: 1; grid-column: 1; padding: 12px 0; border-left: 0; }
+  .shell-share, .shell-ai { grid-row: 1; border: 0; padding: 0 0 0 10px; }
   .shell-share { grid-column: 2; }
   .shell-ai { grid-column: 3; }
   .share-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
