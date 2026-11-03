@@ -111,7 +111,7 @@ export function arrestUi() {
   for (const d of DRUGS) {
     const s = since(d), n = a.drugs.filter((x) => x.drug === d).length, el = $("a_t_" + d);
     const due = d === "epinephrine" && s !== null && s >= ARREST.drugs.epinephrine.minIntervalS;
-    el.textContent = s === null ? (d === "epinephrine" ? "give now" : "not given") : due ? `${n}x · due (${clock(s)})` : `${n}x · ${clock(s)} ago`;
+    el.textContent = s === null ? (d === "epinephrine" ? "give now" : "not given") : due ? `${n}x, due (${clock(s)})` : `${n}x, ${clock(s)} ago`;
     el.classList.toggle("due", due);
     $(d === "epinephrine" ? "a_epi" : d === "amiodarone" ? "a_amio" : "a_lido").classList.toggle("due", due);
   }

@@ -46,7 +46,7 @@ export function updateMarkers(dt: number) {
   const probe = (lzClock += dt) > 0.1;
   if (probe) lzClock = 0;
   const lb = (S.ds > 0 || S.occ) && !S.hide ? built.find((x) => x.seg.id === S.lesionSeg) : undefined;
-  placeMarker(lesionMarker, lb, S.pos, `${S.occ ? "Occluded" : Math.round(S.ds * 100) + "% stenosis"} · ${lb?.seg.name ?? ""}`, 7, probe);
+  placeMarker(lesionMarker, lb, S.pos, `${S.occ ? "Occluded" : Math.round(S.ds * 100) + "% stenosis"}, ${lb?.seg.name ?? ""}`, 7, probe);
   updateLabels(probe);
 }
 

@@ -1,6 +1,7 @@
 import "../cath/cath.css";
 import "./structural.css";
 import { mountShell } from "../shell/shell";
+import { readout } from "../readout";
 import { mountCrossLinks } from "../shell/crossLinkRow";
 import { assess, defaults, lesionHash, LESIONS, LESION_BY_ID, LesionDef, parseLesionHash, patientFromLesionHash, StructuralFindings, ValveFinding } from "../sim/structural";
 import { NodeName } from "../physics/structural";
@@ -61,7 +62,7 @@ function refresh(push = false) {
   $("title").textContent = def.label;
   $("summary").textContent = def.teach;
 
-  const tile = (label: string, value: string, cls = "") => `<div><b>${label}</b><span class="${cls}">${value}</span></div>`;
+  const tile = (label: string, value: string, cls = "") => `<div><b>${label}</b><span class="${cls}">${readout(value)}</span></div>`;
   const shunt = r.rightToLeft > 0.05 || r.leftToRight > 0.05;
   $("meas").innerHTML = [
     tile("Heart rate", `${f0(r.hr)} bpm`),
@@ -93,9 +94,9 @@ function refresh(push = false) {
 
   if (heart) { const m = morphFor(result.spec, r); heart.update(m, satMap(r)); heart.setProps(buildProps(result.spec, r, m, result.valves), satMap(r)); }
   sitesTable(); valvesTable();
-  $("murmur").textContent = `Auscultation: ${result.murmur}`;
+  $("murmur").replaceChildren(Object.assign(document.createElement("span"), { className: "k", textContent: "Auscultation" }), result.murmur);
   const w = $("warn"); w.hidden = !r.warnings.length; w.textContent = r.warnings.join(" ");
-  $("notes").textContent = result.notes.join(" ");
+  $("notes").replaceChildren(...result.notes.map((n) => Object.assign(document.createElement("li"), { textContent: n })));
   draw();
   links.repoint();
   const h = lesionHash(def.id, values);

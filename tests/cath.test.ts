@@ -74,8 +74,8 @@ describe("pressure wire", () => {
     const p = w.at(1);
     expect(p.stopped).toBe(true); expect(p.s).toBeLessThan(w.blockedFrom!);
   });
-  it("names the grey zone", () => {
-    expect(ffrCall(0.9)).toBe("not flow-limiting"); expect(ffrCall(0.78)).toBe("grey zone"); expect(ffrCall(0.6)).toBe("flow-limiting");
+  it("names the gray zone", () => {
+    expect(ffrCall(0.9)).toBe("not flow-limiting"); expect(ffrCall(0.78)).toBe("gray zone"); expect(ffrCall(0.6)).toBe("flow-limiting");
   });
 });
 

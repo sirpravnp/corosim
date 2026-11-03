@@ -4,7 +4,7 @@ const FS = 500, SECONDS = 10, N = FS * SECONDS;
 const GRID: LeadName[][] = [["I", "aVR", "V1", "V4"], ["II", "aVL", "V2", "V5"], ["III", "aVF", "V3", "V6"]];
 const POSTERIOR: LeadName[] = ["V7", "V8", "V9"];
 const ALL: LeadName[] = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9"];
-const SANS = "-apple-system, 'Helvetica Neue', Arial, sans-serif";
+const SANS = '"Hanken Grotesk", -apple-system, "Helvetica Neue", Arial, sans-serif';
 
 interface Panel { lead: LeadName; x: number; y: number; w: number; h: number; from: number; to: number }
 
@@ -86,6 +86,6 @@ export class Paper {
       g.beginPath(); g.moveTo(1, mid); g.lineTo(1 + mm, mid); g.lineTo(1 + mm, mid - pxMv); g.lineTo(1 + 6 * mm, mid - pxMv); g.lineTo(1 + 6 * mm, mid); g.lineTo(cal, mid); g.stroke();
     }
     g.fillStyle = "rgba(20,20,20,.6)"; g.font = `11px ${SANS}`;
-    g.fillText(`25 mm/s · ${this.gain} mm/mV`, w - 128, h - 6);
+    g.fillText(`25 mm/s, ${this.gain} mm/mV`, w - 128, h - 6);
   }
 }

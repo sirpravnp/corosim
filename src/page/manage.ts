@@ -72,7 +72,7 @@ export const MORE_DRUGS = [["epi", "epi", "epinephrine"], ["mil", "milrinone", "
 const MORE_NOTE = "Receptor-level drugs of the core engine: epinephrine (beta and alpha), milrinone (inodilator), vasopressin (non-adrenergic pressor), nitroprusside (arterial and venous dilator), furosemide (diuretic). Doses are fractions of the full effect.";
 const lastText = new Map<string, string>();
 const setText = (id: string, v: string) => { if (lastText.get(id) === v) return; lastText.set(id, v); $(id).textContent = v; };
-const join = (parts: (string | false | undefined | null | 0)[]) => parts.filter(Boolean).join(" · ") || "none";
+const join = (parts: (string | false | undefined | null | 0)[]) => parts.filter(Boolean).join(", ") || "none";
 const pct = (x: number) => Math.round(x * 100) + "%";
 
 /** The IV volume given, grouped by kind: the playground's boluses plus the legacy litres (the game, or `support.fluids` from chat). */
@@ -109,7 +109,7 @@ export function manageUi() {
   onOff("m_ecmo", !!patientOpts.patient?.devices?.ecmo);
   const core = sim.engine === "core";
   for (const [id, k] of MORE_DRUGS) { $(id + "v").textContent = sp[k] ? Math.round(sp[k] * 100) + "%" : "off"; const r = $<HTMLInputElement>(id); r.disabled = !core; if (document.activeElement !== r) r.value = String(Math.round(sp[k] * 100)); }
-  $("more-drugs-note").textContent = core ? MORE_NOTE : "These drugs are modelled on the core engine only; this engine ignores them.";
+  $("more-drugs-note").textContent = core ? MORE_NOTE : "These drugs are modeled on the core engine only; this engine ignores them.";
   $("pacev").textContent = sp.paceRate + " bpm";
   $("manage").classList.toggle("pacing", sp.pacing);
   const total = $("fluidv"); if (total) total.textContent = volumeGiven() || "none";

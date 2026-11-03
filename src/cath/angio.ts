@@ -116,7 +116,7 @@ export class AngioView {
       const p = k * 4; od[p] = v; od[p + 1] = v; od[p + 2] = v * 1.02; od[p + 3] = 255;
     }
     C.putImageData(out, 0, 0);
-    C.font = "13px ui-monospace, Menlo, monospace"; C.fillStyle = "rgba(220,220,210,.8)"; C.textBaseline = "alphabetic";
+    C.font = '13px "JetBrains Mono", ui-monospace, Menlo, monospace'; C.fillStyle = "rgba(220,220,210,.8)"; C.textBaseline = "alphabetic";
     C.fillText(`${o.rot < 0 ? "RAO" : "LAO"} ${Math.abs(o.rot)}  ${o.tilt < 0 ? "CAUD" : "CRAN"} ${Math.abs(o.tilt)}`, 14, 24);
     C.fillText(`t ${Math.max(0, t).toFixed(1)} s`, 14, H - 14);
     if (t >= 0 && t < ANGIO.injectSeconds) { C.fillStyle = "rgba(255,235,120,.9)"; C.fillText("INJECTING", W - 100, 24); }

@@ -79,7 +79,7 @@ export function wirePicking() {
     else {
       const sg = tree.byId[S.selected], r2 = A.cond.seg[S.selected], n = r2.s.length;
       box.style.display = "block";
-      box.innerHTML = `<b>${sg.name}</b><br>length ${sg.length.toFixed(0)} mm · Ø ${(Math.min(...r2.d) * 1e3).toFixed(1)}–${(Math.max(...r2.d) * 1e3).toFixed(1)} mm<br>inflow ${(r2.Q[0] * 6e7).toFixed(0)} ml/min<br>pressure ${(r2.P[0] / MMHG).toFixed(0)} → ${(r2.P[n - 1] / MMHG).toFixed(0)} mmHg<br>supplies ${(sg.subMass * 100).toFixed(0)}% of myocardium`;
+      box.innerHTML = `<b>${sg.name}</b><br>length ${sg.length.toFixed(0)} mm, Ø ${(Math.min(...r2.d) * 1e3).toFixed(1)}–${(Math.max(...r2.d) * 1e3).toFixed(1)} mm<br>inflow ${(r2.Q[0] * 6e7).toFixed(0)} ml/min<br>pressure ${(r2.P[0] / MMHG).toFixed(0)} → ${(r2.P[n - 1] / MMHG).toFixed(0)} mmHg<br>supplies ${(sg.subMass * 100).toFixed(0)}% of myocardium`;
     }
     shapeVessels();
   });

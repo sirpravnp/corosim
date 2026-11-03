@@ -35,7 +35,7 @@ export function applyMode() {
   setInCases(cases);
   shell.setPage(cases ? "cases" : "sim");
   shell.ai.setHidden(cases); // the cases page has no AI line: an AI on the line could read the diagnosis
-  document.title = cases ? "CoroSim · Cases" : "CoroSim";
+  document.title = cases ? "CoroSim: Cases" : "CoroSim";
   casesUi();
 }
 

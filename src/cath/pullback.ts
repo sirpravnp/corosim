@@ -12,12 +12,12 @@ export function drawPullback(canvas: HTMLCanvasElement, w: WireModel, position: 
   const L = 44, R = W - 12, T = 26, B = H - 84, BAND = H - 54, BANDH = 26; // plot area and the diameter band under it
   const x = (mm: number) => L + (mm / w.length) * (R - L), y = (r: number) => B - ((Math.min(AXIS.hi, Math.max(AXIS.lo, r)) - AXIS.lo) / (AXIS.hi - AXIS.lo)) * (B - T);
   g.fillStyle = "#0b0b0b"; g.fillRect(0, 0, W, H);
-  g.font = "12px ui-monospace, Menlo, monospace"; g.textBaseline = "alphabetic";
+  g.font = '12px "JetBrains Mono", ui-monospace, Menlo, monospace'; g.textBaseline = "alphabetic";
   g.strokeStyle = "#2a2a2a"; g.lineWidth = 1; g.fillStyle = "#8a8a80";
   for (const f of [0.4, 0.6, 0.8, 1]) { g.beginPath(); g.moveTo(L, y(f)); g.lineTo(R, y(f)); g.stroke(); g.fillText(f.toFixed(1), 8, y(f) + 4); }
   g.strokeStyle = "#7a5"; g.setLineDash([5, 4]); g.beginPath(); g.moveTo(L, y(WIRE.ffrCutoff)); g.lineTo(R, y(WIRE.ffrCutoff)); g.stroke(); g.setLineDash([]);
   g.fillStyle = "#7a5"; g.fillText("0.80", R - 34, y(WIRE.ffrCutoff) - 4);
-  g.fillStyle = "#8a8a80"; g.fillText(`Pd / Pa · ${label}`, L, 16);
+  g.fillStyle = "#8a8a80"; g.fillText(`Pd / Pa, ${label}`, L, 16);
   g.fillText("ostium", L, H - 8); g.fillText("distal", R - 40, H - 8);
 
   const reach = w.blockedFrom ?? w.length; // the wire stops at an occlusion

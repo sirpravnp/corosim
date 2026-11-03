@@ -40,7 +40,7 @@ export function rhythmPickerUi() {
   const p = libraryRhythm(S.rhythm) ?? SIM_RHYTHMS.find((x) => x.id === cur);
   if (!p) { $("rhythminfo").textContent = S.rhythm; return; }
   const own = S.rhythm === "sinus" || S.rhythm === "af";
-  let rate = " · rate follows the coronary model and the reflexes";
-  if (!own) { const r = libraryVentricularRate(p.id); rate = r > 0 ? ` · ventricular rate about ${Math.round(r)}/min` : " · no ventricular rate"; }
+  let rate = ", rate follows the coronary model and the reflexes";
+  if (!own) { const r = libraryVentricularRate(p.id); rate = r > 0 ? `, ventricular rate about ${Math.round(r)}/min` : ", no ventricular rate"; }
   $("rhythminfo").textContent = `${p.name}${rate}. ${p.summary}`;
 }

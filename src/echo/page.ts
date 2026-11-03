@@ -37,7 +37,7 @@ function renderRef(v: ViewDef) {
   const fill = (id: string) => {
     const pane = $(id);
     if (!im) return;
-    const credit = `${esc(im.note)}<br>${esc(im.author)} · <a href="${im.licenseUrl}" rel="noopener">${esc(im.license)}</a> · <a href="${im.source}" rel="noopener">source</a>`;
+    const credit = `${esc(im.note)}<br>${esc(im.author)}, <a href="${im.licenseUrl}" rel="noopener">${esc(im.license)}</a>, <a href="${im.source}" rel="noopener">source</a>`;
     if (im.kind === "video" && im.clean) {
       pane.innerHTML = `<div class="echo-img"><canvas class="echo-clean" role="img" aria-label="${esc(im.alt)}"></canvas></div><figcaption>${credit}</figcaption>`;
       playClean(pane.querySelector("canvas")!, asset(im.file), im.clean);

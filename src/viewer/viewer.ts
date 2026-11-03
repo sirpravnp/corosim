@@ -56,7 +56,7 @@ function arrestPanel() {
   if (!a || !show) return;
   const cls = CLASS_NAME[a.rhythmClass] ?? a.rhythmClass;
   banner.className = `banner${a.status === "rosc" ? " rosc" : ""}`;
-  banner.textContent = a.status === "rosc" ? "ROSC: pulse restored" : a.rhythmClass === "perfusing" ? `Shock converted the rhythm: waiting for a pulse · ${fmt(a.arrestS)} s${a.cpr.on ? " · CPR" : ""}` : `Cardiac arrest: ${cls} · ${fmt(a.arrestS)} s${a.cpr.on ? " · CPR" : ""}${a.shocks ? ` · ${a.shocks} shock${a.shocks === 1 ? "" : "s"}` : ""}`;
+  banner.textContent = a.status === "rosc" ? "ROSC: pulse restored" : a.rhythmClass === "perfusing" ? `Shock converted the rhythm: waiting for a pulse, ${fmt(a.arrestS)} s${a.cpr.on ? ", CPR" : ""}` : `Cardiac arrest: ${cls}, ${fmt(a.arrestS)} s${a.cpr.on ? ", CPR" : ""}${a.shocks ? `, ${a.shocks} shock${a.shocks === 1 ? "" : "s"}` : ""}`;
   const lines: [string, string, string?][] = [
     ["Status", dead ? "DEAD" : a.status === "rosc" ? "ROSC (return of spontaneous circulation)" : a.status === "arrest" ? "IN ARREST" : "none", dead || a.status === "arrest" ? "bad" : a.status === "rosc" ? "ok" : ""],
     ["Rhythm class", cls],
@@ -98,12 +98,12 @@ function monitor() {
     const cpr = reported.arrest?.cpr;
     $("bp").textContent = lb ? `${Math.round(lb.sbp)}/${Math.round(lb.dbp)} (${Math.round(sim.map)})` : "…";
     $("bp").className = sim.map < 65 ? "bad" : sim.map < 75 ? "warn" : "";
-    $("co").textContent = cpr?.on && reported.arrest?.status === "arrest" ? `CPR output ${Math.round(cpr.output * 100)}% of normal` : `${fmt(roll.cardiacOutput, 1)} L/min · SV ${fmt(roll.sv)} ml`;
+    $("co").textContent = cpr?.on && reported.arrest?.status === "arrest" ? `CPR output ${Math.round(cpr.output * 100)}% of normal` : `${fmt(roll.cardiacOutput, 1)} L/min, SV ${fmt(roll.sv)} ml`;
     $("co").className = "";
   }
   $("stup").textContent = e.stElevation.join(", ") || "none"; $("stup").className = e.meetsStemiCriteria ? "bad" : "";
   $("stdown").textContent = e.stDepression.join(", ") || "none";
-  $("isch").textContent = `${Math.round(st.ischemicMassFraction * 100)}% · ${e.ischemia}`;
+  $("isch").textContent = `${Math.round(st.ischemicMassFraction * 100)}%, ${e.ischemia}`;
   const inf = reported.infarct ?? st.ventricle.lvInfarctFraction;
   $("inf").textContent = inf > 0.005 ? `${Math.round(inf * 100)}%` : "none";
   const a = sim.assessment();
@@ -147,7 +147,7 @@ function applyDisplay(d: Display) {
   if (d.autoRotate !== undefined) scene.setAutoRotate(d.autoRotate);
   if (d.timeScale !== undefined) speed = d.timeScale;
   if (d.flow) notes.push("flow animation: shown on the website page");
-  $("mapnote").hidden = !notes.length; $("mapnote").textContent = notes.join(" · ");
+  $("mapnote").hidden = !notes.length; $("mapnote").textContent = notes.join(", ");
   const key = d.mode === "anat" || d.mode === "isch";
   $("legend").hidden = key; $("mapkey").hidden = !key;
   if (key) $("mapkey").innerHTML = d.mode === "anat" ? `<i style="background:#e0574c"></i>LAD<i style="background:#4c8be0"></i>LCx<i style="background:#e0b23c"></i>RCA` : `<i style="background:#3fa66b"></i>normal<i style="background:#e6c34a"></i>mild<i style="background:#e0392f"></i>ischemic<i style="background:#7d1d6b"></i>severe`;

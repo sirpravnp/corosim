@@ -81,7 +81,7 @@ function readoutLine(k: ValveKey, f: ValveFinding | undefined): string {
   bits.push(f.stenosis === "none" && !p ? "no stenosis" : `stenosis ${f.stenosis}`);
   bits.push(`mean gradient ${f.meanGradient.toFixed(0)} mmHg`);
   bits.push(f.regurgitation === "none" ? (p && f.regurgMl > 0.5 ? `physiological closing leak ${f.regurgMl.toFixed(0)} ml/beat` : "no regurgitation") : `regurgitation ${f.regurgitation}: ${f.regurgMl.toFixed(0)} ml/beat${f.regurgFraction !== null ? ` (${(f.regurgFraction * 100).toFixed(0)}%)` : ""}`);
-  return `${NAME[k]} grade ${f.grade}: ${bits.join(" · ")}`;
+  return `${NAME[k]} grade ${f.grade}: ${bits.join(", ")}`;
 }
 
 export function buildValves(c: ValvesCtx) {

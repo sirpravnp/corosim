@@ -24,10 +24,10 @@ export function cathRows(c: LeftHeartCath, v?: Vitals): [string, string][] {
     ["Mean gradient (ejection)", mmHg(c.gradient.mean)],
     ["Peak instantaneous", mmHg(c.gradient.peakInstant)],
     ["Wedge − LV mean (diastole)", mmHg(c.mitral.meanGradient)],
-    ["Aortic area, Gorlin", `${a(c.area.aorticGorlin)} · ${label(c.severity.aortic)}`],
+    ["Aortic area, Gorlin", `${a(c.area.aorticGorlin)}, ${label(c.severity.aortic)}`],
     ["Aortic area, Hakki", a(c.area.aorticHakki)],
     ["Mitral area, Gorlin (37.7)", a(c.area.mitralGorlin)],
-    ["Mitral area, model", `${a(c.area.mitralEngine)} · ${label(c.severity.mitral)}`],
+    ["Mitral area, model", `${a(c.area.mitralEngine)}, ${label(c.severity.mitral)}`],
     ["Mitral area, Hakki", a(c.area.mitralHakki)],
   ];
 }
@@ -49,7 +49,7 @@ function plot(canvas: HTMLCanvasElement, c: LeftHeartCath, p: PlotSpec, title: s
   g.strokeStyle = "#232323"; g.fillStyle = "#8a8a80"; g.lineWidth = 1;
   const step = top > 100 ? 40 : top > 40 ? 20 : 10;
   for (let v = 0; v <= top; v += step) { g.beginPath(); g.moveTo(L, y(v)); g.lineTo(R, y(v)); g.stroke(); g.fillText(String(v), 4, y(v) + 4); }
-  g.fillText(`${title} · mmHg`, L, 13);
+  g.fillText(`${title}, mmHg`, L, 13);
   let lx = R;
   for (const [lab, col] of [[p.lb, p.cb], [p.la, p.ca]] as const) { lx -= g.measureText(lab).width + 16; g.fillStyle = col; g.fillRect(lx, 6, 10, 3); g.fillStyle = "#8a8a80"; g.fillText(lab, lx + 13, 13); }
   g.save(); g.beginPath(); g.rect(L, T - 2, R - L, B - T + 4); g.clip();
