@@ -49,6 +49,7 @@ import type { Model } from "../physics/structural";
 import { PATIENTS } from "../config/structural";
 import { ACS_CORE, AUTONOMIC_CORE } from "../config/acsCore";
 import { ischemiaFactors } from "../config/ischemia";
+import { regionalVentricles } from "../physics/regional";
 import { Normalized, Scenario, normalizeScenario, toScenario, supportSpec } from "./scenario";
 import { BeatRecord, computeMetrics, meanRate, Metrics } from "./metrics";
 import { ArrestState, ArrestDrug, CprState, RhythmClass, ShockRecord, ShockResult, Rng, createArrest, createRng, step as arrestStep, shock as arrestShock, give as arrestGive, setCpr as arrestSetCpr, perfusion as cprPerfusion, shockDeathStep } from "./arrest";
@@ -603,10 +604,12 @@ export class Simulation {
   //
   // The beat stream feeds `LiveHeart` (every beat, with its atrial event, ahead of time); the live heart is stepped with the
   // simulation's clock (live time = stream time + delta, delta fixed when the first beat is aligned with the end of the warm-up).
-  // Mapping, all constants in config/acsCore.ts and config/ischemia.ts:
-  //  - ischemia -> ventricles: with L, R the ischemic (or scarred) fractions circulation() computes, LV Ees x max(0.2, 1 - 1.25 L),
-  //    RV Ees x max(0.2, 1 - 0.8 R), passive stiffness (the `a` of the end-diastolic curve) x (1 + 1.5 L), x (1 + 2 R)
-  //    (`LiveHeart.setVentricleFactors`, separate from the autonomic contractility, so they multiply);
+  // Mapping, all constants in config/acsCore.ts and config/ischemia.ts (E3 regional path):
+  //  - ischemia -> ventricles: coronary beds → `regionalVentricles` (core-native; same mass-weighted LV/RV fractions
+  //    `circulation()` used to feed A7). Each bed is a segment of LV or RV: active elastance α = Σ w·(1 − eesLoss·injury)
+  //    floored, dead volume Vdead = bulgeMl · Σ w·injury (`ElastanceChamber.setRegional`). Global Ees factors stay at 1;
+  //    passive stiffness still multiplies via `setVentricleFactors` (1 + stiffGain · fraction). Legacy engine keeps the
+  //    A7 global `ischemiaFactors(lv, rv)` cut. Autonomic contractility multiplies the design Ees separately;
   //  - autonomic -> engine: contractility x effects.contractility, resistance x effects.resistance (and the ischemic reflex terms
   //    circulation() has: x (1 + 0.2 sympathetic) x (1 - 0.12 vagal), and the vasopressor drug), venous tone 1 + 0.75 (vascular tone - rest)
   //    (the volume reflex reaches the veins through the vascular tone: core autonomic calibration `AUTONOMIC_CORE`, config/acsCore.ts; deficit = fraction of blood volume lost net of fluids); rate arrives as beats;
@@ -833,10 +836,29 @@ export class Simulation {
   /** Slow inputs of the heart from the ischemia, the autonomic state, the drugs and the devices (see the mapping above). */
   private pushInputs() {
     const live = (this.building ?? this.live)!, K = ACS_CORE, fx = this.fx, rs = this.rstate, d = this.pk.effects();
-    live.setVentricleFactors(ischemiaFactors(this.base.lvIschemia, this.base.rvIschemia));
+    // E3: bed-mapped regional elastance owns active Ees + dead volume; stiffness factors stay on the A7 channel.
+    // Safe fallback: if sites are empty (should not happen after init), keep the lumped ischemiaFactors cut.
+    if (this.sites.length) {
+      const reg = regionalVentricles(this.sites, this.sev, this.scar);
+      live.setRegional(reg.lv, reg.rv);
+      live.setVentricleFactors({ lvEes: 1, rvEes: 1, ...reg.stiffness });
+    } else {
+      live.setRegional(null, null);
+      live.setVentricleFactors(ischemiaFactors(this.base.lvIschemia, this.base.rvIschemia));
+    }
     const resistance = fx.resistance * d.resistance * (1 + CIRC.sympatheticSvr * rs.sympathetic) * (1 - CIRC.vagalSvr * rs.vagal);
     const venousTone = (1 + K.venousToneGain * (fx.vascular - AUTONOMIC.restSympathetic)) * d.venousTone;
     live.setModifiers({ contractility: fx.contractility * d.contractility, resistance, venousTone, relax: d.relax });
+  }
+
+  /**
+   * Regional LV/RV elastance from coronary beds (E3), null on the legacy engine or before the heart is built.
+   * `active` is the ventricle's contractile scale α; `deadMl` the dyskinetic dead volume; `segments` the bed map.
+   */
+  regionalElastance() {
+    if (this.engine !== "core") return null;
+    const live = this.live ?? this.building;
+    return live ? live.regionalState() : null;
   }
 
   /** One sub-step: hand over the new beats, set the slow inputs, move blood in or out, and advance the live heart to the simulation's clock. */

@@ -28,8 +28,9 @@ else here is added by the tasks in `docs/HEMODYNAMICS_TASKS.md`.
 - **Live play (A6).** `live.ts` `LiveHeart` schedules events from the rhythm model's beats and steps the engine; `BeatRecorder` built with `T = null` closes a beat at each ventricular event (`closeBeat()`, called from an element's `onEvent`) instead of every `T` seconds. Slow inputs are `Tunable.set` patches from design-point factors (`setModifiers`).
 
 - **Beat strength (A7).** An event's `strength` below 1 scales the activation (a weak PVC); above 1 (post-extrasystolic potentiation) it scales Ees (`ElastanceChamber.eesGain`), so activation stays within 0..1 and the passive term never goes negative.
-- **Ventricle factors (A7).** `LiveHeart.setVentricleFactors({ lvEes, rvEes, lvStiffness, rvStiffness })` sets per-ventricle factors on the design Ees and passive stiffness (`a`), separate from the autonomic `contractility` modifier (they multiply). Ischemia and scar act here (`config/ischemia.ts`). `LiveBeat.atrialKick` is true when an atrial event actually came 0.04-0.35 s before the ventricular one (`LIVE.kickMinLead/kickMaxLead`), whatever the beat's labels.
-- **ACS simulation (A7).** `Simulation({}, { engine: "core" })` runs the ACS patient on `LiveHeart` (mapping in the "Core engine" comment of `sim/simulation.ts`). The real Impella and IABP since D3 (section "Devices in the ACS simulation" below); `volume.ts` (`VolumeExchange`: fluids and hemorrhage) stays until C2.
+- **Ventricle factors (A7).** `LiveHeart.setVentricleFactors({ lvEes, rvEes, lvStiffness, rvStiffness })` sets per-ventricle factors on the design Ees and passive stiffness (`a`), separate from the autonomic `contractility` modifier (they multiply). On the lumped path ischemia and scar act here (`config/ischemia.ts`). `LiveBeat.atrialKick` is true when an atrial event actually came 0.04-0.35 s before the ventricular one (`LIVE.kickMinLead/kickMaxLead`), whatever the beat's labels.
+- **Regional segments (E3).** `LiveHeart.setRegional(lvSegs, rvSegs)` maps coronary beds (`ecgLink` sites via `physics/regional.ts`) onto each ventricle. `ElastanceChamber` sums segment active elastance α = Σ w·(1 − eesLoss·injury) (floored) and adds dead volume Vdead = bulgeMl · Σ w·injury. The ACS core path sets Ees factors to 1 and drives stiffness from the same map; `Simulation.regionalElastance()` exposes the live state. Clear with `setRegional(null)` to fall back to lumped A7 factors. O₂ time-transport (E6) and replacing `demandFactor` with MVO₂ are still open.
+- **ACS simulation (A7/E3).** `Simulation({}, { engine: "core" })` runs the ACS patient on `LiveHeart` (mapping in the "Core engine" comment of `sim/simulation.ts`). The real Impella and IABP since D3 (section "Devices in the ACS simulation" below); `volume.ts` (`VolumeExchange`: fluids and hemorrhage) stays until C2.
 
 Units: mmHg, ml, ml/s, s.
 
@@ -38,7 +39,7 @@ Units: mmHg, ml, ml/s, s.
 | Piece (task) | Kind | Phase | Own states |
 |---|---|---|---|
 | Chamber with activation and relaxation (A1, A4) | `NodeModel` | pressure; `onEvent` | none (activation is a function of time since the event, the preceding interval and `relaxScale`) |
-| Regional LV segments (E3) | `NodeModel` (the LV law sums segments) | pressure | none |
+| Regional LV/RV segments (E3) | `NodeModel` (`ElastanceChamber.setRegional`: bed-weighted α and Vdead on the ventricle law) | pressure | none |
 | Compliance, venous reservoir with unstressed volume (A1, A5) | `NodeModel` (`vessels.ts`: P = (V − Vu)/C, `Vu` tunable) | pressure | none |
 | Resistor, Gorlin orifice, valve (A1) | `Element` | flow | none |
 | Inertial edge, valve with inertance (A3) | `Element` | flow | flow Q |
