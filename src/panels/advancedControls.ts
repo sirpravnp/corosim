@@ -30,7 +30,7 @@ export function buildAdvanced(c: AdvancedCtx): HTMLDetailsElement {
   const { h } = c;
   const box = h("details", { className: "fold pg-group pg-advanced", id: "pg-advanced" });
   const body = h("div", { className: "pg-body" });
-  box.append(h("summary", {}, h("h2", { textContent: "Advanced" }), h("span", { className: "sum", textContent: "reflexes, electrolytes, ectopy, seed" })), body);
+  box.append(h("summary", {}, h("h2", { textContent: "Advanced" }), h("span", { className: "sum", textContent: "circulation, reflexes, electrolytes, ectopy, seed" })), body);
   body.append(h("p", { className: "note pg-note", textContent: "Teaching overrides of the patient's physiology. The default is marked on each slider; Reset advanced puts them all back (the seed is kept)." }));
 
   /** One slider on a Scenario field: `read` takes the value from the live Scenario, `make` the patch for a new value. */
