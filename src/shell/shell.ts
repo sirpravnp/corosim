@@ -24,7 +24,7 @@ const ICONS: Record<string, string> = {
   structural: `<rect x="3" y="3" width="20" height="20"/><path d="M3 3l20 20M13 3v20"/>`,
   echo: `<path d="M13 3L3 23h20z"/><path d="M13 3v20M8 13h10"/>`,
 };
-const icon = (id: string) => `<svg viewBox="0 0 26 26" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">${ICONS[id] ?? ""}</svg>`;
+export const icon = (id: string) => `<svg viewBox="0 0 26 26" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">${ICONS[id] ?? ""}</svg>`;
 
 export interface Shell { ai: AiHandle; menuLink(id: string): HTMLAnchorElement | null; setPage(id: string): void }
 
