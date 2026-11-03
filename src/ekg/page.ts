@@ -172,7 +172,6 @@ function render() {
   $("mimics").innerHTML = li(preset.mimics); $("mimicsBox").hidden = !preset.mimics?.length;
   $("next").hidden = !preset.next; $("next").textContent = preset.next ? `Next: ${preset.next}` : "";
   for (const a of document.querySelectorAll<HTMLAnchorElement>("#list a")) a.classList.toggle("on", a.dataset.id === preset.id && !hidden);
-  askLink();
 }
 $("stmap").addEventListener("click", (e) => { const d = (e.target as HTMLElement).closest<HTMLElement>("[data-lead]"); if (d) select(d.dataset.lead as LeadName); });
 
@@ -247,17 +246,6 @@ $("quizBtn").addEventListener("click", () => startQuiz());
 $("qnext").addEventListener("click", () => startQuiz());
 $("qstop").addEventListener("click", () => stopQuiz());
 $("reveal").addEventListener("click", () => { quiz.answered = true; for (const b of document.querySelectorAll<HTMLButtonElement>("#choices button")) { b.disabled = true; if (b.textContent === preset.name) b.classList.add("right"); } $("qverdict").textContent = `It was ${preset.name}.`; $("qafter").hidden = false; render(); });
-
-// ---------------------------------------------------------------- Ask Claude
-function askLink() {
-  const hidden = quiz.on && !quiz.answered;
-  const text = hidden
-    ? "Use the CoroSim connector to quiz me on EKGs: call corosim_ekg_show with quiz true for a random preset, ask me to read it step by step (rate, rhythm, axis, intervals, morphology), and only reveal the answer after I commit."
-    : customDesc
-      ? `Use the CoroSim connector: call corosim_ekg_show with custom ${JSON.stringify(customDesc)} and teach me to read this tracing. Ask me what I see before you explain, and point to the leads and the 3D heart vector.`
-      : `Use the CoroSim connector: call corosim_ekg_show for the EKG preset "${preset.id}" (${preset.name}) and teach me to read it. Ask me what I see before you explain, and point to the leads and the 3D heart vector.`;
-  $<HTMLAnchorElement>("askClaude").href = `https://claude.ai/new?q=${encodeURIComponent(text)}`;
-}
 
 // ---------------------------------------------------------------- the clock
 let noiseSeed = 1;
