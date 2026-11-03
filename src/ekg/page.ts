@@ -1,6 +1,7 @@
 import "./ekg.css";
 import "../customSelect";
 import { mountShell } from "../shell/shell";
+import { readout } from "../readout";
 import { App } from "@modelcontextprotocol/ext-apps";
 import { ALL_LEADS, LEADS, LeadName } from "../config/ecg";
 import { Simulation } from "../sim/simulation";
@@ -159,7 +160,7 @@ function render() {
     ["Axis", m.axisDeg === null ? "—" : `${m.axisDeg}° ${axisWord(m.axisDeg)}`],
     ["STEMI criteria", m.stMm ? (m.meetsStemiCriteria ? "met" : "not met") : "—", m.meetsStemiCriteria ? "bad" : ""],
   ];
-  $("meas").innerHTML = cells.map(([k, v, c]) => `<div><b>${k}</b><span class="${c ?? ""}">${esc(v)}</span></div>`).join("");
+  $("meas").innerHTML = cells.map(([k, v, c]) => `<div><b>${k}</b><span class="${c ?? ""}">${readout(v)}</span></div>`).join("");
   const leads = paper.posterior ? ALL_LEADS : LEADS;
   const st = $("stmap"); st.classList.toggle("wide", paper.posterior);
   st.innerHTML = m.stMm ? leads.map((l) => { const v = m.stMm![l]; return `<div data-lead="${l}" class="${l === selected ? "sel" : ""}" title="ST at J+60 ms"><b>${l}</b><span class="${v >= 1 || (v >= 0.5 && /V[789]/.test(l)) ? "up" : v <= -1 ? "down" : ""}">${v > 0 ? "+" : ""}${v.toFixed(1)}</span></div>`; }).join("") : "";
@@ -179,7 +180,7 @@ function select(lead: LeadName) {
   if (!paper.posterior && /V[789]/.test(lead)) { paper.posterior = true; axes.posterior = true; $<HTMLInputElement>("posterior").checked = true; }
   selected = lead; paper.selected = lead; axes.select(lead);
   paper.rhythmLead = lead; // the long strip at the bottom follows the selected lead
-  $("leadnote").innerHTML = `<b>${lead}</b>: ${esc(LEAD_INFO[lead])}. The white dot is the heart vector projected on this lead: above the centre toward the labelled pole, the trace goes up.`;
+  $("leadnote").innerHTML = `<b>${lead}</b>: ${esc(LEAD_INFO[lead])}. The white dot is the heart vector projected on this lead: above the center toward the labelled pole, the trace goes up.`;
   for (const d of document.querySelectorAll<HTMLElement>("#stmap [data-lead]")) d.classList.toggle("sel", d.dataset.lead === lead);
 }
 paper.onSelect = (l) => select(l);
@@ -235,7 +236,7 @@ function answerQuiz(c: EkgPreset, answer: EkgPreset, btn: HTMLButtonElement) {
   store.set("corosim.ekgQuiz", JSON.stringify({ right: quiz.right, total: quiz.total, streak: quiz.streak }));
   score(); render();
 }
-function score() { $("qscore").textContent = quiz.total ? `${quiz.right}/${quiz.total} · streak ${quiz.streak}` : ""; }
+function score() { $("qscore").textContent = quiz.total ? `${quiz.right}/${quiz.total}, streak ${quiz.streak}` : ""; }
 function stopQuiz() {
   if (!quiz.on) return;
   quiz.on = false; $("quiz").hidden = true;

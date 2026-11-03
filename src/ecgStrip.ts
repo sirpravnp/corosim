@@ -5,7 +5,7 @@ import { BeatStream } from "./physics/beatStream";
 const FS = 250, WIN = 2.5, N = Math.round(FS * WIN);
 const LAYOUT: LeadName[][] = [["I", "aVR", "V1", "V4"], ["II", "aVL", "V2", "V5"], ["III", "aVF", "V3", "V6"]];
 const POSTERIOR: LeadName[] = ["V7", "V8", "V9"]; // a fifth column when the posterior leads are on
-const SANS = "-apple-system, Helvetica, Arial, sans-serif";
+const SANS = '"Hanken Grotesk", -apple-system, Helvetica, Arial, sans-serif';
 
 /**
  * Sweeping 12-lead ECG on standard paper (25 mm/s, 10 mm/mV).

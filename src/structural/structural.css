@@ -24,7 +24,14 @@ table.data td:first-child { font-weight: 600; }
 table.data .bad { color: var(--bad); font-weight: 600; } table.data .warn { color: var(--warn); } table.data .dim { color: var(--muted); }
 .loops { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .note[hidden] { display: none; }
-#warn { border-color: color-mix(in srgb, var(--warn) 60%, var(--sh-line)); color: var(--ink); }
+/* The notes under the data sheet: a labeled row and ruled lines, not tinted boxes. */
+.side .note { display: grid; grid-template-columns: 7rem minmax(0, 1fr); gap: 12px; margin: 0; padding: 10px 0 0; border: 0; border-top: 1px solid var(--sh-line); background: none; font-size: 13px; line-height: 1.5; color: var(--ink); }
+.side .note .k { font: 400 12px/1.6 var(--font-data); color: var(--muted); }
+.side #warn { display: block; color: var(--warn); }
+/* The model's limits, one numbered line each instead of one block of text. */
+.notes { counter-reset: note; list-style: none; max-width: 80ch; margin: 28px 0 0; padding: 0; border-top: 1px solid var(--sh-line); }
+.notes li { counter-increment: note; display: grid; grid-template-columns: 1.5rem minmax(0, 1fr); gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--rule-light); font: 400 13.5px/1.55 var(--font-ui); color: var(--muted); text-wrap: pretty; }
+.notes li::before { content: counter(note, decimal-leading-zero); font: 400 12px/1.7 var(--font-data); }
 
 table.data tr.dim td { color: var(--muted); }
 .screen canvas { aspect-ratio: auto; }

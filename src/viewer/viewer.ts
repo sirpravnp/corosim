@@ -33,10 +33,10 @@ function monitor() {
   $("hr").textContent = `${fmt(roll.hr)} bpm`;
   $("bp").textContent = lb ? `${Math.round(lb.sbp)}/${Math.round(lb.dbp)} (${Math.round(sim.map)})` : "…";
   $("bp").className = sim.map < 65 ? "bad" : sim.map < 75 ? "warn" : "";
-  $("co").textContent = `${fmt(roll.cardiacOutput, 1)} L/min · SV ${fmt(roll.sv)} ml`;
+  $("co").textContent = `${fmt(roll.cardiacOutput, 1)} L/min, SV ${fmt(roll.sv)} ml`;
   $("stup").textContent = e.stElevation.join(", ") || "none"; $("stup").className = e.meetsStemiCriteria ? "bad" : "";
   $("stdown").textContent = e.stDepression.join(", ") || "none";
-  $("isch").textContent = `${Math.round(st.ischemicMassFraction * 100)}% · ${e.ischemia}`;
+  $("isch").textContent = `${Math.round(st.ischemicMassFraction * 100)}%, ${e.ischemia}`;
   const inf = reported.infarct ?? st.ventricle.lvInfarctFraction;
   $("inf").textContent = inf > 0.005 ? `${Math.round(inf * 100)}%` : "none";
   const a = sim.assessment();

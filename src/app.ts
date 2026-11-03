@@ -366,12 +366,12 @@ function controlsUi() {
   for (const m of ["real", "anat", "pressure", "velocity", "wss"]) $("m_" + m).classList.toggle("on", S.mode === m);
   for (const s of [1, 3, 6]) $("s" + s).classList.toggle("on", S.speed === s);
   // the folded sections carry their state in the header
-  $("patientsum").textContent = `${S.rhythm === "af" ? "Atrial fibrillation" : "Sinus"} · ${S.bbb === "none" ? "normal conduction" : S.bbb.toUpperCase()}`;
+  $("patientsum").textContent = `${S.rhythm === "af" ? "Atrial fibrillation" : "Sinus"}, ${S.bbb === "none" ? "normal conduction" : S.bbb.toUpperCase()}`;
   const DOM = { right: "Right-dominant", co: "Co-dominant", left: "Left-dominant" }, LMP = { bifurcation: "bifurcation", trifurcation: "ramus", absent: "absent left main" }, LADC = { normal: "LAD to apex", short: "short LAD", wrap: "wrapping LAD" };
-  $("anatomysum").textContent = `${DOM[V.dominance]} · ${LMP[V.lm]} · ${LADC[V.ladCourse]} · SA node from ${V.saNodeFrom}`;
+  $("anatomysum").textContent = `${DOM[V.dominance]}, ${LMP[V.lm]}, ${LADC[V.ladCourse]}, SA node from ${V.saNodeFrom}`;
   const MODE = { real: "Anatomic", anat: "Territory", pressure: "Pressure", velocity: "Velocity", wss: "Wall shear" };
   $("volumesum").textContent = volumeSummary();
-  $("displaysum").textContent = `${MODE[S.mode]} · ${S.heart === "solid" ? "solid" : S.heart === "ghost" ? "see-through" : "no"} heart · ${S.exag}×${S.flow ? " · flow" : ""}${S.posterior ? " · V7–V9" : ""}`;
+  $("displaysum").textContent = `${MODE[S.mode]}, ${S.heart === "solid" ? "solid" : S.heart === "ghost" ? "see-through" : "no"} heart, ${S.exag}×${S.flow ? ", flow" : ""}${S.posterior ? ", V7–V9" : ""}`;
   for (const r of ["sinus", "af"]) $("r_" + r).classList.toggle("on", S.rhythm === r);
   for (const b of ["none", "rbbb", "lbbb"]) $("c_" + b).classList.toggle("on", S.bbb === b);
   $("postbtn").classList.toggle("on", S.posterior); $("stmap").classList.toggle("wide", S.posterior); ecg.posterior = S.posterior;
@@ -379,7 +379,7 @@ function controlsUi() {
   $("risk").textContent = S.hide ? "—" : risk.toFixed(0) + "%"; $("risk").style.color = S.hide ? "var(--muted)" : risk > 25 ? "var(--bad)" : risk > 0 ? "var(--warn)" : "var(--ok)";
   $("ffr").textContent = S.ds > 0 && !S.occ && !S.hide ? A.ffr[0].toFixed(2) : "—";
   $("ffr").style.color = A.ffr[0] < 0.8 && !S.hide ? "var(--bad)" : "var(--ink)";
-  $("tag").textContent = S.hide ? `${tree.segments.length} arteries · click the culprit · drag to orbit` : `${tree.segments.length} arteries · radius ×${S.exag} · click a vessel · drag to orbit`;
+  $("tag").textContent = S.hide ? `${tree.segments.length} arteries. Click the culprit, drag to orbit` : `${tree.segments.length} arteries, radius ×${S.exag}. Click a vessel, drag to orbit`;
 }
 
 const rhythmLabel = (r: ReturnType<EcgStrip["rhythm"]>, rs: RhythmState | null) => {
@@ -411,7 +411,7 @@ function liveUi() {
     const mapSm = sim.map, lb = sim.history[sim.history.length - 1], roll = sim.rolling(10); // this beat's own pressure; output over 10 s
     $("bp").textContent = lb ? `${Math.round(lb.sbp)}/${Math.round(lb.dbp)} (${Math.round(mapSm)})` : `— (${Math.round(mapSm)})`;
     $("bp").style.color = mapSm < CIRC.shockMap ? "var(--bad)" : mapSm < CIRC.hypotensionMap ? "var(--warn)" : "var(--ink)";
-    $("co").textContent = Number.isFinite(roll.cardiacOutput) ? `${roll.cardiacOutput.toFixed(1)} L/min · SV ${Math.round(roll.sv)} ml` : "…";
+    $("co").textContent = Number.isFinite(roll.cardiacOutput) ? `${roll.cardiacOutput.toFixed(1)} L/min, SV ${Math.round(roll.sv)} ml` : "…";
     const st8 = mapSm < CIRC.shockMap ? "Shock" : mapSm < CIRC.hypotensionMap ? "Hypotension" : "Stable";
     const why = circ.rvIschemia > 0.3 ? "RV involvement" : circ.lvIschemia > 0.35 ? "LV pump failure" : circ.hr < 50 ? "bradycardia" : "";
     $("circ").textContent = st8 + (st8 !== "Stable" && why ? `, ${why}` : "");
@@ -630,7 +630,7 @@ renderer.domElement.addEventListener("pointerup", (e) => {
   } else {
     const sg = tree.byId[S.selected], r2 = A.cond.seg[S.selected], n = r2.s.length;
     box.style.display = "block";
-    box.innerHTML = `<b>${sg.name}</b><br>length ${sg.length.toFixed(0)} mm · Ø ${(Math.min(...r2.d) * 1e3).toFixed(1)}–${(Math.max(...r2.d) * 1e3).toFixed(1)} mm<br>inflow ${(r2.Q[0] * 6e7).toFixed(0)} ml/min<br>pressure ${(r2.P[0] / MMHG).toFixed(0)} → ${(r2.P[n - 1] / MMHG).toFixed(0)} mmHg<br>supplies ${(sg.subMass * 100).toFixed(0)}% of myocardium`;
+    box.innerHTML = `<b>${sg.name}</b><br>length ${sg.length.toFixed(0)} mm, Ø ${(Math.min(...r2.d) * 1e3).toFixed(1)}–${(Math.max(...r2.d) * 1e3).toFixed(1)} mm<br>inflow ${(r2.Q[0] * 6e7).toFixed(0)} ml/min<br>pressure ${(r2.P[0] / MMHG).toFixed(0)} → ${(r2.P[n - 1] / MMHG).toFixed(0)} mmHg<br>supplies ${(sg.subMass * 100).toFixed(0)}% of myocardium`;
   }
   shapeVessels();
 });
@@ -681,7 +681,7 @@ function updateMarkers(dt: number) {
   const probe = (lzClock += dt) > 0.1;
   if (probe) lzClock = 0;
   const lb = (S.ds > 0 || S.occ) && !S.hide ? built.find((x) => x.seg.id === S.lesionSeg) : undefined;
-  placeMarker(lesionMarker, lb, S.pos, `${S.occ ? "Occluded" : Math.round(S.ds * 100) + "% stenosis"} · ${lb?.seg.name ?? ""}`, 7, probe);
+  placeMarker(lesionMarker, lb, S.pos, `${S.occ ? "Occluded" : Math.round(S.ds * 100) + "% stenosis"}, ${lb?.seg.name ?? ""}`, 7, probe);
   const cb = G.call && G.phase !== "idle" ? built.find((x) => x.seg.id === G.call!.segId) : undefined;
   placeMarker(callMarker, cb, G.call?.pos ?? 0, "Your call", 0, probe);
 }
@@ -846,7 +846,7 @@ function gameTreatEnd() {
   const total = R.found.total + ts.total;
   G.score = total; G.phase = "reveal";
   const findings = { ...fullFindings(G.kase), rhythm: rhythmLabel(ecg.rhythm(), rstate) };
-  const pts = `<span class="pts">${R.found.pts} · treatment ${ts.total} (muscle ${ts.muscle}, pressure ${ts.hemo}) = ${total} pts</span>`;
+  const pts = `<span class="pts">${R.found.pts}, treatment ${ts.total} (muscle ${ts.muscle}, pressure ${ts.hemo}) = ${total} pts</span>`;
   const result = `${R.found.result} ${pts}`;
   const cls = total >= MAX_SCORE * 0.55 ? "vessel" : total >= MAX_SCORE * 0.2 ? "territory" : "miss";
   const why = explain(tree, G.kase, findings), treatWhy = explainTreatment(R, ts);
@@ -874,13 +874,13 @@ function gameUi() {
   document.body.classList.toggle("gated", inGame && G.phase === "idle");
   if (G.phase === "idle") {
     const today = dayKey(), key = G.target || today, n = dayNumber(key), archive = key !== today, p = history[key];
-    $("qday").textContent = `${archive ? "Archive · " : ""}Case #${n} · ${dayLabel(key)}`;
+    $("qday").textContent = `${archive ? "Archive: " : ""}Case #${n}, ${dayLabel(key)}`;
     $("qdone").hidden = !p;
     if (p) $("qdone").textContent = `Played${archive ? "" : " today"}: ${p.total} of ${MAX_SCORE}.`;
     $("qstart").textContent = p ? "Look at this case again" : archive ? `Play case #${n}` : "Start today's case";
     // streak, and the last seven days as bars
     const s = streaks(liveDays(), dayNumber(today)), days = Object.keys(history).length, pts = Object.values(history).reduce((a, x) => a + x.total, 0);
-    $("qstreak").textContent = days ? `Streak ${s.current} · best ${s.best} · ${days} day${days === 1 ? "" : "s"} played · ${pts} pts` : "No days played yet.";
+    $("qstreak").textContent = days ? `Streak ${s.current}, best ${s.best}, ${days} day${days === 1 ? "" : "s"} played, ${pts} pts` : "No days played yet.";
     $("qstrip").innerHTML = Array.from({ length: 7 }, (_, i) => { const k = keyOfDay(n - 6 + i), q = history[k]; return `<i class="${q ? "on" : ""}${k === key ? " here" : ""}" style="height:${q ? Math.max(12, (100 * q.total) / MAX_SCORE) : 10}%" title="#${n - 6 + i}${q ? `: ${q.total}` : ""}"></i>`; }).join("");
     // the archive: the day before, the day after, and today
     const prev = $("qprev") as HTMLAnchorElement, next = $("qnext") as HTMLAnchorElement, tod = $("qtoday") as HTMLAnchorElement;
@@ -911,11 +911,11 @@ function shareText(): string {
   if (!p) return "";
   const bar = "█".repeat(Math.round((10 * p.total) / MAX_SCORE)).padEnd(10, "░");
   const how = (p.call && Number.isFinite(p.distance) ? `${Math.round(p.distance)} mm from the lesion, called at ${Math.round(p.elapsed)} s` : p.call ? `called at ${Math.round(p.elapsed)} s` : "no call")
-    + (p.treat ? ` · treatment ${p.treat.total}/${TREAT.muscle + TREAT.hemo}` : "");
+    + (p.treat ? `, treatment ${p.treat.total}/${TREAT.muscle + TREAT.hemo}` : "");
   const s = streaks(liveDays(), dayNumber(dayKey()));
   const streak = !p.archive && s.current >= 2 ? `\n${s.current}-day streak` : "";
   const url = location.origin + location.pathname.replace(/index\.html$/, "").replace(/\/?$/, "/");
-  return `CoroSim · Find the culprit #${dayNumber(G.day)}${p.archive ? " (archive)" : ""}\n${bar} ${p.total}/${MAX_SCORE}\n${how}${streak}\n${url}${p.archive ? `?day=${G.day}` : ""}`;
+  return `CoroSim: Find the culprit #${dayNumber(G.day)}${p.archive ? " (archive)" : ""}\n${bar} ${p.total}/${MAX_SCORE}\n${how}${streak}\n${url}${p.archive ? `?day=${G.day}` : ""}`;
 }
 async function share() {
   const text = shareText(), btn = $("qshare") as HTMLButtonElement;
@@ -927,7 +927,7 @@ async function share() {
     done("Copied to clipboard");
   } catch {
     // the share sheet was dismissed, or the clipboard is blocked: show the text so it can be copied by hand
-    const w = window.prompt("Copy your score:", text.replaceAll("\n", " · "));
+    const w = window.prompt("Copy your score:", text.replaceAll("\n", " / "));
     void w;
   }
 }
@@ -957,7 +957,7 @@ function applyMode() {
   G.target = parseDay(new URLSearchParams(location.search).get("day"), dayKey()) ?? dayKey();
   shell.setPage(game ? "game" : "sim");
   shell.ai.setHidden(game); // the game page has no AI line: an AI on the line could read the lesion
-  document.title = game ? "CoroSim · Find the culprit" : "CoroSim";
+  document.title = game ? "CoroSim: Find the culprit" : "CoroSim";
   gameUi();
 }
 
@@ -965,7 +965,7 @@ function applyMode() {
 // The reflexes themselves are not shown or controlled here: they are the physiology, and show up in rate and pressure.
 const PHYS_REST = { bl: 0, bb: 0 };
 const PHYS = { ...PHYS_REST };
-const volumeSummary = () => [PHYS.bl > 0 ? `${PHYS.bl}% blood lost` : PHYS.bl < 0 ? `${-PHYS.bl}% volume overload` : "normal volume", PHYS.bb ? `beta blocker ${PHYS.bb}%` : ""].filter(Boolean).join(" · ");
+const volumeSummary = () => [PHYS.bl > 0 ? `${PHYS.bl}% blood lost` : PHYS.bl < 0 ? `${-PHYS.bl}% volume overload` : "normal volume", PHYS.bb ? `beta blocker ${PHYS.bb}%` : ""].filter(Boolean).join(", ");
 function physUi() {
   $("blv").textContent = PHYS.bl === 0 ? "normal" : PHYS.bl > 0 ? `${PHYS.bl}% lost` : `${-PHYS.bl}% overload`;
   $("bbv").textContent = PHYS.bb ? PHYS.bb + "%" : "none";

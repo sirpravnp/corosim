@@ -18,7 +18,7 @@ void mountAi($("home-ai"), "./").start();
 
 // ?heart=<id> or ?day=YYYY-MM-DD pick a heart; with neither it is today's.
 const sp = specimenFor(location.search);
-$("fact-name").textContent = `· ${sp.name}`;
+$("fact-name").textContent = `${sp.name}`;
 $("fact-text").textContent = sp.fact;
 $("fact").hidden = false;
 canvas.setAttribute("aria-label", `${sp.name}: a heart as a thermogram, stippled, its vessels hot against the muscle`);

@@ -20,8 +20,9 @@
   --bad: #ff6b5e;
   --down: #3d8bff;
   --bar-track: #151828;
-  --font-ui: "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --font-data: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --font-ui: "Hanken Grotesk", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-data: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --font-readout: "Doto", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: light) {

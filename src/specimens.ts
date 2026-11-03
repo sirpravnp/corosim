@@ -31,7 +31,7 @@ export const SPECIMENS: Specimen[] = [
   animal("blue-whale", "Blue whale", "A blue whale's heart has been recorded beating as slowly as about twice a minute on a deep dive, and rising above 25 beats a minute when it surfaces to breathe."),
   human("wrap-lad", "Wrap-around LAD", "A wrap-around LAD turns the apex and runs back up the underside of the heart, so one blockage can lift the ST segment on the front leads and the inferior ones together.", { ladCourse: "wrap" }, ["LAD"]),
   animal("crocodile", "Crocodile", "A crocodile has a four-chambered heart like ours, plus a small opening, the foramen of Panizza, between its two aortas. It lets the animal shunt blood away from the lungs when it dives."),
-  human("textbook", "The textbook heart", "Over an average lifetime a human heart beats about 2.5 billion times, and each day it moves roughly 7,000 litres of blood."),
+  human("textbook", "The textbook heart", "Over an average lifetime a human heart beats about 2.5 billion times, and each day it moves roughly 7,000 liters of blood."),
   animal("fish", "Fish", "A fish heart has two chambers and pumps blood once around: out through the gills, then on to the body, with no second boost between."),
   human("short-lad", "Short LAD", "The LAD usually runs down to the apex. In some hearts it stops short, and the posterior descending artery from the right coronary reaches round to supply the apex instead.", { ladCourse: "short" }, ["LAD", "PDA_R"]),
   animal("elephant", "Elephant", "An elephant's heart has a double-pointed tip, a cleft apex it shares with manatees and dugongs, and it beats only about 30 times a minute at rest."),

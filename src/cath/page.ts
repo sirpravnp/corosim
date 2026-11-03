@@ -64,7 +64,7 @@ function flowUi() {
   const tile = (id: string) => {
     const t = timi(sim, id, model);
     const bad = t.grade < 3;
-    const where = t.blockedAt !== null ? ` · cut off ${t.blockedAt.toFixed(0)} mm in` : t.frames !== null ? ` · ${t.frames} frames` : "";
+    const where = t.blockedAt !== null ? `, cut off ${t.blockedAt.toFixed(0)} mm in` : t.frames !== null ? `, ${t.frames} frames` : "";
     return `<div><b>${id === "LCX" ? "Circumflex" : id} flow</b><span class="${t.grade === 0 ? "bad" : bad ? "warn" : "ok"}">TIMI ${t.grade}${where}</span></div>`;
   };
   $("flow").innerHTML = report.flow.map((t) => tile(t.artery)).join("");
@@ -82,13 +82,13 @@ function wireUi() {
   wire = wireModel(sim, artery);
   const pos = +$<HTMLInputElement>("pos").value / 100;
   const p = wire.at(pos);
-  $("posv").textContent = `${p.s.toFixed(0)} mm${p.stopped ? " · stopped" : ""}`;
+  $("posv").textContent = `${p.s.toFixed(0)} mm${p.stopped ? ", stopped" : ""}`;
   drawPullback($<HTMLCanvasElement>("pull"), wire, pos, sim.tree.byId[artery].name);
   const ffr = wire.ffr;
   const call = ffr === null ? "" : ffrCall(ffr);
   const tiles = [
     ffr === null ? `<div><b>FFR</b><span class="bad">no flow: the wire cannot cross</span></div>`
-      : `<div><b>FFR</b><span class="${ffr <= WIRE.ffrCutoff ? "bad" : "ok"}">${ffr.toFixed(2)} · ${call}</span></div>`,
+      : `<div><b>FFR</b><span class="${ffr <= WIRE.ffrCutoff ? "bad" : "ok"}">${ffr.toFixed(2)} (${call})</span></div>`,
     `<div><b>Pd/Pa at wire, hyperemia</b><span>${p.hyperRatio.toFixed(2)} (${p.hyperMmHg.toFixed(0)} / ${wire.paHyperMmHg.toFixed(0)} mmHg)</span></div>`,
     `<div><b>Pd/Pa at wire, rest</b><span>${p.restRatio.toFixed(2)} (${p.restMmHg.toFixed(0)} / ${wire.paRestMmHg.toFixed(0)} mmHg)</span></div>`,
     `<div><b>Lumen at wire</b><span>${p.diameterMm.toFixed(1)} mm</span></div>`,

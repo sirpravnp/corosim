@@ -132,7 +132,7 @@ const NOTES = [
   "The arch has no inertance here: a duct feeding the lower body also pushes some blood into the arch, so the upper-body saturation in pulmonary hypertension of the newborn reads about 91% (clinically nearer 98%).",
   "Instantaneous peak gradients across normal valves are about twice the clinical Doppler values (no inertance); grades use the mean gradient and the Gorlin area.",
   "No reflexes: pressure does not defend itself, so shunts and regurgitation show their raw effect on systemic pressure.",
-  "Grades use adult cut-offs scaled to each patient's own valve size; pediatric z-scores are not modelled.",
+  "Grades use adult cut-offs scaled to each patient's own valve size; pediatric z-scores are not modeled.",
 ];
 
 export function assess(lesion: LesionId, values: Record<string, number> = {}, opts: { waveform?: boolean } = {}): StructuralFindings {
