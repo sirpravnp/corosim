@@ -93,8 +93,10 @@ describe("through the live source", () => {
     expect(r.svo2).toBe(s.svo2); expect(r.do2).toBe(s.do2); expect(r.vo2).toBe(s.vo2);
     expect(r.extraction).toBeCloseTo(s.vo2 / s.do2, 9);
     expect(r.extraction).toBeLessThan(OXYGEN_PANEL.extractionHigh);
-    expect(r.lactate).toBeNaN();
-    console.log("normal", { spo2: r.spo2, post: r.post, svo2: r.svo2, do2: r.do2, vo2: r.vo2, ext: r.extraction, qpqs: r.qpQs });
+    // E6: resting lactate is modelled (~1 mmol/L), no longer NaN on the core path.
+    expect(r.lactate).toBeGreaterThan(0.5);
+    expect(r.lactate).toBeLessThan(2.0);
+    console.log("normal", { spo2: r.spo2, post: r.post, svo2: r.svo2, do2: r.do2, vo2: r.vo2, ext: r.extraction, qpqs: r.qpQs, lactate: r.lactate });
   });
   it("low cardiac output (hemorrhage with an LAD occlusion) gives a low SvO2 cue", { timeout: 60_000 }, () => {
     const b = bridge(undefined, { bloodLoss: 0.5, lesions: [{ artery: "LAD", occluded: true, position: 0.1 }] });

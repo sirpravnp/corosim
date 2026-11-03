@@ -50,6 +50,8 @@ import { PATIENTS } from "../config/structural";
 import { ACS_CORE, AUTONOMIC_CORE } from "../config/acsCore";
 import { ischemiaFactors } from "../config/ischemia";
 import { regionalVentricles } from "../physics/regional";
+import { OxygenTransport, debtInjury, estimateMvo2MlMin, mvo2DemandScale, type OxygenRead } from "../physics/core/oxygen";
+import { oxygenatorSat } from "../physics/core/devices/ecmo";
 import { Normalized, Scenario, normalizeScenario, toScenario, supportSpec } from "./scenario";
 import { BeatRecord, computeMetrics, meanRate, Metrics } from "./metrics";
 import { ArrestState, ArrestDrug, CprState, RhythmClass, ShockRecord, ShockResult, Rng, createArrest, createRng, step as arrestStep, shock as arrestShock, give as arrestGive, setCpr as arrestSetCpr, perfusion as cprPerfusion, shockDeathStep } from "./arrest";
@@ -208,6 +210,13 @@ export class Simulation {
   private fluidModel?: FluidCompartments;
   private fluidSpec: FluidSpec = {};
   private fluidP: { pa: number; pv: number; pcwp: number; pap: number } | null = null; // smoothed mean aortic and venous pressure the compartments read
+  /**
+   * Oxygen-in-time (E6) on the core path: content per node, lactate, myocardial O₂ debt. Undefined with the legacy engine.
+   * Advances on each completed live beat (transport) and on clinical minutes (lactate / debt).
+   */
+  private oxygenModel?: OxygenTransport;
+  /** Last beat's rough MVO₂ estimate (ml/min) for coronary demand scaling; NaN until a beat lands. */
+  private lastMvo2 = NaN;
   private delta = NaN; // s: live time = stream time + delta, set when the first beat is aligned
   private fed = new WeakSet<Beat>();
   private fx: AutonomicEffects = NEUTRAL_FX;
@@ -232,7 +241,7 @@ export class Simulation {
     this.lastReset = { input: JSON.parse(JSON.stringify(input)), opts: { ...opts } };
     this.arrest = null; this.dead = false; this.deathCause = null; this.shockS = 0; this.emptyCircMin = 0; this.noPulse = false; this.pulseTimer = 0; this.critical = false; this.shockNoArrest = null; this.shockCount = 0; this.arrestRng = createRng((scenario.seed ^ ARREST_SIM.seedSalt) >>> 0);
     this.job = null; this.building = null; this.jobWarm = 0;
-    this.live = undefined; this.fluidModel = undefined; this.liveSeen = false;
+    this.live = undefined; this.fluidModel = undefined; this.oxygenModel = undefined; this.lastMvo2 = NaN; this.liveSeen = false;
     this.n = scenario; this.warnings = warnings;
     this.support = { ...scenario.support }; this.patient = this.ownPatient(scenario.patient); this.grafts = [];
     this.perfusingRhythm = this.isPerfusingRhythm(this.patient.rhythm) ? this.patient.rhythm : "sinus";
@@ -542,6 +551,7 @@ export class Simulation {
     this.slew(h, minutes);
     if (this.engine === "core") { this.pk.step(minutes, this.drugDoses()); if (this.fluidModel) this.fluidModel.diuretic = this.pk.effects().diuretic; }
     if (this.fluidModel) this.stepFluids(minutes);
+    if (this.oxygenModel && minutes > 0) this.stepOxygenClinical(minutes);
     this.updateCirculation();
     const ctl = this.autonomic.controls;
     ctl.betaBlock = this.engine === "core" ? this.pk.effects().betaBlock : this.drug.betaBlocker;
@@ -784,6 +794,72 @@ export class Simulation {
     this.coRef = Math.max(sm.co, ARREST_SIM.minReferenceCoLpm);
     this.liveSeen = true;
     this.circ = this.coreCirc(this.base);
+    this.initOxygen(lb);
+  }
+
+  /** Create or refresh the E6 oxygen transport from the settled warm-up beat (seeded at the steady solve). */
+  private initOxygen(lb: LiveBeat) {
+    const live = this.live!;
+    const drop = this.lungSatDrop();
+    const m: Model = drop > 0 ? { ...live.model, patient: { ...live.model.patient, satLung: live.model.patient.satLung - drop } } : live.model;
+    const ox = this.oxygenModel ?? (this.oxygenModel = new OxygenTransport(m));
+    ox.setModel(m);
+    ox.setMap(this.map);
+    ox.seedSteady(lb.flows, this.oxygenStream(lb.flows, lb.interval));
+    this.lastMvo2 = estimateMvo2MlMin(lb.map, lb.strokeVolume, 60 / Math.max(lb.interval, 1e-3));
+    ox.advanceBeat(lb.flows, this.nodeVolumes(lb), lb.interval, this.oxygenStream(lb.flows, lb.interval));
+  }
+
+  /** VA-ECMO stream for the oxygen transport, or undefined when no circuit is running. Flow ml/s over the beat. */
+  private oxygenStream(flows: { fwd: Record<string, number>; bwd: Record<string, number> }, dt: number) {
+    const ec = this.ecmo;
+    if (!ec || !(dt > 0)) return undefined;
+    const ml = (flows.fwd.ecmo ?? 0) - (flows.bwd.ecmo ?? 0);
+    if (!(ml > 1e-6)) return undefined;
+    const from = NODE(ec.drain), to = NODE("DAO"), flow = ml / dt;
+    return { from, to, flow, oxygenate: (cIn: number, cap: number) => oxygenatorSat(cIn / cap, ec.sweep, ec.fio2) * cap };
+  }
+
+  /** Node volumes (ml) for the transport ODE: beat means when present, else the engine sample. */
+  private nodeVolumes(lb?: LiveBeat): Float64Array {
+    const live = this.live!, V = new Float64Array(NODES.length);
+    const sample = live.engine.sample().V;
+    for (let i = 0; i < NODES.length; i++) {
+      const name = NODES[i], st = lb?.v[name];
+      V[i] = st && Number.isFinite(st.mean) ? st.mean : sample[i] ?? live.model.start[i] ?? 50;
+    }
+    return V;
+  }
+
+  /** One completed beat into the E6 transport (content mixing; lactate waits for the clinical clock). */
+  private stepOxygenBeat(lb: LiveBeat) {
+    const ox = this.oxygenModel, live = this.live;
+    if (!ox || !live || !(lb.interval > 0)) return;
+    const drop = this.lungSatDrop();
+    if (drop > 0) ox.setModel({ ...live.model, patient: { ...live.model.patient, satLung: live.model.patient.satLung - drop } });
+    else ox.setModel(live.model);
+    ox.setMap(this.map);
+    ox.advanceBeat(lb.flows, this.nodeVolumes(lb), lb.interval, this.oxygenStream(lb.flows, lb.interval));
+  }
+
+  /** Clinical-minute lactate and per-bed myocardial O₂ debt from the coronary network's supply/demand ratios. */
+  private stepOxygenClinical(minutes: number) {
+    const ox = this.oxygenModel;
+    if (!ox) return;
+    const ratios: Record<string, number> = {};
+    for (const t of this.analysis?.cond.terminals ?? []) ratios[t.key] = t.ratio;
+    ox.setMap(this.map);
+    ox.advanceClinical(minutes, ratios);
+  }
+
+  /** Network severity with a soft E6 myocardial-debt overlay for regional elastance (see `debtInjury`). */
+  private sevWithOxygenDebt(): Record<string, number> {
+    const ox = this.oxygenModel, out: Record<string, number> = {};
+    for (const s of this.sites) {
+      const sev = this.sev[s.key] ?? 0;
+      out[s.key] = ox ? debtInjury(sev, ox.bedDebt(s.key)) : sev;
+    }
+    return out;
   }
 
   /**
@@ -837,9 +913,11 @@ export class Simulation {
   private pushInputs() {
     const live = (this.building ?? this.live)!, K = ACS_CORE, fx = this.fx, rs = this.rstate, d = this.pk.effects();
     // E3: bed-mapped regional elastance owns active Ees + dead volume; stiffness factors stay on the A7 channel.
+    // E6 soft overlay: myocardial O₂ debt can raise injury above network severity (gain in config/oxygen.ts; 0 = E3-only).
     // Safe fallback: if sites are empty (should not happen after init), keep the lumped ischemiaFactors cut.
     if (this.sites.length) {
-      const reg = regionalVentricles(this.sites, this.sev, this.scar);
+      const sev = this.sevWithOxygenDebt();
+      const reg = regionalVentricles(this.sites, sev, this.scar);
       live.setRegional(reg.lv, reg.rv);
       live.setVentricleFactors({ lvEes: 1, rvEes: 1, ...reg.stiffness });
     } else {
@@ -859,6 +937,14 @@ export class Simulation {
     if (this.engine !== "core") return null;
     const live = this.live ?? this.building;
     return live ? live.regionalState() : null;
+  }
+
+  /**
+   * Oxygen-in-time state (E6): saturations, DO₂/VO₂, lactate, SCAI stage, myocardial O₂ debt. Null with the legacy engine
+   * or before the core heart has finished warming. Lactate is NaN-free once seeded (resting until low DO₂ accumulates).
+   */
+  oxygenState(): OxygenRead | null {
+    return this.engine === "core" ? this.oxygenModel?.read() ?? null : null;
   }
 
   /** One sub-step: hand over the new beats, set the slow inputs, move blood in or out, and advance the live heart to the simulation's clock. */
@@ -916,6 +1002,8 @@ export class Simulation {
     sm.sbp += (lb.systolic - sm.sbp) * a(tau); sm.dbp += (lb.diastolic - sm.dbp) * a(tau);
     this.liveSeen = true;
     this.diastolicBeat(lb, a(2));
+    if (!lb.pvc && lb.strength !== 0) this.lastMvo2 = estimateMvo2MlMin(lb.map, lb.strokeVolume, 60 / Math.max(lb.interval, 1e-3));
+    this.stepOxygenBeat(lb);
     const silent = lb.strength === 0; // a timing tick of VF or asystole (B2): time without a beat
     const rec: BeatRecord = {
       n: this.beatCount++, t: +(lb.t - this.delta).toFixed(3), interval: +lb.interval.toFixed(4), hr: silent ? 0 : 60 / lb.interval,
@@ -1047,10 +1135,14 @@ export class Simulation {
     };
   }
 
-  /** Myocardial oxygen demand relative to the patient's own: the drug effects on the ventricle (`DEMAND`), times the unloading of the devices (`SUPPORT`). */
+  /**
+   * Myocardial oxygen demand relative to the patient's own: the drug effects on the ventricle (`DEMAND`), times the unloading of
+   * the devices (`SUPPORT`), times an E6 MVO₂ scale from the last beat's work (falls back to 1 when no beat yet).
+   */
   private coreDemand(): number {
     const K = SUPPORT, s = this.support;
-    return Math.max(0.5, this.pk.effects().demand * (1 - K.impellaDemand * +s.impella - K.iabpDemand * +s.iabp));
+    const base = this.pk.effects().demand * (1 - K.impellaDemand * +s.impella - K.iabpDemand * +s.iabp);
+    return Math.max(0.5, base * mvo2DemandScale(Number.isFinite(this.lastMvo2) ? this.lastMvo2 : null));
   }
 
   /** Flow the circulation gets from its pumps now, L/min: the Impella's (LV to aorta) and the ECMO circuit's (RA to descending aorta); the Impella RP is in series with the lungs and adds nothing. */
