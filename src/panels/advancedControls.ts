@@ -20,6 +20,8 @@ export interface AdvancedCtx {
   reseed(seed: number): void;
   /** True on the legacy engine, which ignores the core-only fields. */
   legacy?: () => boolean;
+  /** Adds a section directly under the opening note (the Patient tab's hemodynamic baseline). */
+  intro?: (body: HTMLElement) => void;
 }
 
 const D = defaultControls();
@@ -32,6 +34,7 @@ export function buildAdvanced(c: AdvancedCtx): HTMLDetailsElement {
   const body = h("div", { className: "pg-body" });
   box.append(h("summary", {}, h("h2", { textContent: "Advanced" }), h("span", { className: "sum", textContent: "circulation, reflexes, electrolytes, ectopy, seed" })), body);
   body.append(h("p", { className: "note pg-note", textContent: "Teaching overrides of the patient's physiology. The default is marked on each slider; Reset advanced puts them all back (the seed is kept)." }));
+  c.intro?.(body);
 
   /** One slider on a Scenario field: `read` takes the value from the live Scenario, `make` the patch for a new value. */
   function slider(path: string, label: string, min: number, max: number, step: number, dflt: number, unit: string, read: (s: Scenario) => number | undefined, make: (sc: Scenario, v: number) => PatientSpec, core = false) {
