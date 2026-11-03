@@ -52,10 +52,11 @@ describe("the starting patients are what the cards say, and the options do what 
   it("Slow and low: complete heart block, an infarcted right ventricle, nitro hurts and fluid and pacing help", () => {
     const def = byId("inferior-rv"), s = mk(def), v = vit(s);
     expect(v.hr).toBeLessThan(55); expect(v.c.rvIschemia).toBeGreaterThan(0.5); expect(s.rstate.avDegree).toBe(3); expect(v.map).toBeLessThan(80);
+    const ref = after(mk(def), {}); // same clock as the interventions: the untreated RV infarct drifts
     const nitro = after(mk(def), opt(def, "first", 0));
-    expect(nitro.map).toBeLessThan(v.map - 8);
+    expect(nitro.map).toBeLessThan(ref.map - 8);
     const fluid = after(mk(def), opt(def, "first", 1));
-    expect(fluid.map).toBeGreaterThan(v.map);
+    expect(fluid.map).toBeGreaterThan(ref.map);
     const paced = after(mk(def), opt(def, "block", 0));
     expect(paced.hr).toBeGreaterThan(60);
   }, 120000);
@@ -82,8 +83,8 @@ describe("the starting patients are what the cards say, and the options do what 
   it("Pressure in the chest: a failing anterior wall with a held pressure; a beta blocker makes it worse", () => {
     const def = byId("anterior-stemi"), v = vit(mk(def));
     expect(v.c.lvIschemia).toBeGreaterThan(0.3); expect(v.map).toBeGreaterThan(65);
-    const bb = after(mk(def), opt(def, "pain", 1));
-    expect(bb.c.ejectionFraction).toBeLessThan(v.c.ejectionFraction);
+    const ref = after(mk(def), {}), bb = after(mk(def), opt(def, "pain", 1)); // match the clinical clock: untreated EF drifts up a little
+    expect(bb.c.ejectionFraction).toBeLessThan(ref.c.ejectionFraction);
   }, 120000);
 
   it("Cold and wet: a very poor ventricle; the pressor and inotrope raise pressure and output and nitroglycerin drops the pressure", () => {
