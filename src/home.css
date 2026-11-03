@@ -6,7 +6,7 @@ body.home { --bg: #000; --panel: #0b0d14; --ink: #f4f1ea; --muted: #98a0b8; --ru
 @media (hover: hover) { .art { cursor: crosshair; } }
 
 /* The overlay lets the pointer through to the dots everywhere but on the links. */
-.home-main { position: relative; z-index: 1; pointer-events: none; min-height: 100dvh; margin: 0; padding: 220px 16px 20px; display: grid; grid-template-rows: auto 1fr auto auto; gap: 14px; }
+.home-main { position: relative; z-index: 1; pointer-events: none; min-height: 100dvh; margin: 0; padding: 220px max(20px, calc((100% - 1440px) / 2 + 20px)) 20px; display: grid; grid-template-rows: auto 1fr auto auto; gap: 14px; }
 .home-main a { pointer-events: auto; }
 .home-head h1 { margin: 0; font: 700 clamp(48px, 9vw, 104px)/0.92 var(--font-ui); letter-spacing: -0.045em; }
 .home-head .kind { margin: 14px 0 0; font: 500 11px/1.5 var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
@@ -28,7 +28,7 @@ body.home { --bg: #000; --panel: #0b0d14; --ink: #f4f1ea; --muted: #98a0b8; --ru
 .privacy:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 
 @media (min-width: 820px) {
-  .home-main { grid-template-columns: minmax(300px, 420px) 1fr minmax(240px, 320px); grid-template-rows: 1fr auto; grid-template-areas: "head . fact" ". . corner"; padding: 112px 40px 40px; row-gap: 28px; column-gap: 32px; align-items: end; }
+  .home-main { grid-template-columns: minmax(300px, 420px) 1fr minmax(240px, 320px); grid-template-rows: 1fr auto; grid-template-areas: "head . fact" ". . corner"; padding: 112px max(20px, calc((100% - 1440px) / 2 + 20px)) 40px; row-gap: 28px; column-gap: 32px; align-items: end; }
   .home-head { grid-area: head; }
   .fact { grid-area: fact; align-self: start; margin-top: 0; padding: 14px 16px 15px; }
   .fact-t { font-size: 14px; }
