@@ -96,6 +96,18 @@ export function partAt(p: V3): Part {
   return best as Part;
 }
 
+/** Signed distance and chamber in one `parts` evaluation (for dense slice rasterization). */
+export function classifyHeart(p: V3): { sdf: number; part: Part | null } {
+  const d = parts(p);
+  const atria = smin(d[Part.RA], d[Part.LA], 6);
+  const sdf = smin(smin(d[Part.LV], atria, 3.5), d[Part.Aorta], 3);
+  if (sdf >= 0) return { sdf, part: null };
+  let best = 0;
+  for (let i = 2; i < d.length; i++) if (d[i] < d[best]) best = i;
+  if (best === Part.LV && septalDistance(p) < 0) return { sdf, part: Part.RV };
+  return { sdf, part: best as Part };
+}
+
 // ---- morphed heart (the structural page) ---------------------------------------------------------
 /**
  * The same heart reshaped for a lesion, with the great vessels the coronary views leave out (pulmonary artery, venae cavae,

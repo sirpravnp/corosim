@@ -32,6 +32,8 @@ let scene: EchoScene | null = null;
 let livePose: Pose | null = null;
 let labelsOn = true;
 let paintQueued = false;
+let paintQuality: "draft" | "full" = "full";
+let settleTimer = 0;
 let realViewId: string | null = null;
 let realVideo: HTMLVideoElement | null = null;
 
@@ -95,22 +97,27 @@ function showReal(view: ViewDef, amount: number) {
     : ECHO_NOTE_SIM;
 }
 
-function paintNow(pose: Pose) {
-  paintLive($("ideal") as HTMLCanvasElement, $("stylized") as HTMLCanvasElement, pose, labelsOn);
+function paintNow(pose: Pose, quality: "draft" | "full") {
+  paintLive($("ideal") as HTMLCanvasElement, $("stylized") as HTMLCanvasElement, pose, labelsOn, quality);
   const blend = referenceBlend(pose, presets);
   const view = viewForPoseKey(blend.id);
   if (view && blend.amount > 0) showReal(view, blend.amount);
   else stopReal();
 }
 
-function queuePaint(pose: Pose) {
+function queuePaint(pose: Pose, quality: "draft" | "full" = "full") {
   livePose = pose;
+  paintQuality = quality;
   if (paintQueued) return;
   paintQueued = true;
   requestAnimationFrame(() => {
     paintQueued = false;
-    if (livePose) paintNow(livePose);
+    if (livePose) paintNow(livePose, paintQuality);
   });
+  window.clearTimeout(settleTimer);
+  if (quality === "draft") {
+    settleTimer = window.setTimeout(() => { if (livePose) queuePaint(livePose, "full"); }, 140);
+  }
 }
 
 function select(id: string) {
@@ -120,12 +127,12 @@ function select(id: string) {
   if (poses) {
     const pose = poses[current.pose];
     scene?.setPose(pose, true);
-    queuePaint(pose);
+    queuePaint(pose, "full");
   }
 }
 
 function onPoseChange(pose: Pose, poseKey: string | null) {
-  queuePaint(pose);
+  queuePaint(pose, poseKey ? "full" : "draft");
   const view = viewForPoseKey(poseKey);
   if (view && view.id !== current.id) {
     current = view;
@@ -141,7 +148,7 @@ $("labels").addEventListener("click", () => {
   labelsOn = !labelsOn;
   $("labels").setAttribute("aria-pressed", labelsOn ? "true" : "false");
   $("labels").textContent = labelsOn ? "Labels on" : "Labels off";
-  if (livePose) queuePaint(livePose);
+  if (livePose) queuePaint(livePose, "full");
 });
 document.addEventListener("keydown", (e) => {
   if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
