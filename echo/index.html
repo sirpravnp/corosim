@@ -29,16 +29,24 @@
     </div>
     <div class="echo-stage">
       <figure class="echo-pane">
+        <div class="pane-head" aria-hidden="true"></div>
         <div class="screen echo-3d" id="scene" aria-label="3D heart with the probe and imaging sector"><p class="echo-load" id="loading">Drawing the heart…</p></div>
         <figcaption id="posenote">Figure 1. Probe and imaging plane on the simulator's 3D heart.</figcaption>
       </figure>
       <figure class="echo-pane">
+        <div class="pane-head">
+          <div class="echo-seg" id="labels" role="group" aria-label="Labels">
+            <button type="button" data-labels="on" aria-pressed="true">Labels on</button>
+            <button type="button" data-labels="off" aria-pressed="false">Labels off</button>
+          </div>
+        </div>
         <div class="screen echo-slice">
           <canvas id="ideal" width="360" height="400" role="img" aria-label="Ideal cross-section of the schematic heart"></canvas>
         </div>
-        <figcaption>Figure 2. Ideal cross-section of the schematic heart at the scan plane. <button type="button" class="echo-toggle" id="labels" aria-pressed="true">Labels on</button></figcaption>
+        <figcaption>Figure 2. Ideal cross-section of the schematic heart at the scan plane.</figcaption>
       </figure>
       <figure class="echo-pane">
+        <div class="pane-head" aria-hidden="true"></div>
         <div class="screen echo-live" aria-label="Teaching echo image">
           <canvas id="stylized" width="360" height="400" role="img" aria-label="Stylized teaching echo"></canvas>
           <canvas id="real" class="echo-real" width="360" height="400" aria-hidden="true"></canvas>
@@ -50,7 +58,6 @@
     <div class="echo-cards">
       <div class="echo-card"><b>Probe placement</b><p id="placement"></p><b>Index mark</b><p id="marker"></p></div>
       <div class="echo-card"><b>Structures in the sector</b><ul id="shows"></ul></div>
-      <div class="echo-card"><b>What to look for</b><p id="look"></p></div>
     </div>
     <p class="fine echo-note">The 3D heart is the simulator's schematic heart, so a pose shows where the probe has to be on that shape, not what any one patient looks like. Ribs, lungs and sternum are not modeled. The middle pane is a labeled cut of that model; the right pane is a teaching rendering, not a claim of realistic ultrasound. Real clips keep their own license, listed when the reference badge is on.</p>
   </section>

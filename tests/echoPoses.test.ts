@@ -34,7 +34,8 @@ describe("echo atlas: views and probe poses on the simulator's heart", () => {
       expect(insideHeart(p.probe as P3), `${id} probe`).toBe(false);
       expect(insideHeart(p.target as P3), `${id} target`).toBe(true);
       const to = sub(p.target, p.probe), d = len(to);
-      expect(dot(to, p.beam) / d, `${id} aim`).toBeGreaterThan(0.99);
+      // Window-first poses tilt the beam in the plane (up to about 0.5 rad) to fit the heart in the sector, so the target need not be dead centre.
+      expect(dot(to, p.beam) / d, `${id} aim`).toBeGreaterThan(0.9);
       expect(d, `${id} distance`).toBeLessThan(200);
     }
   });

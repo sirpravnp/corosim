@@ -73,3 +73,16 @@ describe("echo probe controls on the chest shell", () => {
     expect(dot(a.beam, b.beam)).toBeLessThan(0.999);
   });
 });
+
+import { tiltProbe } from "../src/echo/probe";
+describe("tilt", () => {
+  it("rocks the beam about the lateral axis, keeps the probe on the chest, and refuses to point out of the chest", () => {
+    const pose = buildPoses().plax;
+    const t = tiltProbe(pose, 0.2);
+    const d = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    expect(d(t.probe, poseFromControls(controlsFromPose(pose)).probe)).toBeLessThan(1e-6);
+    expect(d(t.beam, pose.beam)).toBeGreaterThan(0.05);
+    expect(Math.abs(t.beam[0] * t.lateral[0] + t.beam[1] * t.lateral[1] + t.beam[2] * t.lateral[2])).toBeLessThan(1e-6);
+    expect(tiltProbe(pose, 3)).toBe(pose);
+  });
+});

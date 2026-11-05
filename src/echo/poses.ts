@@ -77,8 +77,15 @@ export function landmarks(): Landmarks {
 }
 
 type Raw = Omit<Pose, "marker" | "depth">;
+/** Stored values are rounded: make the beam exactly unit and the lateral exactly unit and perpendicular to it. */
+const squareUp = (r: Raw): Raw => { const beam = unit(r.beam); return { ...r, beam, lateral: perp(r.lateral, beam) }; };
+/** Output of `bestWindowPose` (src/echo/window.ts) for the views whose plane is fixed by landmarks. tests/echoWindow.test.ts checks they still match. */
+const WINDOW_POSES: Record<"plax" | "subcostal", Raw> = {
+  plax: { probe: [-7.551, -17.585, 49.96], beam: [0.238556, 0.261774, -0.935182], lateral: [-0.739909, 0.672707, -0.00044], target: [-1.835, 8.107, -10.393] },
+  subcostal: { probe: [-31.085, -32.182, 36.906], beam: [0.274881, 0.608421, -0.744489], lateral: [0.939429, -0.334832, 0.073221], target: [-7.299, 4.859, -10.594] },
+};
 /** Sector depth per view, mm: deep enough to hold the heart, no deeper (the short axis cuts only the base, so it is shown larger). */
-const DEPTH: Record<string, number> = { plax: 160, psaxPM: 130, subcostal: 160 };
+const DEPTH: Record<string, number> = { plax: 150, psaxPM: 130, subcostal: 150 };
 /** Where the index mark points in the usual convention, as a direction in the patient frame (left = +x, toward the head = +y). */
 const MARKER_TOWARD: Record<string, V3> = {
   subcostal: [1, 0, 0], psaxPM: [0.7, 0.7, 0], plax: [-0.5, 1, 0],
@@ -89,19 +96,15 @@ export function buildPoses(): Record<string, Pose> {
   const l = landmarks(), raw: Record<string, Raw> = {};
   const outside = (target: V3, beam: V3, allowance: number): V3 => add(target, beam, -(exitDistance(target, scale(beam, -1)) + allowance));
 
-  // Parasternal long axis: the plane through the long axis and the aortic valve, entered from the front (the beam runs front to back).
-  const beamPlax = l.toAV[2] > 0 ? scale(l.toAV, -1) : l.toAV;
-  raw.plax = { probe: outside(l.mv, beamPlax, SKIN), beam: beamPlax, lateral: perp(l.longAxis, beamPlax), target: l.mv };
-
+  // Parasternal long axis and subcostal four-chamber: window-first poses (see window.ts), stored here because window.ts imports this file.
+  // Each plane holds its landmarks (long axis: apex, mitral and aortic valves; subcostal: apex and both atrioventricular valves);
+  // the probe sits where that plane meets the schematic chest inside the view's window. Regenerate with scripts/echo/windowPoses.ts.
+  raw.plax = squareUp(WINDOW_POSES.plax);
   // Parasternal short axis at the papillary-muscle level: plane perpendicular to the long axis, partway from the apex to the mitral valve.
   const beamPM = perp(scale(ANTERIOR, -1), l.longAxis), pm = add(l.apex, sub(l.mv, l.apex), 0.42);
   raw.psaxPM = { probe: outside(pm, beamPM, SKIN), beam: beamPM, lateral: unit(cross(l.longAxis, beamPM)), target: pm };
 
-  // Subcostal four-chamber: the plane through both atrioventricular valves and the apex, entered from below and to the right, through the liver.
-  const sc = (55 * Math.PI) / 180;
-  const beam = unit(add(scale(l.longAxis, Math.cos(sc)), l.toTV, Math.sin(sc) * -1));
-  const centre = scale(add(add(l.mv, l.tv), add(l.apex, l.mv)), 1 / 4);
-  raw.subcostal = { probe: outside(centre, beam, SUBCOSTAL_SKIN), beam, lateral: perp(l.toTV, beam), target: centre };
+  raw.subcostal = squareUp(WINDOW_POSES.subcostal);
 
   const poses: Record<string, Pose> = {};
   for (const [id, p] of Object.entries(raw)) poses[id] = { ...p, depth: DEPTH[id], marker: dot(p.lateral, MARKER_TOWARD[id]) >= 0 ? p.lateral : scale(p.lateral, -1) };

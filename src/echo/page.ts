@@ -22,7 +22,7 @@ const MEDIA: Record<string, string> = {
 };
 const asset = (f: string) => MEDIA[f];
 
-const PROBE_NOTE = "Figure 1. Probe and imaging plane on the simulator's 3D heart. Drag to slide the probe on the chest; scroll to roll the index mark; right-drag to turn the camera. Pick a view to snap back. The red dot is the index mark.";
+const PROBE_NOTE = "Figure 1. Probe and imaging plane on the simulator's 3D heart. Drag the heart to turn it and scroll to zoom. Drag the probe to slide it on the chest, shift-drag to tilt it, and scroll over it to roll the index mark. Pick a view to snap the probe into place.";
 const ECHO_NOTE_SIM = "Figure 3. Teaching echo from the schematic model — not a realistic ultrasound. Move the probe toward a standard view to fade in a real reference loop.";
 
 let current = VIEWS[0];
@@ -31,6 +31,7 @@ let presets: ProbePreset[] = [];
 let scene: EchoScene | null = null;
 let livePose: Pose | null = null;
 let labelsOn = true;
+let firstSelect = true;
 let paintQueued = false;
 let paintQuality: "draft" | "full" = "full";
 let settleTimer = 0;
@@ -55,7 +56,6 @@ function fillMeta(v: ViewDef) {
   $("placement").textContent = v.placement;
   $("marker").textContent = v.marker;
   $("shows").innerHTML = v.shows.map((s) => `<li>${esc(s)}</li>`).join("");
-  $("look").textContent = v.lookFor;
   if (location.hash.slice(1) !== v.id) history.replaceState(null, "", `#${v.id}`);
 }
 
@@ -93,7 +93,7 @@ function showReal(view: ViewDef, amount: number) {
   badge.textContent = `Reference echo: ${view.short}`;
   const credit = `${esc(im.note)} ${esc(im.author)}, <a href="${im.licenseUrl}" rel="noopener">${esc(im.license)}</a>, <a href="${im.source}" rel="noopener">source</a>.`;
   $("echonote").innerHTML = amount > 0.15
-    ? `Figure 3. Reference echo: ${esc(view.name)}. ${credit}`
+    ? `Figure 3. Reference echo: ${esc(view.name)}.<span class="echo-credit">${credit}</span>`
     : ECHO_NOTE_SIM;
 }
 
@@ -125,9 +125,10 @@ function select(id: string) {
   fillMeta(current);
   $("posenote").textContent = PROBE_NOTE;
   if (poses) {
-    const pose = poses[current.pose];
-    scene?.setPose(pose, true);
-    queuePaint(pose, "full");
+    const preset = presets.find((p) => p.id === current.pose);
+    if (preset) scene?.goTo(preset, firstSelect ? false : true);
+    queuePaint(poses[current.pose], "full");
+    firstSelect = false;
   }
 }
 
@@ -144,10 +145,15 @@ $("list").addEventListener("click", (e) => {
   const a = (e.target as HTMLElement).closest<HTMLElement>("a[data-id]");
   if (a) { e.preventDefault(); select(a.dataset.id!); }
 });
-$("labels").addEventListener("click", () => {
-  labelsOn = !labelsOn;
-  $("labels").setAttribute("aria-pressed", labelsOn ? "true" : "false");
-  $("labels").textContent = labelsOn ? "Labels on" : "Labels off";
+/** The labels control is a two-button segmented group; each button carries data-labels="on" or "off". */
+$("labels").addEventListener("click", (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-labels]");
+  if (!b) return;
+  const on = b.dataset.labels === "on";
+  if (on === labelsOn) return;
+  labelsOn = on;
+  $("labels").querySelectorAll<HTMLButtonElement>("button[data-labels]").forEach((btn) =>
+    btn.setAttribute("aria-pressed", String(btn.dataset.labels === (on ? "on" : "off"))));
   if (livePose) queuePaint(livePose, "full");
 });
 document.addEventListener("keydown", (e) => {

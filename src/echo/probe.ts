@@ -170,3 +170,15 @@ export function twistProbe(pose: Pose, delta: number): Pose {
   const lateralLocal = unit(add(scale(lat, Math.cos(delta)), scale(up, Math.sin(delta))));
   return poseFromControls({ ...c, lateralLocal });
 }
+
+/** Tilt the beam about the lateral axis (rocking the probe toward or away from the index side), radians. Refuses to point the beam out of the chest. */
+export function tiltProbe(pose: Pose, delta: number): Pose {
+  const c = controlsFromPose(pose);
+  const beam = unit(c.beamLocal);
+  const lat = unit(c.lateralLocal);
+  const up = unit(cross(beam, lat));
+  const beamLocal = unit(add(scale(beam, Math.cos(delta)), scale(up, Math.sin(delta))));
+  if (beamLocal[2] < 0.3) return pose;
+  const lateralLocal = unit(sub(lat, scale(beamLocal, dot(lat, beamLocal))));
+  return poseFromControls({ ...c, beamLocal, lateralLocal });
+}
