@@ -1,6 +1,7 @@
 import "../cath/cath.css";
 import "./echo.css";
 import { buildPoses, Pose } from "./poses";
+import { presetsFromPoses } from "./probe";
 import { EchoScene } from "./scene";
 import { playClean } from "./cleanVideo";
 import { mountShell } from "../shell/shell";
@@ -8,7 +9,7 @@ import { VIEWS, ViewDef, imageFor, Window } from "./views";
 
 /**
  * The echo atlas: pick a standard transthoracic view and see where the probe goes on the simulator's 3D heart, beside a clean open-licensed echo
- * image of that view where we have one.
+ * image of that view where we have one. The probe also slides on a schematic chest so the sector can leave the three calibrated poses.
  */
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -24,7 +25,7 @@ let current = VIEWS[0];
 let poses: Record<string, Pose> | null = null;
 let scene: EchoScene | null = null;
 
-const PROBE_NOTE = "Probe and imaging plane on the simulator's 3D heart, seen square onto the plane with the probe at the top as on the echo screen. Drag to turn it. The red dot on the probe is the index mark.";
+const PROBE_NOTE = "Probe and imaging plane on the simulator's 3D heart. Drag the probe to slide it on the chest; scroll over it to roll the index mark; drag empty space to turn the camera. Pick a view to snap back. The red dot is the index mark.";
 
 function renderList() {
   const groups: Window[] = ["Parasternal", "Subcostal"];
@@ -63,10 +64,27 @@ function select(id: string) {
   $("look").textContent = v.lookFor;
   renderRef(v);
   if (poses) {
-    scene?.setPose(poses[v.pose]);
+    scene?.setPose(poses[v.pose], true);
     $("posenote").textContent = PROBE_NOTE;
   }
   if (location.hash.slice(1) !== v.id) history.replaceState(null, "", `#${v.id}`);
+}
+
+/** When a drag snaps onto a calibrated pose, highlight that view without reframing mid-gesture. */
+function syncViewFromPose(poseKey: string | null) {
+  if (!poseKey) return;
+  const view = VIEWS.find((v) => v.pose === poseKey);
+  if (!view || view.id === current.id) return;
+  current = view;
+  document.querySelectorAll<HTMLElement>("#list a").forEach((a) => a.classList.toggle("on", a.dataset.id === view.id));
+  $("title").textContent = view.name;
+  $("summary").textContent = view.lookFor;
+  $("placement").textContent = view.placement;
+  $("marker").textContent = view.marker;
+  $("shows").innerHTML = view.shows.map((s) => `<li>${esc(s)}</li>`).join("");
+  $("look").textContent = view.lookFor;
+  renderRef(view);
+  if (location.hash.slice(1) !== view.id) history.replaceState(null, "", `#${view.id}`);
 }
 
 $("list").addEventListener("click", (e) => { const a = (e.target as HTMLElement).closest<HTMLElement>("a[data-id]"); if (a) { e.preventDefault(); select(a.dataset.id!); } });
@@ -85,6 +103,8 @@ select(location.hash.slice(1) || VIEWS[0].id);
 try {
   poses = buildPoses();
   scene = new EchoScene($("scene"));
+  scene.setPresets(presetsFromPoses(poses));
+  scene.onPoseChange = (_pose, poseKey) => syncViewFromPose(poseKey);
   $("loading").remove();
   select(current.id);
 } catch (err) {

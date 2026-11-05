@@ -5,21 +5,33 @@ import { V3 } from "../anatomy/curve";
 import { meshHeart, Part } from "../anatomy/heartSurface";
 import { rotateHeart } from "../anatomy/tree";
 import { Pose, SECTOR, toPatient } from "./poses";
+import { ProbePreset, projectOntoChest, slideProbe, snapPose, twistProbe } from "./probe";
 
 /**
  * The simulator's own 3D heart (the same surface the main page draws) as a translucent shell, the probe, and the imaging sector as a fan
  * in the probe's plane. Everything is in the patient frame (x left, y up, z anterior), mm, so the scene needs no axis swap.
+ * Drag the probe to slide it on the schematic chest; scroll to roll the index mark. Orbit still turns the camera when not dragging.
  */
 const PART_COLOR: Record<Part, number> = { [Part.LV]: 0xb24a3f, [Part.RV]: 0x4f7fb5, [Part.RA]: 0x7aa6d4, [Part.LA]: 0xd98a6e, [Part.Aorta]: 0xe3b35c };
 const v = (p: V3) => new THREE.Vector3(p[0], p[1], p[2]);
+const asV3 = (p: THREE.Vector3): V3 => [p.x, p.y, p.z];
 
 export class EchoScene {
   private renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(32, 1, 1, 3000);
   private controls?: OrbitControls;
-  private pose = new THREE.Group();
+  private poseGroup = new THREE.Group();
   private centre: THREE.Vector3;
+  private current: Pose | null = null;
+  private presets: ProbePreset[] = [];
+  private dragging = false;
+  private raycaster = new THREE.Raycaster();
+  private pointer = new THREE.Vector2();
+  private dragPlane = new THREE.Plane();
+  private hit = new THREE.Vector3();
+  /** Fires after a drag or scroll changes the pose; `viewId` is set when the pose snaps to a preset. */
+  onPoseChange: ((pose: Pose, viewId: string | null) => void) | null = null;
 
   constructor(private host: HTMLElement) {
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -44,12 +56,16 @@ export class EchoScene {
     heart.renderOrder = 1;
     this.centre = v(toPatient([0, 0, 0]));
     const key = new THREE.DirectionalLight(0xfff4ea, 1.6); key.position.set(120, 160, 220);
-    this.scene.add(heart, new THREE.AmbientLight(0xffffff, 0.3), key, this.pose);
+    this.scene.add(heart, new THREE.AmbientLight(0xffffff, 0.3), key, this.poseGroup);
     new ResizeObserver(() => this.resize()).observe(host);
     this.resize();
     this.frame(this.centre, new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 1, 0), 460);
+    this.bindPointer();
     this.renderer.setAnimationLoop(() => { this.controls?.update(); this.renderer.render(this.scene, this.camera); });
   }
+
+  /** Standard views the drag snap can pull toward. */
+  setPresets(presets: ProbePreset[]) { this.presets = presets; }
 
   resize() {
     const w = this.host.clientWidth || 1, h = this.host.clientHeight || 1;
@@ -65,9 +81,13 @@ export class EchoScene {
     this.controls.target.copy(target); this.controls.update();
   }
 
-  /** Draw the probe and sector for a pose and square the camera onto the imaging plane; null shows the bare heart from the front. */
-  setPose(p: Pose) {
-    for (const o of [...this.pose.children]) { this.pose.remove(o); (o as THREE.Mesh).geometry?.dispose(); }
+  /**
+   * Draw the probe and sector for a pose. Pass `frameCamera` when picking a standard view so the
+   * camera squares onto the imaging plane; free dragging leaves the camera where it is.
+   */
+  setPose(p: Pose, frameCamera = false) {
+    this.current = p;
+    for (const o of [...this.poseGroup.children]) { this.poseGroup.remove(o); (o as THREE.Mesh).geometry?.dispose(); }
     const probe = v(p.probe), beam = v(p.beam).normalize(), lat = v(p.lateral).normalize(), mk = v(p.marker).normalize();
     // Fan: a triangle fan from the probe, spanning +-halfAngle from the beam in the image plane, to `depth`.
     const steps = 32, pts = [probe.clone()];
@@ -85,13 +105,72 @@ export class EchoScene {
     const body = new THREE.Mesh(new THREE.BoxGeometry(20, 10, 34), new THREE.MeshStandardMaterial({ color: 0xf4f1ea, roughness: 0.4 }));
     body.setRotationFromMatrix(new THREE.Matrix4().makeBasis(lat, beam.clone().cross(lat).normalize(), beam));
     body.position.copy(probe).addScaledVector(beam, -17);
+    body.name = "probe-body";
     const mark = new THREE.Mesh(new THREE.SphereGeometry(3, 12, 8), new THREE.MeshBasicMaterial({ color: 0xff5a4d }));
     mark.position.copy(probe).addScaledVector(beam, -3).addScaledVector(mk, 10);
     const cable = new THREE.Line(new THREE.BufferGeometry().setFromPoints([probe.clone().addScaledVector(beam, -34), probe.clone().addScaledVector(beam, -110)]), new THREE.LineBasicMaterial({ color: 0xf4f1ea }));
-    this.pose.add(fanMesh, edge, body, mark, cable);
+    this.poseGroup.add(fanMesh, edge, body, mark, cable);
+    if (!frameCamera) return;
     // Camera square onto the imaging plane, probe at the top as on the screen of the machine, the anterior face of the plane toward us.
     const n = beam.clone().cross(lat).normalize(); if (n.z < 0) n.negate();
     // Aim between the middle of the sector and the heart's centre, so the heart and the fan both fit.
     this.frame(probe.clone().addScaledVector(beam, 70).add(this.centre).multiplyScalar(0.5), n, beam.clone().negate(), 480);
+  }
+
+  private setPointer(e: PointerEvent) {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    this.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  }
+
+  private bindPointer() {
+    const el = this.renderer.domElement;
+    el.addEventListener("pointerdown", (e) => {
+      if (!this.current || e.button !== 0) return;
+      this.setPointer(e);
+      this.raycaster.setFromCamera(this.pointer, this.camera);
+      const hits = this.raycaster.intersectObjects(this.poseGroup.children, false);
+      const onProbe = hits.some((h) => h.object.name === "probe-body");
+      // Grab the probe body, or anywhere near the tip so the handle is easy to catch.
+      const nearTip = this.raycaster.ray.distanceToPoint(v(this.current.probe)) < 28;
+      if (!onProbe && !nearTip) return;
+      this.dragging = true;
+      if (this.controls) this.controls.enabled = false;
+      el.setPointerCapture(e.pointerId);
+      this.dragPlane.setFromNormalAndCoplanarPoint(this.camera.getWorldDirection(new THREE.Vector3()).negate(), v(this.current.probe));
+      e.preventDefault();
+    });
+    el.addEventListener("pointermove", (e) => {
+      if (!this.dragging || !this.current) return;
+      this.setPointer(e);
+      this.raycaster.setFromCamera(this.pointer, this.camera);
+      if (!this.raycaster.ray.intersectPlane(this.dragPlane, this.hit)) return;
+      const next = slideProbe(this.current, projectOntoChest(asV3(this.hit)));
+      this.setPose(next, false);
+      this.onPoseChange?.(next, null);
+    });
+    const endDrag = (e: PointerEvent) => {
+      if (!this.dragging || !this.current) return;
+      this.dragging = false;
+      if (this.controls) this.controls.enabled = true;
+      try { el.releasePointerCapture(e.pointerId); } catch { /* already released */ }
+      const snapped = snapPose(this.current, this.presets);
+      this.setPose(snapped.pose, false);
+      this.onPoseChange?.(snapped.pose, snapped.id);
+    };
+    el.addEventListener("pointerup", endDrag);
+    el.addEventListener("pointercancel", endDrag);
+    el.addEventListener("wheel", (e) => {
+      if (!this.current) return;
+      // Roll the index mark; keep orbit zoom when the pointer is not near the probe.
+      this.setPointer(e as unknown as PointerEvent);
+      this.raycaster.setFromCamera(this.pointer, this.camera);
+      if (this.raycaster.ray.distanceToPoint(v(this.current.probe)) > 40) return;
+      e.preventDefault();
+      const next = twistProbe(this.current, e.deltaY * 0.003);
+      const snapped = snapPose(next, this.presets);
+      this.setPose(snapped.pose, false);
+      this.onPoseChange?.(snapped.pose, snapped.id);
+    }, { passive: false });
   }
 }
