@@ -14,9 +14,9 @@ const SKIN = 12;
 const STEP = 0.5;
 const MAX = 250;
 /** Distance below this counts as "at" a preset (mm of position plus weighted radians). */
-const NEAR = 18;
-/** Distance below this pulls the probe onto the preset. */
-const SNAP = 12;
+const NEAR = 16;
+/** Distance below this pulls the probe onto the preset on release. Kept tight so a deliberate slide can leave the view. */
+const SNAP = 7;
 
 const dot = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -138,6 +138,19 @@ export function snapPose(pose: Pose, presets: ProbePreset[]): { id: string | nul
   }
   if (best && bestD <= SNAP) return { id: best.id, pose: best.pose };
   return { id: null, pose };
+}
+
+/** How strongly the real reference clip should replace the stylized echo (0 = simulated only, 1 = full reference). */
+export function referenceBlend(pose: Pose, presets: ProbePreset[]): { id: string | null; amount: number } {
+  let best: ProbePreset | null = null, bestD = Infinity;
+  for (const preset of presets) {
+    const d = poseDistance(pose, preset.pose);
+    if (d < bestD) { bestD = d; best = preset; }
+  }
+  if (!best) return { id: null, amount: 0 };
+  const full = SNAP * 0.5, out = NEAR + 4;
+  const amount = bestD <= full ? 1 : bestD >= out ? 0 : 1 - (bestD - full) / (out - full);
+  return { id: amount > 0 ? best.id : null, amount };
 }
 
 /** Move the contact to a chest point, keeping the local beam and lateral. */

@@ -78,6 +78,9 @@ export class EchoScene {
     this.camera.position.copy(target).addScaledVector(from, distance);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true; this.controls.enablePan = false; this.controls.minDistance = 220; this.controls.maxDistance = 900;
+    // Left drag moves the probe (see bindPointer); right drag orbits the camera.
+    this.controls.mouseButtons = { LEFT: undefined as unknown as THREE.MOUSE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+    this.controls.touches = { ONE: undefined as unknown as THREE.TOUCH, TWO: THREE.TOUCH.DOLLY_ROTATE };
     this.controls.target.copy(target); this.controls.update();
   }
 
@@ -129,11 +132,6 @@ export class EchoScene {
       if (!this.current || e.button !== 0) return;
       this.setPointer(e);
       this.raycaster.setFromCamera(this.pointer, this.camera);
-      const hits = this.raycaster.intersectObjects(this.poseGroup.children, false);
-      const onProbe = hits.some((h) => h.object.name === "probe-body");
-      // Grab the probe body, or anywhere near the tip so the handle is easy to catch.
-      const nearTip = this.raycaster.ray.distanceToPoint(v(this.current.probe)) < 28;
-      if (!onProbe && !nearTip) return;
       this.dragging = true;
       if (this.controls) this.controls.enabled = false;
       el.setPointerCapture(e.pointerId);
@@ -162,15 +160,10 @@ export class EchoScene {
     el.addEventListener("pointercancel", endDrag);
     el.addEventListener("wheel", (e) => {
       if (!this.current) return;
-      // Roll the index mark; keep orbit zoom when the pointer is not near the probe.
-      this.setPointer(e as unknown as PointerEvent);
-      this.raycaster.setFromCamera(this.pointer, this.camera);
-      if (this.raycaster.ray.distanceToPoint(v(this.current.probe)) > 40) return;
       e.preventDefault();
-      const next = twistProbe(this.current, e.deltaY * 0.003);
-      const snapped = snapPose(next, this.presets);
-      this.setPose(snapped.pose, false);
-      this.onPoseChange?.(snapped.pose, snapped.id);
+      const next = twistProbe(this.current, e.deltaY * 0.004);
+      this.setPose(next, false);
+      this.onPoseChange?.(next, null);
     }, { passive: false });
   }
 }

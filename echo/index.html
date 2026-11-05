@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="icon" href="/favicon.ico" sizes="any" />
 <link rel="icon" type="image/png" href="/favicon.png" />
-<title>CoroSim Echo atlas</title>
-<meta name="description" content="The standard transthoracic echo views: where the probe goes on the simulator's 3D heart, which way it looks, beside a clean open-licensed echo loop of the view.">
+<title>CoroSim Echo</title>
+<meta name="description" content="Move a probe on the simulator's 3D heart and watch the ideal cross-section and a teaching echo image follow the scan plane, with real reference loops at the standard views.">
 <script>try{var t=localStorage.getItem("corosim-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -30,16 +30,29 @@
     <div class="echo-stage">
       <figure class="echo-pane">
         <div class="screen echo-3d" id="scene" aria-label="3D heart with the probe and imaging sector"><p class="echo-load" id="loading">Drawing the heart…</p></div>
-        <figcaption id="posenote"></figcaption>
+        <figcaption id="posenote">Figure 1. Probe and imaging plane on the simulator's 3D heart.</figcaption>
       </figure>
-      <figure class="echo-pane" id="refpane"></figure>
+      <figure class="echo-pane">
+        <div class="screen echo-slice">
+          <canvas id="ideal" width="320" height="360" role="img" aria-label="Ideal cross-section of the schematic heart"></canvas>
+        </div>
+        <figcaption>Figure 2. Ideal cross-section of the schematic heart at the scan plane. <button type="button" class="echo-toggle" id="labels" aria-pressed="true">Labels on</button></figcaption>
+      </figure>
+      <figure class="echo-pane">
+        <div class="screen echo-live" aria-label="Teaching echo image">
+          <canvas id="stylized" width="320" height="360" role="img" aria-label="Stylized teaching echo"></canvas>
+          <canvas id="real" class="echo-real" width="320" height="360" aria-hidden="true"></canvas>
+          <span class="echo-badge" id="badge" hidden></span>
+        </div>
+        <figcaption id="echonote">Figure 3. Teaching echo from the model. A real reference loop fades in when the probe is at a standard view.</figcaption>
+      </figure>
     </div>
     <div class="echo-cards">
       <div class="echo-card"><b>Probe placement</b><p id="placement"></p><b>Index mark</b><p id="marker"></p></div>
       <div class="echo-card"><b>Structures in the sector</b><ul id="shows"></ul></div>
       <div class="echo-card"><b>What to look for</b><p id="look"></p></div>
     </div>
-    <p class="fine echo-note">The 3D heart is the simulator's schematic heart, so a pose shows where the probe has to be on that shape, not what any one patient looks like. Ribs, lungs and sternum are not modeled, so a pose does not show whether the acoustic window exists. Each loop keeps its own license, listed under it.</p>
+    <p class="fine echo-note">The 3D heart is the simulator's schematic heart, so a pose shows where the probe has to be on that shape, not what any one patient looks like. Ribs, lungs and sternum are not modeled. The middle pane is a labeled cut of that model; the right pane is a teaching rendering, not a claim of realistic ultrasound. Real clips keep their own license, listed when the reference badge is on.</p>
   </section>
 </main>
 

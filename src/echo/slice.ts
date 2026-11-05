@@ -39,20 +39,26 @@ export interface EchoSlice {
 const RAYS = 61;
 const STEPS = 80;
 
+export interface SampleOpts {
+  rays?: number;
+  steps?: number;
+}
+
 /** Sample the sector of `pose` and label each part that the plane cuts. */
-export function sampleSlice(pose: Pose): EchoSlice {
+export function sampleSlice(pose: Pose, opts: SampleOpts = {}): EchoSlice {
+  const rays = opts.rays ?? RAYS, steps = opts.steps ?? STEPS;
   const samples: SliceSample[] = [];
   const half = SECTOR.halfAngle;
-  for (let i = 0; i < RAYS; i++) {
-    const angle = -half + (2 * half * i) / (RAYS - 1);
+  for (let i = 0; i < rays; i++) {
+    const angle = -half + (2 * half * i) / Math.max(1, rays - 1);
     const c = Math.cos(angle), s = Math.sin(angle);
     const dir: V3 = [
       pose.beam[0] * c + pose.lateral[0] * s,
       pose.beam[1] * c + pose.lateral[1] * s,
       pose.beam[2] * c + pose.lateral[2] * s,
     ];
-    for (let j = 0; j < STEPS; j++) {
-      const radius = (pose.depth * j) / (STEPS - 1);
+    for (let j = 0; j < steps; j++) {
+      const radius = (pose.depth * j) / Math.max(1, steps - 1);
       const point = add(pose.probe, mul(dir, radius));
       const heart = toHeart(point);
       const sdf = heartSdf(heart);
