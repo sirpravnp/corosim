@@ -10,7 +10,7 @@ export function applyToSim(
 ): void {
   const lesions = plaques.flatMap(plaqueToLesions);
   for (const l of extra.occlusions) lesions.push(l);
-  sim.setLive(lesions.length ? lesions : null, extra.bedResistance);
+  sim.setLive(lesions, extra.bedResistance);
 }
 
 export function guideTrace(
@@ -18,14 +18,13 @@ export function guideTrace(
   engagement: { quality: number; engaged: "LM" | "RCA" | null; ostialDs: number },
 ): number[] {
   const mean = pa.reduce((s, v) => s + v, 0) / pa.length;
-  const amp = (Math.max(...pa) - Math.min(...pa)) / 2;
-  const damp = amp * (1 - 0.5 * engagement.quality);
-  const vent = engagement.ostialDs >= 0.7 && engagement.engaged ? 0.4 : 0;
+  const pulseScale = 0.45 + 0.55 * engagement.quality;
+  const vent = engagement.ostialDs >= 0.7 && engagement.engaged ? 0.45 : 0;
   return pa.map((v, i) => {
     const phase = i / Math.max(1, pa.length - 1);
-    const pulse = Math.sin(phase * Math.PI * 2) * damp;
-    const base = mean + pulse;
-    return phase > 0.4 ? base * (1 - vent * (1 - phase)) : base;
+    const base = mean + (v - mean) * pulseScale;
+    const diast = phase > 0.35 ? base * (1 - vent) : base;
+    return diast;
   });
 }
 
@@ -34,7 +33,7 @@ export function contrastEffect(ml: number, egfr: number): { transientMapDrop: nu
   return {
     transientMapDrop: Math.min(12, ml * 0.3),
     hrDelta: ml > 80 ? 4 : 0,
-    nephropathyRisk: ratio > 3.7 ? Math.min(1, (ratio - 3.7) / 2) : 0,
+    nephropathyRisk: ratio > 3.7 ? Math.min(1, (ratio - 3.7) / 1.4) : 0,
   };
 }
 
