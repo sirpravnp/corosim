@@ -1,6 +1,7 @@
 import { mountWorkspace } from "../panels/workspace";
 import { CLINICAL_SCALES } from "../panels/timeControl";
-import { monitorPanel, monitorHooks } from "../panels/monitor";
+import { monitorPanel, monitorHooks, applyMonitorRows } from "../panels/monitor";
+import { itemById } from "../cases/orders";
 import { ecgPanel } from "../panels/ecg";
 import { numbersPanel } from "../panels/numbers";
 import { tracesPanel } from "../panels/traces";
@@ -54,4 +55,23 @@ export function mountPanels() {
   });
   $("bedsfig").hidden = true; // its table now lives in the Ischemia panel (the game keeps the figure)
   $("ts-l").style.display = $("ts-row").style.display = "none"; // the Lesion section's old time-scale buttons: now in the workspace bar
+}
+
+const MONITOR_PANEL_IDS = ["hr", "bp", "spo2", "rr", "temp"];
+/**
+ * Set the case's monitor on the workspace for this session: the ids of the monitor items shown (cases/orders.ts). `ecg` is the ECG
+ * panel; hr, bp, spo2, rr and temp are rows of the Monitor panel; a panel item opens its own panel. Null restores the viewer's layout.
+ * The viewer's saved layout is never written by this.
+ */
+export function setCaseMonitor(ids: string[] | null): void {
+  if (!workspace) return;
+  if (!ids) { monitorHooks.rows = null; workspace.setSession(null); applyMonitorRows(); return; }
+  const rows = ids.filter((id) => MONITOR_PANEL_IDS.includes(id));
+  const panels: string[] = [];
+  if (ids.includes("ecg")) panels.push("ecg");
+  if (rows.length) panels.push("monitor");
+  for (const id of ids) { const p = itemById(id)?.panel; if (p && !panels.includes(p)) panels.push(p); }
+  monitorHooks.rows = rows.length ? new Set(rows) : null;
+  workspace.setSession(panels);
+  applyMonitorRows();
 }

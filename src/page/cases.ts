@@ -5,7 +5,15 @@ import { CASES } from "../cases";
 import { compileCase } from "../cases/spec";
 import { builtinEntries, getPreview, playable } from "../library/api";
 import { CaseDef, CaseRunner, Debrief, Probe, Tick } from "../cases/engine";
-import { $, K, S, sim, T, inCases, on } from "./state";
+import { $, K, S, sim, T, inCases, on, ecg, rstate, circ, panelSource, pageVitals } from "./state";
+import { buildPatientNow, accrueLowFlow, resetLowFlow, lowFlow } from "./patientNow";
+import { setCaseLabs } from "../sim/labs";
+import { orderProbe, ordersBegin, ordersEnd, ordersStop, ordersStep, ordersUi, wireOrders, orders } from "./orders";
+import { rhythmLabel, setBedsideTemp } from "./readouts";
+import { bedsideOverride } from "../sim/bedside";
+import { AUTONOMIC } from "../physics/autonomic";
+import { withOrderLines } from "../cases/orderBook";
+import type { PatientNow } from "../cases/orders";
 import { arrestSync } from "./arrest";
 import { pgAdopt, pgPatch } from "./patient";
 import { orderProcedure, reperfused } from "./manage";
@@ -30,7 +38,7 @@ let opening = false; // the case's opening moves (rhythm, CPR, drugs given) are 
 let revealed = false; // the lesion is on show
 
 /** What the runner may ask of the patient now. */
-function probe(): Probe {
+export function probe(): Probe {
   const st = sim.arrestState(), d = sim.devices(), drugs = st.drugs;
   return {
     map: sim.map, hr: sim.circ?.hr ?? 0,
@@ -46,8 +54,24 @@ function probe(): Probe {
     drugs: { ...(sim.drugState()?.level ?? {}) },
     ef: sim.circ?.ejectionFraction ?? 0.6, lvIschemia: sim.circ?.lvIschemia ?? 0, rvIschemia: sim.circ?.rvIschemia ?? 0, congestion: sim.circ?.congestion ?? 0, fluidsL: sim.support.fluids,
     dead: sim.dead,
+    ...orderProbe(),
   };
 }
+
+/** The patient as the order system reads it (a result is computed from this when it returns). */
+export function patientNow(): PatientNow {
+  const st = sim.arrestState(), v = pageVitals();
+  return buildPatientNow({
+    vitals: v, fallbackMap: sim.map, fallbackHr: sim.circ?.hr ?? 0,
+    spo2: panelSource?.saturations().spo2 ?? NaN, lactate: sim.oxygenState()?.lactate ?? NaN, urineMlPerMin: sim.fluids()?.urineRate ?? NaN,
+    lvIschemia: circ?.lvIschemia ?? 0, rvIschemia: circ?.rvIschemia ?? 0, congestion: circ?.congestion ?? 0,
+    arrest: sim.dead ? "dead" : st.status,
+    rhythmLabel: st.status === "arrest" ? ARREST_LABEL[st.rhythmClass] ?? st.rhythmClass : rhythmLabel(ecg.rhythm(), rstate),
+    respRateBase: sim.autonomic?.controls.respRate ?? AUTONOMIC.respRate, tempOverrideC: bedsideOverride.tempOverrideC,
+    co: circ?.cardiacOutput, lvEf: circ?.ejectionFraction, lowFlowMin: lowFlow.min, caseMin: (K.runner?.t ?? 0) / 60,
+  });
+}
+const ARREST_LABEL: Record<string, string> = { vf: "Ventricular fibrillation", pulselessVt: "Pulseless ventricular tachycardia", asystole: "Asystole", pea: "Pulseless electrical activity", perfusing: "Perfusing rhythm" };
 
 /** Carry out what the runner came back with. */
 function carry(t: Tick) {
@@ -81,7 +105,8 @@ function setReveal() {
 function end() {
   const r = K.runner;
   if (!r || K.phase === "over") return;
-  K.phase = "over"; debrief = r.debrief(); keep(r.def.id, debrief.score);
+  K.phase = "over"; debrief = withOrderLines(r.debrief(), orders.book); keep(r.def.id, debrief.score);
+  ordersStop();
   for (const id of LOCKED) ($(id) as HTMLButtonElement).disabled = false;
   document.body.classList.remove("case-run");
 }
@@ -98,7 +123,11 @@ export function caseStep(dt: number) {
     opening = false;
     return;
   }
-  carry(r.tick(probe(), dt));
+  accrueLowFlow(dt, sim.map);
+  const p = probe(), t = r.tick(p, dt);
+  carry(t);
+  if (K.phase === "run") ordersStep(r, p, t);
+  ordersUi();
 }
 
 function startCase(def: CaseDef) {
@@ -109,15 +138,18 @@ function startCase(def: CaseDef) {
   S.hide = S.hideIsch = true;
   document.body.classList.add("case-run");
   pgAdopt(def.start);
+  setBedsideTemp(def.tempC); setCaseLabs(def.labs); resetLowFlow(); ordersBegin(def);
   history.replaceState(null, "", location.pathname + location.search);
   casesUi();
 }
 function quit() {
+  ordersEnd(); // first: it restores the speed a skip saved, and the reset below must win
   for (const id of LOCKED) ($(id) as HTMLButtonElement).disabled = false;
   document.body.classList.remove("case-run");
   K.phase = "idle"; K.def = null; K.runner = null; debrief = null; opening = false;
   S.hide = S.hideIsch = false; revealed = false; S.speed = 1;
   pgAdopt({});
+  setBedsideTemp(undefined); setCaseLabs(undefined); resetLowFlow();
   buildVessels(); initParticles(); paintMyocardium();
   casesUi();
 }
@@ -131,6 +163,7 @@ export function casesUi() {
   document.body.classList.toggle("gated", door);
   if (door) doorUi();
   if (!panel) { $("cprompt").hidden = true; promptKey = ""; return; }
+  ordersUi();
   const r = K.runner!, def = r.def;
   $("c_name").textContent = def.title;
   $("c_clock").textContent = clock(r.t);
@@ -196,6 +229,7 @@ async function loadFromAddress() {
 /** The front door's cards, the prompt's options, and the buttons. */
 export function wireCases() {
   void loadFromAddress();
+  wireOrders();
   on("ci_back", () => { location.href = CASES_URL; });
   on("ci_begin", () => { const def = pool.find((c) => c.id === introId); listSig = ""; if (def) startCase(def); });
   $("cp_opts").addEventListener("click", (e) => {

@@ -244,6 +244,7 @@ describe("generic harms", () => {
       ["calcium channel blocker", P({ ef: 0.25, drugs: { diltiazem: 0.5 } }), P({ ef: 0.6, map: 90, drugs: { diltiazem: 0.5 } })],
       ["dual AV-nodal blockade", P({ ef: 0.6, map: 90, drugs: { betaBlocker: 0.5, diltiazem: 0.5 } }), P({ ef: 0.6, map: 90, drugs: { diltiazem: 0.5 } })],
       ["fluid into congestion", P({ ef: 0.25, congestion: 0.6, fluidsL: 1 }), P({ ef: 0.6, congestion: 0, fluidsL: 1 })],
+      ["waiting while unstable", P({ map: 55, waiting: true }), P({ map: 90, waiting: true })],
     ];
     expect(cases.map((c) => c[0]).sort()).toEqual(GENERIC_HARMS.map((h) => h.tag).sort()); // a new rule needs a test here
     for (const [tag, bad, ok] of cases) {

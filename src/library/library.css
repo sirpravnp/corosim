@@ -116,6 +116,10 @@ dialog .row { display: flex; gap: 6px; margin-top: 14px; }
 @media (max-width: 720px) { .f3 { grid-template-columns: minmax(0, 1fr); } }
 .f.chk { display: flex; gap: 8px; align-items: center; align-self: end; padding-bottom: 8px; }
 .f.chk span { color: var(--ink); }
+fieldset.mon { margin: 0; padding: 8px 0 0; border: 0; border-top: 1px solid var(--sh-line); min-width: 0; }
+fieldset.mon legend { padding: 0 8px 0 0; font-size: 13px; color: var(--muted); }
+.checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 0 12px; }
+.checks .f.chk { padding-bottom: 4px; align-self: center; }
 details > summary { cursor: pointer; font-size: 14px; padding: 6px 0; }
 .timeline { border-top: 1px solid var(--sh-line); }
 .tp { border-bottom: 1px solid var(--sh-line); }

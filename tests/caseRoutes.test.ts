@@ -51,4 +51,14 @@ describe("case library", () => {
     expect((await fetch(`${base}/cases/my-case`, { method: "DELETE", headers: { "x-case-passcode": "sesame" } })).status).toBe(200);
     expect((await fetch(`${base}/cases/my-case`, { method: "DELETE", headers: { "x-case-passcode": "sesame" } })).status).toBe(404);
   });
+
+  it("keeps the monitor, the body temperature and the lab values through save and read", async () => {
+    const base = await boot("sesame");
+    const extra = { monitor: ["hr", "bp", "heart3d"], tempC: 38.6, labs: { na: 128, k: 5.8 } };
+    expect((await put(base, spec(extra), "sesame")).status).toBe(200);
+    const all = (await (await fetch(`${base}/cases/all`, { headers: { "x-case-passcode": "sesame" } })).json()) as { cases: CaseSpec[] };
+    const got = all.cases.find((c) => c.id === "my-case")!;
+    expect({ monitor: got.monitor, tempC: got.tempC, labs: got.labs }).toEqual(extra);
+    expect((await put(base, spec({ ...extra, monitor: ["nope"], published: true }), "sesame")).status).toBe(422); // publishing needs a valid monitor
+  });
 });

@@ -175,9 +175,20 @@ button:disabled, button:disabled:hover { color: var(--muted); background: var(--
 #cases h3 { margin: 14px 0 4px; font: 600 12px/1.4 var(--font-ui); color: var(--muted); }
 .c-status { display: flex; justify-content: space-between; gap: 10px; font: 600 12px/1.4 var(--font-data); font-variant-numeric: tabular-nums; }
 .c-log { list-style: none; margin: 0; padding: 0; font-size: 13px; line-height: 1.45; }
-.c-log li { padding: 5px 0; border-top: 1px solid var(--rule-light); }
+.c-log li { padding: 5px 0; border-top: 1px solid var(--rule-light); white-space: pre-line; } /* a lab result is one line per analyte */
 .c-log li span { display: inline-block; min-width: 38px; margin-right: 8px; font: 600 11px/1.4 var(--font-data); color: var(--muted); }
 .c-log li.none { color: var(--muted); }
+#cases .c-orders button { border-radius: 2px; }
+#cases .o-note { margin: 6px 0 0; min-height: 1.45em; }
+#o_list { margin-top: 6px; border-top: 1px solid var(--rule-light); }
+#o_list h4 { margin: 10px 0 2px; font: 600 12px/1.4 var(--font-ui); color: var(--muted); }
+#o_list .o-group + .o-group { border-top: 1px solid var(--rule-light); }
+#o_list .o-item { display: flex; justify-content: space-between; gap: 10px; width: 100%; padding: 6px 2px; font-weight: 400; text-align: left; background: none; border: 0; border-top: 1px solid var(--rule-light); }
+#o_list .o-item em { font: 400 11px/1.4 var(--font-data); font-style: normal; color: var(--muted); }
+#o_list .o-item:hover:not(:disabled) { background: var(--sh-hover); }
+#o_pending li { display: flex; align-items: baseline; gap: 8px; }
+#o_pending li span.o-eta { flex: none; }
+#o_pending .o-skipto { margin-left: auto; padding: 3px 7px; font-size: 12px; font-weight: 400; }
 #cgate, #cprompt { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: color-mix(in srgb, var(--bg) 55%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 #cprompt { z-index: 60; }
 #cgate[hidden], #cprompt[hidden] { display: none; }
@@ -201,6 +212,11 @@ body.gated { overflow: hidden; }
 .c-case .tier.easy { color: var(--ok); } .c-case .tier.medium { color: var(--warn); } .c-case .tier.hard { color: var(--bad); }
 #cp_opts { display: grid; gap: 8px; margin-top: 4px; }
 #cp_opts button { padding: 11px 14px; font-size: 13px; text-align: left; font-weight: 500; }
+/* A case whose monitor lacks the heart model hides the 3D canvas, its controls and the caption until it is ordered. The arrest, ROSC and clock alerts live inside #view, so it stays, shortened, and they keep their place. */
+body.case-no-3d #view canvas, body.case-no-3d #vc, body.case-no-3d #pick, body.case-no-3d #legend, body.case-no-3d #tag, body.case-no-3d #stagefig figcaption { display: none !important; } /* !important: the 3D view sets display on the canvas inline */
+body.case-no-3d #view { height: auto; min-height: 0; background: none; overflow: visible; }
+body.case-no-3d #view:has(.arrest-dead:not([hidden])) { min-height: 260px; }
+body.case-no-3d #view > :is(.arrest-banner, .clock-critical):not([hidden]) { position: static; transform: none; margin: 0 0 8px; max-width: none; }
 body.case-run #lesionctl, body.case-run #lesionsec { display: none; }
 .q-result { margin: 6px 0 0; font-size: 14px; line-height: 1.45; font-weight: 700; }
 .q-result.vessel { color: var(--ok); } .q-result.territory { color: var(--warn); } .q-result.miss { color: var(--bad); }

@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { CaseRunner, Probe } from "../src/cases/engine";
+import { STANDARD_MONITOR, resolveMonitor } from "../src/cases/orders";
+import { blankCase } from "../src/library/builder";
+import { exampleCase } from "../src/library/template";
 import { CaseSpec, compileCase, compileCond, condText, parseCond, parseConds, validateCase } from "../src/cases/spec";
 
 const P = (o: Partial<Probe> = {}): Probe => ({ map: 70, hr: 80, arrest: "none", rhythmClass: "perfusing", shocks: 0, epiDoses: 0, amioMg: 0, lidoDoses: 0, cpr: false, ecmo: false, impella: false, iabp: false, pci: false, pciPending: false, drugs: {}, ef: 0.6, lvIschemia: 0, rvIschemia: 0, congestion: 0, fluidsL: 0, dead: false, ...o });
@@ -16,6 +19,16 @@ const spec = (): CaseSpec => ({
 });
 
 describe("case spec", () => {
+  it("a spec with tempC compiles through compileCase", () => {
+    expect(compileCase({ ...spec(), tempC: 38.6 }).tempC).toBe(38.6);
+  });
+  it("compileCase and the library's fromSpec carry the monitor and the lab values", async () => {
+    const { fromSpec } = await import("../src/library/api");
+    const s = { ...spec(), monitor: ["hr", "heart3d"], labs: { k: 5.8 } };
+    expect(compileCase(s).monitor).toEqual(["hr", "heart3d"]);
+    expect(fromSpec(s).def.labs).toEqual({ k: 5.8 });
+    expect(fromSpec(s).def.monitor).toEqual(["hr", "heart3d"]);
+  });
   it("round-trips through JSON and runs in the engine", () => {
     const def = compileCase(JSON.parse(JSON.stringify(spec())));
     const r = new CaseRunner(def);
@@ -57,5 +70,26 @@ describe("case spec", () => {
   it("flags a patient the simulator would clamp", () => {
     const s = spec(); s.start = { bloodLoss: 5 } as never;
     expect(validateCase(s).join()).toMatch(/Starting patient/);
+  });
+
+  it("blankCase includes the standard monitor", () => {
+    expect(blankCase([]).monitor).toEqual([...STANDARD_MONITOR]);
+    expect(exampleCase().monitor).toEqual([...STANDARD_MONITOR]);
+  });
+  it("a draft with an unknown monitor id fails validateCase with a sentence naming it", () => {
+    const e = validateCase({ ...spec(), monitor: ["hr", "crystal-ball"] });
+    expect(e.join("\n")).toMatch(/'crystal-ball'.*not an orderable item\./);
+  });
+  it("a draft with a lab id in the monitor fails validateCase", () => {
+    expect(validateCase({ ...spec(), monitor: ["hr", "lactate"] }).join("\n")).toMatch(/'lactate'.*result to order/);
+  });
+  it("a draft with an empty monitor array validates and resolves to the standard six", () => {
+    const s = { ...spec(), monitor: [] };
+    expect(validateCase(s)).toEqual([]);
+    expect(resolveMonitor(s)).toEqual([...STANDARD_MONITOR]);
+  });
+  it("accepts a body temperature from 20 to 45 C, absent too, and names the range otherwise", () => {
+    for (const t of [24, 38.6, undefined]) expect(validateCase({ ...spec(), tempC: t })).toEqual([]);
+    for (const t of [19, 98.6]) expect(validateCase({ ...spec(), tempC: t })).toContain("Body temperature must be between 20 and 45 C.");
   });
 });
