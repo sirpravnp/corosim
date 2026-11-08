@@ -85,9 +85,8 @@ describe("case spec", () => {
     expect(validateCase(s)).toEqual([]);
     expect(resolveMonitor(s)).toEqual([...STANDARD_MONITOR]);
   });
-  it("rejects a body temperature outside 30 to 43 C and accepts one inside", () => {
-    expect(validateCase({ ...spec(), tempC: 44 }).join()).toMatch(/temperature/i);
-    expect(validateCase({ ...spec(), tempC: 29 }).join()).toMatch(/temperature/i);
-    expect(validateCase({ ...spec(), tempC: 38.6 })).toEqual([]);
+  it("accepts a body temperature from 20 to 45 C, absent too, and names the range otherwise", () => {
+    for (const t of [24, 38.6, undefined]) expect(validateCase({ ...spec(), tempC: t })).toEqual([]);
+    for (const t of [19, 98.6]) expect(validateCase({ ...spec(), tempC: t })).toContain("Body temperature must be between 20 and 45 C.");
   });
 });

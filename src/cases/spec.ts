@@ -167,7 +167,7 @@ export function validateCase(s: CaseSpec): string[] {
   for (const [w, f] of usedFlags) if (!setFlags.has(f)) errs.push(`${w} depends on flag '${f}', which nothing sets.`);
   for (const m of s.musts ?? []) if (!setFlags.has(m.flag)) errs.push(`Required step '${m.flag}' is never set by any outcome.`);
   for (const m of s.monitor ?? []) need(itemById(m), `The monitor lists '${m}', which is not an orderable item.`);
-  if (s.tempC !== undefined) need(Number.isFinite(s.tempC) && s.tempC >= 30 && s.tempC <= 43, "The body temperature must be between 30 and 43 C.");
+  if (s.tempC !== undefined) need(Number.isFinite(s.tempC) && s.tempC >= 20 && s.tempC <= 45, "Body temperature must be between 20 and 45 C.");
   for (const [k, x] of Object.entries(s.labs ?? {})) {
     need((ANALYTES as readonly string[]).includes(k), `The labs name '${k}', which is not a lab value the simulator knows.`);
     need(Number.isFinite(x), `The lab value for '${k}' must be a number.`);

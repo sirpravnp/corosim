@@ -10,7 +10,7 @@ import { CaseSpec, condText, condsText, parseConds, validateCase } from "./spec"
  *   # Title
  *   - id: anterior-stemi            - difficulty: easy | medium | hard      - complaint: Chest pain
  *   - devices: ECMO, Impella        - summary: one line                     - time limit: 15:00
- *   - monitor: hr, bp, ecg, heart3d   - temperature: 38.6 (C)
+ *   - monitor: hr, bp, ecg, heart3d   - temperature: 38.6
  *   - points: survive 30, stable 25, harm 20                                - skip harms: beta blocker, diuretic
  *   ## Card                (Presents:, History:, Info: and bullets)
  *   ## Starting patient    (a ```json block: the patient the case opens with)

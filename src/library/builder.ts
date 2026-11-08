@@ -169,7 +169,7 @@ export function openBuilder(host: HTMLElement, opt: BuilderOptions) {
     <section class="bs"><h2>Monitor</h2>
       <p class="hint">What the learner sees at the bedside from the start. Anything not shown here can still be ordered during the case. An empty choice shows the standard six.</p>
       ${MONITOR_GROUPS.map(([g, name]) => `<fieldset class="mon"><legend>${name}</legend><div class="checks">${CATALOG.filter((i) => i.group === g).map((i) => `<label class="f chk"><input type="checkbox" data-mon="${i.id}" ${spec.monitor?.includes(i.id) ? "checked" : ""}><span>${esc(i.label)}</span></label>`).join("")}</div></fieldset>`).join("")}
-      <div class="f3">${field("Body temperature (C), optional", "tempC", "num", 'min="30" max="43" placeholder="37.0"', "Between 30 and 43. Left blank, the patient reads 37.0.")}</div>
+      <div class="f3">${field("Body temperature (C), optional", "tempC", "num", 'min="20" max="45" placeholder="37.0"', "Between 20 and 45. Left blank, the patient reads 37.0.")}</div>
       <details ${Object.keys(spec.labs ?? {}).length ? "open" : ""}><summary>Lab values</summary>
         <p class="hint">Set related values together: a changed potassium does not move the creatinine or the ECG for you. Blank values are worked out from the patient.</p>
         ${LAB_GROUPS.map(([name, xs]) => `<fieldset class="mon"><legend>${name}</legend><div class="f3 labs">${xs.map((a) => field(`${LABEL[a].name}${REF[a].unit ? ` (${REF[a].unit})` : a === "ua" || a === "tox" ? " (0 normal, above 0 abnormal)" : ""}`, `labs.${a}`, "num")).join("")}</div></fieldset>`).join("")}
