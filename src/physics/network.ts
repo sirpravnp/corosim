@@ -1,16 +1,17 @@
 import { BLOOD, CORONARY, MMHG } from "../config/anatomy";
 import { FLOW } from "../config/tree";
 import { Segment, Tree, diameterAt } from "../anatomy/tree";
-import { area, defaultLesion } from "./geometry";
+import { area, DEFAULT_LESION_LENGTH_MM, lesionSpecForMm, type LesionSpec } from "./geometry";
 import { pressureAlong } from "./hemodynamics";
 import { severityTarget } from "./ischemia";
 import { PROCEDURE } from "../config/management";
 
-export interface Lesion { segId: string; pos: number; ds: number; occluded?: boolean } // pos: 0..1 along the segment
+export interface Lesion { segId: string; pos: number; ds: number; occluded?: boolean; lengthMm?: number } // pos: 0..1 along the segment; lengthMm defaults to 14
 /** A bypass graft from the aorta, sewn onto a vessel `pos` mm along it. Beyond that point the vessel is fed at aortic pressure less the graft's own loss. */
 export interface Graft { segId: string; pos: number }
 
-interface Dense { s: number[]; d: number[]; w0: number; w1: number; ref: number; sc: number; lesion?: Lesion }
+interface LesionWindow { w0: number; w1: number; ref: number; sc: number; lesion: Lesion }
+interface Dense { s: number[]; d: number[]; windows: LesionWindow[] }
 interface Terminal { key: string; seg: Segment; pos: number; mass: number; label: string; Qrest: number; Rmin: number }
 
 export interface SegResult { s: number[]; d: number[]; P: number[]; Q: number[]; v: number[]; wss: number[]; blockedFrom: number | null }
@@ -20,36 +21,52 @@ export interface TerminalResult {
 }
 export interface NetResult { seg: Record<string, SegResult>; terminals: TerminalResult[]; atRisk: number; iterations: number; pa: number }
 
-const HALF = 7; // mm, half of the 14 mm lesion window
+const halfWindow = (l: Lesion) => (l.lengthMm ?? DEFAULT_LESION_LENGTH_MM) / 2;
 /** Autoregulation reserve at the working MAP (stenosis vs healthy at the same aortic pressure). 0.28 leaves a 60% proximal LAD quiet at rest and a 70% lesion only partly ischemic. [assumed] */
 const AUTOREG_RESERVE = 0.28;
 /** Looser reserve when MAP is below the reference (hypotension unmasks a stenosis). [assumed] */
 const HYPO_RESERVE = 0.22;
 /** A bed must lose at least this fraction of its same-MAP healthy pressure before the hypotensive reserve applies. */
 const HYPO_LOCAL_DROP = 0.02;
-const lesionFactor = (xm: number, L: ReturnType<typeof defaultLesion>) => {
+const lesionFactor = (xm: number, L: LesionSpec) => {
   if (xm < L.entranceLength) return 0.5 * (1 - Math.cos((Math.PI * xm) / L.entranceLength));
   if (xm <= L.entranceLength + L.plateau) return 1;
   return 0.5 * (1 + Math.cos((Math.PI * (xm - L.entranceLength - L.plateau)) / L.exitLength));
 };
 
-function denseProfile(tree: Tree, seg: Segment, lesion?: Lesion): Dense {
+function denseProfile(tree: Tree, seg: Segment, lesions: Lesion[]): Dense {
   const L = seg.length;
-  const sc = lesion ? Math.min(L - HALF, Math.max(HALF, lesion.pos * L)) : -1;
+  const active = lesions.filter((l) => !l.occluded && l.ds > 0);
   const set = new Set<number>();
   for (let s = 0; s <= L; s += 1) set.add(+s.toFixed(3));
   set.add(+L.toFixed(3));
-  if (lesion) for (let s = sc - HALF; s <= sc + HALF + 1e-9; s += 0.25) set.add(+s.toFixed(3));
+  for (const lesion of active) {
+    const half = halfWindow(lesion);
+    const sc = Math.min(L - half, Math.max(half, lesion.pos * L));
+    for (let s = sc - half; s <= sc + half + 1e-9; s += 0.25) set.add(+s.toFixed(3));
+  }
   const s = [...set].sort((a, b) => a - b);
-  const spec = defaultLesion();
   const d = s.map((si) => {
     let di = diameterAt(tree, seg, si);
-    if (lesion && si >= sc - HALF && si <= sc + HALF) di *= 1 - lesion.ds * lesionFactor((si - (sc - HALF)) * 1e-3, spec);
+    for (const lesion of active) {
+      const half = halfWindow(lesion);
+      const sc = Math.min(L - half, Math.max(half, lesion.pos * L));
+      if (si >= sc - half && si <= sc + half) {
+        const spec = lesionSpecForMm(lesion.lengthMm ?? DEFAULT_LESION_LENGTH_MM);
+        const narrowed = di * (1 - lesion.ds * lesionFactor((si - (sc - half)) * 1e-3, spec));
+        di = Math.min(di, narrowed);
+      }
+    }
     return di;
   });
-  let w0 = -1, w1 = -1;
-  if (lesion) { w0 = s.findIndex((x) => x >= sc - HALF - 1e-6); w1 = s.length - 1 - [...s].reverse().findIndex((x) => x <= sc + HALF + 1e-6); }
-  return { s, d, w0, w1, ref: lesion ? diameterAt(tree, seg, sc) : 0, sc, lesion };
+  const windows: LesionWindow[] = active.map((lesion) => {
+    const half = halfWindow(lesion);
+    const sc = Math.min(L - half, Math.max(half, lesion.pos * L));
+    const w0 = s.findIndex((x) => x >= sc - half - 1e-6);
+    const w1 = s.length - 1 - [...s].reverse().findIndex((x) => x <= sc + half + 1e-6);
+    return { w0, w1, ref: diameterAt(tree, seg, sc), sc, lesion };
+  });
+  return { s, d, windows };
 }
 
 /**
@@ -58,12 +75,12 @@ function denseProfile(tree: Tree, seg: Segment, lesion?: Lesion): Dense {
  * Each bed takes min(demand, (Pd − Pzf)/Rmin); pressure falls along each artery by Poiseuille loss
  * (and the lesion model inside lesion windows), so beds beyond a lesion are starved first.
  */
-export function solveNetwork(tree: Tree, lesions: Lesion[], demandMult: number, aorticPressure = CORONARY.meanAorticPressure, grafts: Graft[] = []): NetResult {
+export function solveNetwork(tree: Tree, lesions: Lesion[], demandMult: number, aorticPressure = CORONARY.meanAorticPressure, grafts: Graft[] = [], bedResistance: Record<string, number> = {}): NetResult {
   // Each bed's maximal dilation is a fixed property, set at the reference pressure; the driving pressure can fall.
   const Pref = CORONARY.meanAorticPressure, Pa = aorticPressure, Pzf = CORONARY.zeroFlowPressure;
   const dense: Record<string, Dense> = {};
   // An occlusion carries no flow beyond it, so it needs no lesion window (and ds = 1 would give zero area → NaN).
-  for (const seg of tree.segments) dense[seg.id] = denseProfile(tree, seg, lesions.find((l) => l.segId === seg.id && !l.occluded));
+  for (const seg of tree.segments) dense[seg.id] = denseProfile(tree, seg, lesions.filter((l) => l.segId === seg.id));
 
   const terms: Terminal[] = [];
   for (const seg of tree.segments) {
@@ -72,12 +89,17 @@ export function solveNetwork(tree: Tree, lesions: Lesion[], demandMult: number, 
   }
   function mkTerm(key: string, seg: Segment, pos: number, mass: number, label: string): Terminal {
     const Qrest = mass * FLOW.totalRestingFlow;
-    return { key, seg, pos, mass, label, Qrest, Rmin: (Pref - Pzf) / (Qrest * FLOW.maxCoronaryFlowReserve) };
+    const mult = bedResistance[key] ?? 1;
+    return { key, seg, pos, mass, label, Qrest, Rmin: ((Pref - Pzf) / (Qrest * FLOW.maxCoronaryFlowReserve)) * mult };
   }
 
   // occlusions: terminals fed through an occluded point get no flow
   const occ: Record<string, number> = {};
-  for (const l of lesions) if (l.occluded) { const sg = tree.byId[l.segId]; occ[l.segId] = Math.min(sg.length - HALF, Math.max(HALF, l.pos * sg.length)); }
+  for (const l of lesions) if (l.occluded) {
+    const sg = tree.byId[l.segId];
+    const at = l.pos * sg.length;
+    occ[l.segId] = occ[l.segId] === undefined ? at : Math.min(occ[l.segId], at);
+  }
   const graftAt: Record<string, number> = {};
   for (const g of grafts) graftAt[g.segId] = Math.min(tree.byId[g.segId].length, g.pos);
   const blocked = (t: Terminal) => {
@@ -94,10 +116,10 @@ export function solveNetwork(tree: Tree, lesions: Lesion[], demandMult: number, 
   const demandOf = (t: Terminal) => (Number.isFinite(demandMult) ? demandMult : Infinity) * t.Qrest;
 
   const basePd: Record<string, number> | null = lesions.length
-    ? Object.fromEntries(solveNetwork(tree, [], demandMult, aorticPressure, grafts).terminals.map((t) => [t.key, t.Pd]))
+    ? Object.fromEntries(solveNetwork(tree, [], demandMult, aorticPressure, grafts, bedResistance).terminals.map((t) => [t.key, t.Pd]))
     : null;
   const refPd: Record<string, number> | null = lesions.length && aorticPressure < CORONARY.meanAorticPressure - 0.5 * MMHG
-    ? Object.fromEntries(solveNetwork(tree, [], demandMult, CORONARY.meanAorticPressure, grafts).terminals.map((t) => [t.key, t.Pd]))
+    ? Object.fromEntries(solveNetwork(tree, [], demandMult, CORONARY.meanAorticPressure, grafts, bedResistance).terminals.map((t) => [t.key, t.Pd]))
     : null;
 
   let Q = terms.map((t, i) => (isBlocked[i] ? 0 : Math.min(demandOf(t), t.Qrest * FLOW.maxCoronaryFlowReserve)));
@@ -129,13 +151,15 @@ export function solveNetwork(tree: Tree, lesions: Lesion[], demandMult: number, 
       };
       let i = 1;
       while (i < n) {
-        if (D.lesion && i === D.w0 + 1) {
-          const xs = D.s.slice(D.w0, D.w1 + 1).map((x) => (x - D.s[D.w0]) * 1e-3), ds = D.d.slice(D.w0, D.w1 + 1);
-          const Qw = q[Math.floor((D.w0 + D.w1) / 2)];
-          const pw = pressureAlong({ x: xs, d: ds }, D.ref, Qw, pr[D.w0]);
-          for (let k = 1; k < pw.length; k++) pr[D.w0 + k] = pw[k];
-          graftIn(D.w1);
-          i = D.w1 + 1; continue;
+        const win = D.windows.find((w) => i === w.w0 + 1);
+        if (win) {
+          const { w0, w1, ref } = win;
+          const xs = D.s.slice(w0, w1 + 1).map((x) => (x - D.s[w0]) * 1e-3), ds = D.d.slice(w0, w1 + 1);
+          const Qw = q[Math.floor((w0 + w1) / 2)];
+          const pw = pressureAlong({ x: xs, d: ds }, ref, Qw, pr[w0]);
+          for (let k = 1; k < pw.length; k++) pr[w0 + k] = pw[k];
+          graftIn(w1);
+          i = w1 + 1; continue;
         }
         const dx = (D.s[i] - D.s[i - 1]) * 1e-3;
         const g = (j: number) => q[j] / area(D.d[j]) ** 2;
@@ -200,8 +224,9 @@ const graftDrop = (Q: number) => (8 * BLOOD.viscosity * PROCEDURE.graftLength * 
 
 /** Where a surgeon would sew the graft for a lesion: just beyond its window, or at the end of the vessel when there is no room. */
 export function graftsFor(tree: Tree, l: Lesion): Graft[] {
-  const sg = tree.byId[l.segId], sc = Math.min(sg.length - HALF, Math.max(HALF, l.pos * sg.length));
-  return [{ segId: l.segId, pos: Math.min(sg.length, sc + HALF + PROCEDURE.graftTail) }];
+  const half = halfWindow(l);
+  const sg = tree.byId[l.segId], sc = Math.min(sg.length - half, Math.max(half, l.pos * sg.length));
+  return [{ segId: l.segId, pos: Math.min(sg.length, sc + half + PROCEDURE.graftTail) }];
 }
 
 function interp(xs: number[], ys: number[], x: number): number {
@@ -216,14 +241,19 @@ function interp(xs: number[], ys: number[], x: number): number {
 export function lesionFFR(tree: Tree, lesions: Lesion[], hyper: NetResult): number[] {
   return lesions.map((l) => {
     const sg = tree.byId[l.segId], r = hyper.seg[sg.id];
-    const sc = Math.min(sg.length - HALF, Math.max(HALF, l.pos * sg.length));
-    return interp(r.s, r.P, Math.min(sg.length, sc + HALF + 3)) / hyper.pa;
+    const half = halfWindow(l);
+    const sc = Math.min(sg.length - half, Math.max(half, l.pos * sg.length));
+    return interp(r.s, r.P, Math.min(sg.length, sc + half + 3)) / hyper.pa;
   });
 }
 
 export interface Analysis { cond: NetResult; hyper: NetResult; ffr: number[] }
-export function analyze(tree: Tree, lesions: Lesion[], exertion: boolean, aorticPressure = CORONARY.meanAorticPressure, grafts: Graft[] = [], demandScale = 1): Analysis {
+export function analyze(tree: Tree, lesions: Lesion[], exertion: boolean, aorticPressure = CORONARY.meanAorticPressure, grafts: Graft[] = [], demandScale = 1, bedResistance: Record<string, number> = {}): Analysis {
   // FFR is defined at maximal hyperemia, so it keeps the reference pressure; the working state uses the live one.
-  const hyper = solveNetwork(tree, lesions, Infinity);
-  return { cond: solveNetwork(tree, lesions, (exertion ? FLOW.exertionDemand : 1) * demandScale, aorticPressure, grafts), hyper, ffr: lesionFFR(tree, lesions, hyper) };
+  const hyper = solveNetwork(tree, lesions, Infinity, aorticPressure, grafts, bedResistance);
+  return {
+    cond: solveNetwork(tree, lesions, (exertion ? FLOW.exertionDemand : 1) * demandScale, aorticPressure, grafts, bedResistance),
+    hyper,
+    ffr: lesionFFR(tree, lesions, hyper),
+  };
 }
