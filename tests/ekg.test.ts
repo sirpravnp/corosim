@@ -19,7 +19,7 @@ describe("EKG library", () => {
     for (const p of PRESETS) { expect(p.features.length).toBeGreaterThan(1); expect(p.pearls.length).toBeGreaterThan(0); expect(p.summary.length).toBeGreaterThan(10); }
   });
   it("covers the rhythms a learner asks for", () => {
-    for (const q of ["afib", "aflutter", "vfib", "vtach", "polymorphic vt", "torsades", "stemi", "nstemi", "complete heart block", "mobitz 2", "wenckebach", "junctional", "de winter", "pericarditis", "brugada", "hyperkalemia", "wellens"]) expect(findPreset(q), q).toBeTruthy();
+    for (const q of ["afib", "aflutter", "vfib", "vtach", "polymorphic vt", "torsades", "stemi", "nstemi", "complete heart block", "mobitz 2", "wenckebach", "junctional", "de winter", "pericarditis", "brugada", "hyperkalemia", "wellens", "preexcited af"]) expect(findPreset(q), q).toBeTruthy();
   });
   it("every preset renders finite voltages in all 15 leads", () => {
     for (const p of PRESETS) {
@@ -189,6 +189,27 @@ describe("EKG tools (MCP)", async () => {
   it("is stateless and says what it does not know", () => {
     expect(TOOLS.filter((t) => t.name.startsWith("corosim_ekg")).every((t) => t.stateless && t.readOnly)).toBe(true);
     expect(() => run("corosim_ekg_show", { preset: "not a rhythm" })).toThrow(/corosim_ekg_list/);
+  });
+  it("adenosine terminates SVT; measurements and events reflect the post-drug tracing", () => {
+    const r = run("corosim_ekg_show", { preset: "svt", drug: "adenosine" });
+    expect(r.tracing.measurements.ventricularRateBpm).toBeGreaterThanOrEqual(60);
+    expect(r.tracing.measurements.ventricularRateBpm).toBeLessThanOrEqual(90);
+    expect(`${(r.events ?? []).join(" ")} ${(r.notes ?? []).join(" ")}`).toMatch(/terminat/i);
+    expect(r.ekg.drug).toBe("adenosine");
+  });
+  it("flecainide in flutter warns about 1:1 conduction", () => {
+    const r = run("corosim_ekg_show", { preset: "flutter-21", drug: "flecainide" });
+    expect(`${(r.warnings ?? []).join(" ")} ${(r.events ?? []).join(" ")}`).toMatch(/1:1|one-to-one|Ic/i);
+  });
+  it("rejects an unknown antiarrhythmic", () => {
+    expect(() => run("corosim_ekg_show", { preset: "svt", drug: "not-a-drug" })).toThrow(/adenosine|flecainide|procainamide|lidocaine|amiodarone|sotalol|diltiazem|metoprolol/);
+  });
+  it("quiz still applies the drug; answerKey measurements and name reflect the drugged tracing", () => {
+    const r = run("corosim_ekg_show", { preset: "svt", drug: "adenosine", quiz: true });
+    expect(r.ekg.quiz).toBe(true); expect(r.ekg.drug).toBe("adenosine"); expect(r.tracing).toBeUndefined();
+    expect(r.answerKey.drug).toBe("adenosine");
+    expect(r.answerKey.measurements.ventricularRateBpm).toBeGreaterThanOrEqual(60);
+    expect(r.answerKey.measurements.ventricularRateBpm).toBeLessThanOrEqual(90);
   });
 });
 
