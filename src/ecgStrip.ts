@@ -9,6 +9,14 @@ const LAYOUT: LeadName[][] = [["I", "aVR", "V1", "V4"], ["II", "aVL", "V2", "V5"
 const POSTERIOR: LeadName[] = ["V7", "V8", "V9"]; // a fifth column when the posterior leads are on
 const SANS = '"Hanken Grotesk", -apple-system, Helvetica, Arial, sans-serif';
 
+/** A ring of samples at write position `idx`, copied into one of `n` slots keeping the newest samples in order (older ones drop when it shrinks; the rest stays blank). */
+export function resizeRing(old: Float32Array, idx: number, n: number): { ring: Float32Array; idx: number } {
+  const len = old.length, ring = new Float32Array(n).fill(NaN);
+  const keep = Math.min(len, n);
+  for (let k = 0; k < keep; k++) ring[keep - 1 - k] = old[(((idx - 1 - k) % len) + len) % len]; // newest last
+  return { ring, idx: keep };
+}
+
 /**
  * Sweeping 12-lead ECG on standard paper (25 mm/s, 10 mm/mV).
  * Each frame the caller supplies the current injury vector, T-wave boost and rhythm; the P waves and QRS
@@ -40,9 +48,9 @@ export class EcgStrip {
   private fit(secs: number) {
     const n = Math.max(FS, Math.round(secs * FS));
     if (n === this.n) return;
-    this.n = n; this.idx = 0;
-    for (const l of ALL_LEADS) this.ring[l] = new Float32Array(l === "II" ? n : 0);
-    this.ring.II.fill(NaN);
+    const r = resizeRing(this.ring.II, this.idx, n); // the trace survives a resize: the newest samples are kept
+    this.n = n; this.idx = r.idx;
+    for (const l of ALL_LEADS) this.ring[l] = l === "II" ? r.ring : new Float32Array(0);
   }
 
   /** The simulation generates and prunes the beats; this only samples them. */

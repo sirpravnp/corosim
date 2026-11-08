@@ -93,7 +93,7 @@ main > .ws-sec { grid-column: 1; margin-top: 0; }
   #cases { order: -1; }
 }
 main > section, aside { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
-main > section[hidden] { display: none; } /* the author rule above would otherwise show a hidden section (the case screen hides the empty workspace) */
+body.case-bare main > section[hidden] { display: none; } /* the author rule above would otherwise show a hidden section (the case screen hides the empty workspace) */
 
 /* Displays */
 figure { margin: 0; padding: 12px; background: var(--panel); border: 1px solid var(--sh-line); border-radius: 8px; min-width: 0; }
@@ -453,3 +453,4 @@ body.dead #hr, body.dead #rhythm { opacity: 0.6; }
 .sup-more > summary .sum { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .sup-more[open] > summary .sum { display: none; }
 .sup-more > .ctl { margin-top: 8px; }
+body.case-bare .jvp-words { display: none; } /* the classification (no a wave, giant v, raised JVP) is interpretation: the learner reads the waveform */

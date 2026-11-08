@@ -63,3 +63,14 @@ export function casePanels(ids: readonly string[], panelOf: (id: string) => stri
   for (const id of ids) { const p = panelOf(id); if (p && p !== "monitor" && !out.includes(p)) out.push(p); }
   return out;
 }
+
+/** The screen-reader label of a tile: the value and, because color alone must not carry it, the state. */
+export function tileLabel(t: Tile): string {
+  const v = t.value === "—" ? "no reading" : `${t.value}${t.unit ? " " + t.unit : ""}`;
+  return `${t.label} ${v}${t.abnormal ? ", abnormal" : ""}${t.estimate ? ", estimate" : ""}`;
+}
+
+/** True when a refresh is owed: no refresh yet, the clock went backwards, or at least `periodMs` passed. */
+export function due(lastMs: number, nowMs: number, periodMs: number): boolean {
+  return !Number.isFinite(lastMs) || nowMs < lastMs || nowMs - lastMs >= periodMs;
+}

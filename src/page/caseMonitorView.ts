@@ -5,7 +5,7 @@ import { EcgStrip } from "../ecgStrip";
 import type { Rhythm, Vec3 } from "../config/ecg";
 import type { PatientNow } from "../cases/orders";
 import { $, sim } from "./state";
-import { monitorTiles, type MonitorInput, type Tile } from "./caseMonitor";
+import { due, monitorTiles, tileLabel, type MonitorInput, type Tile } from "./caseMonitor";
 
 let strip: EcgStrip | null = null;
 let root: HTMLElement | null = null, tilesEl: HTMLElement, figure: HTMLElement;
@@ -37,7 +37,7 @@ function tileHtml(t: Tile): string {
   const numeric = /^[\d/.]+$/.test(m[1]);
   const val = numeric ? `<i>${esc(m[1])}</i>` : `<i class="${m[1] === "—" ? "dash" : "word"}">${esc(m[1])}</i>`;
   const map = m[2] ? `<small>${esc(m[2])}</small>` : "";
-  return `<div class="cm-tile${t.abnormal ? " abn" : ""}" data-tile="${t.id}"><div class="cm-top"><span class="cm-label">${esc(t.label)}</span>${t.estimate ? `<span class="cm-est">estimate</span>` : ""}</div>`
+  return `<div class="cm-tile${t.abnormal ? " abn" : ""}" data-tile="${t.id}" role="group" aria-label="${esc(tileLabel(t)).replace(/"/g, "&quot;")}"><div class="cm-top"><span class="cm-label">${esc(t.label)}</span>${t.estimate ? `<span class="cm-est">estimate</span>` : ""}</div>`
     + `<div class="cm-val">${val}${map}${t.unit ? `<em>${esc(t.unit)}</em>` : ""}</div></div>`;
 }
 
@@ -45,19 +45,25 @@ function tileHtml(t: Tile): string {
  * One frame of the monitor. `now` is the page's patient snapshot (patientNow()), the same numbers the ordered panels are computed from.
  * The strip steps on the simulation's shared beat stream, so it stays beat-exact with the pressure traces.
  */
-export function caseMonitorFrame(dt: number, now: PatientNow, fx: { injury: Vec3; tBoost: number; potassium: number }, rhythm: Rhythm): void {
-  render(dt, now, fx, rhythm);
+export function caseMonitorFrame(dt: number, snapshot: () => PatientNow, fx: { injury: Vec3; tBoost: number; potassium: number }, rhythm: Rhythm): void {
+  render(dt, snapshot, fx, rhythm);
 }
 /** While the engine settles there are no beats yet: dashes and blank paper, so the screen is not a hole. */
-export function caseMonitorSettling(): void { render(0, null, null, "sinus" as Rhythm); }
+export function caseMonitorSettling(): void { render(0, null, null, "sinus" as Rhythm); lastTiles = -Infinity; }
 
-function render(dt: number, now: PatientNow | null, fx: { injury: Vec3; tBoost: number; potassium: number } | null, rhythm: Rhythm): void {
+const TILE_PERIOD_MS = 125; // the tile numbers refresh at about 8 Hz; the strip steps and draws every frame
+let lastTiles = -Infinity;
+function render(dt: number, snapshot: (() => PatientNow) | null, fx: { injury: Vec3; tBoost: number; potassium: number } | null, rhythm: Rhythm): void {
   if (!shown) return;
   mount();
   root!.hidden = false;
-  const tiles = monitorTiles(now ?? ({} as MonitorInput), shown);
-  const k = tiles.map((t) => `${t.id}|${t.value}|${t.abnormal}`).join(";");
-  if (k !== key) { key = k; tilesEl.innerHTML = tiles.map(tileHtml).join(""); tilesEl.hidden = !tiles.length; }
+  const t0 = performance.now();
+  if (due(lastTiles, t0, TILE_PERIOD_MS) || key === "") {
+    lastTiles = t0;
+    const tiles = monitorTiles(snapshot ? snapshot() : ({} as MonitorInput), shown);
+    const k = tiles.map((t) => `${t.id}|${t.value}|${t.abnormal}`).join(";") || "-";
+    if (k !== key) { key = k; tilesEl.innerHTML = tiles.map(tileHtml).join(""); tilesEl.hidden = !tiles.length; }
+  }
   const showStrip = shown.includes("ecg");
   figure.hidden = !showStrip;
   if (!showStrip) { wasShowingStrip = false; return; }

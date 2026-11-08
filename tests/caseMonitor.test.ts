@@ -70,3 +70,40 @@ describe("casePanels", () => {
     expect(casePanels(["numbers", "monitor"], (id) => (id === "monitor" ? "monitor" : of(id)))).toEqual(["numbers"]);
   });
 });
+
+import { due, tileLabel } from "../src/page/caseMonitor";
+import { resizeRing } from "../src/ecgStrip";
+describe("tileLabel (state not by color alone)", () => {
+  const ts = monitorTiles({ hr: 117, sbp: 95, dbp: 69, map: 60, spo2: 0.96, respRate: 17, tempC: 37, arrest: "none" }, ALL);
+  it("says abnormal in words", () => {
+    expect(tileLabel(by(ts, "hr"))).toBe("Heart rate 117 bpm, abnormal");
+    expect(tileLabel(by(ts, "bp"))).toBe("Blood pressure 95/69 (60) mmHg, abnormal");
+    expect(tileLabel(by(ts, "spo2"))).toBe("SpO2 96 %");
+  });
+  it("marks estimates, and says no reading for a dash", () => {
+    expect(tileLabel(by(ts, "rr"))).toBe("Respiratory rate 17 /min, estimate");
+    expect(tileLabel(by(monitorTiles({} as MonitorInput, ALL), "hr"))).toBe("Heart rate no reading");
+  });
+});
+describe("due (the tile refresh throttle)", () => {
+  it("refreshes first, then only after the period, and after a clock reset", () => {
+    expect(due(-Infinity, 0, 125)).toBe(true);
+    expect(due(1000, 1100, 125)).toBe(false);
+    expect(due(1000, 1125, 125)).toBe(true);
+    expect(due(1000, 500, 125)).toBe(true);
+  });
+});
+describe("resizeRing (the strip keeps its trace across a resize)", () => {
+  const ring = Float32Array.from([6, 7, 8, 9, 5]); // written 5..9 with 9 the newest at idx 4 (idx % 5 === 4 means 5 is the oldest? idx=9 total writes)
+  it("grows: the same samples in order, blank after them", () => {
+    const r = resizeRing(ring, 9, 8);
+    expect([...r.ring.slice(0, 5)]).toEqual([5, 6, 7, 8, 9]);
+    expect(Number.isNaN(r.ring[5])).toBe(true);
+    expect(r.idx).toBe(5);
+  });
+  it("shrinks: the newest samples survive", () => {
+    const r = resizeRing(ring, 9, 3);
+    expect([...r.ring]).toEqual([7, 8, 9]);
+    expect(r.idx % 3).toBe(0);
+  });
+});

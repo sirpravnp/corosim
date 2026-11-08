@@ -45,7 +45,7 @@ export function frame(now: number) {
   const fx = sim.ecgInputs();
   if (!sim.dead) ecg.step(dt, fx.injury, fx.tBoost, rstate!.rhythm, fx.potassium); // death freezes the strip
   ecg.draw();
-  if (K.phase !== "idle") caseMonitorFrame(dt, patientNow(), fx, rstate!.rhythm); // a case's bedside monitor: the same snapshot the ordered panels read
+  if (K.phase !== "idle") caseMonitorFrame(dt, patientNow, fx, rstate!.rhythm); // a case's bedside monitor: the same snapshot the ordered panels read
   if (K.phase === "run") caseStep(dt * S.speed);
   if (S.flow) stepParticles(dt);
   if ((paintClock += dt) > 0.1) { paintClock = 0; paintMyocardium(); }

@@ -25,7 +25,7 @@
 
 @media (max-width: 560px) {
   .cm-tile { flex-basis: calc(50% - 1px); padding: 10px 12px 12px; gap: 10px; }
-  .cm-tile[data-tile="bp"] { flex-basis: 100%; order: -1; }
+  .cm-tile[data-tile="bp"] { flex-basis: calc(50% - 1px); flex-grow: 1; } /* DOM order and visual order match: HR, BP, SpO2, RR, Temp */
   .cm-val i { font-size: 38px; }
   .cm-val i.word { font-size: 18px; }
 }
