@@ -51,6 +51,7 @@ export class LabEngine implements LabEngineLike {
   private accessClosed = false;
   private manualHold = false;
   private tamponadeRate = 0;
+  private vfAt = -1e9; // when ischemia last started VF: it fires once, then again only if the patient has been perfusing for a while
   private effusion = 0; // mL of blood in the pericardium; it fills while a perforation is open
   private perforationSealed = false;
   private ischemiaSeconds = 0;
@@ -101,7 +102,7 @@ export class LabEngine implements LabEngineLike {
     this.accessUltrasound = false;
     this.accessClosed = false;
     this.manualHold = false;
-    this.tamponadeRate = 0; this.effusion = 0;
+    this.tamponadeRate = 0; this.effusion = 0; this.vfAt = -1e9;
     this.perforationSealed = false;
     this.ischemiaSeconds = 0;
     this.forcedFired = new Set();
@@ -189,8 +190,10 @@ export class LabEngine implements LabEngineLike {
         ischemiaSeverity: 0.92,
         ischemiaSeconds: this.ischemiaSeconds,
       });
-      const vf = draw("arrhythmia-vf", ctx, this.rand, this.ischemiaSeconds >= 25);
+      const arrested = this.sim.arrest?.status === "arrest" || this.sim.dead || this.sim.rhythmClass().rhythmClass !== "perfusing";
+      const vf = arrested || s.elapsedS - this.vfAt < 30 || this.ischemiaSeconds < 25 ? null : draw("arrhythmia-vf", ctx, this.rand, true); // sustained occlusion: VF after about 25 s, as before, not a per-frame dice roll
       if (vf) {
+        this.vfAt = s.elapsedS;
         applyEffect(this.sim, vf);
         out.push(this.ev("arrest", "Ventricular fibrillation from sustained ischemia.", "bad"));
       }

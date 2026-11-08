@@ -49,3 +49,35 @@ describe("the lab runs in real time", () => {
     expect(out[0].kind).toBe("perforation"); expect(typeof out[0].data?.segId).toBe("string");
   });
 });
+
+import { monitorModel } from "../src/cath/lab/panels";
+
+describe("VF and death come from the main model", () => {
+  it("sustained occlusion fires VF once, and the arrest machine (not the lab) runs it: pressure collapses, a shock converts", () => {
+    const { sim, e } = make();
+    e.apply({ t: "access", site: "femoral-R" }); e.apply({ t: "select", slot: "guide", id: "guide-jl4" });
+    for (let i = 0; i < 40; i++) e.apply({ t: "advance", mm: 80 });
+    e.apply({ t: "select", slot: "wire", id: "wire-workhorse" });
+    for (let i = 0; i < 10; i++) e.apply({ t: "advance", mm: 6 });
+    e.apply({ t: "select", slot: "balloon", id: "bal-semi-2.50-12" });
+    e.apply({ t: "inflate", atm: 8, seconds: 5 });
+    let arrests = 0;
+    for (let i = 0; i < 700 && sim.arrestState().status !== "arrest"; i++) arrests += e.tick(0.1).filter((x) => x.kind === "arrest").length;
+    expect(sim.arrestState().status).toBe("arrest"); // the simulation's own arrest machine, not a lab flag
+    expect(sim.rhythmClass().rhythmClass).toBe("vf");
+    for (let i = 0; i < 100; i++) arrests += e.tick(0.1).filter((x) => x.kind === "arrest").length; // ten more seconds of ticking
+    expect(arrests).toBe(1); // it does not fire again every frame
+    expect(sim.map).toBeLessThan(40);
+    const r = sim.shock({ joules: 200 });
+    expect(r.discharged).toBe(true);
+    for (let i = 0; i < 100; i++) arrests += e.tick(0.1).filter((x) => x.kind === "arrest").length;
+    expect(arrests).toBe(1); // and not straight after a shock either
+  }, 170000);
+
+  it("the monitor names the rhythm and marks an arrest", () => {
+    const tiles = monitorModel({ hr: 0, map: 18, sbp: 19, dbp: 18, ffr: null, rhythm: "VF", arrest: true }, { access: "femoral-R", act: 300 } as never);
+    expect(tiles[0]).toMatchObject({ id: "rhythm", value: "VF", tone: "bad" });
+    expect(tiles.find((t) => t.id === "map")!.tone).toBe("bad");
+    expect(monitorModel({ hr: 80, map: 90, sbp: 120, dbp: 70, ffr: null }, { access: null, act: 0 } as never).some((t) => t.id === "rhythm")).toBe(false);
+  });
+});

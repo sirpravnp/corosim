@@ -9,6 +9,7 @@ import { FluoroView, deviceGeometry, DeviceGeometry } from "./fluoro";
 import { drawSchematic } from "./schematic";
 import { scoreProcedure } from "../../lab/score";
 import { EcgStrip } from "../../ecgStrip";
+import { ARREST } from "../../config/arrest";
 import type { LabEngine } from "../../lab/engine";
 import { deviceFocus, zoneOf } from "../../lab/camera";
 import { samplePoint } from "../../lab/geometry";
@@ -67,6 +68,7 @@ $("skip").addEventListener("click", skipToCoronaries);
 
 /** Run one action, keep its events, and redraw everything that depends on the result. */
 function act(a: Action, refreshVessels = false) {
+  if (sim.dead) return; // nothing to do for a patient who has died
   // where the contrast goes depends on where the guide is: down a coronary it fills that tree, anywhere else it opacifies the aorta or the groin vessels
   const eng = engine.state().guide?.engaged ?? null;
   if (a.t === "inject") a = { ...a, where: eng === "RCA" ? "RCA" : eng === "LM" ? "LCA" : "aorta" };
@@ -108,15 +110,43 @@ function renderShelf() {
 }
 
 // ---------------------------------------------------------------- readouts
+/** The rhythm, from the main model: the arrest machine's class when the patient has no pulse, else what the strip measures. */
+function rhythmName(): string {
+  if (sim.dead) return "Dead";
+  const cls = sim.rhythmClass().rhythmClass;
+  if (cls === "vf") return "VF"; if (cls === "pulselessVt") return "Pulseless VT"; if (cls === "asystole") return "Asystole"; if (cls === "pea") return "PEA";
+  const r = ecg.rhythm();
+  return !r.hr ? "…" : r.atrial > 100 ? "Sinus tachycardia" : r.atrial > 0 && r.atrial < 60 ? "Sinus bradycardia" : r.pvc ? "Sinus, PVCs" : "Sinus rhythm";
+}
 function vitals(): Vitals {
-  const r = sim.state().rolling10s;
+  const r = sim.dead ? { hr: 0, map: 0, sbp: 0, dbp: 0 } : sim.state().rolling10s; // a dead patient has no pulse, whatever the last ten seconds averaged
   let ffr: number | null = null;
   try { ffr = wireModel(sim, "LAD").ffr; } catch { /* no such vessel */ }
-  return { hr: r.hr, map: r.map, sbp: r.sbp, dbp: r.dbp, ffr };
+  return { hr: r.hr, map: r.map, sbp: r.sbp, dbp: r.dbp, ffr, rhythm: rhythmName(), arrest: sim.dead || sim.arrestState().status === "arrest" };
 }
 function renderTiles() {
   $("tiles").innerHTML = monitorModel(vitals(), engine.state()).map((t) => `<div><b>${t.label}</b><span class="${t.tone}"><i>${esc(t.value)}</i><em>${esc(t.unit)}</em></span></div>`).join("");
 }
+/** The arrest status line, the ACLS buttons and the death screen: all read from the main model's arrest machine. */
+function arrestUi() {
+  const a = sim.arrestState(), st = $("status"), box = $("acls");
+  const clock = (n: number) => `${Math.floor(n / 60)}:${String(Math.round(n) % 60).padStart(2, "0")}`;
+  const arrested = a.status === "arrest";
+  box.hidden = !arrested || sim.dead;
+  $("cpr").textContent = a.cpr.on ? "Stop CPR" : "Start CPR";
+  st.className = `status ${arrested || sim.dead ? "bad" : ""}`;
+  st.textContent = sim.dead ? "" : arrested ? `Cardiac arrest, ${a.rhythmClass === "vf" ? "ventricular fibrillation" : a.rhythmClass === "pulselessVt" ? "pulseless ventricular tachycardia" : a.rhythmClass === "pea" ? "pulseless electrical activity" : "asystole"}. No flow ${clock(a.noFlowS)}; death at ${clock(ARREST.deathAfterNoFlowS)} without compressions and a rhythm change.` : a.status === "rosc" ? "Circulation restored. Look for the cause." : "";
+  const dead = $("dead"); dead.hidden = !sim.dead;
+  if (sim.dead) $("deadText").textContent = sim.deathCause === "shock" ? "The patient died in refractory shock." : "The patient died: no circulation for ten minutes.";
+}
+function acls(text: string, ok = true) { const ev: LabEvent = { at: engine.state().elapsedS, kind: "acls", text, severity: ok ? "info" : "caution" }; log.push(ev); render(); }
+for (const [id, f] of [
+  ["cpr", () => { const r = sim.arrest?.cpr.on ? sim.stopCpr() : sim.startCpr(); acls(r.ok ? (sim.arrest?.cpr.on ? "Compressions started." : "Compressions stopped.") : r.note ?? "No arrest.", r.ok); }],
+  ["shock", () => { const r = sim.shock({ joules: 200 }); acls(r.note ?? (r.discharged ? (r.success ? "Shock delivered: the rhythm converted." : "Shock delivered: no conversion.") : "No shock delivered."), !!r.success); }],
+  ["epi", () => { const r = sim.giveDrug("epinephrine", ARREST.drugs.epinephrine.doseMg); acls(r.ok ? "Epinephrine given." : r.note ?? "Not given.", r.ok); }],
+  ["amio", () => { const n = sim.arrest?.drugs.filter((d) => d.drug === "amiodarone").length ?? 0; const r = sim.giveDrug("amiodarone", n ? ARREST.drugs.amiodarone.secondMg : ARREST.drugs.amiodarone.firstMg); acls(r.ok ? "Amiodarone given." : r.note ?? "Not given.", r.ok); }],
+] as [string, () => void][]) $(id).addEventListener("click", f);
+$("restart").addEventListener("click", () => $("reset").click());
 function render() {
   const st = engine.state();
   geom = deviceGeometry(st, engine.graph(), engine.plaques(), (id) => catalog.find((d) => d.id === id));
@@ -124,7 +154,7 @@ function render() {
   const lastEv = eventFeed(log, 1)[0], lastEl = $("last");
   lastEl.textContent = lastEv ? lastEv.text : ""; lastEl.className = `last ${lastEv?.severity ?? ""}`;
   renderShelf();
-  renderTiles();
+  renderTiles(); arrestUi();
   $("feed").innerHTML = eventFeed(log, 8).map((e) => `<li class="${e.severity}"><time>${e.at.toFixed(0)} s</time>${esc(e.text)}</li>`).join("");
   const s = procedureSummary(st);
   $("summary").textContent = `Contrast ${s.contrastMl} mL. Fluoroscopy ${s.fluoroLabel}. Air kerma ${s.doseMGy} mGy.`;
@@ -196,6 +226,8 @@ window.addEventListener("keydown", (e) => {
   else if (k === "c") setMode(MODES[(MODES.indexOf(mode) + 1) % MODES.length]);
   else if (k === "v") { const box = $<HTMLInputElement>("lab"); box.checked = !box.checked; view.opts.labels = box.checked; }
   else if (k === "g") skipToCoronaries();
+  else if (k === "k") { if (!($("acls") as HTMLElement).hidden) $("shock").click(); }
+  else if (k === "p") { if (!($("acls") as HTMLElement).hidden) $("cpr").click(); }
   else if (k === "[") setView(view.opts.rot - step, view.opts.tilt); else if (k === "]") setView(view.opts.rot + step, view.opts.tilt);
   else return;
   e.preventDefault();
@@ -218,13 +250,14 @@ let lastFrame = performance.now(), tilesClock = 0, ringClock = 0;
 /** Real time passes in the lab: the patient bleeds, ischemia builds and the rhythm runs whether or not the learner acts. */
 function liveStep(now: number) {
   const dt = Math.min(0.05, (now - lastFrame) / 1000); lastFrame = now;
+  if (sim.dead) { if ((tilesClock += dt) > 0.4) { tilesClock = 0; renderTiles(); arrestUi(); } return; } // death freezes the patient: nothing evolves until the learner restarts
   const events = engine.tick ? engine.tick(dt) : [];
   if (!engine.state().access) sim.step(dt, { minutes: 0 }); // before access the patient is just on the table: heart, pressure and ECG run, the infarct clock does not
   if (events.length) { log.push(...events); noteEvents(events); if (events.some((e) => ["perforation", "no-reflow", "spasm", "dissection", "arrest"].includes(e.kind))) remodel(); render(); }
   const fx = sim.ecgInputs();
   if (!sim.dead) ecg.step(dt, fx.injury, fx.tBoost, sim.rstate.rhythm, fx.potassium);
   ecg.draw();
-  if ((tilesClock += dt) > 0.4) { tilesClock = 0; renderTiles(); }
+  if ((tilesClock += dt) > 0.4) { tilesClock = 0; renderTiles(); arrestUi(); }
 }
 const frame = (now: number) => {
   liveStep(now);

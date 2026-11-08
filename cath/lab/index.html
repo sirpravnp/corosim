@@ -22,10 +22,12 @@
       <h1 id="title">PCI lab: mid-LAD 75% stenosis</h1>
       <p id="next" class="next" role="status"></p>
       <p id="last" class="last" role="status"></p>
+      <p id="status" class="status" role="status"></p>
     </div>
     <div class="screen">
       <canvas id="ang" width="640" height="640" aria-label="Fluoroscopy and angiogram"></canvas>
       <canvas id="dev" class="overlay" width="640" height="640" aria-hidden="true"></canvas>
+      <div id="dead" class="dead" role="alert" hidden><p id="deadText"></p><button type="button" id="restart">Restart patient</button></div>
     </div>
     <p class="caption"><b>Figure 1.</b> Live fluoroscopy. Contrast fills the coronaries at their solved flow, drawn as lumens with walls, and the guide, wire, balloon and stent are radiopaque devices in the same image. The anatomy behind them, a procedural patient, turns with the C-arm. Follow adds a faint roadmap of the access route. Overview is a front-view schematic of the whole route, not fluoroscopy, because no single x-ray field can hold it.</p>
     <div class="carm cams" role="group" aria-label="Camera">
@@ -84,6 +86,7 @@
       <canvas id="ecg" class="ecg" aria-label="Rhythm strip, leads II and V3"></canvas>
       <p class="caption"><b>Figure 2.</b> Live rhythm strip, leads II and V3, from the simulated patient. Ischemia, arrhythmia and tamponade show here as they happen.</p>
       <div class="tiles" id="tiles"></div>
+      <div class="row acls" id="acls" hidden><button id="cpr">Start CPR</button><button id="shock" class="primary">Shock 200 J</button><button id="epi">Epinephrine 1 mg</button><button id="amio">Amiodarone 300 mg</button></div>
       <p class="caption"><b>Table 1.</b> Live vital signs and pressure-wire FFR from the simulator's patient.</p>
       <p class="fine" id="monitorNote"></p>
     </section>
@@ -102,6 +105,7 @@
     <caption><b>Table 3.</b> Keyboard controls. Click the picture area or press a key; mouse clicks release the focus so the keys keep working.</caption>
     <tbody>
       <tr><th scope="row">Device</th><td><kbd>W</kbd> <kbd>S</kbd> advance and withdraw (hold, or Shift for fast)</td><td><kbd>A</kbd> <kbd>D</kbd> rotate</td><td><kbd>I</kbd> inflate <kbd>O</kbd> deflate</td><td><kbd>Space</kbd> inject contrast</td></tr>
+      <tr><th scope="row">Arrest</th><td><kbd>K</kbd> shock 200 J</td><td><kbd>P</kbd> start or stop CPR</td><td colspan="2">Buttons under the monitor: epinephrine, amiodarone</td></tr>
       <tr><th scope="row">C-arm</th><td><kbd>←</kbd> <kbd>→</kbd> LAO and RAO (Shift for 15 degrees)</td><td><kbd>↑</kbd> <kbd>↓</kbd> cranial and caudal</td><td colspan="2"><kbd>1</kbd> AP <kbd>2</kbd> LAO cranial <kbd>3</kbd> RAO cranial <kbd>4</kbd> RAO caudal <kbd>5</kbd> spider</td></tr>
       <tr><th scope="row">View</th><td><kbd>C</kbd> cycle Heart, Follow and Overview</td><td><kbd>V</kbd> vessel names</td><td colspan="2"><kbd>G</kbd> skip to the coronaries</td></tr>
     </tbody>

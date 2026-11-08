@@ -40,7 +40,7 @@ export function deviceShelf(st: Readonly<LabState>, catalog: readonly Device[], 
   });
 }
 
-export interface Vitals { hr: number | null; map: number | null; sbp: number | null; dbp: number | null; ffr: number | null }
+export interface Vitals { hr: number | null; map: number | null; sbp: number | null; dbp: number | null; ffr: number | null; rhythm?: string | null; arrest?: boolean }
 export interface Tile { id: string; label: string; value: string; unit: string; tone: Tone }
 
 const num = (v: number | null, digits = 0) => (v === null || !Number.isFinite(v) ? "—" : v.toFixed(digits));
@@ -50,6 +50,7 @@ export function monitorModel(v: Vitals, st: Readonly<LabState>): Tile[] {
   const mapTone: Tone = v.map === null ? "" : v.map < 60 ? "bad" : v.map < 70 ? "warn" : "";
   const ffrTone: Tone = v.ffr === null ? "" : v.ffr <= 0.75 ? "bad" : v.ffr <= 0.8 ? "warn" : "";
   return [
+    ...(v.rhythm ? [{ id: "rhythm", label: "Rhythm", value: v.rhythm, unit: "", tone: (v.arrest ? "bad" : "") as Tone }] : []),
     { id: "hr", label: "Heart rate", value: num(v.hr), unit: "bpm", tone: hrTone },
     { id: "map", label: "Mean pressure", value: num(v.map), unit: "mmHg", tone: mapTone },
     { id: "bp", label: "Pressure", value: v.sbp === null || v.dbp === null ? "—" : `${num(v.sbp)}/${num(v.dbp)}`, unit: "mmHg", tone: "" },
