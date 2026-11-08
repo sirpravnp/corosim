@@ -134,6 +134,15 @@ export const PRESETS: EkgPreset[] = [
     pearls: ["Delta waves can mimic Q waves (pseudo-infarction) or hide a real infarct.", "In atrial fibrillation with WPW avoid AV-nodal blockers (adenosine, verapamil, digoxin): they can push conduction down the pathway into VF."],
     mimics: ["Bundle branch block", "Inferior MI (negative delta waves in III, aVF)"],
   },
+  {
+    id: "af-wpw", name: "Atrial fibrillation with WPW", category: "Junctional & re-entry",
+    spec: { rhythm: { kind: "af", rate: 196, irregularity: 0.35, fMv: 0.04 }, morph: { qrsWide: 1.55, comps: [{ k: "wave", v: [0.36, 0.3, -0.06], t: -0.05, w: 0.019 }], tVec: v(0.18, 0.12, 0.3) } },
+    summary: "Irregular very wide complexes from atrial fibrillation conducting over an accessory pathway.",
+    features: ["Irregularly irregular, no P waves", "Very wide slurred QRS that can change beat to beat", "Rates often 200+"],
+    pearls: ["Never give AV-nodal blockers (adenosine, diltiazem/verapamil, digoxin, beta blockers): they can push conduction down the pathway into VF.", "Procainamide (or shock if unstable) is the treatment. Delta waves can look like different VT morphologies because preexcitation varies."],
+    mimics: ["Polymorphic VT", "Artifact", "Hyperkalemia"],
+    leads: ["V1", "II", "I"],
+  },
 
   // ------------------------------------------------------------------ AV block
   {
@@ -505,7 +514,7 @@ export function findPreset(q: string): EkgPreset | undefined {
     tdp: "torsades", "complete heart block": "chb", "third degree": "chb", chb: "chb", "mobitz i": "wenckebach", "mobitz 1": "wenckebach", "mobitz 2": "mobitz2",
     "mobitz ii": "mobitz2", stemi: "stemi-anterior", "inferior stemi": "stemi-inferior", "anterior stemi": "stemi-anterior", "posterior stemi": "stemi-posterior",
     "lateral stemi": "stemi-lateral", nstemi: "nstemi", "de winter": "de-winter", dewinter: "de-winter", wellens: "wellens-b", junctional: "junctional",
-    avnrt: "svt", psvt: "svt", wpw: "wpw", "hyperkalemia": "hyperk", "hypokalemia": "hypok", brugada: "brugada", pericarditis: "pericarditis", pe: "pe",
+    avnrt: "svt", psvt: "svt", wpw: "wpw", "af wpw": "af-wpw", "wpw af": "af-wpw", "preexcited af": "af-wpw", "preexcited afib": "af-wpw", "af with wpw": "af-wpw", "hyperkalemia": "hyperk", "hypokalemia": "hypok", brugada: "brugada", pericarditis: "pericarditis", pe: "pe",
     "pulmonary embolism": "pe", "early repolarization": "early-repol", ber: "early-repol", lvh: "lvh", takotsubo: "takotsubo", "first degree": "avb1",
   };
   if (alias[key]) return PRESET_BY_ID[alias[key]];
