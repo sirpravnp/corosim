@@ -9,7 +9,7 @@ import { tree, A, sites, circ, $, V, S, sim, sev, PHYS, ecg, rstate, pageVitals,
 import { monitorText } from "../sim/vitals";
 import { monitorHooks } from "../panels/monitor";
 import { readout } from "../readout";
-import { estimateRespRate, bodyTempC, type BedsideInput } from "../sim/bedside";
+import { estimateRespRate, bodyTempC, bedsideOverride, setBedsideTemp, type BedsideInput } from "../sim/bedside";
 import { AUTONOMIC } from "../physics/autonomic";
 import { rhythmPickerUi } from "./rhythmPicker";
 import { manageUi } from "./manage";
@@ -50,13 +50,8 @@ export const rhythmLabel = (r: ReturnType<EcgStrip["rhythm"]>, rs: RhythmState |
 };
 
 const leadOrder = () => (S.posterior ? ALL_LEADS : LEADS);
-/**
- * The Monitor's vital signs (rate, pressure, output, circulation status, LVEF). On the live source they are the page's one vitals snapshot,
- * the same numbers the Hemodynamics table and the cath panels show; the Monitor panel redraws them in the same frame as those panels
- * (workspace.ts hooks it), so the labels agree frame by frame. Without a live source (the game) they keep the legacy readouts.
- */
-/** A case may set the body temperature here (degrees C); unset gives the default. */
-export const bedsideOverride: { tempOverrideC?: number } = {};
+/** A case sets the body temperature through `setBedsideTemp` (state lives in sim/bedside.ts, DOM-free). */
+export { setBedsideTemp };
 
 /** The monitor's SpO2, respiratory rate and temperature. SpO2 is the Oxygen panel's own source value; rate and temperature are estimates (bedside.ts). */
 function bedsideUi(vit: ReturnType<typeof pageVitals>) {
@@ -73,6 +68,11 @@ function bedsideUi(vit: ReturnType<typeof pageVitals>) {
   $("temp").innerHTML = readout(`${bodyTempC(inp).toFixed(1)} °C`);
 }
 
+/**
+ * The Monitor's vital signs (rate, pressure, output, circulation status, LVEF). On the live source they are the page's one vitals snapshot,
+ * the same numbers the Hemodynamics table and the cath panels show; the Monitor panel redraws them in the same frame as those panels
+ * (workspace.ts hooks it), so the labels agree frame by frame. Without a live source (the game) they keep the legacy readouts.
+ */
 export function vitalsUi() {
   const vit = pageVitals();
   bedsideUi(vit);

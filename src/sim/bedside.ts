@@ -40,3 +40,10 @@ export function estimateRespRate(i: BedsideInput): number {
 export function bodyTempC(i: BedsideInput): number {
   return i.tempOverrideC !== undefined && Number.isFinite(i.tempOverrideC) ? i.tempOverrideC : 37.0;
 }
+
+/** The case's body temperature (degrees C), read by the monitor. Unset gives the 37.0 default. */
+export const bedsideOverride: { tempOverrideC?: number } = {};
+/** Set the case's body temperature; undefined clears it back to the default. */
+export function setBedsideTemp(c: number | undefined): void {
+  bedsideOverride.tempOverrideC = c;
+}
