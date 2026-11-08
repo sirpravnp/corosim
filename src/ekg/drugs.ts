@@ -143,19 +143,16 @@ export function applyDrug(spec: EkgSpec, drug: Antiarrhythmic, opts?: { dose?: n
 
   const p = PROFILES[drug];
   const r = out.rhythm;
-  const pre = isPreexcited(out);
+  const preAf = isPreexcited(out) && r.kind === "af";
 
-  // 5. AV-nodal blockers in preexcitation (especially AF): never convert to VF; do not slow the ventricle.
-  if (pre && (drug === "adenosine" || drug === "diltiazem" || drug === "metoprolol")) {
+  // AV-nodal blockers in preexcited AF: never convert to VF; do not slow the ventricle.
+  // Sinus WPW is not this emergency (adenosine is used for orthodromic AVRT).
+  if (preAf && (drug === "adenosine" || drug === "diltiazem" || drug === "metoprolol")) {
     warnings.push("AV-nodal block in preexcited AF can force conduction down the accessory pathway and risk VF.");
     event(events, "dangerous");
-    if (r.kind === "af") {
-      r.rate *= 1 + MORPH.preAfRise * dose;
-      morphOf(out).qrsWide = (out.morph?.qrsWide ?? 1) * (1 + MORPH.preAfWide * dose);
-      push(notes, "Ventricular rate rose as accessory-pathway conduction increased.");
-    } else {
-      push(notes, "AV-nodal block in a preexcited rhythm is unsafe.");
-    }
+    r.rate *= 1 + MORPH.preAfRise * dose;
+    morphOf(out).qrsWide = (out.morph?.qrsWide ?? 1) * (1 + MORPH.preAfWide * dose);
+    push(notes, "Ventricular rate rose as accessory-pathway conduction increased.");
     return { spec: out, drug, notes, warnings, events };
   }
 
@@ -189,7 +186,7 @@ export function applyDrug(spec: EkgSpec, drug: Antiarrhythmic, opts?: { dose?: n
   }
 
   // 6. Procainamide slows the accessory pathway in preexcited AF.
-  if (drug === "procainamide" && pre && r.kind === "af") {
+  if (drug === "procainamide" && preAf && r.kind === "af") {
     r.rate *= 1 - MORPH.preProcSlow * dose;
     const w0 = out.morph?.qrsWide ?? 1;
     morphOf(out).qrsWide = w0 + (1.15 - w0) * dose;

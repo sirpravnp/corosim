@@ -46,6 +46,11 @@ describe("rhythms", () => {
     const r = m("af");
     expect(r.regular).toBe(false); expect(r.prPattern).toBe("none");
   });
+  it("AF with WPW is irregular, wide, and faster than rate-controlled AF", () => {
+    const r = m("af-wpw");
+    expect(r.regular).toBe(false); expect(r.prPattern).toBe("none");
+    expect(r.qrsMs!).toBeGreaterThan(110); expect(r.ventricularRate!).toBeGreaterThan(150);
+  });
   it("flutter with 2:1 block: atria at 300, ventricles at 150, regular", () => {
     const r = m("flutter-21");
     expect(r.atrialRate).toBe(300); expect(r.ventricularRate).toBeCloseTo(150, -1); expect(r.regular).toBe(true);

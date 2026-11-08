@@ -96,4 +96,16 @@ describe("applyDrug", () => {
     const r = applyDrug(spec, "diltiazem");
     expect(measure(r.spec).ventricularRate!).toBeLessThan(measure(spec).ventricularRate!);
   });
+
+  it("diltiazem on sinus WPW is not the preexcited-AF emergency", () => {
+    const r = applyDrug(specOf("wpw"), "diltiazem");
+    expect(r.events).not.toContain("dangerous");
+    expect(r.warnings.join(" ")).not.toMatch(/preexcited AF/i);
+  });
+
+  it("library AF with WPW is preexcited; an AV-nodal blocker is dangerous", () => {
+    const spec = specOf("af-wpw");
+    expect(isPreexcited(spec)).toBe(true);
+    expect(applyDrug(spec, "adenosine").events).toContain("dangerous");
+  });
 });
