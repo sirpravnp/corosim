@@ -3,6 +3,8 @@ import { Beat, heartVector, projectLeads, stLevelVec } from "./physics/ecg";
 import { BeatStream } from "./physics/beatStream";
 
 const FS = 250, WIN = 2.5, N = Math.round(FS * WIN);
+/** Pixels per millimeter of paper in the rhythm strip (a CSS millimeter is about 3.78 px; narrow screens use a smaller square so more beats fit). */
+const STRIP_MM_WIDE = 3.78, STRIP_MM_NARROW = 3;
 const LAYOUT: LeadName[][] = [["I", "aVR", "V1", "V4"], ["II", "aVL", "V2", "V5"], ["III", "aVF", "V3", "V6"]];
 const POSTERIOR: LeadName[] = ["V7", "V8", "V9"]; // a fifth column when the posterior leads are on
 const SANS = '"Hanken Grotesk", -apple-system, Helvetica, Arial, sans-serif';
@@ -16,7 +18,9 @@ const SANS = '"Hanken Grotesk", -apple-system, Helvetica, Arial, sans-serif';
  */
 export class EcgStrip {
   posterior = false;
+  /** "twelve" is the Simulator's 2.5 s twelve-lead page; "strip" is lead II alone on a long rhythm strip that fills the canvas width at 25 mm/s (the case monitor). */
   private ring = Object.fromEntries(ALL_LEADS.map((l) => [l, new Float32Array(N).fill(NaN)])) as Record<LeadName, Float32Array>;
+  private n = N;
   private acc = 0;
   private idx = 0;
   t = 0;
@@ -25,12 +29,21 @@ export class EcgStrip {
   private fWave = 0;
   private potassium: number = POTASSIUM_ECG.normal;
 
-  constructor(private canvas: HTMLCanvasElement, public stream: BeatStream = new BeatStream(1)) {}
+  constructor(private canvas: HTMLCanvasElement, public stream: BeatStream = new BeatStream(1), private mode: "twelve" | "strip" = "twelve") {}
 
   private get beats(): Beat[] { return this.stream.beats; }
 
   /** Blank the paper and restart the clock (the simulation was reset). */
   reset(t = 0) { for (const l of ALL_LEADS) this.ring[l].fill(NaN); this.acc = 0; this.idx = 0; this.t = t; }
+
+  /** Strip mode: lead II only; the ring holds as many samples as the canvas shows seconds. A change of width restarts the sweep. */
+  private fit(secs: number) {
+    const n = Math.max(FS, Math.round(secs * FS));
+    if (n === this.n) return;
+    this.n = n; this.idx = 0;
+    for (const l of ALL_LEADS) this.ring[l] = new Float32Array(l === "II" ? n : 0);
+    this.ring.II.fill(NaN);
+  }
 
   /** The simulation generates and prunes the beats; this only samples them. */
   step(dt: number, injury: Vec3, tBoost: number, rhythm: Rhythm, potassium: number = POTASSIUM_ECG.normal) {
@@ -39,8 +52,8 @@ export class EcgStrip {
     const n = Math.floor(this.acc);
     this.acc -= n;
     for (let k = 0; k < n; k++) {
-      const s = this.sample(this.t);
-      for (const l of ALL_LEADS) this.ring[l][this.idx % N] = s[l];
+      if (this.mode === "strip") this.ring.II[this.idx % this.n] = projectLeads(this.vector(this.t)).II;
+      else { const s = this.sample(this.t); for (const l of ALL_LEADS) this.ring[l][this.idx % this.n] = s[l]; }
       this.idx++; this.t += 1 / FS;
     }
   }
@@ -92,6 +105,7 @@ export class EcgStrip {
   }
 
   draw() {
+    if (this.mode === "strip") return this.drawStrip();
     const c = this.canvas, dpr = devicePixelRatio || 1;
     const layout = this.posterior ? LAYOUT.map((row, r) => [...row, POSTERIOR[r]]) : LAYOUT;
     const cols = layout[0].length, rows = 3, w = c.clientWidth;
@@ -114,15 +128,15 @@ export class EcgStrip {
       g.strokeStyle = i % 5 === 0 ? "rgba(214,90,80,.55)" : "rgba(214,90,80,.18)";
       g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke();
     }
-    const pw = w / cols, pxMv = mm * 10, cur = this.idx % N;
+    const pw = w / cols, pxMv = mm * 10, cur = this.idx % this.n;
     const cal = 8 * mm; // the first 8 mm of each row belong to the calibration pulse, not the trace
     layout.forEach((row, r) => row.forEach((lead, col) => {
       const x0 = col * pw, mid = r * ph + ph / 2, from = col === 0 ? cal : 0;
       g.strokeStyle = "#141414"; g.lineWidth = 1.25; g.lineJoin = "round"; g.beginPath();
       let pen = false;
-      for (let i = 0; i < N; i++) {
-        const v = this.ring[lead][i], x = x0 + (i / N) * pw;
-        if (Number.isNaN(v) || x < x0 + from || (i - cur + N) % N < FS * 0.1) { pen = false; continue; }
+      for (let i = 0; i < this.n; i++) {
+        const v = this.ring[lead][i], x = x0 + (i / this.n) * pw;
+        if (Number.isNaN(v) || x < x0 + from || (i - cur + this.n) % this.n < FS * 0.1) { pen = false; continue; }
         const y = mid - v * pxMv;
         if (!pen) { g.moveTo(x, y); pen = true; } else g.lineTo(x, y);
       }
@@ -135,5 +149,39 @@ export class EcgStrip {
       const mid = r * ph + ph / 2, x = 1;
       g.beginPath(); g.moveTo(x, mid); g.lineTo(x + mm, mid); g.lineTo(x + mm, mid - pxMv); g.lineTo(x + 6 * mm, mid - pxMv); g.lineTo(x + 6 * mm, mid); g.lineTo(x + 7 * mm, mid); g.stroke();
     }
+  }
+
+  /** Lead II on pink paper, 25 mm/s and 10 mm/mV, sweeping left to right across the whole canvas. */
+  private drawStrip() {
+    const c = this.canvas, dpr = devicePixelRatio || 1, w = c.clientWidth;
+    if (!w) return;
+    const mm = w < 560 ? STRIP_MM_NARROW : STRIP_MM_WIDE;
+    const h = Math.round(mm * (w < 560 ? 36 : 48)); // 48 mm of paper (36 on a phone): a 2 mV complex fits with room
+    this.fit(w / (mm * 25));
+    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+      c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c.style.height = h + "px";
+    }
+    const g = c.getContext("2d")!;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.fillStyle = "#fffaf8"; g.fillRect(0, 0, w, h);
+    for (let x = 0, i = 0; x <= w + 0.5; x += mm, i++) {
+      g.strokeStyle = i % 5 === 0 ? "rgba(214,90,80,.55)" : "rgba(214,90,80,.18)";
+      g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke();
+    }
+    for (let y = 0, i = 0; y <= h + 0.5; y += mm, i++) {
+      g.strokeStyle = i % 5 === 0 ? "rgba(214,90,80,.55)" : "rgba(214,90,80,.18)";
+      g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke();
+    }
+    const mid = Math.round(h / 2), pxMv = mm * 10, cur = this.idx % this.n, cal = 8 * mm;
+    g.strokeStyle = "#141414"; g.lineWidth = 1.5; g.lineJoin = "round"; g.beginPath();
+    let pen = false;
+    for (let i = 0; i < this.n; i++) {
+      const v = this.ring.II[i], x = (i / this.n) * w;
+      if (Number.isNaN(v) || x < cal || (i - cur + this.n) % this.n < FS * 0.12) { pen = false; continue; }
+      const y = mid - Math.max(-h / 2 + 2, Math.min(h / 2 - 2, v * pxMv));
+      if (!pen) { g.moveTo(x, y); pen = true; } else g.lineTo(x, y);
+    }
+    g.stroke();
+    g.beginPath(); g.moveTo(1, mid); g.lineTo(1 + mm, mid); g.lineTo(1 + mm, mid - pxMv); g.lineTo(1 + 6 * mm, mid - pxMv); g.lineTo(1 + 6 * mm, mid); g.lineTo(1 + 7 * mm, mid); g.stroke(); // 1 mV x 0.2 s calibration pulse
   }
 }

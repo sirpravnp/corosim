@@ -1,6 +1,8 @@
 import { mountWorkspace } from "../panels/workspace";
 import { CLINICAL_SCALES } from "../panels/timeControl";
 import { monitorPanel, monitorHooks, applyMonitorRows } from "../panels/monitor";
+import { casePanels } from "./caseMonitor";
+import { setCaseMonitorItems } from "./caseMonitorView";
 import { itemById } from "../cases/orders";
 import { ecgPanel } from "../panels/ecg";
 import { numbersPanel } from "../panels/numbers";
@@ -47,6 +49,7 @@ export function pushPatient(now = false) {
 export function mountPanels() {
   const ws = $("workspace"); (ws.parentElement as HTMLElement).hidden = false;
   (ws.parentElement as HTMLElement).insertBefore(settlingNote, ws);
+  if (caseIds) queueMicrotask(() => setCaseMonitor(caseIds)); // a case began before the panels mounted: re-apply its monitor
   pushPatient(true); // a link that was opened before the workspace existed has its structure in the core engine already; this settles the source choice
   monitorHooks.draw = vitalsUi;
   const first = chooseSource(); setPanelSource(first);
@@ -57,21 +60,22 @@ export function mountPanels() {
   $("ts-l").style.display = $("ts-row").style.display = "none"; // the Lesion section's old time-scale buttons: now in the workspace bar
 }
 
-const MONITOR_PANEL_IDS = ["hr", "bp", "spo2", "rr", "temp"];
 /**
- * Set the case's monitor on the workspace for this session: the ids of the monitor items shown (cases/orders.ts). `ecg` is the ECG
- * panel; hr, bp, spo2, rr and temp are rows of the Monitor panel; a panel item opens its own panel. Null restores the viewer's layout.
- * The viewer's saved layout is never written by this.
+ * Set the case's monitor for this session: the ids of the monitor items shown (cases/orders.ts). The bedside monitor (caseMonitorView) draws
+ * the strip (`ecg`) and the tiles (hr, bp, spo2, rr, temp). The workspace below holds only what the learner orders: a panel item opens its own
+ * panel, `twelvelead` opens the ECG figure, and the Simulator's Monitor panel (rhythm name, Stable/Shock) is never opened in a case.
+ * The viewer's saved layout is never written by this. Null restores it.
  */
+let caseIds: string[] | null = null;
 export function setCaseMonitor(ids: string[] | null): void {
+  caseIds = ids;
+  setCaseMonitorItems(ids);
   if (!workspace) return;
-  if (!ids) { monitorHooks.rows = null; workspace.setSession(null); applyMonitorRows(); return; }
-  const rows = ids.filter((id) => MONITOR_PANEL_IDS.includes(id));
-  const panels: string[] = [];
-  if (ids.includes("ecg")) panels.push("ecg");
-  if (rows.length) panels.push("monitor");
-  for (const id of ids) { const p = itemById(id)?.panel; if (p && !panels.includes(p)) panels.push(p); }
-  monitorHooks.rows = rows.length ? new Set(rows) : null;
+  const section = $("workspace").parentElement as HTMLElement;
+  if (!ids) { monitorHooks.rows = null; workspace.setSession(null); applyMonitorRows(); section.hidden = false; return; }
+  const panels = casePanels(ids, (id) => itemById(id)?.panel);
+  monitorHooks.rows = null;
   workspace.setSession(panels);
   applyMonitorRows();
+  section.hidden = panels.length === 0; // the "Live hemodynamics" heading appears only when something the learner ordered is open
 }

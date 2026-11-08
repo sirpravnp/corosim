@@ -93,6 +93,7 @@ main > .ws-sec { grid-column: 1; margin-top: 0; }
   #cases { order: -1; }
 }
 main > section, aside { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+main > section[hidden] { display: none; } /* the author rule above would otherwise show a hidden section (the case screen hides the empty workspace) */
 
 /* Displays */
 figure { margin: 0; padding: 12px; background: var(--panel); border: 1px solid var(--sh-line); border-radius: 8px; min-width: 0; }
@@ -215,7 +216,8 @@ body.gated { overflow: hidden; }
 /* The case screen (src/page/caseChrome.ts): the simulator's chrome is absent, not hidden behind a blank frame. */
 body.case-bare :is(#pgentry, #stagefig, #bedsfig, #stmap, #xlinks, #sec-assess, .ws-tools, .ws-pick, #dock .dtab, #dock .dpane:not([data-pane="support"])) { display: none; }
 body.case-bare main > section:not(.ws-sec) { display: contents; } /* its figures are gone: no empty row, no gap */
-body.case-bare #casemon { grid-column: 1; }
+@media (min-width: 981px) { body.case-bare main { grid-template-rows: auto auto 1fr; } body.case-bare main > aside { grid-row: 1 / 4; } } /* the tall rail spans a spare row, so it cannot stretch the monitor row and push ordered panels far below it */
+body.case-bare #casemon { grid-column: 1; order: -2; } /* phone: the monitor, then the case card, then orders and treatments */
 body.case-bare :is(label[for="bl"], #bl, #blv, [data-disease], #openCath) { display: none; } /* blood loss, hemorrhage and leak create disease; the cath-lab link leaves the case */
 body.case-bare .ws-bar { display: none; }
 body.case-bare .ws-phone .ws-bar { display: flex; }
