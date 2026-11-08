@@ -1,10 +1,27 @@
 import type { Probe, Cond } from "./engine";
 import { OXYGEN_PANEL } from "../config/oxygenPanel";
 
-/** The longest a single skip may run, in case seconds. */
+/**
+ * The longest the general "Skip ahead" (no pending order as its target) may run, in case seconds. "Skip to result" has no cap: it runs
+ * to that result, protected by the auto-stop reasons of `skipStop` and by the unstable refusal of `canSkip`.
+ */
 export const SKIP_CAP_S = 60;
 /** Case seconds that pass per real second while skipping. */
 export const SKIP_SPEED = 30;
+
+/** The note shown when a skip is cancelled or refused because the page clock is paused (a paused clock would hold the skip forever). */
+export const SKIP_PAUSED_NOTE = "Skip is unavailable while the clock is paused.";
+
+/**
+ * The clinical speed (`S.speed`) that makes the next frame land exactly on a target `leftCaseS` case seconds away. Case time per frame is
+ * `frameS * clockScale * speed`, `frameS` being the longest real time a frame can carry (the page caps it) and `clockScale` the play clock's
+ * scale. Capped at SKIP_SPEED; a target nearer than one frame gets a speed below the normal one so it is not overshot. At or past the target
+ * (`leftCaseS <= 0`) the normal speed 1 is returned.
+ */
+export function skipSpeed(leftCaseS: number, frameS: number, clockScale: number): number {
+  if (!(leftCaseS > 0) || !(frameS > 0) || !(clockScale > 0)) return 1;
+  return Math.min(SKIP_SPEED, leftCaseS / (frameS * clockScale));
+}
 
 const MAP_FLOOR = 65;
 const RHYTHM_LABEL: Record<string, string> = {

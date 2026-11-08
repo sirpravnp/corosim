@@ -72,3 +72,29 @@ describe("time skip rules", () => {
     expect(skipStop(prev, now, { promptOpen: false, harmActive: false, spo2: 0.98 })).toBeNull();
   });
 });
+
+import { skipSpeed, SKIP_PAUSED_NOTE } from "../src/cases/skip";
+describe("skipSpeed", () => {
+  const frame = 0.05;
+  const landed = (left: number, scale: number) => frame * scale * skipSpeed(left, frame, scale);
+  it("lands a frame exactly on the target at scale 1, 0.25 and 3 when the target is near", () => {
+    for (const scale of [1, 0.25, 3]) expect(landed(0.3, scale)).toBeCloseTo(0.3, 9);
+  });
+  it("is capped at SKIP_SPEED when the target is far", () => {
+    expect(skipSpeed(600, frame, 1)).toBe(SKIP_SPEED);
+    expect(skipSpeed(600, frame, 0.25)).toBe(SKIP_SPEED);
+  });
+  it("gives a speed below normal when the target is nearer than one frame, so it is not overshot", () => {
+    const s = skipSpeed(0.01, frame, 1);
+    expect(s).toBeLessThan(1);
+    expect(landed(0.01, 1)).toBeCloseTo(0.01, 9);
+  });
+  it("returns the normal speed at or past the target and for a dead clock", () => {
+    expect(skipSpeed(0, frame, 1)).toBe(1);
+    expect(skipSpeed(-3, frame, 1)).toBe(1);
+    expect(skipSpeed(10, frame, 0)).toBe(1);
+  });
+  it("has a one-line note for a paused clock", () => {
+    expect(SKIP_PAUSED_NOTE).toBe("Skip is unavailable while the clock is paused.");
+  });
+});

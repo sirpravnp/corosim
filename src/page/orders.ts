@@ -1,11 +1,11 @@
 // ---------------------------------------------------------------- cases: the Order menu, the pending list and the safe time skip
 // The book (src/cases/orderBook.ts) holds what was ordered; this module draws it in the case panel and carries out a skip. A skip raises
 // the page clock for as long as the rules in src/cases/skip.ts allow: it stops on a result, a stop reason, or the cap, never past them.
-import { CATALOG, itemById, resolveMonitor } from "../cases/orders";
+import { CATALOG, itemById, resolveMonitor, stageVisible } from "../cases/orders";
 import { OrderBook, noteReturned } from "../cases/orderBook";
-import { canSkip, skipStop, SKIP_CAP_S, SKIP_SPEED } from "../cases/skip";
+import { canSkip, skipStop, skipSpeed, SKIP_CAP_S, SKIP_PAUSED_NOTE } from "../cases/skip";
 import type { CaseRunner, Probe, Tick } from "../cases/engine";
-import { $, K, S, on } from "./state";
+import { $, K, S, on, playClock } from "./state";
 import { setCaseMonitor } from "./workspace";
 import { patientNow, probe, casesUi } from "./cases";
 
@@ -27,10 +27,12 @@ const skip: { on: boolean; target: string | null; start: number; prev: Probe | n
 /** A case begins: an empty book and the monitor the case names. */
 export function ordersBegin(def: { monitor?: string[] }) {
   orders.book = new OrderBook(); shown = resolveMonitor(def); menuOpen = false; note = ""; stopSkip("");
-  setCaseMonitor(shown);
+  setCaseMonitor(shown); stageUi();
 }
 /** The case is left: the viewer's own layout comes back. */
-export function ordersEnd() { stopSkip(""); orders.book = new OrderBook(); shown = []; menuOpen = false; note = ""; setCaseMonitor(null); }
+export function ordersEnd() { stopSkip(""); orders.book = new OrderBook(); shown = []; menuOpen = false; note = ""; setCaseMonitor(null); document.body.classList.remove("case-no-3d"); }
+/** The 3D heart stage follows the monitor: hidden for the session unless the case lists heart3d or it has been ordered. */
+function stageUi() { document.body.classList.toggle("case-no-3d", !stageVisible(shown, orders.book.ordered())); }
 
 /** The case is over: a running skip ends and the clock goes back to its own speed. */
 export function ordersStop() { stopSkip(""); }
@@ -54,7 +56,8 @@ export function skipFrame() {
   if (!r) { stopSkip(""); return; }
   const readyAt = skip.target ? orders.book.pending.find((p) => p.id === skip.target)?.readyAt : undefined;
   const left = readyAt !== undefined ? readyAt - r.t : SKIP_CAP_S - (r.t - skip.start);
-  S.speed = Math.max(1, Math.min(SKIP_SPEED, left / FRAME_S));
+  if (playClock.paused) { stopSkip(SKIP_PAUSED_NOTE); return; }
+  S.speed = skipSpeed(left, FRAME_S, playClock.scale);
 }
 
 function startSkip(target: string | null) {
@@ -64,6 +67,7 @@ function startSkip(target: string | null) {
   const p = probe(), ok = canSkip(p, (q) => r.isStable(q));
   if (!ok.ok) { note = ok.why; ordersUi(); return; }
   if (r.harmActive(p)) { note = "Time skip is unavailable while a harm is active."; ordersUi(); return; }
+  if (playClock.paused) { note = SKIP_PAUSED_NOTE; ordersUi(); return; }
   if (skip.target === null && target && !orders.book.pending.some((x) => x.id === target)) return;
   note = ""; skip.on = true; skip.target = target; skip.start = r.t; skip.prev = p; skip.saved = S.speed;
   ordersUi();
@@ -71,7 +75,7 @@ function startSkip(target: string | null) {
 
 function show(id: string) {
   if (shown.includes(id)) return;
-  shown = [...shown, id]; setCaseMonitor(shown);
+  shown = [...shown, id]; setCaseMonitor(shown); stageUi();
 }
 
 /** After each tick of the runner: bring back what is due, put each result in the log, and decide whether a running skip goes on. */

@@ -22,6 +22,11 @@ const num = (...xs: number[]) => xs.every(Number.isFinite);
 const round = (x: number, d = 0) => x.toFixed(d);
 
 const monitor = (id: string, label: string, read: (n: PatientNow) => Reading): OrderItem => ({ id, label, group: "monitor", delayS: 0, read });
+/** Whether the page's 3D heart stage (Figure 1) shows: only if the case's monitor lists `heart3d` or the learner has ordered it. */
+export function stageVisible(monitor: readonly string[], ordered: Iterable<string> = []): boolean {
+  return monitor.includes("heart3d") || [...ordered].includes("heart3d");
+}
+
 const panel = (id: string, label: string, delayS = 0, workspaceId = id): OrderItem => ({ id, label, group: "panel", delayS, panel: workspaceId });
 
 export const CATALOG: readonly OrderItem[] = [
@@ -40,7 +45,7 @@ export const CATALOG: readonly OrderItem[] = [
   panel("ischemia", "Ischemia map"),
   panel("numbers", "Hemodynamic numbers"),
   panel("heart3d", "Heart model"),
-  panel("twelvelead", "12-lead ECG", 120), // [assumed]
+  panel("twelvelead", "12-lead ECG", 120, "ecg"), // [assumed] the ECG panel is the 12-lead view
   {
     id: "lactate", label: "Lactate", group: "lab", delayS: 600, // [assumed]
     read: (n) => (num(n.lactate) ? { text: `${round(n.lactate, 1)} mmol/L` } : NA),

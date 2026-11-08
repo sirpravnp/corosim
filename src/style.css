@@ -212,6 +212,7 @@ body.gated { overflow: hidden; }
 .c-case .tier.easy { color: var(--ok); } .c-case .tier.medium { color: var(--warn); } .c-case .tier.hard { color: var(--bad); }
 #cp_opts { display: grid; gap: 8px; margin-top: 4px; }
 #cp_opts button { padding: 11px 14px; font-size: 13px; text-align: left; font-weight: 500; }
+body.case-no-3d #stagefig { display: none; } /* a case whose monitor lacks the heart model hides the stage until it is ordered */
 body.case-run #lesionctl, body.case-run #lesionsec { display: none; }
 .q-result { margin: 6px 0 0; font-size: 14px; line-height: 1.45; font-weight: 700; }
 .q-result.vessel { color: var(--ok); } .q-result.territory { color: var(--warn); } .q-result.miss { color: var(--bad); }

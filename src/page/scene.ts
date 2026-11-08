@@ -35,5 +35,5 @@ export const propsView = new SimPropsView(heartGroup); // built when the toggle 
 /** One raycaster for the whole view: picking (controls.ts) and the marker occlusion probe (markers.ts). */
 export const ray = new THREE.Raycaster();
 
-export function resize() { const w = view.clientWidth, h = view.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+export function resize() { const w = view.clientWidth, h = view.clientHeight; if (!w || !h) return; /* hidden stage: keep the last size */ renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 new ResizeObserver(resize).observe(view);
