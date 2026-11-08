@@ -5,8 +5,8 @@ import type { LabEngineLike, Action } from "../src/lab/types";
 const setup = (e: LabEngineLike) => {
   e.apply({ t: "access", site: "femoral-R" });
   e.apply({ t: "sheath", french: 6 });
-  e.apply({ t: "select", slot: "guide", id: "JL4" });
-  e.apply({ t: "select", slot: "wire", id: "workhorse" });
+  e.apply({ t: "select", slot: "guide", id: "guide-jl4" });
+  e.apply({ t: "select", slot: "wire", id: "wire-workhorse" });
 };
 
 /** Advance in 40 mm steps until the tip is 20 mm into the LAD; calls `each` after every step. */
@@ -22,7 +22,7 @@ const toLad = (e: LabEngineLike, each: () => void = () => {}) => {
 describe("StubLabEngine", () => {
   it("refuses a device before access", () => {
     const e = new StubLabEngine();
-    const ev = e.apply({ t: "select", slot: "guide", id: "JL4" });
+    const ev = e.apply({ t: "select", slot: "guide", id: "guide-jl4" });
     expect(ev[0].severity).toBe("bad");
     expect(e.state().guide).toBeNull();
   });
@@ -68,7 +68,7 @@ describe("StubLabEngine", () => {
     expect(e.state().wire).toBeNull();
   });
   it("replay gives the same state as applying the actions one by one", () => {
-    const acts: Action[] = [{ t: "access", site: "radial-R" }, { t: "sheath", french: 6 }, { t: "select", slot: "guide", id: "JL4" }];
+    const acts: Action[] = [{ t: "access", site: "radial-R" }, { t: "sheath", french: 6 }, { t: "select", slot: "guide", id: "guide-jl4" }];
     const a = new StubLabEngine(); acts.forEach((x) => a.apply(x));
     const b = new StubLabEngine(); b.replay(acts);
     expect(b.state()).toEqual(a.state());

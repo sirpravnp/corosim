@@ -9,6 +9,16 @@ export interface AngioOptions {
   injection: "both" | "left" | "right";
   labels: boolean;
   heartRate: number; // bpm, drives the small cardiac motion of the picture
+  catheter?: boolean; // draw the stand-in catheter; the lab turns it off because it draws the real guide
+}
+
+/** Where the C-arm puts the picture at time `now`: scale, origin (with the small cardiac motion) and a patient-frame to canvas-pixel mapper. Devices draw through the same mapper so they sit on the vessels. */
+export function frameOf(centre: V3, o: AngioOptions, now: number, W: number, H: number) {
+  const ry = (o.rot * Math.PI) / 180, rx = (o.tilt * Math.PI) / 180;
+  const beat = ((now / 1000) * (o.heartRate / 60)) % 1, dx = Math.sin(beat * 6.283) * 1.4, dy = Math.cos(beat * 6.283) * 2.2;
+  const sc = W / 135, cm = project(centre, ry, rx), cx0 = W / 2 + dx - cm[0] * sc, cy0 = H / 2 + dy + cm[1] * sc;
+  const toScreen = (p: V3): [number, number] => { const q = project(p, ry, rx); return [cx0 + q[0] * sc, cy0 - q[1] * sc]; };
+  return { sc, cx0, cy0, toScreen };
 }
 
 const smooth = (x: number) => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
@@ -78,9 +88,8 @@ export class AngioView {
     const ry = (o.rot * Math.PI) / 180, rx = (o.tilt * Math.PI) / 180;
     let t = (now - this.t0) / 1000;
     if (t > this.run) { this.t0 = now; t = 0; }
-    const beat = ((now / 1000) * (o.heartRate / 60)) % 1, dx = Math.sin(beat * 6.283) * 1.4, dy = Math.cos(beat * 6.283) * 2.2;
     A.globalCompositeOperation = "source-over"; A.fillStyle = "#000"; A.fillRect(0, 0, W, H); A.globalCompositeOperation = "lighter";
-    const sc = W / 135, cm = project(m.centre, ry, rx), cx0 = W / 2 + dx - cm[0] * sc, cy0 = H / 2 + dy + cm[1] * sc;
+    const F = frameOf(m.centre, o, now, W, H), sc = F.sc, cx0 = F.cx0, cy0 = F.cy0;
     const NS = ANGIO.samples;
     for (const seg of m.segments) {
       if (!this.visible(seg)) continue;
@@ -104,7 +113,7 @@ export class AngioView {
     }
     // the catheter, from the injected ostium up and out
     const root = m.segments.find((s) => this.visible(s) && !s.parent);
-    if (root) {
+    if (root && o.catheter !== false) {
       const p = project(root.samples[0], ry, rx), ox = cx0 + p[0] * sc, oy = cy0 - p[1] * sc;
       A.strokeStyle = "rgba(255,255,255,.16)"; A.lineWidth = 5; A.beginPath(); A.moveTo(ox, oy); A.bezierCurveTo(ox - 30, oy - 40, ox - 80, oy - 90, ox - 150, oy - 220); A.stroke();
     }

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="/favicon.ico" sizes="any" />
+<link rel="icon" type="image/png" href="/favicon.png" />
+<title>CoroSim PCI lab</title>
+<meta name="description" content="A virtual PCI lab: gain access, engage a guide, cross a lesion with a wire, and place a balloon and stent while the simulator's own patient responds.">
+<script>try{var t=localStorage.getItem("corosim-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Doto:wght@400;800&display=swap">
+</head>
+<body class="lab">
+<div class="app" id="app">
+<header id="shell-head"></header>
+
+<main class="lab-main">
+  <section class="stage" aria-label="Fluoroscopy">
+    <div class="titlebar">
+      <h1 id="title">PCI lab: mid-LAD 75% stenosis</h1>
+      <p id="next" class="next" role="status"></p>
+    </div>
+    <div class="screen">
+      <canvas id="ang" width="640" height="640" aria-label="Fluoroscopy and angiogram"></canvas>
+      <canvas id="dev" class="overlay" width="640" height="640" aria-hidden="true"></canvas>
+    </div>
+    <p class="caption"><b>Figure 1.</b> Live fluoroscopy. Contrast fills the vessels at their solved flow; the guide, wire, balloon and stent are drawn as dark radiopaque devices on the same view.</p>
+    <div class="carm">
+      <label><span>LAO / RAO</span><input id="rot" type="range" min="-60" max="60" value="30"><output id="rotv"></output></label>
+      <label><span>Cranial / caudal</span><input id="tilt" type="range" min="-45" max="45" value="20"><output id="tiltv"></output></label>
+      <label class="chk"><input id="lab" type="checkbox"> Vessel names</label>
+    </div>
+  </section>
+
+  <aside class="rail" aria-label="Procedure controls">
+    <section id="access-sec">
+      <h2>Access</h2>
+      <div class="row">
+        <label class="field"><span>Site</span>
+          <select id="site" aria-label="Access site"><option value="femoral-R">Right femoral</option><option value="femoral-L">Left femoral</option><option value="radial-R">Right radial</option><option value="radial-L">Left radial</option></select></label>
+        <button id="doAccess">Gain access</button>
+        <button id="doSheath">Place 6 French sheath</button>
+      </div>
+      <div class="row"><button id="doHeparin">Heparin 6000 units</button><button id="doNitro">Nitroglycerin</button></div>
+    </section>
+
+    <section id="devices">
+      <h2>Devices</h2>
+      <div id="shelf" class="shelf"></div>
+    </section>
+
+    <section id="move">
+      <h2>Move</h2>
+      <div class="row">
+        <button id="advance" title="W. Hold to keep moving">Advance (hold)</button><button id="retract" title="S. Hold to keep moving">Withdraw (hold)</button>
+        <button id="rotL" title="A">Rotate left</button><button id="rotR" title="D">Rotate right</button>
+      </div>
+      <div class="row">
+        <label class="field"><span>Wire tip</span><select id="shape" aria-label="Wire tip bend"><option value="0">Straight</option><option value="30">30 degree bend</option><option value="45">45 degree bend</option></select></label>
+        <button id="inject" title="Space">Inject contrast 6 mL</button>
+      </div>
+    </section>
+
+    <section id="therapy">
+      <h2>Balloon and stent</h2>
+      <div class="row">
+        <label class="slide"><span>Pressure</span><input id="atm" type="range" min="2" max="20" value="10"><output id="atmv">10 atm</output></label>
+      </div>
+      <div class="row"><button id="inflate" title="I">Inflate 5 s</button><button id="deflate" title="O">Deflate</button><button id="deploy" class="primary">Deploy stent</button></div>
+    </section>
+
+    <section id="monitor">
+      <h2>Monitor</h2>
+      <div class="tiles" id="tiles"></div>
+      <p class="caption"><b>Table 1.</b> Vital signs and pressure-wire FFR from the simulator's patient.</p>
+      <p class="fine" id="monitorNote"></p>
+    </section>
+
+    <section id="log">
+      <h2>Procedure log</h2>
+      <ol id="feed" class="feed" aria-live="polite"></ol>
+      <p class="fine" id="summary"></p>
+      <div class="row"><button id="reset">Reset patient</button></div>
+    </section>
+  </aside>
+</main>
+<p class="fine" id="credit">Keys: W and S advance and withdraw, A and D rotate, I and O inflate and deflate, Space injects contrast, [ and ] turn the C-arm. Educational simulation; device handling is simplified and not a substitute for supervised training.</p>
+<footer id="shell-foot"></footer>
+</div>
+<script type="module" src="../../src/cath/lab/page.ts"></script>
+</body>
+</html>
