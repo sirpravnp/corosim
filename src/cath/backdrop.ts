@@ -1,5 +1,5 @@
 import type { V3 } from "../anatomy/curve";
-import { Basis, bodyMotion, chordAt, patientEllipsoids, prepare, ribs, spine, type Prepared } from "./body";
+import { Basis, bodyMotion, chordAt, patientEllipsoids, prepare, ribs, spine, vertebraEllipsoids, type Prepared } from "./body";
 import { BODY } from "../lab/access";
 
 /** Where the C-arm puts the picture: the static map (the table and the bones do not move) and the basis of the screen axes. */
@@ -28,7 +28,7 @@ export function valueNoise(x: number, y: number): number {
   return (hash(xi, yi) * (1 - u) + hash(xi + 1, yi) * u) * (1 - v) + (hash(xi, yi + 1) * (1 - u) + hash(xi + 1, yi + 1) * u) * v;
 }
 
-const RES = 160; // the soft-tissue field is smooth, so it is solved on a coarse grid and sampled bilinearly
+const RES = 192; // the soft-tissue field is smooth, so it is solved on a coarse grid and sampled bilinearly
 
 /**
  * The anatomy behind the vessels. `soft` is the tissue-equivalent thickness (mm) along each ray, from analytic chords through
@@ -39,7 +39,7 @@ export class Backdrop {
   readonly res = RES;
   soft = new Float32Array(RES * RES);
   bone: Uint8Array;
-  private lin = new Float32Array(RES * RES); private tmp = new Float32Array(RES * RES);
+  private lin = new Float32Array(RES * RES); private bon = new Float32Array(RES * RES); private tmp = new Float32Array(RES * RES);
   private cub = new Float32Array(RES * RES);
   private canvas: HTMLCanvasElement; private ctx: CanvasRenderingContext2D;
   private key = "";
@@ -57,10 +57,10 @@ export class Backdrop {
   }
 
   private solveSoft(F: StaticFrame, hc: V3, now: number, heartRate: number) {
-    const { soft, lin, cub } = this, R = RES, cell = F.W / R;
-    lin.fill(0); cub.fill(0);
+    const { soft, lin, cub, bon } = this, R = RES, cell = F.W / R;
+    lin.fill(0); cub.fill(0); bon.fill(0);
     const heartMove = bodyMotion(now, heartRate, 1), breath = heartMove.breath;
-    const ells = patientEllipsoids(hc, breath);
+    const ells = [...patientEllipsoids(hc, breath), ...spine().flatMap((v, i) => vertebraEllipsoids(v, i))];
     for (const e of ells) {
       const p: Prepared = prepare(e, F.basis, e.group === "heart" ? [heartMove.dx, heartMove.dy] : [0, 0]);
       const sx0 = F.ox + (p.c1 - p.ext1) * F.sc, sx1 = F.ox + (p.c1 + p.ext1) * F.sc;
@@ -74,17 +74,23 @@ export class Backdrop {
           const c = chordAt(p, (F.ox * -1 + (gx + 0.5) * cell) / F.sc, x2);
           if (c <= 0) continue;
           const k = gy * R + gx;
-          if (body) cub[k] += c * c * c; else lin[k] += p.w * c;
+          if (body) cub[k] += c * c * c; else if (p.group === "bone") bon[k] += p.w * c; else lin[k] += p.w * c;
         }
       }
     }
-    for (let k = 0; k < soft.length; k++) soft[k] = Math.max(22, Math.cbrt(cub[k]) + lin[k]);
-    boxBlur(soft, R, R, 1, 2, this.tmp);
+    for (let gy = 0; gy < R; gy++) for (let gx = 0; gx < R; gx++) {
+      const k = gy * R + gx; if (bon[k] === 0) continue;
+      // trabecular streaks run along the vertebra: noise stretched in the cranio-caudal direction, tied to the patient
+      const x1 = (-F.ox + (gx + 0.5) * cell) / F.sc, x2 = (F.oy - (gy + 0.5) * cell) / F.sc;
+      bon[k] *= 0.72 + 0.55 * valueNoise(x1 / 2.4, x2 / 8) * 0.6 + 0.55 * valueNoise(x1 / 1.1, x2 / 3.2) * 0.4;
+    }
+    for (let k = 0; k < soft.length; k++) soft[k] = Math.max(62, Math.cbrt(cub[k]) + lin[k] + bon[k]); // where both lungs overlap the ray still crosses the chest wall and mediastinum
+    boxBlur(soft, R, R, 1, 1, this.tmp);
     // a little anatomical texture, tied to the patient (the image plane in mm), strongest in the lungs
     for (let gy = 0; gy < R; gy++) for (let gx = 0; gx < R; gx++) {
       const x1 = (-F.ox + (gx + 0.5) * cell) / F.sc, x2 = (F.oy - (gy + 0.5) * cell) / F.sc, k = gy * R + gx;
       const n = valueNoise(x1 / 14, x2 / 14) * 0.6 + valueNoise(x1 / 5.5, x2 / 5.5) * 0.4 - 0.5;
-      soft[k] += n * 18 * (lin[k] < -20 ? 2.6 : 1);
+      soft[k] += n * 10 * (lin[k] < -20 ? 2.4 : 1);
     }
   }
 
@@ -107,29 +113,23 @@ export class Backdrop {
       C.closePath(); C.fillStyle = `rgba(255,255,255,${fill})`; C.fill();
       C.strokeStyle = `rgba(255,255,255,${edge * 0.8})`; C.lineWidth = Math.max(1, F.sc * 1.6); C.lineJoin = "round"; C.stroke();
     };
-    // vertebral bodies (the gaps between them are the disc spaces), spinous processes and transverse processes
-    for (const v of spine()) {
-      solid(v.c, [v.size[0], v.size[2], v.size[1]], 0.1, 0.1); // width, height, depth
-      solid([v.c[0], v.c[1], v.c[2] - v.size[1] * 0.5 - 14], [8, v.size[2] * 1.3, 26], 0.09, 0.09);
-      for (const s of [-1, 1]) solid([v.c[0] + s * (v.size[0] * 0.5 + 16), v.c[1] + 2, v.c[2] - 14], [34, 6, 7], 0.07, 0.05);
-    }
     // ribs, thinning toward the front
     for (const r of ribs()) {
       for (let k = 0; k < r.pts.length - 1; k++) {
         const a = P(r.pts[k]), b = P(r.pts[k + 1]);
         C.beginPath(); C.moveTo(a[0], a[1]); C.lineTo(b[0], b[1]);
         C.lineWidth = Math.max(1.2, r.widthMm[k] * F.sc * 0.55); C.lineCap = "butt";
-        C.strokeStyle = `rgba(255,255,255,${0.085 * (1 - 0.35 * (k / r.pts.length))})`; C.stroke();
+        C.strokeStyle = `rgba(255,255,255,${0.05 * (1 - 0.35 * (k / r.pts.length))})`; C.stroke();
         C.lineWidth = Math.max(0.8, r.widthMm[k] * F.sc * 0.85); C.strokeStyle = "rgba(255,255,255,0.05)"; C.stroke();
       }
     }
     // sternum and clavicles
     const xm = BODY.midlineX;
-    solid([xm, 78, 84], [36, 118, 12], 0.07, 0.07); solid([xm, -2, 82], [26, 46, 9], 0.07, 0.07); solid([xm, -44, 78], [10, 16, 6], 0.04, 0.04);
+    solid([xm, 78, 84], [36, 118, 12], 0.04, 0.04); solid([xm, -2, 82], [26, 46, 9], 0.04, 0.04); solid([xm, -44, 78], [10, 16, 6], 0.025, 0.025);
     for (const s of [-1, 1]) {
       const pts: V3[] = [[xm + s * 12, 134, 70], [xm + s * 55, 143, 66], [xm + s * 105, 140, 50], [xm + s * 152, 131, 30]];
       C.beginPath(); pts.forEach((q, i) => { const a = P(q); if (i) C.lineTo(a[0], a[1]); else C.moveTo(a[0], a[1]); });
-      C.lineWidth = Math.max(2, 11 * F.sc); C.lineJoin = "round"; C.lineCap = "round"; C.strokeStyle = "rgba(255,255,255,0.085)"; C.stroke();
+      C.lineWidth = Math.max(2, 11 * F.sc); C.lineJoin = "round"; C.lineCap = "round"; C.strokeStyle = "rgba(255,255,255,0.05)"; C.stroke();
     }
     const d = C.getImageData(0, 0, W, H).data, f = new Float32Array(W * H);
     for (let k = 0; k < W * H; k++) f[k] = d[k * 4];

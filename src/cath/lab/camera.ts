@@ -6,7 +6,7 @@ import { deviceFocus, overviewBox } from "../../lab/camera";
 export type CameraMode = "heart" | "follow" | "overview";
 export interface Cam { centre: V3; spanMm: number }
 
-export const HEART_SPAN_MM = 135;
+export const HEART_SPAN_MM = 170;
 /** The widest field of view a real C-arm gives (about a 30 cm detector with magnification off). Follow never frames more than this. */
 export const MAX_FLUORO_SPAN_MM = 260;
 /** Overview is a schematic, not a fluoroscopic picture: no single x-ray frame can hold the whole 600 mm route. */

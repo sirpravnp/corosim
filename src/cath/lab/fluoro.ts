@@ -121,8 +121,8 @@ export class FluoroView {
     // the guide: a braided wall (two dense edges) around a lighter lumen, with a soft tip
     if (geom.guide.length > 1) {
       const pts = smoothPath(geom.guide.map(S), 2), wpx = Math.max(3.4, 1.9 * sc), { left, right } = wallLines(pts, pts.map(() => wpx), undefined, 3);
-      ribbon(left, right); A.fillStyle = white(0.17); A.fill();
-      for (const edge of [left, right]) { trace(edge); A.lineWidth = Math.max(1.1, 0.34 * sc); A.strokeStyle = white(0.34); A.stroke(); }
+      ribbon(left, right); A.fillStyle = white(0.3); A.fill(); // a braided tube is a solid gray band, a little denser at the wall
+      for (const edge of [left, right]) { trace(edge); A.lineWidth = Math.max(1.1, 0.3 * sc); A.strokeStyle = white(0.05); A.stroke(); }
       const tail = pts.slice(-Math.max(2, Math.round(pts.length * 0.03))); // the distal shaft is softer and carries a marker band
       bar(pts[pts.length - 1], tail[0], Math.max(3, 1.2 * sc), wpx, 0.2);
     }
@@ -177,6 +177,7 @@ export class FluoroView {
     const F = frameOf(centre, opts, now, W, H), sc = F.sc;
     this.paintDevices(F, geom, st, plaques, roadmap);
     C.clearRect(0, 0, W, H);
+    C.save(); C.beginPath(); C.arc(W / 2, H / 2, W * 0.47, 0, 6.283); C.clip(); // the monitor draws only inside the collimated field
     // the roadmap: the access vessels as a faint outline on the monitor, only where there is no dye of the angiogram's own
     if (roadmap) {
       const all: VSeg[] = [...roadmap.segs, ...(roadmap.branches ?? [])];
@@ -189,6 +190,7 @@ export class FluoroView {
         for (const edge of [left, right]) { C.beginPath(); edge.forEach((p, i) => (i ? C.lineTo(p[0], p[1]) : C.moveTo(p[0], p[1]))); C.stroke(); }
       }
     }
+    C.restore();
     // the counters a lab monitor prints in the corner
     C.font = '12px "JetBrains Mono", ui-monospace, Menlo, monospace'; C.textBaseline = "alphabetic"; C.fillStyle = "rgba(220,220,210,.85)"; C.textAlign = "right";
     C.fillText(`FLUORO ${fmtTime(st.fluoroSeconds)}  AK ${Math.round(st.doseMGy)} mGy`, W - 14, H - 32);

@@ -23,6 +23,7 @@ export interface Ellipsoid {
   yaw?: number; roll?: number; // degrees: about y (turns the plate toward or away from the viewer), then about z (tilts it in the coronal plane)
   w: number; // tissue-equivalent millimeters per millimeter of path: +1 soft tissue, -0.8 lung, +2.2 bone
   group: Group;
+  clipY?: number; // half-height (mm, along the screen's vertical) where the chord is cut off with a soft edge: turns an ellipsoid into a rounded block, like a vertebral body
   sharp?: number; // >0 flattens the chord profile into a plateau with a steeper edge (lungs, whose boundary is a surface, not a dome)
 }
 
@@ -38,7 +39,7 @@ export function axesOf(e: Ellipsoid): [V3, V3, V3] {
 }
 
 /** An ellipsoid prepared for one view: its projected center, the inverse of its silhouette matrix, and the chord through its center. */
-export interface Prepared { c1: number; c2: number; i11: number; i12: number; i22: number; ext1: number; ext2: number; chord: number; w: number; sharp: number; group: Group }
+export interface Prepared { clip: number; c1: number; c2: number; i11: number; i12: number; i22: number; ext1: number; ext2: number; chord: number; w: number; sharp: number; group: Group }
 export function prepare(e: Ellipsoid, b: Basis, shift: [number, number] = [0, 0]): Prepared {
   const ax = axesOf(e), a = e.a;
   let m11 = 0, m12 = 0, m22 = 0, q = 0;
@@ -48,7 +49,7 @@ export function prepare(e: Ellipsoid, b: Basis, shift: [number, number] = [0, 0]
   }
   const det = m11 * m22 - m12 * m12 || 1e-9;
   return {
-    c1: dot(b.e1, e.c) + shift[0], c2: dot(b.e2, e.c) + shift[1],
+    clip: e.clipY ?? 0, c1: dot(b.e1, e.c) + shift[0], c2: dot(b.e2, e.c) + shift[1],
     i11: m22 / det, i12: -m12 / det, i22: m11 / det, ext1: Math.sqrt(m11), ext2: Math.sqrt(m22), // half-width and half-height of the silhouette
     chord: 2 / Math.sqrt(q || 1e-9), w: e.w, sharp: e.sharp ?? 0, group: e.group,
   };
@@ -59,8 +60,8 @@ export function chordAt(p: Prepared, x1: number, x2: number): number {
   const q1 = x1 - p.c1, q2 = x2 - p.c2;
   const r2 = p.i11 * q1 * q1 + 2 * p.i12 * q1 * q2 + p.i22 * q2 * q2;
   if (r2 >= 1) return 0;
-  const s = Math.sqrt(1 - r2);
-  return p.chord * (p.sharp > 0 ? Math.min(1, s / p.sharp) : s);
+  const s = Math.sqrt(1 - r2), cut = p.clip > 0 ? Math.min(1, Math.max(0, (p.clip - Math.abs(q2)) / 1.3)) : 1; // soft end plates
+  return cut * p.chord * (p.sharp > 0 ? Math.min(1, s / p.sharp) : s);
 }
 
 const xm = BODY.midlineX;
@@ -83,8 +84,8 @@ export function patientEllipsoids(heartCentre: V3, breath = 0): Ellipsoid[] {
     // lungs, with the diaphragm as their lower surface
     { c: [xm - 64, 76 - br, -2], a: [66, 98 + br, 80], w: -0.82, group: "lung", sharp: 0.38 },
     { c: [xm + 64, 52 - br, -2], a: [60, 98 + br, 78], w: -0.82, group: "lung", sharp: 0.38 },
-    { c: [xm - 55, -78 - br, 4], a: [78, 44, 68], w: 0.4, group: "body" }, // liver, just under the right dome
-    { c: [xm + 4, 40, -32], a: [30, 108, 38], w: 0.55, group: "mediastinum" },
+    { c: [xm - 55, -78 - br, 4], a: [84, 50, 72], w: 0.75, group: "body" }, // liver, just under the right dome
+    { c: [xm + 4, 40, -32], a: [30, 108, 38], w: 0.3, group: "mediastinum" },
     { c: [xm + 1, 108, -22], a: [8, 62, 8], w: -0.9, group: "gas" }, // trachea
     // gas in the stomach and bowel
     { c: [xm + 74, -96 - br, -8], a: [22, 18, 22], w: -0.85, group: "gas" },
@@ -93,8 +94,8 @@ export function patientEllipsoids(heartCentre: V3, breath = 0): Ellipsoid[] {
     { c: [xm + 58, -296, 12], a: [24, 32, 20], w: -0.8, group: "gas" },
     { c: [xm - 6, -362, 30], a: [26, 20, 18], w: -0.8, group: "gas" },
     // the heart: left ventricle and the right-sided chambers, long axis down and to the left
-    { c: [heartCentre[0] + 16, heartCentre[1] - 4, heartCentre[2] + 4], a: [40, 62, 38], roll: 40, w: 1.1, group: "heart" },
-    { c: [heartCentre[0] - 12, heartCentre[1] + 6, heartCentre[2] + 8], a: [34, 48, 34], roll: 15, w: 1.1, group: "heart" },
+    { c: [heartCentre[0] + 16, heartCentre[1] - 4, heartCentre[2] + 4], a: [40, 62, 38], roll: 40, w: 0.55, group: "heart" },
+    { c: [heartCentre[0] - 12, heartCentre[1] + 6, heartCentre[2] + 8], a: [34, 48, 34], roll: 15, w: 0.5, group: "heart" },
     // flat bones: scapulae, iliac wings, sacrum, pubic rami, femoral heads, necks, shafts
     ...sym({ c: [xm + 118, 96, -62], a: [46, 62, 5], yaw: 18, roll: -12, w: 2.2, group: "bone" }),
     ...sym({ c: [xm + 88, -240, -22], a: [52, 56, 9], yaw: 38, roll: 22, w: 2.2, group: "bone" }),
@@ -107,12 +108,35 @@ export function patientEllipsoids(heartCentre: V3, breath = 0): Ellipsoid[] {
   return out;
 }
 
+/**
+ * One vertebra as ellipsoids: a body (a capped ellipsoid, so it reads as a cylinder) with a dense cortical shell, two pedicles, a spinous
+ * process and two transverse processes. The shell is an outer ellipsoid minus a smaller inner one, so its path length is the difference of
+ * the two chords: a bright rim and a lighter, textured center from any C-arm angle, with no outline drawn anywhere.
+ */
+export function vertebraEllipsoids(v: Vertebra, seed = 0): Ellipsoid[] {
+  const [wx, h, d] = [v.size[0], v.size[2], v.size[1]], c = v.c;
+  const j = (k: number) => 1 + 0.06 * Math.sin(seed * 12.9898 + k * 78.233 + v.c[1] * 0.37); // each level differs a little
+  const tilt = 4 * Math.sin(v.c[1] * 0.05 + seed);
+  const body: Ellipsoid = { c, a: [wx * 0.56 * j(1), h * 0.8, d * 0.5 * j(2)], roll: tilt * 0.3, w: 0.61, group: "bone", sharp: 0.4, clipY: h * 0.5 };
+  const out: Ellipsoid[] = [body,
+    { ...body, w: 0.55, sharp: 0.3 }, // cortex: the outer solid again ...
+    { ...body, a: [body.a[0] * 0.8, body.a[1] * 0.8, body.a[2] * 0.8], w: -0.55, sharp: 0.3, clipY: h * 0.5 - 2.2 }, // ... minus the marrow cavity
+  ];
+  for (const s of [-1, 1]) {
+    out.push({ c: [c[0] + s * wx * 0.33, c[1] + h * 0.22, c[2] - d * 0.5 - 2], a: [4.2, 4.6, 11], w: 1.21, group: "bone" }); // pedicle: the owl's eye in an AP view
+    out.push({ c: [c[0] + s * (wx * 0.5 + 15), c[1] + h * 0.2, c[2] - d * 0.45 - 12], a: [18, 3.2, 4.5], yaw: s * -14, w: 0.99, group: "bone" }); // transverse process
+    out.push({ c: [c[0] + s * wx * 0.3, c[1] + h * 0.55, c[2] - d * 0.5 - 14], a: [3.5, 7, 4], w: 0.88, group: "bone" }); // facet
+  }
+  out.push({ c: [c[0], c[1] - h * 0.1, c[2] - d * 0.5 - 22], a: [3.4, h * 0.8, 20], roll: 0, w: 0.94, group: "bone" }); // spinous process, long in the thoracic spine
+  return out;
+}
+
 /** One vertebra or disc-spaced block of the spine. */
 export interface Vertebra { c: V3; size: V3; level: string }
 /** Cervical, thoracic and lumbar vertebral bodies, with the kyphosis and lordosis, from the neck down to the sacrum. */
 export function spine(): Vertebra[] {
   const out: Vertebra[] = [];
-  const zAt = (y: number) => (y < -120 ? -60 - 0.02 * (-120 - y) : -66 - 8 * Math.sin((Math.PI * (y + 120)) / 330));
+  const zAt = (y: number) => (y < -120 ? -82 - 0.02 * (-120 - y) : -90 - 8 * Math.sin((Math.PI * (y + 120)) / 330));
   for (let i = 0; i < 6; i++) { const y = 262 - i * 17; out.push({ c: [xm + 3, y, zAt(y)], size: [24 + i, 22 + i, 13], level: `C${2 + i}` }); }
   for (let i = 0; i < 12; i++) { const y = 152 - i * 23.8, u = i / 11; out.push({ c: [xm + 3 - 2 * Math.sin(u * 3), y, zAt(y)], size: [28 + 15 * u, 27 + 8 * u, 15 + 8 * u], level: `T${i + 1}` }); }
   for (let i = 0; i < 5; i++) { const y = -140 - i * 32; out.push({ c: [xm + 2, y, zAt(y)], size: [46 + 3 * i, 34, 24], level: `L${i + 1}` }); }

@@ -4,7 +4,8 @@ import { AngioModel, AngioSegment } from "../sim/cath";
 import type { Plaque } from "../lab/types";
 import { Backdrop, type StaticFrame } from "./backdrop";
 import { bodyMotion, motionWeight, viewBasis } from "./body";
-import { calciumSpan, levelRuns, plaqueShift, wallLines, type P2 } from "./lumen";
+import { makeTwigs, type Twig } from "./twigs";
+import { calciumSpan, levelRuns, plaqueShift, smoothPath, wallLines, type P2 } from "./lumen";
 
 /** What the C-arm is doing: where it is pointed, which coronary is being injected, whether the vessel names are drawn. */
 export interface AngioOptions {
@@ -33,7 +34,7 @@ function project(p: V3, ry: number, rx: number): V3 {
  */
 export function frameOf(centre: V3, o: AngioOptions, now: number, W: number, H: number) {
   const ry = (o.rot * Math.PI) / 180, rx = (o.tilt * Math.PI) / 180;
-  const c0 = o.cam?.centre ?? centre, sc = W / (o.cam?.spanMm ?? 135), cm = project(c0, ry, rx);
+  const c0 = o.cam?.centre ?? centre, sc = W / (o.cam?.spanMm ?? DEFAULT_SPAN_MM), cm = project(c0, ry, rx);
   const ox = W / 2 - cm[0] * sc, oy = H / 2 + cm[1] * sc;
   const m1 = bodyMotion(now, o.heartRate, 1);
   const toStatic = (p: V3): P2 => { const q = project(p, ry, rx); return [ox + q[0] * sc, oy - q[1] * sc]; };
@@ -45,16 +46,20 @@ export function frameOf(centre: V3, o: AngioOptions, now: number, W: number, H: 
 }
 export type Frame = ReturnType<typeof frameOf>;
 
+/** The angiographic field of a cardiac frame, in mm across the picture: about 17 cm, which is what real frames show (the heart fills most of it). */
+export const DEFAULT_SPAN_MM = 170;
+
 const smooth = (x: number) => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
 
 // ---- display model. Optical density d = tissue + bone + iodine + device; the detector sees exp(-d), the monitor shows a shouldered curve of it.
 const T_REF = 180; // mm of tissue-equivalent along an AP ray through the chest: mid-gray, as an automatic exposure control would set it
-const K_SOFT = 2.3, K_THIN = 0.95, K_BONE = 2.2, K_IODINE = 3.1, K_DEVICE = 3.4;
+const K_SOFT = 1.3, K_THIN = 0.8, K_BONE = 1.5, K_IODINE = 1.3, K_DEVICE = 2.2;
 const VEIL = 0.05; // scatter and glare lift the dark end
 const LUT_N = 2048, D_MIN = -2.5, D_MAX = 9;
 const EXP_LUT = new Float32Array(LUT_N + 1); for (let i = 0; i <= LUT_N; i++) EXP_LUT[i] = Math.exp(-(D_MIN + ((D_MAX - D_MIN) * i) / LUT_N));
+const MOT = 96; // the coarse grid of low-frequency mottle, redrawn every frame
 const TONE_N = 1024, TONE_MAX = 6;
-const TONE_LUT = new Float32Array(TONE_N + 1); for (let i = 0; i <= TONE_N; i++) TONE_LUT[i] = 1 - Math.exp(-0.72 * ((i / TONE_N) * TONE_MAX));
+const TONE_LUT = new Float32Array(TONE_N + 1); for (let i = 0; i <= TONE_N; i++) TONE_LUT[i] = 1 - Math.exp(-1.15 * ((i / TONE_N) * TONE_MAX));
 
 /**
  * The angiogram: a canvas-2D renderer (a WebGL one could replace it behind this class). The anatomy comes from `Backdrop` (analytic
@@ -63,15 +68,16 @@ const TONE_LUT = new Float32Array(TONE_N + 1); for (let i = 0; i <= TONE_N; i++)
  */
 export class AngioView {
   opts: AngioOptions = { rot: 30, tilt: -20, injection: "both", labels: false, heartRate: 70 };
-  private model: AngioModel | null = null;
+  private model: AngioModel | null = null; private twigs: Twig[] = [];
   private ctx: CanvasRenderingContext2D;
   private acc: HTMLCanvasElement; private actx: CanvasRenderingContext2D;
   private ovl: HTMLCanvasElement; private octx: CanvasRenderingContext2D;
   private W: number; private H: number;
   private noise: Float32Array;
   private backdrop: Backdrop;
+  private mottle = new Float32Array(MOT * MOT); private mi = new Int16Array(0); private mf = new Float32Array(0); private mj = new Int16Array(0); private mg = new Float32Array(0);
   private vig: Float32Array; private xi: Int16Array; private xf: Float32Array; private yi: Int16Array; private yf: Float32Array;
-  private out: ImageData;
+  private out: ImageData; private lum: Float32Array; private lum2: Float32Array;
   private t0 = -1e9; private run = ANGIO.runSeconds;
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -83,20 +89,26 @@ export class AngioView {
     this.octx = this.ovl.getContext("2d", { willReadFrequently: true })!;
     this.noise = new Float32Array(this.W * this.H + 977 * 64); for (let i = 0; i < this.noise.length; i++) this.noise[i] = Math.random() + Math.random() - 1; // triangular, mean 0
     this.backdrop = new Backdrop(this.W, this.H);
-    this.out = this.ctx.createImageData(this.W, this.H);
+    this.out = this.ctx.createImageData(this.W, this.H); this.lum = new Float32Array(this.W * this.H); this.lum2 = new Float32Array(this.W * this.H);
     const { W, H } = this, R = this.backdrop.res;
     this.vig = new Float32Array(W * H);
     for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
       const rr = Math.hypot((i - W / 2) / W, (j - H / 2) / H) / 0.47; // 1 at the edge of the collimated field
-      this.vig[j * W + i] = rr > 1 ? 0 : Math.min(1, (1 - rr) * W * 0.47 / 2.2) * (1 - 0.22 * rr * rr);
+      // the field edge, and two straight collimator shutters that cut the corners with a soft penumbra and leave a dim margin
+      const X = i / W - 0.5, Y = j / H - 0.5; let sh = 1;
+      for (const [th, off] of [[-0.35, 0.44], [2.6, 0.46]]) sh = Math.min(sh, 0.3 + 0.7 * smooth((off - (X * Math.cos(th) + Y * Math.sin(th))) * W / 14));
+      this.vig[j * W + i] = rr > 1 ? 0 : Math.min(1, (1 - rr) * W * 0.47 / 2.2) * (1 - 0.18 * rr * rr) * sh;
     }
+    this.mi = new Int16Array(W); this.mf = new Float32Array(W); this.mj = new Int16Array(H); this.mg = new Float32Array(H);
+    for (let i = 0; i < W; i++) { const g = Math.min(MOT - 1.001, (i / W) * (MOT - 1)); this.mi[i] = Math.floor(g); this.mf[i] = g - this.mi[i]; }
+    for (let j = 0; j < H; j++) { const g = Math.min(MOT - 1.001, (j / H) * (MOT - 1)); this.mj[j] = Math.floor(g); this.mg[j] = g - this.mj[j]; }
     this.xi = new Int16Array(W); this.xf = new Float32Array(W); this.yi = new Int16Array(H); this.yf = new Float32Array(H);
     for (let i = 0; i < W; i++) { const g = Math.min(R - 1.001, Math.max(0, ((i + 0.5) * R) / W - 0.5)); this.xi[i] = Math.floor(g); this.xf[i] = g - this.xi[i]; }
     for (let j = 0; j < H; j++) { const g = Math.min(R - 1.001, Math.max(0, ((j + 0.5) * R) / H - 0.5)); this.yi[j] = Math.floor(g); this.yf[j] = g - this.yi[j]; }
   }
 
   setModel(m: AngioModel) {
-    this.model = m;
+    this.model = m; this.twigs = m.segments.flatMap((sg) => makeTwigs(sg));
     let last = 0;
     for (const s of m.segments) if (this.visible(s)) for (const t of s.arrival) if (Number.isFinite(t)) last = Math.max(last, t);
     this.run = Math.min(14, Math.max(ANGIO.runSeconds, last + ANGIO.injectSeconds + 1.5)); // a slow vessel gets a longer run before the loop repeats
@@ -143,6 +155,18 @@ export class AngioView {
           A.closePath(); A.fillStyle = `rgba(255,255,255,${(d * dens).toFixed(3)})`; A.fill();
         }
       }
+      // the fine branches: they fill just after the point they leave the parent, a hair thinner than a pixel at low zoom
+      for (const tw of this.twigs) {
+        if (tw.segId !== seg.id) continue;
+        const ta = seg.arrival[tw.at] + 0.12;
+        if (!Number.isFinite(ta)) continue;
+        const c = o.labels ? 1 : smooth((t - ta) / 0.3) * (1 - smooth((t - ta - ANGIO.injectSeconds) / 0.5));
+        if (c < 0.02) continue;
+        const sp = smoothPath(tw.pts.map((p) => F.toScreen(p)), 2), w = Math.max(1.3, tw.dMm * F.sc * 1.2);
+        A.beginPath(); sp.forEach((q, i) => (i ? A.lineTo(q[0], q[1]) : A.moveTo(q[0], q[1])));
+        A.lineJoin = "round"; A.lineCap = "round"; A.lineWidth = w; A.strokeStyle = `rgba(255,255,255,${(0.15 * c).toFixed(3)})`; A.stroke();
+        A.lineWidth = Math.max(0.8, w * 0.55); A.strokeStyle = `rgba(255,255,255,${(0.12 * c).toFixed(3)})`; A.stroke();
+      }
       // calcium shows before any dye: a dense line along each wall of the plaque
       for (const p of plaques) {
         const cs = calciumSpan(p, seg.length, NS); if (!cs) continue;
@@ -181,12 +205,13 @@ export class AngioView {
 
     const { soft, bone } = this.backdrop, R = this.backdrop.res, od = this.out.data, f = (Math.floor(now / 33) * 977) % (this.noise.length - W * H);
     const nz = this.noise, vig = this.vig, xi = this.xi, xf = this.xf, yi = this.yi, yf = this.yf;
+    const mot = this.mottle, mi = this.mi, mf = this.mf, mj = this.mj, mg = this.mg; for (let q = 0; q < mot.length; q++) mot[q] = Math.random() + Math.random() - 1;
     const lutScale = LUT_N / (D_MAX - D_MIN), toneScale = TONE_N / TONE_MAX, rr = 1 / T_REF;
     for (let j = 0; j < H; j++) {
       const r0 = yi[j] * R, r1 = r0 + R, wy = yf[j];
       for (let i = 0; i < W; i++) {
         const k = j * W + i, p = k * 4, v0 = vig[k];
-        if (v0 === 0) { od[p] = od[p + 1] = od[p + 2] = 0; od[p + 3] = 255; continue; }
+        if (v0 === 0) { this.lum[k] = 0; continue; }
         const a = xi[i], wx = xf[i];
         const s = (soft[r0 + a] * (1 - wx) + soft[r0 + a + 1] * wx) * (1 - wy) + (soft[r1 + a] * (1 - wx) + soft[r1 + a + 1] * wx) * wy;
         const xs = Math.pow(s * rr, 0.9) - 1;
@@ -194,9 +219,21 @@ export class AngioView {
         if (dev) d += (dev[p] / 255) * K_DEVICE;
         let ix = (d - D_MIN) * lutScale; ix = ix < 0 ? 0 : ix > LUT_N ? LUT_N : ix;
         let raw = EXP_LUT[ix | 0] + VEIL;
-        raw *= 1 + (0.085 * nz[k + f]) / Math.sqrt(raw + 0.04); // quantum mottle: fewer photons behind dense anatomy, so grainier there
+        const m0 = mj[j] * MOT + mi[i], mx = mf[i], my = mg[j];
+        const low = (mot[m0] * (1 - mx) + mot[m0 + 1] * mx) * (1 - my) + (mot[m0 + MOT] * (1 - mx) + mot[m0 + MOT + 1] * mx) * my; // low-frequency mottle
+        const fine = (nz[k + f] + nz[k + f + 1]) * 0.72; // grain one to two pixels wide: neighbors share photons
+        raw *= 1 + (0.2 * fine + 0.09 * low) / Math.sqrt(raw + 0.05); // quantum mottle: fewer photons behind dense anatomy, so grainier there
         let ti = raw * toneScale; ti = ti < 0 ? 0 : ti > TONE_N ? TONE_N : ti;
-        const v = TONE_LUT[ti | 0] * v0 * 255;
+        this.lum[k] = TONE_LUT[ti | 0] * v0;
+      }
+    }
+    // focal spot, scintillator and detector soften every edge a little, grain included: a separable blur over the whole picture.
+    const A1 = this.lum, A2 = this.lum2, wk = [0.27, 0.46, 0.27];
+    for (let j = 0; j < H; j++) { const r = j * W; A2[r] = A1[r]; A2[r + W - 1] = A1[r + W - 1]; for (let i = 1; i < W - 1; i++) A2[r + i] = A1[r + i - 1] * wk[0] + A1[r + i] * wk[1] + A1[r + i + 1] * wk[2]; }
+    for (let j = 0; j < H; j++) {
+      const up = Math.max(0, j - 1) * W, mid = j * W, dn = Math.min(H - 1, j + 1) * W;
+      for (let i = 0; i < W; i++) {
+        const blur = A2[up + i] * wk[0] + A2[mid + i] * wk[1] + A2[dn + i] * wk[2], v = Math.max(0, Math.min(1, blur)) * 255, p = (mid + i) * 4;
         od[p] = v; od[p + 1] = v; od[p + 2] = v * 1.015; od[p + 3] = 255;
       }
     }

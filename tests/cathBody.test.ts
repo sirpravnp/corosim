@@ -109,3 +109,50 @@ describe("lumen geometry", () => {
     expect(balloonProfile(5, 12, 1.5, 0, 8)).toEqual([0.5, 0.5, 0.5, 0.5, 0.5]);
   });
 });
+
+import { vertebraEllipsoids } from "../src/cath/body";
+import { makeTwigs } from "../src/cath/twigs";
+
+describe("vertebrae", () => {
+  const v = spine()[10];
+  it("builds a body with a cortical shell, two pedicles, two transverse processes, two facets and a spinous process", () => {
+    const e = vertebraEllipsoids(v, 3);
+    expect(e.length).toBe(3 + 2 * 3 + 1);
+    const [body, cortex, marrow] = e;
+    expect(body.w).toBeGreaterThan(0); expect(cortex.w).toBeGreaterThan(0); expect(marrow.w).toBeCloseTo(-cortex.w, 6);
+    expect(marrow.a[0]).toBeLessThan(cortex.a[0]);
+  });
+  it("the shell is brighter at the rim than the center: the chord difference is largest near the edge", () => {
+    const e = vertebraEllipsoids(v, 0), b = viewBasis(0, 0), net = (x: number) => e.slice(0, 3).reduce((s, q) => s + q.w * chordAt(prepare(q, b), v.c[0] + x, v.c[1]), 0);
+    const half = e[0].a[0];
+    expect(net(half * 0.9)).toBeGreaterThan(0);
+    // chord shrinks toward the rim, but the shell's share grows: the net density per unit path is higher at the rim
+    const dens = (x: number) => net(x) / chordAt(prepare(e[0], b), v.c[0] + x, v.c[1]);
+    expect(dens(half * 0.9)).toBeGreaterThan(dens(0));
+  });
+  it("end plates are cut flat: no chord beyond the clip height", () => {
+    const e = vertebraEllipsoids(v, 0)[0], p = prepare(e, viewBasis(0, 0));
+    expect(chordAt(p, v.c[0], v.c[1] + e.clipY! + 2)).toBe(0);
+    expect(chordAt(p, v.c[0], v.c[1])).toBeGreaterThan(10);
+  });
+  it("levels differ a little from one another but are repeatable for a given seed", () => {
+    expect(vertebraEllipsoids(v, 1)[0].a[0]).not.toBeCloseTo(vertebraEllipsoids(v, 2)[0].a[0], 3);
+    expect(vertebraEllipsoids(v, 1)[0].a).toEqual(vertebraEllipsoids(v, 1)[0].a);
+  });
+});
+
+describe("fine branches", () => {
+  const seg = { id: "LAD", samples: Array.from({ length: 41 }, (_, i) => [i * 2, -i, 0] as [number, number, number]), diameterMm: Array(41).fill(3), length: 90 };
+  it("are deterministic, start on the vessel, and stay short and thin", () => {
+    const a = makeTwigs(seg), b = makeTwigs(seg);
+    expect(a).toEqual(b); expect(a.length).toBeGreaterThan(3);
+    for (const t of a) {
+      const p = seg.samples[t.at]; expect(t.pts[0]).toEqual(p);
+      expect(t.dMm).toBeLessThan(1); expect(t.lengthMm).toBeLessThan(20); expect(t.pts.length).toBeGreaterThan(5);
+    }
+  });
+  it("skip tiny vessels", () => {
+    expect(makeTwigs({ ...seg, diameterMm: Array(41).fill(0.8) })).toEqual([]);
+    expect(makeTwigs({ ...seg, length: 15 })).toEqual([]);
+  });
+});
