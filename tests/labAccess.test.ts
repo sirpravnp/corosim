@@ -97,7 +97,7 @@ describe("access graph", () => {
     const rad = routeLength(access, radRoute);
     expect(fem).toBeGreaterThanOrEqual(650);
     expect(fem).toBeLessThanOrEqual(800);
-    expect(rad).toBeGreaterThanOrEqual(900);
+    expect(rad).toBeGreaterThanOrEqual(650); // wrist to root through the innominate; the old floor counted a detour down the thoracic aorta
     expect(rad).toBeLessThanOrEqual(1150);
   });
 
@@ -117,6 +117,6 @@ function routeLength(g: ReturnType<typeof graph>, route: string[]) {
 function neighborsLinked(g: ReturnType<typeof graph>, a: string, b: string) {
   const extra = new Set<string>();
   if (a === "ILIAC_L" || a === "ILIAC_R") extra.add("AORTA_ABD");
-  if (a === "INNOM") extra.add("AORTA_THOR");
+  if (a === "INNOM") { extra.add("AORTA_THOR"); extra.add("AORTA_ASC"); }
   return extra.has(b) || extra.has(a);
 }

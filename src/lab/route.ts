@@ -15,7 +15,7 @@ const neighbors = (g: VGraph, id: string): string[] => {
   if (s.parent && g.byId[s.parent]) out.push(s.parent);
   if (id === "ILIAC_L" || id === "ILIAC_R") out.push("AORTA_ABD");
   if (id === "AORTA_ABD") { out.push("ILIAC_L", "ILIAC_R"); }
-  if (id === "INNOM") out.push("AORTA_THOR");
+  if (id === "INNOM") out.push("AORTA_ASC", "AORTA_THOR"); // the innominate opens into the ascending aorta at the start of the arch
   if (id === "AORTA_THOR") out.push("INNOM");
   return out;
 };
