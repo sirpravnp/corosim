@@ -170,6 +170,8 @@ function applyChrome() {
   for (const id of ALERTS) home.append($(id));
   // the dock is the Treatments section: its one tab is dropped
   document.querySelector<HTMLElement>("#dock .dock-tabs h2")!.textContent = c.treatments && bare ? "Treatments" : "Settings";
+  const strip = document.querySelector<HTMLElement>("#dock .dock-tabs")!; // one section, no tabs: no tablist role while bare
+  if (bare) { strip.removeAttribute("role"); strip.removeAttribute("aria-label"); } else { strip.setAttribute("role", "tablist"); strip.setAttribute("aria-label", "Settings"); }
   $("dock").setAttribute("aria-label", bare ? "Treatments" : "Settings");
   setDockTab(bare ? "support" : "patient");
   // the ECG figure keeps a caption: only the paper speed and gain

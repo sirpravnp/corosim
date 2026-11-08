@@ -216,6 +216,7 @@ body.gated { overflow: hidden; }
 body.case-bare :is(#pgentry, #stagefig, #bedsfig, #stmap, #xlinks, #sec-assess, .ws-tools, .ws-pick, #dock .dtab, #dock .dpane:not([data-pane="support"])) { display: none; }
 body.case-bare main > section:not(.ws-sec) { display: contents; } /* its figures are gone: no empty row, no gap */
 body.case-bare #casemon { grid-column: 1; }
+body.case-bare :is(label[for="bl"], #bl, #blv, [data-disease], #openCath) { display: none; } /* blood loss, hemorrhage and leak create disease; the cath-lab link leaves the case */
 body.case-bare .ws-bar { display: none; }
 body.case-bare .ws-phone .ws-bar { display: flex; }
 body.case-bare #dock .dpane[data-pane="support"] { display: grid; gap: 14px; }

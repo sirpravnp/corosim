@@ -84,6 +84,7 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     const id = ctlId(), val = h("span", { className: "val" }), input = h("input", { id, type: "range", min: String(min), max: String(max), step: String(step) });
     if (layout === "stack") body.append(h("label", { htmlFor: id }, label + " ", val), input);
     else body.append(h("label", { htmlFor: id, textContent: label, className: layout === "sub" ? "ctl-sub" : "" }), input, val);
+    if (path === "fluids.hemorrhageMlMin" || path === "fluids.capillaryLeak") for (const el of [input, val, input.previousElementSibling ?? input]) (el as HTMLElement).dataset.disease = "1"; // disease, not treatment: the case screen hides these (style.css)
     input.addEventListener("input", () => edit((s) => set(s, Number(input.value))));
     syncs.push((s) => { const v = get(s) ?? dflt; if (document.activeElement !== input) input.value = String(v); val.textContent = fmt(v); });
   }
