@@ -250,7 +250,7 @@ export function lesionFFR(tree: Tree, lesions: Lesion[], hyper: NetResult): numb
 export interface Analysis { cond: NetResult; hyper: NetResult; ffr: number[] }
 export function analyze(tree: Tree, lesions: Lesion[], exertion: boolean, aorticPressure = CORONARY.meanAorticPressure, grafts: Graft[] = [], demandScale = 1, bedResistance: Record<string, number> = {}): Analysis {
   // FFR is defined at maximal hyperemia, so it keeps the reference pressure; the working state uses the live one.
-  const hyper = solveNetwork(tree, lesions, Infinity, aorticPressure, grafts, bedResistance);
+  const hyper = solveNetwork(tree, lesions, Infinity, CORONARY.meanAorticPressure, [], bedResistance);
   return {
     cond: solveNetwork(tree, lesions, (exertion ? FLOW.exertionDemand : 1) * demandScale, aorticPressure, grafts, bedResistance),
     hyper,

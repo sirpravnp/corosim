@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildTree } from "../src/anatomy/tree";
-import { analyze, type Lesion } from "../src/physics/network";
+import { analyze, type Graft, type Lesion } from "../src/physics/network";
 import { DEFAULT_LESION_LENGTH_MM } from "../src/physics/geometry";
 
 const tree = buildTree();
@@ -78,6 +78,14 @@ describe("network lesions", () => {
     const { hyper } = analyze(tree, lesions, false);
     const lad = tree.byId.LAD;
     expect(hyper.seg.LAD.blockedFrom).toBeCloseTo(pos * lad.length, 6);
+  });
+
+  it("hyperemic FFR stays at reference aortic pressure without live grafts", () => {
+    const lesions: Lesion[] = [{ segId: "LAD", pos: 0.5, ds: 0.75 }];
+    const grafts: Graft[] = [{ segId: "LAD", pos: 20 }];
+    const ref = analyze(tree, lesions, false).ffr[0];
+    const lowPa = analyze(tree, lesions, false, 75, grafts).ffr[0];
+    expect(lowPa).toBeCloseTo(ref, 3);
   });
 
   it("defaults lesion length to the legacy 14 mm window", () => {
