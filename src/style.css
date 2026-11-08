@@ -213,7 +213,7 @@ body.gated { overflow: hidden; }
 #cp_opts { display: grid; gap: 8px; margin-top: 4px; }
 #cp_opts button { padding: 11px 14px; font-size: 13px; text-align: left; font-weight: 500; }
 /* A case whose monitor lacks the heart model hides the 3D canvas, its controls and the caption until it is ordered. The arrest, ROSC and clock alerts live inside #view, so it stays, shortened, and they keep their place. */
-body.case-no-3d #view canvas, body.case-no-3d #vc, body.case-no-3d #pick, body.case-no-3d #legend, body.case-no-3d #tag, body.case-no-3d #stagefig figcaption { display: none; }
+body.case-no-3d #view canvas, body.case-no-3d #vc, body.case-no-3d #pick, body.case-no-3d #legend, body.case-no-3d #tag, body.case-no-3d #stagefig figcaption { display: none !important; } /* !important: the 3D view sets display on the canvas inline */
 body.case-no-3d #view { height: auto; min-height: 0; background: none; overflow: visible; }
 body.case-no-3d #view:has(.arrest-dead:not([hidden])) { min-height: 260px; }
 body.case-no-3d #view > :is(.arrest-banner, .clock-critical):not([hidden]) { position: static; transform: none; margin: 0 0 8px; max-width: none; }
