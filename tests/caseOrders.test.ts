@@ -76,6 +76,23 @@ describe("case monitor validation", () => {
   });
 });
 
+describe("retired heart3d id", () => {
+  it("resolveMonitor drops the retired heart3d id", () => {
+    expect(resolveMonitor({ monitor: ["hr", "heart3d", "bp"] })).toEqual(["hr", "bp"]);
+  });
+  it("the catalog has no heart3d item", () => {
+    expect(itemById("heart3d")).toBeUndefined();
+    expect(CATALOG.some((i) => i.id === "heart3d")).toBe(false);
+  });
+  it("validateCase accepts an old spec that lists heart3d and still reports an unknown id", () => {
+    expect(validateCase({ ...spec(), monitor: ["hr", "heart3d", "jvp"] })).toEqual([]);
+    expect(validateCase({ ...spec(), monitor: ["hr", "heart3d", "foo"] })).toEqual(["The monitor lists 'foo', which is not an orderable item."]);
+  });
+  it("a monitor of only heart3d resolves to the standard six", () => {
+    expect(resolveMonitor({ monitor: ["heart3d"] })).toEqual([...STANDARD_MONITOR]);
+  });
+});
+
 describe("built-in cases", () => {
   const std = [...STANDARD_MONITOR];
   // The case's start spec needs the DOM-bound simulator to yield a PatientNow, so each case reads a representative patient instead:
