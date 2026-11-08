@@ -119,7 +119,7 @@ export class Backdrop {
         const a = P(r.pts[k]), b = P(r.pts[k + 1]);
         C.beginPath(); C.moveTo(a[0], a[1]); C.lineTo(b[0], b[1]);
         C.lineWidth = Math.max(1.2, r.widthMm[k] * F.sc * 0.55); C.lineCap = "butt";
-        C.strokeStyle = `rgba(255,255,255,${0.05 * (1 - 0.35 * (k / r.pts.length))})`; C.stroke();
+        C.strokeStyle = `rgba(255,255,255,${0.036 * (1 - 0.35 * (k / r.pts.length))})`; C.stroke();
         C.lineWidth = Math.max(0.8, r.widthMm[k] * F.sc * 0.85); C.strokeStyle = "rgba(255,255,255,0.05)"; C.stroke();
       }
     }

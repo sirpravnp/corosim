@@ -84,7 +84,7 @@ export function patientEllipsoids(heartCentre: V3, breath = 0): Ellipsoid[] {
     // lungs, with the diaphragm as their lower surface
     { c: [xm - 64, 76 - br, -2], a: [84, 102 + br, 84], w: -0.7, group: "lung" },
     { c: [xm + 64, 56 - br, -2], a: [84, 102 + br, 84], w: -0.7, group: "lung" },
-    { c: [xm - 20, -100 - br, 0], a: [150, 70, 92], w: 1.0, group: "mediastinum", sharp: 0.28 }, // liver, stomach and spleen under the domes: the dark mass below the diaphragm edge
+    { c: [xm - 20, -150 - br, 0], a: [260, 120, 92], w: 0.9, group: "mediastinum", sharp: 0.22 }, // liver, stomach and spleen under the domes: the dark mass below the diaphragm edge
     { c: [xm + 4, 40, -32], a: [30, 108, 38], w: 0.3, group: "mediastinum" },
     { c: [xm + 1, 108, -22], a: [8, 62, 8], w: -0.9, group: "gas" }, // trachea
     // gas in the stomach and bowel

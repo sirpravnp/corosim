@@ -30,14 +30,14 @@
     <p class="caption"><b>Figure 1.</b> Live fluoroscopy. Contrast fills the coronaries at their solved flow, drawn as lumens with walls, and the guide, wire, balloon and stent are radiopaque devices in the same image. The anatomy behind them, a procedural patient, turns with the C-arm. Follow adds a faint roadmap of the access route. Overview is a front-view schematic of the whole route, not fluoroscopy, because no single x-ray field can hold it.</p>
     <div class="carm cams" role="group" aria-label="Camera">
       <span>View</span>
-      <button type="button" data-cam="heart" aria-pressed="true">Heart</button>
-      <button type="button" data-cam="follow" aria-pressed="false">Follow device</button>
+      <button type="button" data-cam="heart" aria-pressed="false">Heart</button>
+      <button type="button" data-cam="follow" aria-pressed="true">Follow device</button>
       <button type="button" data-cam="overview" aria-pressed="false">Overview</button>
       <button type="button" id="skip">Skip to coronaries</button>
     </div>
     <div class="carm">
-      <label><span>LAO / RAO</span><input id="rot" type="range" min="-60" max="60" value="30"><output id="rotv"></output></label>
-      <label><span>Cranial / caudal</span><input id="tilt" type="range" min="-45" max="45" value="20"><output id="tiltv"></output></label>
+      <label><span>LAO / RAO</span><input id="rot" type="range" min="-60" max="60" value="0"><output id="rotv"></output></label>
+      <label><span>Cranial / caudal</span><input id="tilt" type="range" min="-45" max="45" value="0"><output id="tiltv"></output></label>
       <label class="chk"><input id="lab" type="checkbox"> Vessel names</label>
     </div>
   </section>

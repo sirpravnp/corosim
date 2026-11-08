@@ -27,3 +27,27 @@ describe("camera view", () => {
     expect(c.centre[0]).toBeCloseTo(100, 1); expect(c.spanMm).toBeCloseTo(300, 0);
   });
 });
+
+import { startCam } from "../src/cath/lab/camera";
+import { defaultUnifiedGraph } from "../src/lab/access";
+
+describe("a procedure starts at the puncture site", () => {
+  it("Follow looks at the groin before there is any device, and at the wrist for a radial start", () => {
+    const e = new StubLabEngine(), g = defaultUnifiedGraph();
+    const fem = camTarget("follow", e.state(), g, heart, "femoral-R"), want = startCam(g, "femoral-R");
+    expect(fem).toEqual(want);
+    expect(fem.centre[1]).toBeLessThan(-350); // the groin, far below the heart
+    expect(fem.spanMm).toBeLessThanOrEqual(260);
+    const rad = startCam(g, "radial-R");
+    expect(rad.centre[0]).toBeLessThan(-300); // the arm
+    const left = startCam(g, "femoral-L");
+    expect(left.centre[0]).toBeGreaterThan(fem.centre[0]); // the other side
+  });
+  it("moves up the body as the device does: the focus rises from the groin through the aorta toward the heart", () => {
+    const g = defaultUnifiedGraph(), e = new StubLabEngine(), st = { ...e.state(), access: "femoral-R" as const };
+    const at = (seg: string, mm: number) => camTarget("follow", { ...st, guide: { id: "guide-jl4", engaged: null, quality: 0, tipSeg: seg, tipMm: mm } }, g, heart).centre[1];
+    const ys = [at("FEM_R", 10), at("ILIAC_R", 100), at("AORTA_ABD", 100), at("AORTA_THOR", 100), at("AORTA_THOR", 170)];
+    for (let i = 1; i < ys.length; i++) expect(ys[i]).toBeGreaterThan(ys[i - 1]);
+    expect(ys[0]).toBeLessThan(-350);
+  });
+});

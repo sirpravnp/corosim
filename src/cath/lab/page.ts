@@ -9,10 +9,11 @@ import { FluoroView, deviceGeometry, DeviceGeometry } from "./fluoro";
 import { drawSchematic } from "./schematic";
 import { scoreProcedure } from "../../lab/score";
 import type { LabEngine } from "../../lab/engine";
+import { deviceFocus, zoneOf } from "../../lab/camera";
 import { createEngine, catalog, PHYSICS_LIVE, CASE, SCENARIO } from "./engine";
 import { camTarget, easeCam, isSchematic, Cam, CameraMode } from "./camera";
 import { STANDARD_VIEWS as VIEWS, deviceShelf, monitorModel, eventFeed, procedureSummary, nextStep, Slot, Vitals } from "./panels";
-import type { Action, LabEvent } from "../../lab/types";
+import type { AccessSite, Action, LabEvent } from "../../lab/types";
 
 /**
  * The PCI lab page: fluoroscopy on the simulator's own patient, with the procedure engine driving the devices.
@@ -27,15 +28,15 @@ const sim = new Simulation(SCENARIO);
 sim.warmup(20);
 const engine = createEngine(sim);
 const view = new AngioView($<HTMLCanvasElement>("ang"));
-view.opts.catheter = false;
+view.opts.catheter = false; view.opts.loop = false; // one injection per press, and none until the first
 const fluoro = new FluoroView($<HTMLCanvasElement>("dev"));
 let model: AngioModel, geom: DeviceGeometry;
 const log: LabEvent[] = [];
 
-function remodel() { model = angioModel(sim); view.setModel(model); }
+function remodel() { model = angioModel(sim); view.setModel(model, false); }
 
 // ---------------------------------------------------------------- camera: Heart (the angiographic frame), Follow (the leading device tip) or Overview (puncture to heart)
-let mode: CameraMode = "heart";
+let mode: CameraMode = "follow"; // a procedure starts at the puncture site and works up: Follow starts at the groin
 let cam: Cam | null = null;
 function setMode(m: CameraMode) {
   mode = m;
@@ -48,15 +49,26 @@ function skipToCoronaries() {
   if (!st.access) { act({ t: "access", site: "femoral-R" }); act({ t: "sheath", french: 6 }); act({ t: "drug", id: "heparin", dose: 6000 }); }
   if (!engine.state().guide) act({ t: "select", slot: "guide", id: CASE.recommended.guide });
   act({ t: "autoAdvance", to: "LM" }, true);
-  setMode("heart");
+  setMode("heart"); setView(VIEWS[4].rot, VIEWS[4].tilt); // the spider view is the usual one to engage the left main
 }
 $("skip").addEventListener("click", skipToCoronaries);
 
 /** Run one action, keep its events, and redraw everything that depends on the result. */
 function act(a: Action, refreshVessels = false) {
+  // where the contrast goes depends on where the guide is: down a coronary it fills that tree, anywhere else it opacifies the aorta or the groin vessels
+  const eng = engine.state().guide?.engaged ?? null;
+  if (a.t === "inject") a = { ...a, where: eng === "RCA" ? "RCA" : eng === "LM" ? "LCA" : "aorta" };
   const events = engine.apply(a);
   log.push(...events);
-  if (a.t === "inject") { const g = engine.state().guide?.engaged; view.opts.injection = g === "RCA" ? "right" : g === "LM" ? "left" : "both"; view.setModel(model); view.inject(); }
+  if (a.t === "inject" && events.some((e) => e.kind === "contrast")) {
+    const g = engine.graph(), st = engine.state();
+    view.opts.injection = eng === "RCA" ? "right" : eng === "LM" ? "left" : "none";
+    view.opts.accessDye = eng ? null : {
+      segs: [...g.segs.filter((sg) => zoneOf(sg.id, 0) !== "coronary"), ...(g.branches ?? [])],
+      origin: deviceFocus(st as never, g).point, reachMm: 240,
+    };
+    view.setModel(model, false); view.inject(!!eng);
+  }
   if (refreshVessels || a.t === "inflate" || a.t === "deflate" || a.t === "deploy") remodel();
   render();
 }
@@ -107,7 +119,7 @@ function render() {
   const hb = ["doHeparin", "doNitro"]; for (const id of hb) $<HTMLButtonElement>(id).disabled = !st.access;
   const on = (id: string, v: boolean) => { $<HTMLButtonElement>(id).disabled = !v; };
   const wireIn = !!st.wire; ["advance", "retract", "rotL", "rotR"].forEach((id) => on(id, !!st.guide || wireIn));
-  on("inject", !!st.guide);
+  on("inject", !!st.sheathFr); // through the sheath or the guide
   const inflated = !!st.balloon && st.balloon.inflatedAtm > 0;
   on("inflate", !!st.balloon && !inflated); on("deflate", inflated); on("deploy", !!st.stent && !st.stent.deployed && !inflated);
 }
@@ -181,7 +193,8 @@ $("score").addEventListener("click", () => {
 });
 
 buildShelf();
-angleText();
+setView(0, 0); // AP for the vessels of the abdomen and pelvis; the number keys pick the usual coronary views
+setMode(mode);
 remodel();
 render();
 const angCtx = $<HTMLCanvasElement>("ang").getContext("2d")!;
@@ -195,7 +208,7 @@ const frame = (now: number) => {
     return;
   }
   view.opts.heartRate = sim.state().rolling10s.hr ?? 70;
-  const want = camTarget(mode, engine.state(), engine.graph(), model.centre);
+  const want = camTarget(mode, engine.state(), engine.graph(), model.centre, $<HTMLSelectElement>("site").value as AccessSite);
   cam = cam ? easeCam(cam, want) : want;
   view.opts.cam = mode === "heart" && cam.spanMm === want.spanMm ? undefined : cam;
   view.opts.plaques = engine.plaques();
