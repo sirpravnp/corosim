@@ -1,6 +1,7 @@
 // ---------------------------------------------------------------- the rhythm picker (C3): every D4 rhythm, grouped and searchable
 import { SIM_RHYTHMS, SIM_RHYTHM_CATEGORIES, libraryVentricularRate, libraryRhythm } from "../physics/rhythmSource";
 import { $, S } from "./state";
+import { mayEdit } from "./learnerGate";
 import { pickerValue, norm, matches } from "./rhythmChoices";
 
 
@@ -26,6 +27,7 @@ export function wireRhythmPicker(onPick: () => void) {
   const sel = $<HTMLSelectElement>("rhythmsel"), q = $<HTMLInputElement>("rhythmq");
   fill("");
   sel.addEventListener("change", () => {
+    if (!mayEdit({ patient: { rhythm: sel.value } })) { fill(q.value); sel.value = pickerValue(S.rhythm); return; } // a running case: the learner reads the rhythm, they do not choose it
     sel.value = sel.value; // re-render the styled list (a programmatic change does not)
     S.rhythm = sel.value === "nsr" ? "sinus" : sel.value;
     onPick();

@@ -10,6 +10,15 @@ import { hPart, heartMesh, applyHeartView } from "./heart3d";
 import { built, vesselGroup, shapeVessels, points, buildGrafts, branchMesh, segIdOfHit } from "./vessels3d";
 import { controlsUi, liveUi } from "./readouts";
 import { syncSelects, anatomyPreset, ANATOMY_PRESETS } from "./model";
+import { mayEdit } from "./learnerGate";
+
+/** Learner gate: in a running case these controls (anatomy, the lesion, exertion, bundle branch block, rhythm) would give the patient disease. A refusal puts every control back. */
+const disease = (edit: Parameters<typeof mayEdit>[0]): boolean => {
+  if (mayEdit(edit)) return true;
+  syncSelects(); for (const id of ["pos", "ds"]) $<HTMLInputElement>(id).value = String((id === "pos" ? S.pos : S.ds) * 100);
+  $<HTMLSelectElement>("lseg").value = S.lesionSeg; controlsUi();
+  return false;
+};
 
 let heartBeforeProps: HeartView | null = null; // the heart view the toggle replaced with see-through, put back when it is turned off
 
@@ -30,24 +39,25 @@ function openVc(id: string) {
 /** The lesion, anatomy, display, time-scale and camera controls. */
 export function wireControls() {
   const syncAnat = () => { $<HTMLSelectElement>("anat").value = anatomyPreset(); };
-  sel("dom", (v) => { V.dominance = v as Variant["dominance"]; syncAnat(); scheduleAnatomy(); });
-  sel("lm", (v) => { V.lm = v as Variant["lm"]; syncAnat(); scheduleAnatomy(); });
-  sel("lad", (v) => { V.ladCourse = v as Variant["ladCourse"]; syncAnat(); scheduleAnatomy(); });
-  sel("san", (v) => { V.saNodeFrom = v as Variant["saNodeFrom"]; syncAnat(); scheduleAnatomy(); });
-  sel("conus", (v) => { V.conusOstium = v as Variant["conusOstium"]; syncAnat(); scheduleAnatomy(); });
-  sel("lseg", (v) => { S.lesionSeg = v; T.treated = untreated(); T.pending = null; T.original = null; buildGrafts(); scheduleLesion(); });
+  sel("dom", (v) => { if (!disease({ anatomy: { dominance: v } as never })) return; V.dominance = v as Variant["dominance"]; syncAnat(); scheduleAnatomy(); });
+  sel("lm", (v) => { if (!disease({ anatomy: { lm: v } as never })) return; V.lm = v as Variant["lm"]; syncAnat(); scheduleAnatomy(); });
+  sel("lad", (v) => { if (!disease({ anatomy: { ladCourse: v } as never })) return; V.ladCourse = v as Variant["ladCourse"]; syncAnat(); scheduleAnatomy(); });
+  sel("san", (v) => { if (!disease({ anatomy: { saNodeFrom: v } as never })) return; V.saNodeFrom = v as Variant["saNodeFrom"]; syncAnat(); scheduleAnatomy(); });
+  sel("conus", (v) => { if (!disease({ anatomy: { conusOstium: v } as never })) return; V.conusOstium = v as Variant["conusOstium"]; syncAnat(); scheduleAnatomy(); });
+  sel("lseg", (v) => { if (!disease({ lesions: [{ artery: v }] })) return; S.lesionSeg = v; T.treated = untreated(); T.pending = null; T.original = null; buildGrafts(); scheduleLesion(); });
   sel("anat", (k) => {
+    if (!disease({ anatomy: { dominance: "right" } })) return;
     if (k === "custom") { $<HTMLDetailsElement>("anat-custom").open = true; return; }
     Object.assign(V, TYPICAL, ANATOMY_PRESETS[k]); syncSelects(); scheduleAnatomy();
   });
-  range("pos", (v) => { S.pos = v / 100; scheduleLesion(); });
-  range("ds", (v) => { S.ds = v / 100; S.occ = false; scheduleLesion(); });
+  range("pos", (v) => { if (!disease({ lesions: [{ artery: S.lesionSeg, position: v / 100 }] })) return; S.pos = v / 100; scheduleLesion(); });
+  range("ds", (v) => { if (!disease({ lesions: [{ artery: S.lesionSeg, stenosis: v / 100 }] })) return; S.ds = v / 100; S.occ = false; scheduleLesion(); });
   range("ex", (v) => { S.exag = v; shapeVessels(); controlsUi(); });
-  on("occ", () => { S.occ = !S.occ; scheduleLesion(); });
-  on("exert", () => { S.exert = !S.exert; scheduleLesion(); });
+  on("occ", () => { if (!disease({ lesions: [{ artery: S.lesionSeg, occluded: !S.occ }] })) return; S.occ = !S.occ; scheduleLesion(); });
+  on("exert", () => { if (!disease({ exertion: !S.exert })) return; S.exert = !S.exert; scheduleLesion(); });
   for (const s of [1, 3, 6]) on("s" + s, () => { S.speed = s; controlsUi(); });
   wireRhythmPicker(() => controlsUi());
-  for (const b of ["none", "rbbb", "lbbb"] as Bbb[]) on("c_" + b, () => { S.bbb = b; controlsUi(); });
+  for (const b of ["none", "rbbb", "lbbb"] as Bbb[]) on("c_" + b, () => { if (!disease({ patient: { bbb: b } })) return; S.bbb = b; controlsUi(); });
   on("postbtn", () => { S.posterior = !S.posterior; controlsUi(); liveUi(); });
   (["real", "isch", "anat", "pressure", "velocity", "wss", "o2"] as Mode[]).forEach((m) => on("m_" + m, () => { S.mode = m; shapeVessels(); controlsUi(); }));
   (["solid", "ghost", "none"] as HeartView[]).forEach((h) => on("h_" + h, () => { S.heart = h; applyHeartView(); controlsUi(); }));

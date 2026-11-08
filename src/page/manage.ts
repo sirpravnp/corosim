@@ -9,6 +9,7 @@ import { assess, Situation } from "../physics/advice";
 import { tree, A, sites, circ, $, S, sim, sev, T, nec, clearTreatment, scheduleLesion, on, range, ecg, rstate, pageVitals, PHYS, patientOpts } from "./state";
 import { DEFAULT_IABP, DEFAULT_IMPELLA } from "../sim/patient";
 import { buildGrafts } from "./vessels3d";
+import { mayEdit } from "./learnerGate";
 
 export const PROC_LABEL: Record<Procedure, string> = { pci: PROCEDURE.pci.label, lysis: PROCEDURE.lysis.label, cabg: PROCEDURE.cabg.label };
 const currentLesion = (): Lesion | null => (S.ds > 0 || S.occ ? { segId: S.lesionSeg, pos: S.pos, ds: S.occ ? 1 : S.ds, occluded: S.occ } : null);
@@ -173,6 +174,7 @@ export function wireManage() {
   on("m_reset", () => {
     // back to the lesion as it was drawn: take the treatment away and let the heart start over
     const o = T.original;
+    if (o && !mayEdit({ lesions: [] })) return; // a running case: a stent or a lysis cannot be taken back
     clearTreatment(); manageSig = "";
     for (const k of Object.keys(sev)) delete sev[k];
     if (o) { S.lesionSeg = o.seg; S.pos = o.pos; S.ds = o.ds; S.occ = o.occ; $<HTMLSelectElement>("lseg").value = o.seg; $<HTMLInputElement>("pos").value = String(o.pos * 100); $<HTMLInputElement>("ds").value = String(o.ds * 100); }

@@ -44,12 +44,13 @@ const appLink = () => `${location.origin}${location.pathname.replace(/(sim|cases
 // ---------------------------------------------------------------- connect your AI: a live MCP line to this page
 /** Each tool call from the AI runs here, on the patient on screen; the controls then follow what it changed. */
 function runForAi(name: string, args: Record<string, unknown>) {
-  if (K.phase === "run") throw new Error("The user is in the middle of a case; the AI connection is paused until it ends.");
+  const inCase = K.phase === "run"; // the tools also carry it, so the learner gate (src/cases/gate.ts) holds even if this line is ever relaxed
+  if (inCase) throw new Error("The user is in the middle of a case; the AI connection is paused until it ends.");
   const tool = TOOLS.find((t) => t.name === name);
   if (!tool) throw new Error(`Unknown tool ${name}`);
   sim.settleNow(); // the tools read the live heart
   const stream = sim.stream, t0 = sim.t, sig = JSON.stringify(sim.scenario());
-  const result = tool.run({ sim, appUrl: appLink().split("#")[0] }, args);
+  const result = tool.run({ sim, appUrl: appLink().split("#")[0], inCase }, args);
   if (sim.stream !== stream || sim.t !== t0 || JSON.stringify(sim.scenario()) !== sig) adoptSimState(sim.stream !== stream);
   shell.ai.live!.snapshot(sim.scenario());
   return result;

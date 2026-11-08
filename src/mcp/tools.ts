@@ -4,6 +4,7 @@ import { BeatRecord, computeMetrics, meanRate } from "../sim/metrics";
 import { explain } from "../sim/explain";
 import { SCENARIO_REFERENCE } from "../sim/llm";
 import type { PatientSpec } from "../sim/patient";
+import { learnerMayApply } from "../cases/gate";
 import { encodePatient } from "../sim/llm";
 import { rememberPatient, patchPatient, currentPatient, heartCath, jvp, oxygen, loopMetricsReport } from "./hemo";
 import { buildTree } from "../anatomy/tree";
@@ -22,7 +23,17 @@ import type { ArrestDrug } from "../sim/arrest";
  * Tool definitions in one place, as plain JSON Schema. The MCP server, the HTTP/OpenAPI adapter and the
  * OpenAI/Anthropic function-calling exports are all generated from this list, so they cannot drift apart.
  */
-export interface ToolContext { sim: Simulation; appUrl: string }
+export interface ToolContext {
+  sim: Simulation; appUrl: string;
+  /** A case is running for this patient: only treatments may be applied (src/cases/gate.ts). The page pauses its connection during a case, so this is a second lock. */
+  inCase?: boolean;
+}
+/** Throws the gate's sentence when a case is running and the edit would give the patient disease. */
+function gateEdit(ctx: ToolContext, edit: PatientSpec) {
+  if (!ctx.inCase) return;
+  const v = learnerMayApply(edit);
+  if (!v.ok) throw new Error(v.why);
+}
 export interface ToolDef {
   name: string; title: string; description: string;
   inputSchema: Record<string, unknown>;
@@ -133,7 +144,9 @@ export const TOOLS: ToolDef[] = [
     name: "corosim_set_scenario", title: "Build a patient", readOnly: false,
     description: `Replace the current patient with this scenario, then run a warm-up so the reflexes have settled. Returns the monitor, the 12-lead ECG, the guideline assessment and a grounded explanation, plus warnings listing anything that was clamped or dropped (read them: they tell you what actually ran). Use settled=false to watch an occlusion develop from a healthy start. The warm-up does not advance the infarct clock; corosim_run and corosim_adjust do (2 clinical minutes per simulated second), so a closed artery loses muscle as you run it. To put a library rhythm on the patient (flutter, SVT, blocks, VT, VF...) so its hemodynamics follow, set patient.rhythm (every corosim_ekg_list id works); to only see a tracing, use corosim_ekg_show. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: { scenario: patientSchema, engine: { enum: ["legacy", "core"], description: "Hemodynamic engine for this patient. Omit to keep the current one (a new server starts on core). 'core' is the beat-by-beat engine and adds the Impella and IABP consoles (devices) to every report. 'legacy' is the older circulation()+BeatHemodynamics path, kept for comparison." }, settled: { type: "boolean", description: "Start with ischemia already at its steady value (default true). False = ischemia develops over ~20 s." }, warmupSeconds: { type: "number", minimum: 0, maximum: 300, description: "Simulated seconds to run before returning (default 45)." } } },
-    run({ sim }, a) {
+    run(ctx, a) {
+      gateEdit(ctx, (a.scenario ?? {}) as PatientSpec);
+      const { sim } = ctx;
       if (a.engine !== undefined && a.engine !== "legacy" && a.engine !== "core") throw new Error("engine must be legacy or core.");
       if (a.engine) sim.engine = a.engine as "legacy" | "core"; // takes effect at the reset below
       sim.reset((a.scenario ?? {}) as PatientSpec, { settled: a.settled !== false });
@@ -148,6 +161,7 @@ export const TOOLS: ToolDef[] = [
     description: `Apply a change to the running patient (give a drug, start a hemorrhage, occlude an artery) and optionally run on to watch the response. Fields you leave out are unchanged; drug and volume changes ramp in over ~10 s like a real bolus. Returns the response time course. Set patch.patient.rhythm to any library rhythm (corosim_ekg_list ids) to run it on the patient with its hemodynamics, including vf-coarse, vt-mono and asystole to start an arrest for teaching (then corosim_arrest). ${NOT_CLINICAL}`,
     inputSchema: { type: "object", required: ["patch"], properties: { patch: patientSchema, runSeconds: { type: "number", minimum: 0, maximum: 600, description: "Simulated seconds to run after the change (default 60)." } } },
     run(ctx, a) {
+      gateEdit(ctx, (a.patch ?? {}) as PatientSpec);
       const before = snapshot(ctx.sim), secs = num(a.runSeconds, 60, 0, 600);
       ctx.sim.apply((a.patch ?? {}) as PatientSpec);
       patchPatient(ctx.sim, (a.patch ?? {}) as PatientSpec);
@@ -210,6 +224,7 @@ export const TOOLS: ToolDef[] = [
       const before = vitalsOf(ctx.sim);
       const iv = { type, valve, kind: a.kind, sizeMm: opt("sizeMm"), leakCm2: opt("leakCm2"), effect: opt("effect"), clips: opt("clips") } as unknown as Intervention;
       const r = intervene(currentPatient(ctx.sim).heart ?? {}, iv);
+      gateEdit(ctx, { heart: r.patch });
       if (Object.keys(r.patch).length) { ctx.sim.apply({ heart: r.patch }); patchPatient(ctx.sim, { heart: r.patch }); }
       const rep = runReport(ctx, num(a.runSeconds, 30, 0, 300) || 0.02, "none", 0);
       const done = Object.keys(r.patch).length > 0, warnings = [...r.warnings, ...ctx.sim.warnings];
