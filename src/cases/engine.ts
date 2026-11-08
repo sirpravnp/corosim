@@ -91,6 +91,8 @@ export interface CaseDef {
   musts?: { flag: string; label: string }[];
   points: { survive: number; stable: number; harm: number };
   limitS: number; // case seconds before the case times out
+  /** Ids of the catalog items the bedside monitor shows (see `src/cases/orders.ts`). Absent or empty means the standard six. */
+  monitor?: string[];
 }
 
 export type Result = "success" | "fail" | "died" | "timeout";
