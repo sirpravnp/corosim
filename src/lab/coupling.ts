@@ -6,9 +6,10 @@ import type { Plaque } from "./types";
 export function applyToSim(
   sim: Simulation,
   plaques: Plaque[],
-  extra: { occlusions: Lesion[]; bedResistance: Record<string, number> },
+  extra: { occlusions: Lesion[]; bedResistance: Record<string, number>; liveLesions?: Lesion[] },
 ): void {
   const lesions = plaques.flatMap(plaqueToLesions);
+  for (const l of extra.liveLesions ?? []) lesions.push(l);
   for (const l of extra.occlusions) lesions.push(l);
   sim.setLive(lesions, extra.bedResistance);
 }

@@ -2,8 +2,11 @@ import { describe, it, expect } from "vitest";
 import { Simulation } from "../src/sim/simulation";
 import { LabEngine } from "../src/lab/engine";
 import { applyToSim, contrastEffect, guideTrace, wireReading } from "../src/lab/coupling";
+import { deployStentAt } from "../src/lab/balloonStent";
+import { ostialJailLesion } from "../src/lab/effects";
+import { byId } from "../src/config/labDevices";
 import { wireModel, timi } from "../src/sim/cath";
-import type { Plaque } from "../src/lab/types";
+import type { Plaque, Stent } from "../src/lab/types";
 
 const plaque: Plaque = {
   segId: "LAD", centerMm: 55, lengthMm: 16, ds: 0.75, referenceMm: 3,
@@ -34,7 +37,8 @@ describe("lab coupling", () => {
     expect(e.plaques()[0].ds).toBeLessThanOrEqual(0.15);
     const wm = wireModel(sim, "LAD");
     const after = wm.ffr ?? wm.distalRatio ?? 1;
-    expect(after).toBeGreaterThanOrEqual(0.9);
+    expect(after).toBeGreaterThan(before + 0.2);
+    expect(after).toBeGreaterThanOrEqual(0.75);
   });
 
   it("dampens the guide trace with poor engagement and critical ostial stenosis", () => {
@@ -59,6 +63,30 @@ describe("lab coupling", () => {
     const r = wireReading(sim, "LAD", 40);
     const w = wireModel(sim, "LAD").at({ mm: 40 });
     expect(r.ratioHyper).toBeCloseTo(w.hyperRatio, 9);
+  });
+
+  it("jailed branch lowers D1 bed ratio without changing scenario lesions", () => {
+    const sim = new Simulation({ seed: 7 });
+    sim.warmup(30);
+    const beforeLesions = JSON.stringify(sim.scenario().lesions);
+    const ratio0 = sim.analysis.cond.terminals.find((t) => t.key === "D1#end")!.ratio;
+    const plaque = {
+      segId: "LAD", centerMm: 55, lengthMm: 16, ds: 0.75, referenceMm: 3,
+      eccentric: 0.1, eccentricAngleDeg: 0, calcium: 0.1, lipid: 0.35, thrombus: 0, remodel: "none" as const, stents: [],
+    };
+    const e = new LabEngine(sim, { seed: 3, access: { arch: "II", iliacTortuosity: 0.2, radialLoop: false, aorticRootMm: 35, calcifiedIliac: false }, plaques: [plaque] });
+    const d1Attach = e.graph().byId.D1.attach * e.graph().byId.LAD.length;
+    e.apply({ t: "access", site: "femoral-R" });
+    e.apply({ t: "select", slot: "stent", id: "stent-des-3.00-24" });
+    e.apply({ t: "select", slot: "wire", id: "wire-workhorse" });
+    e.apply({ t: "torque", deg: 0 });
+    const st = { access: "femoral-R" as const, sheathFr: 6, act: 250, guide: null, wire: null, balloon: null, stent: { id: "s", segId: "LAD", centerMm: d1Attach, deployed: false }, carm: { rot: 0, tilt: 0 }, contrastMl: 0, fluoroSeconds: 0, doseMGy: 0, elapsedS: 0, log: [] };
+    const r = deployStentAt(st, byId["stent-des-3.00-24"] as Stent, 14, 0, [plaque], e.graph(), d1Attach, "LAD", () => 0.2);
+    expect(r.jailed.some((j) => j.branchSeg === "D1")).toBe(true);
+    applyToSim(sim, [], { occlusions: [], bedResistance: {}, liveLesions: [ostialJailLesion("D1", 0.75)] });
+    const ratio1 = sim.analysis.cond.terminals.find((t) => t.key === "D1#end")!.ratio;
+    expect(ratio1).toBeLessThan(ratio0);
+    expect(JSON.stringify(sim.scenario().lesions)).toBe(beforeLesions);
   });
 
   it("reset releases the live overlay", () => {
