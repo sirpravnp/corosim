@@ -16,6 +16,8 @@ const GROUPS: { id: "monitor" | "panel" | "lab" | "bedside"; title: string }[] =
 ];
 /** The slowest a single frame can be (src/page/loop.ts caps real time at this), used to land a skip on the moment it is wanted. */
 const FRAME_S = 0.05;
+/** Aim a hair past the target so rounding never leaves a result a rounding error short of due. */
+const LAND_EPS_S = 1e-3;
 
 /** The orders of the case running now. */
 export const orders = { book: new OrderBook() };
@@ -50,14 +52,14 @@ export function orderProbe(): Pick<Probe, "ordered" | "pending" | "waiting"> {
 }
 
 /** Before the clock advances: while a skip runs, the page's time scale is raised, lowered near the end so a frame never carries past the moment wanted. */
-export function skipFrame() {
+export function skipFrame(realDt: number) {
   if (!skip.on) return;
   const r = K.runner;
   if (!r) { stopSkip(""); return; }
   const readyAt = skip.target ? orders.book.pending.find((p) => p.id === skip.target)?.readyAt : undefined;
   const left = readyAt !== undefined ? readyAt - r.t : SKIP_CAP_S - (r.t - skip.start);
   if (playClock.paused) { stopSkip(SKIP_PAUSED_NOTE); return; }
-  S.speed = skipSpeed(left, FRAME_S, playClock.scale);
+  S.speed = skipSpeed(left + LAND_EPS_S, Math.min(realDt, FRAME_S) || FRAME_S, playClock.scale); // this frame's real time, so it lands on the target rather than creeping up on it
 }
 
 function startSkip(target: string | null) {

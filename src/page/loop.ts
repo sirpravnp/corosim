@@ -27,7 +27,7 @@ export function frame(now: number) {
   }
   if (wasSettling) { wasSettling = false; settlingUi(false); ecg.reset(sim.t); liveUi(); } // settled: the strip starts from now
   // A case's prompt holds the clock; a case runs at the simulator's own time scale.
-  if (K.phase === "run") skipFrame(); // a time skip raises the case clock for this frame
+  if (K.phase === "run") skipFrame(realDt); // a time skip raises the case clock for this frame
   const held = K.runner?.paused ?? false;
   const dt = held ? 0 : playClock.advance(realDt, sim.t, () => sim.stream.beats.filter((b) => !b.pOnly).map((b) => b.t));
   flush();
