@@ -19,6 +19,7 @@ const wires: Guidewire[] = [
   { id: "wire-floppy", name: "Floppy", kind: "wire", diameterIn: 0.014, tipLoadGf: 1, stiffness: "floppy", coating: "hydrophilic", torque: 0.8, tipTaperMm: 3, support: 0.2 },
   { id: "wire-workhorse", name: "Workhorse", kind: "wire", diameterIn: 0.014, tipLoadGf: 4, stiffness: "intermediate", coating: "polymer", torque: 0.85, tipTaperMm: 2, support: 0.55 },
   { id: "wire-stiff-cto", name: "Stiff CTO", kind: "wire", diameterIn: 0.014, tipLoadGf: 12, stiffness: "stiff", coating: "hydrophilic", torque: 0.7, tipTaperMm: 1.5, support: 0.85 },
+  { id: "wire-pressure", name: "Pressure wire", kind: "wire", diameterIn: 0.014, tipLoadGf: 3, stiffness: "intermediate", coating: "none", torque: 0.9, tipTaperMm: 2, support: 0.35 },
 ];
 
 const mkBalloon = (id: string, name: string, type: Balloon["type"], nominalMm: number, lengthMm: number, slope: number, burst: number): Balloon => ({

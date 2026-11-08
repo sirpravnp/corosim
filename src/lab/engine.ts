@@ -2,9 +2,12 @@ import { buildTree } from "../anatomy/tree";
 import { mulberry32 } from "../physics/ecg";
 import { byId } from "../config/labDevices";
 import { LAB } from "../config/lab";
-import { thrombusRisk } from "./complications";
+import { perforationRisk, subintimalRisk, thrombusRisk } from "./complications";
 import { buildAccess, unify } from "./access";
 import { routeTo } from "./route";
+import { advanceWire } from "./wire";
+import { wireModel } from "../sim/cath";
+import type { Guidewire } from "./types";
 import type { Simulation } from "../sim/simulation";
 import type {
   AccessSite, AccessVariant, Action, GuideCatheter, LabEngineLike, LabEvent, LabState, Plaque, VGraph,
@@ -46,6 +49,15 @@ export class LabEngine implements LabEngineLike {
   state(): Readonly<LabState> { return this.st; }
   graph(): VGraph { return this.g; }
   plaques(): readonly Plaque[] { return this.opts.plaques; }
+
+  /** Hyperemic Pd/Pa at the wire tip (pressure-wire selection only). */
+  wirePdPa(): number | null {
+    if (!this.st.wire || this.st.wire.id !== "wire-pressure") return null;
+    const seg = this.sim.tree.byId[this.tipSeg];
+    if (!seg) return null;
+    const wm = wireModel(this.sim, this.tipSeg);
+    return wm.at({ mm: this.tipMm }).hyperRatio;
+  }
 
   reset(): void {
     this.st = blank();
@@ -167,12 +179,44 @@ export class LabEngine implements LabEngineLike {
         } else if (a.slot === "wire") {
           if (!s.guide?.engaged) return [this.ev("no-guide", "Engage the guide before the wire.", "bad")];
           this.active = "wire";
+          this.route = routeTo(this.g, this.site, "LAD");
+          if (!this.route.includes(this.tipSeg)) {
+            this.tipSeg = "LM";
+            this.tipMm = this.g.byId.LM.length * 0.92;
+          }
           s.wire = { id: a.id, tipSeg: this.tipSeg, tipMm: this.tipMm, bendDeg: 0, rotDeg: 0, route: [...this.route] };
           out.push(this.ev("wire", `Wire ${a.id} loaded.`));
         }
         break;
       case "advance":
-        this.moveActive(a.mm, out);
+        if (this.active === "wire" && s.wire && s.guide) {
+          const w = byId[s.wire.id] as Guidewire | undefined;
+          const gdev = byId[s.guide.id] as GuideCatheter;
+          if (!w || w.kind !== "wire") break;
+          const r = advanceWire(this.g, s, w, [...this.opts.plaques], gdev.support, a.mm, this.rand);
+          this.tipSeg = r.tipSeg;
+          this.tipMm = r.tipMm;
+          this.route = r.route;
+          s.wire = { ...s.wire, tipSeg: r.tipSeg, tipMm: r.tipMm, route: r.route };
+          if (r.event) out.push(r.event);
+          else if (r.moved < Math.abs(a.mm) * 0.25 && a.mm > 2) {
+            out.push(this.ev("resistance", "Heavy lesion resistance.", "caution"));
+          }
+          const pl = this.opts.plaques.find((p) => p.segId === r.tipSeg && Math.abs(p.centerMm - r.tipMm) < p.lengthMm / 2 + 2);
+          if (pl && a.mm > 0) {
+            if (this.rand() < perforationRisk(w, pl)) out.push(this.ev("perforation", "Wire perforation risk.", "bad"));
+            if (this.rand() < subintimalRisk(w, pl)) out.push(this.ev("subintimal", "Subintimal tracking.", "caution"));
+          }
+          if (s.act < 250 && a.mm > 0) out.push(this.ev("thrombus-risk", "Low ACT: thrombus risk on the wire.", "caution"));
+          s.fluoroSeconds += Math.abs(a.mm) * 0.02;
+          s.doseMGy += Math.abs(a.mm) * 0.015;
+        } else this.moveActive(a.mm, out);
+        break;
+      case "torque":
+        if (s.wire) s.wire = { ...s.wire, rotDeg: s.wire.rotDeg + a.deg };
+        break;
+      case "shape":
+        if (s.wire) s.wire = { ...s.wire, bendDeg: a.tipBendDeg };
         break;
       case "carm":
         s.carm = { rot: a.rot, tilt: a.tilt };

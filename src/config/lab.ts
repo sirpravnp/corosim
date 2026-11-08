@@ -9,4 +9,7 @@ export const LAB = {
   actPerHeparinUnit: 0.05,
   /** ACT decay (s) per elapsed simulated second in the lab. [assumed] */
   actDecayPerSecond: 1 / 12,
+  hydrophilicCrossingDiscount: 0.4,
+  branchMatchRotDeg: 25,
+  branchBendChoiceDeg: 45,
 } as const;
