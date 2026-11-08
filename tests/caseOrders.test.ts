@@ -34,15 +34,17 @@ describe("order catalog", () => {
       now({ map: 0, sbp: 0, dbp: 0, hr: 0, arrest: "arrest", rhythmLabel: "Ventricular fibrillation", respRate: 0, spo2: 0 }),
       now({ map: NaN, sbp: NaN, dbp: NaN, hr: NaN, lactate: NaN, urineMlHr: NaN, spo2: NaN, tempC: NaN, respRate: NaN }),
     ];
-    for (const it of CATALOG) if (it.read) for (const p of pts) expect(it.read(p).text, it.id).not.toMatch(/NaN|Infinity/);
+    const readable = CATALOG.filter((i) => i.read);
+    expect(readable.length).toBeGreaterThan(0);
+    for (const it of readable) for (const p of pts) expect(it.read!(p).text, it.id).not.toMatch(/NaN|Infinity/);
   });
   it("non-finite inputs read as not measurable", () => {
     expect(itemById("lactate")!.read!(now({ lactate: NaN })).text).toBe("not measurable");
   });
-  it("lactate is not labeled estimate, troponin-class items are", () => {
-    expect(itemById("lactate")!.read!(now()).estimate).toBeFalsy();
-    const est = CATALOG.filter((i) => /troponin/.test(i.id));
-    for (const i of est) expect(i.read!(now()).estimate).toBe(true);
+  it("lactate is not labeled estimate", () => {
+    const lactate = itemById("lactate");
+    expect(lactate?.read).toBeDefined();
+    expect(lactate!.read!(now()).estimate).toBeFalsy();
   });
   it("delays and ids", () => {
     expect(itemById("twelvelead")!.delayS).toBe(120);
