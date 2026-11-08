@@ -9,6 +9,7 @@ import {
   applyEffect, baseRiskContext, mergeBedResistance, ostialJailLesion,
 } from "./effects";
 import { buildAccess, unify } from "./access";
+import { routeArcTo } from "./geometry";
 import { routeTo } from "./route";
 import { advanceWire } from "./wire";
 import { wireModel } from "../sim/cath";
@@ -22,7 +23,7 @@ import type {
 } from "./types";
 
 const blank = (): LabState => ({
-  access: null, sheathFr: null, act: 0, guide: null, wire: null, balloon: null, stent: null,
+  access: null, sheathFr: null, sheath: null, act: 0, guide: null, wire: null, balloon: null, stent: null,
   carm: { rot: 30, tilt: 20 }, contrastMl: 0, fluoroSeconds: 0, doseMGy: 0, elapsedS: 0, log: [],
 });
 
@@ -222,6 +223,34 @@ export class LabEngine implements LabEngineLike {
     return Math.max(0, Math.min(1, 1 - Math.abs(this.opts.access.aorticRootMm - ideal) / 18));
   }
 
+  private arcAlongRoute(segId: string, mm: number): number {
+    return routeArcTo(this.g, this.route, segId, mm);
+  }
+
+  private syncGuideState() {
+    if (!this.st.guide) return;
+    this.st.guide = { ...this.st.guide, tipSeg: this.tipSeg, tipMm: this.tipMm };
+    if (this.st.sheath && this.st.access) {
+      const root = this.route[0];
+      const rootLen = this.g.byId[root]?.length ?? 0;
+      const arc = this.arcAlongRoute(this.tipSeg, this.tipMm);
+      this.st.sheath = { ...this.st.sheath, lengthMm: Math.min(arc, rootLen + 30) };
+    }
+  }
+
+  private guideResistance(out: LabEvent[], prevSeg: string) {
+    if (this.active !== "guide") return;
+  const seg = this.g.byId[this.tipSeg];
+    if (prevSeg !== this.tipSeg && seg) {
+      if (seg.id.startsWith("ILIAC") && seg.calcification > 0.5) out.push(this.ev("resistance", "Calcified iliac: stiff push.", "caution"));
+      if (seg.id === "RADIAL_R" && seg.tortuosity > 0.5) out.push(this.ev("resistance", "Radial loop resists the guide.", "caution"));
+      if (seg.id === "ARCH" && this.opts.access.arch === "III") {
+        out.push(this.ev("resistance", "Type III arch: support is limited.", "caution"));
+        if (this.st.guide) this.st.guide = { ...this.st.guide, quality: Math.max(0, this.st.guide.quality * 0.85) };
+      }
+    }
+  }
+
   private syncGuideEngagement(guide: GuideCatheter) {
     if (!this.st.guide) return;
     const asc = this.g.byId.AORTA_ASC;
@@ -241,6 +270,7 @@ export class LabEngine implements LabEngineLike {
 
   private moveActive(mm: number, out: LabEvent[]) {
     if (!this.active || !this.st.access) return;
+    const prevSeg = this.tipSeg;
     let left = mm;
     let idx = Math.max(0, this.route.indexOf(this.tipSeg));
     if (idx < 0) idx = 0;
@@ -259,8 +289,10 @@ export class LabEngine implements LabEngineLike {
       } else break;
     }
     if (this.active === "guide" && this.st.guide) {
+      this.guideResistance(out, prevSeg);
       const g = byId[this.st.guide.id] as GuideCatheter;
       this.syncGuideEngagement(g);
+      this.syncGuideState();
     }
     if (this.active === "wire" && this.st.wire) {
       this.st.wire = { ...this.st.wire, tipSeg: this.tipSeg, tipMm: this.tipMm, route: [...this.route] };
@@ -293,6 +325,7 @@ export class LabEngine implements LabEngineLike {
         break;
       case "sheath":
         s.sheathFr = a.french;
+        if (s.access) s.sheath = { site: s.access, french: a.french, lengthMm: 0 };
         out.push(this.ev("sheath", `${a.french} French sheath in.`));
         break;
       case "close":
@@ -321,15 +354,18 @@ export class LabEngine implements LabEngineLike {
           const g = byId[a.id] as GuideCatheter | undefined;
           if (!g || g.kind !== "guide") return [this.ev("no-device", "Unknown guide.", "bad")];
           this.active = "guide";
-          s.guide = { id: a.id, engaged: null, quality: 0 };
           this.route = routeTo(this.g, this.site, "LM");
           this.tipSeg = this.route[0];
           this.tipMm = 0;
+          s.guide = { id: a.id, engaged: null, quality: 0, tipSeg: this.tipSeg, tipMm: 0 };
           out.push(this.ev("guide", `Guide ${g.name} selected.`));
         } else if (a.slot === "wire") {
           if (!s.guide?.engaged) return [this.ev("no-guide", "Engage the guide before the wire.", "bad")];
           this.active = "wire";
           this.route = routeTo(this.g, this.site, "LAD");
+          const gtip = s.guide;
+          this.tipSeg = gtip.tipSeg;
+          this.tipMm = gtip.tipMm;
           if (!this.route.includes(this.tipSeg)) {
             this.tipSeg = "LM";
             this.tipMm = this.g.byId.LM.length * 0.92;
@@ -388,6 +424,26 @@ export class LabEngine implements LabEngineLike {
       case "shape":
         if (s.wire) s.wire = { ...s.wire, bendDeg: a.tipBendDeg };
         break;
+      case "autoAdvance": {
+        if (!s.guide) return [this.ev("no-guide", "Select a guide first.", "bad")];
+        this.active = "guide";
+        this.route = routeTo(this.g, this.site, a.to === "RCA" ? "RCA" : "LM");
+        const target = a.to === "ostium"
+          ? { seg: this.g.ostium.LM.segId, mm: this.g.ostium.LM.mm }
+          : a.to === "LM"
+            ? { seg: "LM", mm: 0 }
+            : { seg: "RCA", mm: 0 };
+        const goal = this.arcAlongRoute(target.seg, target.mm);
+        const step = 12;
+        let guard = 0;
+        while (this.arcAlongRoute(this.tipSeg, this.tipMm) + 0.5 < goal && guard++ < 500) {
+          this.moveActive(step, out);
+        }
+        const gdev = byId[s.guide.id] as GuideCatheter;
+        this.syncGuideEngagement(gdev);
+        this.syncGuideState();
+        break;
+      }
       case "carm":
         s.carm = { rot: a.rot, tilt: a.tilt };
         break;

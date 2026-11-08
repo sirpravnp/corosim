@@ -85,7 +85,7 @@ describe("balloon and stent mechanics", () => {
   });
 
   it("occludes flow while inflated", () => {
-    const st = { access: "femoral-R" as const, sheathFr: 6, act: 250, guide: { id: "g", engaged: "LM" as const, quality: 0.9 }, wire: null, balloon: { id: "bal-semi-2.50-12", segId: "LAD", centerMm: 50, inflatedAtm: 0 }, stent: null, carm: { rot: 0, tilt: 0 }, contrastMl: 0, fluoroSeconds: 0, doseMGy: 0, elapsedS: 0, log: [] };
+    const st = { access: "femoral-R" as const, sheathFr: 6, sheath: null, act: 250, guide: { id: "g", engaged: "LM" as const, quality: 0.9, tipSeg: "LAD", tipMm: 50 }, wire: null, balloon: { id: "bal-semi-2.50-12", segId: "LAD", centerMm: 50, inflatedAtm: 0 }, stent: null, carm: { rot: 0, tilt: 0 }, contrastMl: 0, fluoroSeconds: 0, doseMGy: 0, elapsedS: 0, log: [] };
     const b = byId["bal-semi-2.50-12"] as import("../src/lab/types").Balloon;
     const up = inflateBalloon(st, b, 10, 2, [pciPlaque], 55, "LAD", () => 0.2);
     expect(up.occludesFlow).toBe(true);
@@ -94,14 +94,14 @@ describe("balloon and stent mechanics", () => {
   });
 
   it("ruptures when over-pressure", () => {
-    const st = { access: "femoral-R" as const, sheathFr: 6, act: 250, guide: null, wire: null, balloon: { id: "bal-semi-2.50-12", segId: "LAD", centerMm: 50, inflatedAtm: 0 }, stent: null, carm: { rot: 0, tilt: 0 }, contrastMl: 0, fluoroSeconds: 0, doseMGy: 0, elapsedS: 0, log: [] };
+    const st = { access: "femoral-R" as const, sheathFr: 6, sheath: null, act: 250, guide: null, wire: null, balloon: { id: "bal-semi-2.50-12", segId: "LAD", centerMm: 50, inflatedAtm: 0 }, stent: null, carm: { rot: 0, tilt: 0 }, contrastMl: 0, fluoroSeconds: 0, doseMGy: 0, elapsedS: 0, log: [] };
     const b = byId["bal-semi-2.50-12"] as import("../src/lab/types").Balloon;
     const r = inflateBalloon(st, b, 20, 1, [pciPlaque], 55, "LAD", () => 0.5);
     expect(r.events.some((x) => x.kind === "balloon-rupture")).toBe(true);
   });
 
   it("flags oversized and under-sized stents", () => {
-    const st = { access: "femoral-R" as const, sheathFr: 6, act: 250, guide: null, wire: null, balloon: null, stent: { id: "s", segId: "LAD", centerMm: 55, deployed: false }, carm: { rot: 0, tilt: 0 }, contrastMl: 0, fluoroSeconds: 0, doseMGy: 0, elapsedS: 0, log: [] };
+    const st = { access: "femoral-R" as const, sheathFr: 6, sheath: null, act: 250, guide: null, wire: null, balloon: null, stent: { id: "s", segId: "LAD", centerMm: 55, deployed: false }, carm: { rot: 0, tilt: 0 }, contrastMl: 0, fluoroSeconds: 0, doseMGy: 0, elapsedS: 0, log: [] };
     const sim = new Simulation({ seed: 7 });
     sim.warmup(20);
     const e = new LabEngine(sim, { seed: 1, access: { arch: "II", iliacTortuosity: 0, radialLoop: false, aorticRootMm: 35, calcifiedIliac: false }, plaques: [{ ...pciPlaque, referenceMm: 2.5 }] });
@@ -116,7 +116,7 @@ describe("balloon and stent mechanics", () => {
     sim.warmup(20);
     const e = new LabEngine(sim, { seed: 1, access: { arch: "II", iliacTortuosity: 0, radialLoop: false, aorticRootMm: 35, calcifiedIliac: false }, plaques: [pciPlaque] });
     const d1Attach = e.graph().byId.D1.attach * e.graph().byId.LAD.length;
-    const st = { access: "femoral-R" as const, sheathFr: 6, act: 250, guide: null, wire: null, balloon: null, stent: { id: "s", segId: "LAD", centerMm: d1Attach, deployed: false }, carm: { rot: 0, tilt: 0 }, contrastMl: 0, fluoroSeconds: 0, doseMGy: 0, elapsedS: 0, log: [] };
+    const st = { access: "femoral-R" as const, sheathFr: 6, sheath: null, act: 250, guide: null, wire: null, balloon: null, stent: { id: "s", segId: "LAD", centerMm: d1Attach, deployed: false }, carm: { rot: 0, tilt: 0 }, contrastMl: 0, fluoroSeconds: 0, doseMGy: 0, elapsedS: 0, log: [] };
     const r = deployStentAt(st, byId["stent-des-3.00-24"] as import("../src/lab/types").Stent, 14, 1, [pciPlaque], e.graph(), d1Attach, "LAD", () => 0.2);
     expect(r.jailed.some((j) => j.branchSeg === "D1" && j.ostialDs >= 0.3)).toBe(true);
     const distal = deployStentAt(st, byId["stent-des-3.00-12"] as import("../src/lab/types").Stent, 14, 1, [pciPlaque], e.graph(), d1Attach + 25, "LAD", () => 0.2);

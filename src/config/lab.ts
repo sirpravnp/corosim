@@ -12,4 +12,14 @@ export const LAB = {
   hydrophilicCrossingDiscount: 0.4,
   branchMatchRotDeg: 25,
   branchBendChoiceDeg: 45,
+  /** Keyboard control defaults for the cath-lab page (W/S advance, A/D torque). [assumed] */
+  controls: {
+    advanceMm: 2,
+    withdrawMm: 2,
+    fineMm: 0.5,
+    burstMm: 10,
+    torqueDeg: 15,
+    bendDeg: 8,
+    repeatMs: 55,
+  },
 } as const;

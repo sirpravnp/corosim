@@ -31,7 +31,7 @@ function buildGraph(): VGraph {
 }
 
 const blankState = (): LabState => ({
-  access: null, sheathFr: null, act: 0, guide: null, wire: null, balloon: null, stent: null,
+  access: null, sheathFr: null, sheath: null, act: 0, guide: null, wire: null, balloon: null, stent: null,
   carm: { rot: 30, tilt: 20 }, contrastMl: 0, fluoroSeconds: 0, doseMGy: 0, elapsedS: 0, log: [],
 });
 
@@ -85,10 +85,17 @@ export class StubLabEngine implements LabEngineLike {
     if (a.t !== "access" && a.t !== "carm" && !s.access) return [this.ev("no-access", "Get vascular access first.", "bad")];
     switch (a.t) {
       case "access": s.access = a.site; out.push(this.ev("access", `Access at the ${a.site}.`)); break;
-      case "sheath": s.sheathFr = a.french; out.push(this.ev("sheath", `${a.french} French sheath in.`)); break;
+      case "sheath":
+        s.sheathFr = a.french;
+        if (s.access) s.sheath = { site: s.access, french: a.french, lengthMm: 0 };
+        out.push(this.ev("sheath", `${a.french} French sheath in.`));
+        break;
       case "drug": if (a.id === "heparin") s.act = Math.min(300, s.act + a.dose * 0.05); out.push(this.ev("drug", `Gave ${a.id}.`)); break;
       case "select":
-        if (a.slot === "guide") { s.guide = { id: a.id, engaged: "LM", quality: 0.9 }; out.push(this.ev("guide", `Guide ${a.id} engaged the left main.`)); }
+        if (a.slot === "guide") {
+          s.guide = { id: a.id, engaged: "LM", quality: 0.9, tipSeg: ACCESS, tipMm: 0 };
+          out.push(this.ev("guide", `Guide ${a.id} engaged the left main.`));
+        }
         else if (a.slot === "wire") { s.wire = { id: a.id, tipSeg: ACCESS, tipMm: 0, bendDeg: 0, rotDeg: 0, route: ROUTE }; this.pos = 0; out.push(this.ev("wire", `Wire ${a.id} loaded.`)); }
         else if (a.slot === "balloon") { const w = s.wire; if (!w) return [this.ev("no-wire", "Cross the lesion with a wire first.", "bad")]; s.balloon = { id: a.id, segId: w.tipSeg, centerMm: w.tipMm, inflatedAtm: 0 }; out.push(this.ev("balloon", `Balloon ${a.id} on the wire.`)); }
         else { const w = s.wire; if (!w) return [this.ev("no-wire", "Cross the lesion with a wire first.", "bad")]; s.stent = { id: a.id, segId: w.tipSeg, centerMm: w.tipMm, deployed: false }; out.push(this.ev("stent", `Stent ${a.id} on the wire.`)); }
