@@ -61,6 +61,10 @@ const DISEASE: readonly (readonly [string, string])[] = [
   ["septum", "You cannot change the patient's septum or chamber interaction."],
   ["seed", "You cannot start the patient over with different random beats."],
 ];
+/** Why a running case refuses to swap in a whole new patient. */
+export const REPLACE_WHY = "A case patient can only be treated, not replaced.";
+/** Whether the learner may swap in a whole new patient: never while the gate is on (a running case), always otherwise. */
+export const mayReplace = (gateOn: boolean): Verdict => (gateOn ? { ok: false, why: REPLACE_WHY } : { ok: true });
 const GENERIC = "A clinician cannot change that at the bedside.";
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x);

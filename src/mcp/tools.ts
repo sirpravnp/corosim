@@ -4,7 +4,7 @@ import { BeatRecord, computeMetrics, meanRate } from "../sim/metrics";
 import { explain } from "../sim/explain";
 import { SCENARIO_REFERENCE } from "../sim/llm";
 import type { PatientSpec } from "../sim/patient";
-import { learnerMayApply } from "../cases/gate";
+import { learnerMayApply, REPLACE_WHY } from "../cases/gate";
 import { encodePatient } from "../sim/llm";
 import { rememberPatient, patchPatient, currentPatient, heartCath, jvp, oxygen, loopMetricsReport } from "./hemo";
 import { buildTree } from "../anatomy/tree";
@@ -25,7 +25,7 @@ import type { ArrestDrug } from "../sim/arrest";
  */
 export interface ToolContext {
   sim: Simulation; appUrl: string;
-  /** A case is running for this patient: only treatments may be applied (src/cases/gate.ts). The page pauses its connection during a case, so this is a second lock. */
+  /** A host that is running a case on this patient sets it: only treatments may be applied and the patient cannot be replaced (src/cases/gate.ts). The page does not set it; it refuses the whole connection while a case runs. */
   inCase?: boolean;
 }
 /** Throws the gate's sentence when a case is running and the edit would give the patient disease. */
@@ -145,7 +145,7 @@ export const TOOLS: ToolDef[] = [
     description: `Replace the current patient with this scenario, then run a warm-up so the reflexes have settled. Returns the monitor, the 12-lead ECG, the guideline assessment and a grounded explanation, plus warnings listing anything that was clamped or dropped (read them: they tell you what actually ran). Use settled=false to watch an occlusion develop from a healthy start. The warm-up does not advance the infarct clock; corosim_run and corosim_adjust do (2 clinical minutes per simulated second), so a closed artery loses muscle as you run it. To put a library rhythm on the patient (flutter, SVT, blocks, VT, VF...) so its hemodynamics follow, set patient.rhythm (every corosim_ekg_list id works); to only see a tracing, use corosim_ekg_show. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: { scenario: patientSchema, engine: { enum: ["legacy", "core"], description: "Hemodynamic engine for this patient. Omit to keep the current one (a new server starts on core). 'core' is the beat-by-beat engine and adds the Impella and IABP consoles (devices) to every report. 'legacy' is the older circulation()+BeatHemodynamics path, kept for comparison." }, settled: { type: "boolean", description: "Start with ischemia already at its steady value (default true). False = ischemia develops over ~20 s." }, warmupSeconds: { type: "number", minimum: 0, maximum: 300, description: "Simulated seconds to run before returning (default 45)." } } },
     run(ctx, a) {
-      gateEdit(ctx, (a.scenario ?? {}) as PatientSpec);
+      if (ctx.inCase) throw new Error(REPLACE_WHY);
       const { sim } = ctx;
       if (a.engine !== undefined && a.engine !== "legacy" && a.engine !== "core") throw new Error("engine must be legacy or core.");
       if (a.engine) sim.engine = a.engine as "legacy" | "core"; // takes effect at the reset below

@@ -7,12 +7,23 @@ import { inCases, K } from "./state";
 export const caseGateOn = () => inCases && K.phase === "run";
 
 let timer = 0;
+import { mayReplace as replaceVerdict } from "../cases/gate";
 /** Say why in plain text beside the dock (no box); it clears itself. */
 function say(why: string) {
   const el = document.getElementById("gatewhy");
   if (!el) return;
   el.textContent = why;
   clearTimeout(timer); timer = window.setTimeout(() => { el.textContent = ""; }, 8000);
+}
+
+/**
+ * Replacing the whole patient (a load, a preset, a new scenario) would wipe the case's disease even if the new patient is "only" treatment,
+ * so a running case refuses it outright. The author path (startCase, quit) does not call this.
+ */
+export function mayReplace(): boolean {
+  const v = replaceVerdict(caseGateOn());
+  if (!v.ok) say(v.why);
+  return v.ok;
 }
 
 /**

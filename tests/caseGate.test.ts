@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { learnerMayApply, isTreatment, editBetween, TREATMENT_KEYS } from "../src/cases/gate";
+import { REPLACE_WHY, mayReplace, learnerMayApply, isTreatment, editBetween, TREATMENT_KEYS } from "../src/cases/gate";
 import type { PatientSpec } from "../src/sim/patient";
 
 const refused = (e: PatientSpec) => { const v = learnerMayApply(e); expect(v.ok).toBe(false); return v.ok ? "" : v.why; };
@@ -69,8 +69,19 @@ describe("the connector tools while a case is running", () => {
   it("corosim_adjust and corosim_set_scenario refuse disease and take treatment", () => {
     const sim = new Simulation(), ctx = { sim, appUrl: "x", inCase: true };
     expect(() => tool("corosim_adjust").run(ctx, { patch: { patient: { rhythm: "vt-mono" } }, runSeconds: 0 })).toThrow(/rhythm/i);
-    expect(() => tool("corosim_set_scenario").run(ctx, { scenario: { lesions: [{ artery: "LAD", occluded: true }] }, warmupSeconds: 0 })).toThrow(/lesion/i);
+    expect(() => tool("corosim_set_scenario").run(ctx, { scenario: { lesions: [{ artery: "LAD", occluded: true }] }, warmupSeconds: 0 })).toThrow(/replaced/i);
     expect(() => tool("corosim_adjust").run(ctx, { patch: { support: { fluids: 0.5 } }, runSeconds: 0 })).not.toThrow();
     expect(() => tool("corosim_adjust").run({ sim, appUrl: "x" }, { patch: { patient: { rhythm: "af" } }, runSeconds: 0 })).not.toThrow(); // no case: unchanged
+  });
+});
+
+describe("replacing the whole patient", () => {
+  it("corosim_set_scenario with {} and the case lock on is refused", () => {
+    const sim = new Simulation();
+    expect(() => TOOLS.find((t) => t.name === "corosim_set_scenario")!.run({ sim, appUrl: "x", inCase: true }, { scenario: {}, warmupSeconds: 0 })).toThrow(REPLACE_WHY);
+  });
+  it("mayReplace refuses while the gate is on and allows outside a case", () => {
+    expect(mayReplace(true)).toEqual({ ok: false, why: REPLACE_WHY });
+    expect(mayReplace(false)).toEqual({ ok: true });
   });
 });

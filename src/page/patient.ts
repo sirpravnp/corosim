@@ -11,7 +11,7 @@ import { propsView } from "./scene";
 import { loadScenario, setPhys } from "./model";
 import { pushPatient } from "./workspace";
 import { mountDock } from "./dock";
-import { mayEdit } from "./learnerGate";
+import { mayEdit, mayReplace } from "./learnerGate";
 import { editBetween } from "../cases/gate";
 
 /**
@@ -86,7 +86,7 @@ export function initPatient() {
       pg = next; pgPreset = null; pgSticky = [];
       pgApply(true);
     },
-    loadPreset(id) { const p = PRESET_BY_ID[id]; if (p && mayEdit(p.spec)) pgAdopt(p.spec, id); else pgApply(false); },
+    loadPreset(id) { const p = PRESET_BY_ID[id]; if (p && mayReplace()) pgAdopt(p.spec, id); else pgApply(false); },
     exit: () => pgShow(false),
     legacy: () => false,
     scenario: () => sim.scenario(),
