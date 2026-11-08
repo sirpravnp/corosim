@@ -42,7 +42,7 @@ export function monitorTiles(n: MonitorInput, shown: readonly string[]): Tile[] 
       ? { id: "bp", label: "Blood pressure", value: `${Math.round(n.sbp)}/${Math.round(n.dbp)} (${Math.round(n.map)})`, unit: "mmHg", abnormal: n.map < MAP_MIN, estimate: false }
       : { id: "bp", label: "Blood pressure", value: DASH, unit: "mmHg", abnormal: false, estimate: false });
 
-  add(ok(n.spo2)
+  add(!pulseless && ok(n.spo2)
     ? { id: "spo2", label: "SpO2", value: String(Math.round(n.spo2 * 100)), unit: "%", abnormal: n.spo2 < SPO2_MIN, estimate: false }
     : { id: "spo2", label: "SpO2", value: DASH, unit: "%", abnormal: false, estimate: false });
 

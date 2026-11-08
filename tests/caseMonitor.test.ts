@@ -36,6 +36,7 @@ describe("monitorTiles", () => {
       expect(by(ts, "hr").value).toBe("no pulse");
       expect(by(ts, "bp").value).toBe("no pulse");
       expect(by(ts, "hr").abnormal).toBe(true);
+      expect(by(ts, "spo2").value).toBe("—");
     }
     expect(by(monitorTiles({ ...base, arrest: "rosc" }, ALL), "hr").value).toBe("96");
   });
