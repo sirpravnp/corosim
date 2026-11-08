@@ -29,3 +29,7 @@
   .cm-val i { font-size: 38px; }
   .cm-val i.word { font-size: 18px; }
 }
+@media (max-width: 420px) {
+  .cm-val i { font-size: 30px; } /* "135/100 (112)" must fit a half-width tile */
+  .cm-val small { font-size: 14px; }
+}

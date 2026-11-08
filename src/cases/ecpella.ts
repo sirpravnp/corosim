@@ -40,7 +40,7 @@ export const ECPELLA: CaseDef = {
   devices: ["ECMO", "Impella"],
   blurb: "A witnessed collapse in VF, a quick ROSC and a STEMI. Where does he go, and what keeps him alive?",
   card: {
-    presents: "62-year-old man who collapsed at home. His wife, a nurse, started CPR at once. EMS found VF and polymorphic VT, shocked him and gave amiodarone and lidocaine. He is back in the ED with CPR in progress. ROSC comes quickly, and the post-ROSC 12-lead shows an anterolateral STEMI.",
+    presents: "62-year-old man who collapsed at home. His wife, a nurse, started CPR at once. EMS found VF and polymorphic VT, shocked him and gave amiodarone and lidocaine. He is back in the ED with CPR in progress. ROSC comes quickly.",
     pmh: "Hypertension, hyperlipidemia. Southeast Asian man. No known coronary disease.",
     info: ["After ROSC his pressure holds, but his ventricle is stunned (ejection fraction about 0.3, high filling pressure) and ventricular ectopy is frequent."],
   },
