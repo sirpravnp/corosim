@@ -18,6 +18,7 @@ export const AF_HF: CaseDef = {
   complaint: "Shortness of breath",
   devices: [],
   blurb: "Fast AF in a man whose weak heart is already failing.",
+  monitor: ["hr", "bp", "ecg", "spo2", "rr", "temp", "jvp", "numbers"],
   card: {
     presents: "66-year-old man with five days of worsening breathlessness, needing to sleep upright, with swollen legs and a racing, irregular heartbeat. He is using his neck muscles to breathe. Heart rate 158, BP 83/69, crackles to the mid-chest.",
     pmh: "Ischemic cardiomyopathy, ejection fraction about 25%. Takes carvedilol, lisinopril and furosemide but has run out of his medicines for a week. No allergies.",
