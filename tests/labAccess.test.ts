@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildTree } from "../src/anatomy/tree";
-import { buildAccess, unify } from "../src/lab/access";
+import { buildAccess, parentChildGap, unify } from "../src/lab/access";
 import { curvatureAlong, routeTo, transmission } from "../src/lab/route";
 import type { AccessSite, AccessVariant } from "../src/lab/types";
 
@@ -78,6 +78,27 @@ describe("access graph", () => {
     const tRadLoop = transmission(loop, routeTo(loop, "radial-R", "LM"), 30, 0.6);
     expect(tRadLoop).toBeLessThan(tRadPlain);
     expect(transmission(loop, routeTo(loop, "femoral-R", "LM"), 30, 0.6)).toBeCloseTo(transmission(plain, fr, 30, 0.6), 6);
+  });
+
+  it("parent ends meet child starts within 0.5 mm", () => {
+    const access = buildAccess({ arch: "II", iliacTortuosity: 0.2, radialLoop: false, aorticRootMm: 32, calcifiedIliac: false }, roots);
+    for (const s of access.segs) {
+      if (!s.parent) continue;
+      expect(parentChildGap(access, s.id), s.id).toBeLessThan(0.5);
+    }
+  });
+
+  it("femoral and radial paths have plausible lengths to the root", () => {
+    const access = buildAccess({ arch: "II", iliacTortuosity: 0.2, radialLoop: false, aorticRootMm: 32, calcifiedIliac: false }, roots);
+    const femRoute = routeTo(access, "femoral-R", "AORTA_ASC");
+    const radRoute = routeTo(access, "radial-R", "AORTA_ASC");
+    expect(radRoute[0]).toBe("RADIAL_R");
+    const fem = routeLength(access, femRoute);
+    const rad = routeLength(access, radRoute);
+    expect(fem).toBeGreaterThanOrEqual(650);
+    expect(fem).toBeLessThanOrEqual(800);
+    expect(rad).toBeGreaterThanOrEqual(900);
+    expect(rad).toBeLessThanOrEqual(1150);
   });
 
   it("transmission never increases with tip distance", () => {

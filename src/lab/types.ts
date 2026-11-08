@@ -59,6 +59,7 @@ export type Action =
   | { t: "drug"; id: "heparin" | "nitro" | "adenosine" | "protamine" | "atropine"; dose: number }
   | { t: "select"; slot: "guide" | "wire" | "balloon" | "stent"; id: string }
   | { t: "advance"; mm: number } // moves the active (most distal selected) device; negative withdraws
+  | { t: "autoAdvance"; to: "ostium" | "LM" | "RCA" }
   | { t: "torque"; deg: number }
   | { t: "shape"; tipBendDeg: number }
   | { t: "inject"; where: "LCA" | "RCA" | "LV" | "aorta"; ml: number }
@@ -72,9 +73,11 @@ export type LabEventSeverity = "info" | "caution" | "bad";
 export interface LabEvent { at: number; kind: string; text: string; severity: LabEventSeverity; data?: Record<string, unknown> }
 
 export interface LabState {
-  access: AccessSite | null; sheathFr: number | null;
+  access: AccessSite | null;
+  sheathFr: number | null;
+  sheath: { site: AccessSite; french: number; lengthMm: number } | null;
   act: number; // activated clotting time, seconds
-  guide: { id: string; engaged: "LM" | "RCA" | null; quality: number } | null;
+  guide: { id: string; engaged: "LM" | "RCA" | null; quality: number; tipSeg: string; tipMm: number } | null;
   wire: { id: string; tipSeg: string; tipMm: number; bendDeg: number; rotDeg: number; route: string[] } | null;
   /** `inflatedAtm` 0 means deflated. The vessel is occluded while it is above 0. */
   balloon: { id: string; segId: string; centerMm: number; inflatedAtm: number } | null;
