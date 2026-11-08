@@ -11,7 +11,7 @@ const rng = (seed: number) => () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
 const norm = (v: V3): V3 => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
 const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 
-export function makeTwigs(seg: { id: string; samples: V3[]; diameterMm: number[]; length: number }, perTenMm = 1.1): Twig[] {
+export function makeTwigs(seg: { id: string; samples: V3[]; diameterMm: number[]; length: number }, perTenMm = 1.7): Twig[] {
   const NS = seg.samples.length - 1, r = rng(hash(seg.id)), out: Twig[] = [];
   const mean = seg.diameterMm.reduce((a, b) => a + b, 0) / seg.diameterMm.length;
   if (mean < 1 || seg.length < 25) return out;

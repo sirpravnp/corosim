@@ -82,9 +82,9 @@ export function patientEllipsoids(heartCentre: V3, breath = 0): Ellipsoid[] {
     { c: [xm, -345, 0], a: [150, 126, 98], w: 1, group: "body" },
     ...sym({ c: [xm - 80, -500, 10], a: [62, 150, 60], w: 1, group: "body" }),
     // lungs, with the diaphragm as their lower surface
-    { c: [xm - 64, 76 - br, -2], a: [66, 98 + br, 80], w: -0.82, group: "lung", sharp: 0.38 },
-    { c: [xm + 64, 52 - br, -2], a: [60, 98 + br, 78], w: -0.82, group: "lung", sharp: 0.38 },
-    { c: [xm - 55, -78 - br, 4], a: [84, 50, 72], w: 0.75, group: "body" }, // liver, just under the right dome
+    { c: [xm - 64, 76 - br, -2], a: [84, 102 + br, 84], w: -0.7, group: "lung" },
+    { c: [xm + 64, 56 - br, -2], a: [84, 102 + br, 84], w: -0.7, group: "lung" },
+    { c: [xm - 20, -100 - br, 0], a: [150, 70, 92], w: 1.0, group: "mediastinum", sharp: 0.28 }, // liver, stomach and spleen under the domes: the dark mass below the diaphragm edge
     { c: [xm + 4, 40, -32], a: [30, 108, 38], w: 0.3, group: "mediastinum" },
     { c: [xm + 1, 108, -22], a: [8, 62, 8], w: -0.9, group: "gas" }, // trachea
     // gas in the stomach and bowel
@@ -94,8 +94,8 @@ export function patientEllipsoids(heartCentre: V3, breath = 0): Ellipsoid[] {
     { c: [xm + 58, -296, 12], a: [24, 32, 20], w: -0.8, group: "gas" },
     { c: [xm - 6, -362, 30], a: [26, 20, 18], w: -0.8, group: "gas" },
     // the heart: left ventricle and the right-sided chambers, long axis down and to the left
-    { c: [heartCentre[0] + 16, heartCentre[1] - 4, heartCentre[2] + 4], a: [40, 62, 38], roll: 40, w: 0.55, group: "heart" },
-    { c: [heartCentre[0] - 12, heartCentre[1] + 6, heartCentre[2] + 8], a: [34, 48, 34], roll: 15, w: 0.5, group: "heart" },
+    { c: [heartCentre[0] + 16, heartCentre[1] - 4, heartCentre[2] + 4], a: [48, 72, 42], roll: 40, w: 0.8, group: "heart", sharp: 0.55 },
+    { c: [heartCentre[0] - 12, heartCentre[1] + 6, heartCentre[2] + 8], a: [40, 56, 38], roll: 15, w: 0.7, group: "heart", sharp: 0.55 },
     // flat bones: scapulae, iliac wings, sacrum, pubic rami, femoral heads, necks, shafts
     ...sym({ c: [xm + 118, 96, -62], a: [46, 62, 5], yaw: 18, roll: -12, w: 2.2, group: "bone" }),
     ...sym({ c: [xm + 88, -240, -22], a: [52, 56, 9], yaw: 38, roll: 22, w: 2.2, group: "bone" }),

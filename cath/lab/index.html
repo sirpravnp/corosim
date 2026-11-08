@@ -21,6 +21,7 @@
     <div class="titlebar">
       <h1 id="title">PCI lab: mid-LAD 75% stenosis</h1>
       <p id="next" class="next" role="status"></p>
+      <p id="last" class="last" role="status"></p>
     </div>
     <div class="screen">
       <canvas id="ang" width="640" height="640" aria-label="Fluoroscopy and angiogram"></canvas>
@@ -89,11 +90,22 @@
       <h2>Procedure log</h2>
       <ol id="feed" class="feed" aria-live="polite"></ol>
       <p class="fine" id="summary"></p>
-      <div class="row"><button id="reset">Reset patient</button></div>
+      <div class="row"><button id="score">Score procedure</button><button id="reset">Reset patient</button></div>
+      <div id="scoreOut"></div>
     </section>
   </aside>
 </main>
-<p class="fine" id="credit">Keys: W and S advance and withdraw, A and D rotate, I and O inflate and deflate, Space injects contrast, [ and ] turn the C-arm. Educational simulation; device handling is simplified and not a substitute for supervised training.</p>
+<section class="keys" aria-label="Keyboard controls">
+  <table>
+    <caption><b>Table 3.</b> Keyboard controls. Click the picture area or press a key; mouse clicks release the focus so the keys keep working.</caption>
+    <tbody>
+      <tr><th scope="row">Device</th><td><kbd>W</kbd> <kbd>S</kbd> advance and withdraw (hold, or Shift for fast)</td><td><kbd>A</kbd> <kbd>D</kbd> rotate</td><td><kbd>I</kbd> inflate <kbd>O</kbd> deflate</td><td><kbd>Space</kbd> inject contrast</td></tr>
+      <tr><th scope="row">C-arm</th><td><kbd>←</kbd> <kbd>→</kbd> LAO and RAO (Shift for 15 degrees)</td><td><kbd>↑</kbd> <kbd>↓</kbd> cranial and caudal</td><td colspan="2"><kbd>1</kbd> AP <kbd>2</kbd> LAO cranial <kbd>3</kbd> RAO cranial <kbd>4</kbd> RAO caudal <kbd>5</kbd> spider</td></tr>
+      <tr><th scope="row">View</th><td><kbd>C</kbd> cycle Heart, Follow and Overview</td><td><kbd>V</kbd> vessel names</td><td colspan="2"><kbd>G</kbd> skip to the coronaries</td></tr>
+    </tbody>
+  </table>
+</section>
+<p class="fine" id="credit">Educational simulation; device handling is simplified and not a substitute for supervised training.</p>
 <footer id="shell-foot"></footer>
 </div>
 <script type="module" src="../../src/cath/lab/page.ts"></script>

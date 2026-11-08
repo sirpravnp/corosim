@@ -83,3 +83,9 @@ export function nextStep(st: Readonly<LabState>, plaques: readonly Plaque[]): st
   if (!st.stent?.deployed) return "Choose a stent sized to the vessel and deploy it.";
   return "Postdilate if the stent is underexpanded, then check the pressure wire and close access.";
 }
+
+/** Standard angiographic views: a number key sets the C-arm. LAO and cranial are positive; keys 1 to 5 pick them in order. */
+export const STANDARD_VIEWS: { name: string; rot: number; tilt: number }[] = [
+  { name: "AP", rot: 0, tilt: 0 }, { name: "LAO 40, cranial 30", rot: 40, tilt: 30 }, { name: "RAO 30, cranial 25", rot: -30, tilt: 25 },
+  { name: "RAO 30, caudal 25", rot: -30, tilt: -25 }, { name: "LAO 45, caudal 30 (spider)", rot: 45, tilt: -30 },
+];

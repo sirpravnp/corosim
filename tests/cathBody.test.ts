@@ -156,3 +156,26 @@ describe("fine branches", () => {
     expect(makeTwigs({ ...seg, length: 15 })).toEqual([]);
   });
 });
+
+import { tortuosity } from "../src/cath/angio";
+import { STANDARD_VIEWS } from "../src/cath/lab/panels";
+
+describe("coronary sinuosity", () => {
+  const p: [number, number, number] = [10, 20, 5];
+  it("does nothing at zero weight, is repeatable, and stays within a few millimeters", () => {
+    expect(tortuosity(p, 0)).toEqual(p);
+    expect(tortuosity(p, 1)).toEqual(tortuosity(p, 1));
+    const q = tortuosity(p, 1); expect(Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2])).toBeLessThan(9);
+  });
+  it("is smooth: nearby points move together, so a vessel bends without tearing", () => {
+    const a = tortuosity([10, 20, 5], 1), b = tortuosity([10.5, 20, 5], 1);
+    expect(Math.hypot(a[0] - b[0] - -0.5, a[1] - b[1], a[2] - b[2])).toBeLessThan(0.6);
+  });
+});
+
+describe("standard views", () => {
+  it("has five views inside the C-arm's range, starting with AP", () => {
+    expect(STANDARD_VIEWS.length).toBe(5); expect(STANDARD_VIEWS[0]).toMatchObject({ rot: 0, tilt: 0 });
+    for (const v of STANDARD_VIEWS) { expect(Math.abs(v.rot)).toBeLessThanOrEqual(60); expect(Math.abs(v.tilt)).toBeLessThanOrEqual(45); }
+  });
+});

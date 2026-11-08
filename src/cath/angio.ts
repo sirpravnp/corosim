@@ -39,16 +39,34 @@ export function frameOf(centre: V3, o: AngioOptions, now: number, W: number, H: 
   const m1 = bodyMotion(now, o.heartRate, 1);
   const toStatic = (p: V3): P2 => { const q = project(p, ry, rx); return [ox + q[0] * sc, oy - q[1] * sc]; };
   const toScreen = (p: V3): P2 => {
-    const q = project(p, ry, rx), w = motionWeight(len(sub(p, centre)));
+    const w = motionWeight(len(sub(p, centre))), above = smooth((62 - (p[1] - centre[1])) / 22) * smooth((p[2] - centre[2] + 48) / 22), wp = w > 0.02 && above > 0 ? tortuosity(p, w * above) : p; // the aorta (above and behind the heart) and the guide in it stay smooth; only epicardial vessels wander
+    // vessels and devices bend through the same field, so a wire stays on its vessel
+    const q = project(wp, ry, rx);
     return [ox + (q[0] + w * m1.dx) * sc, oy - (q[1] + w * m1.dy) * sc];
   };
   return { sc, cx0: ox, cy0: oy, ox, oy, toScreen, toStatic, basis: viewBasis(o.rot, o.tilt), W, H };
 }
 export type Frame = ReturnType<typeof frameOf>;
 
+/**
+ * A smooth, fixed displacement field (patient frame, mm) that gives the coronary tree the sinuosity of a real one: the modeled centerlines are
+ * smooth curves, real epicardial arteries wander by several millimeters. It is applied inside `toScreen` to everything near the heart, vessels
+ * and devices alike, and fades to nothing toward the arch and the pelvis.
+ */
+export function tortuosity(p: V3, weight: number): V3 {
+  const a = 2.6 * weight;
+  return [
+    p[0] + a * (Math.sin(p[1] * 0.21 + p[2] * 0.11 + 1.3) + 0.4 * Math.sin(p[2] * 0.47 + p[0] * 0.23)),
+    p[1] + a * (Math.sin(p[2] * 0.19 + p[0] * 0.13 + 0.7) + 0.4 * Math.sin(p[0] * 0.43 + p[1] * 0.27 + 2)),
+    p[2] + a * 0.8 * (Math.sin(p[0] * 0.17 + p[1] * 0.09 + 2.1) + 0.4 * Math.sin(p[1] * 0.51 + p[2] * 0.21)),
+  ];
+}
+
 /** The angiographic field of a cardiac frame, in mm across the picture: about 17 cm, which is what real frames show (the heart fills most of it). */
 export const DEFAULT_SPAN_MM = 170;
 
+/** Magnification and geometric unsharpness make the lumen look a little wider than its true diameter. */
+const VESSEL_MAG = 1.25;
 const smooth = (x: number) => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
 
 // ---- display model. Optical density d = tissue + bone + iodine + device; the detector sees exp(-d), the monitor shows a shouldered curve of it.
@@ -136,7 +154,7 @@ export class AngioView {
         if (Number.isFinite(ta)) c = o.labels ? 1 : smooth((t - ta) / 0.25) * (1 - smooth((t - ta - ANGIO.injectSeconds) / 0.5));
         level.push(Math.round(c * LV));
         pts.push(F.toScreen(seg.samples[i]));
-        width.push(seg.diameterMm[i] * F.sc);
+        width.push(seg.diameterMm[i] * F.sc * VESSEL_MAG);
         let a = 0;
         for (const p of plaques) a += plaqueShift(p, (i / NS) * seg.length).asym;
         asym.push(Math.max(-0.6, Math.min(0.6, a)));

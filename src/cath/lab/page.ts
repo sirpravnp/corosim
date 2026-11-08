@@ -7,9 +7,11 @@ import { angioModel, wireModel, AngioModel } from "../../sim/cath";
 import { AngioView } from "../angio";
 import { FluoroView, deviceGeometry, DeviceGeometry } from "./fluoro";
 import { drawSchematic } from "./schematic";
+import { scoreProcedure } from "../../lab/score";
+import type { LabEngine } from "../../lab/engine";
 import { createEngine, catalog, PHYSICS_LIVE, CASE, SCENARIO } from "./engine";
 import { camTarget, easeCam, isSchematic, Cam, CameraMode } from "./camera";
-import { deviceShelf, monitorModel, eventFeed, procedureSummary, nextStep, Slot, Vitals } from "./panels";
+import { STANDARD_VIEWS as VIEWS, deviceShelf, monitorModel, eventFeed, procedureSummary, nextStep, Slot, Vitals } from "./panels";
 import type { Action, LabEvent } from "../../lab/types";
 
 /**
@@ -92,6 +94,8 @@ function render() {
   const st = engine.state();
   geom = deviceGeometry(st, engine.graph(), engine.plaques(), (id) => catalog.find((d) => d.id === id));
   $("next").textContent = nextStep(st, engine.plaques());
+  const lastEv = eventFeed(log, 1)[0], lastEl = $("last");
+  lastEl.textContent = lastEv ? lastEv.text : ""; lastEl.className = `last ${lastEv?.severity ?? ""}`;
   renderShelf();
   $("tiles").innerHTML = monitorModel(vitals(), st).map((t) => `<div><b>${t.label}</b><span class="${t.tone}"><i>${esc(t.value)}</i><em>${esc(t.unit)}</em></span></div>`).join("");
   $("feed").innerHTML = eventFeed(log, 8).map((e) => `<li class="${e.severity}"><time>${e.at.toFixed(0)} s</time>${esc(e.text)}</li>`).join("");
@@ -140,17 +144,40 @@ function holdToMove(id: string, mm: number) {
 }
 holdToMove("advance", 4); holdToMove("retract", -4);
 
+function setView(rot: number, tilt: number) {
+  view.opts.rot = Math.max(-60, Math.min(60, rot)); view.opts.tilt = Math.max(-45, Math.min(45, tilt));
+  $<HTMLInputElement>("rot").value = String(view.opts.rot); $<HTMLInputElement>("tilt").value = String(view.opts.tilt);
+  angleText(); engine.apply({ t: "carm", rot: view.opts.rot, tilt: view.opts.tilt });
+}
+const MODES: CameraMode[] = ["heart", "follow", "overview"];
+
+// a mouse click leaves focus on the button, which used to swallow the keyboard: let go of it
+document.addEventListener("click", (e) => { const b = (e.target as HTMLElement).closest?.("button"); if (b && (e as MouseEvent).detail > 0) b.blur(); });
+
 window.addEventListener("keydown", (e) => {
   const t = e.target as HTMLElement;
-  if (/^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(t.tagName) || e.metaKey || e.ctrlKey || e.altKey) return;
-  const big = e.shiftKey ? 12 : 3, k = e.key.toLowerCase();
-  const turn = (d: number) => { view.opts.rot = Math.max(-60, Math.min(60, view.opts.rot + d)); $<HTMLInputElement>("rot").value = String(view.opts.rot); angleText(); };
+  if (/^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName) || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (t.tagName === "BUTTON" && (e.key === " " || e.key === "Enter")) return; // let a focused button press itself
+  const big = e.shiftKey ? 12 : 3, k = e.key.toLowerCase(), step = e.shiftKey ? 15 : 5;
   if (k === "w") act({ t: "advance", mm: big }); else if (k === "s") act({ t: "advance", mm: -big });
   else if (k === "a") act({ t: "torque", deg: -15 }); else if (k === "d") act({ t: "torque", deg: 15 });
   else if (k === "i") act({ t: "inflate", atm: atm(), seconds: 5 }); else if (k === "o") act({ t: "deflate" });
-  else if (k === " ") { e.preventDefault(); act({ t: "inject", where: "LCA", ml: 6 }); }
-  else if (k === "[") turn(-5); else if (k === "]") turn(5); else return;
+  else if (k === " ") act({ t: "inject", where: "LCA", ml: 6 });
+  else if (k === "arrowleft") setView(view.opts.rot - step, view.opts.tilt); else if (k === "arrowright") setView(view.opts.rot + step, view.opts.tilt);
+  else if (k === "arrowup") setView(view.opts.rot, view.opts.tilt + step); else if (k === "arrowdown") setView(view.opts.rot, view.opts.tilt - step);
+  else if (k >= "1" && k <= "5") { const v = VIEWS[+k - 1]; setView(v.rot, v.tilt); }
+  else if (k === "c") setMode(MODES[(MODES.indexOf(mode) + 1) % MODES.length]);
+  else if (k === "v") { const box = $<HTMLInputElement>("lab"); box.checked = !box.checked; view.opts.labels = box.checked; }
+  else if (k === "g") skipToCoronaries();
+  else if (k === "[") setView(view.opts.rot - step, view.opts.tilt); else if (k === "]") setView(view.opts.rot + step, view.opts.tilt);
+  else return;
   e.preventDefault();
+});
+
+/** Score the procedure so far: the same rubric the engine tests use, listed with a note per item. */
+$("score").addEventListener("click", () => {
+  const r = scoreProcedure(engine as unknown as LabEngine, CASE);
+  $("scoreOut").innerHTML = `<table class="score"><caption><b>Table 2.</b> Procedure score, ${r.total} of 100.</caption><tbody>${r.items.map((i) => `<tr><th scope="row">${esc(i.label)}</th><td>${i.points}/${i.max}</td><td>${esc(i.note)}</td></tr>`).join("")}</tbody></table>`;
 });
 
 buildShelf();

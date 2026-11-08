@@ -60,3 +60,23 @@ body.lab main.lab-main { display: grid; grid-template-columns: minmax(0, 1fr) 38
 .cams button { padding: 4px 10px; border: 1px solid var(--rule); background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
 .cams button[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: var(--bg); }
 .cams #skip { margin-left: auto; }
+
+/* the last event, under the next step; color carries severity only */
+.last { margin: 4px 0 0; min-height: 1.4em; font-size: 13px; color: var(--muted); padding-left: 12px; }
+.last.caution { color: var(--warn); } .last.bad { color: var(--bad); font-weight: 600; }
+
+/* keyboard controls: a plain hairline table, keycaps in the data face */
+.keys { margin-top: 14px; }
+.keys table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.keys caption { text-align: left; font-size: 12.5px; color: var(--muted); padding-bottom: 6px; max-width: 90ch; }
+.keys caption b { color: var(--ink); font-weight: 600; margin-right: 4px; }
+.keys th { text-align: left; font-weight: 600; color: var(--muted); padding: 6px 12px 6px 0; width: 70px; }
+.keys td { padding: 6px 12px 6px 0; border-top: 1px solid var(--rule-light); }
+.keys tr:first-child td, .keys tr:first-child th { border-top: 1px solid var(--rule-light); }
+.keys kbd { display: inline-block; min-width: 1.6em; padding: 0 5px; margin: 0 1px; border: 1px solid var(--rule); border-radius: 2px; font: 12px/1.6 var(--font-data); text-align: center; color: var(--ink); }
+table.score { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
+table.score caption { text-align: left; color: var(--muted); padding-bottom: 6px; }
+table.score caption b { color: var(--ink); font-weight: 600; margin-right: 4px; }
+table.score th { text-align: left; font-weight: 600; padding: 5px 8px 5px 0; }
+table.score td { padding: 5px 8px 5px 0; border-top: 1px solid var(--rule-light); }
+table.score tr:first-child th, table.score tr:first-child td { border-top: 1px solid var(--rule-light); }
