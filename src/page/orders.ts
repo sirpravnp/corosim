@@ -63,6 +63,7 @@ function startSkip(target: string | null) {
   if (r.open) { note = "Answer the checkpoint first."; ordersUi(); return; }
   const p = probe(), ok = canSkip(p, (q) => r.isStable(q));
   if (!ok.ok) { note = ok.why; ordersUi(); return; }
+  if (r.harmActive(p)) { note = "Time skip is unavailable while a harm is active."; ordersUi(); return; }
   if (skip.target === null && target && !orders.book.pending.some((x) => x.id === target)) return;
   note = ""; skip.on = true; skip.target = target; skip.start = r.t; skip.prev = p; skip.saved = S.speed;
   ordersUi();
