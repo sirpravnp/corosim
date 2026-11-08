@@ -102,3 +102,19 @@ export function resolveMonitor(def: { monitor?: string[] }): string[] {
   const kept = (def.monitor ?? []).filter(isDisplayId);
   return kept.length ? kept : [...STANDARD_MONITOR];
 }
+
+/** The shown reason an order or skip is refused because its result could not return in time. */
+export const TOO_LATE_NOTE = "That result will not be back before the case ends.";
+
+/**
+ * Case seconds between an order and its result. Real turnaround (minutes to an hour) is compressed to fit the case: at most a fifth of the
+ * time limit, but never under a minute, and never longer than the item's own delay. [assumed]
+ */
+export function effectiveDelayS(item: Pick<OrderItem, "delayS">, limitS: number): number {
+  return Math.min(item.delayS, Math.max(60, 0.2 * limitS));
+}
+
+/** Whether an item ordered at case time `t` would be back before the case ends at `limitS`. */
+export function backBeforeEnd(item: Pick<OrderItem, "delayS">, t: number, limitS: number): boolean {
+  return t + effectiveDelayS(item, limitS) <= limitS;
+}

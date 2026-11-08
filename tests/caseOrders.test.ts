@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { CASES, caseById } from "../src/cases";
-import { CATALOG, STANDARD_MONITOR, itemById, resolveMonitor, PatientNow } from "../src/cases/orders";
+import { CATALOG, STANDARD_MONITOR, backBeforeEnd, effectiveDelayS, itemById, resolveMonitor, PatientNow } from "../src/cases/orders";
+import { OrderBook } from "../src/cases/orderBook";
 import { CaseSpec, validateCase } from "../src/cases/spec";
 
 const now = (o: Partial<PatientNow> = {}): PatientNow => ({
@@ -116,5 +117,32 @@ describe("built-in cases", () => {
         expect(t.length, `${c.id}/${item.id}`).toBeGreaterThan(0);
       }
     }
+  });
+});
+
+describe("effective turnaround", () => {
+  const lab = (delayS: number) => ({ delayS });
+  it("compresses to a fifth of the limit, never under a minute, never above the item's own delay", () => {
+    expect(effectiveDelayS(lab(3600), 600)).toBe(120);
+    expect(effectiveDelayS(lab(3600), 900)).toBe(180);
+    expect(effectiveDelayS(lab(3600), 2400)).toBe(480);
+    expect(effectiveDelayS(lab(300), 2400)).toBe(300);
+    expect(effectiveDelayS(lab(0), 600)).toBe(0);
+    expect(effectiveDelayS(lab(3600), 100)).toBe(60);
+  });
+  it("every built-in lab can return in every built-in case when ordered at the start", () => {
+    for (const c of CASES) for (const i of CATALOG) expect(backBeforeEnd(i, 0, c.limitS), `${c.id}: ${i.id}`).toBe(true);
+  });
+  it("refuses an order whose result cannot return before the limit", () => {
+    expect(backBeforeEnd(lab(3600), 479, 600)).toBe(true);
+    expect(backBeforeEnd(lab(3600), 481, 600)).toBe(false);
+    expect(backBeforeEnd(lab(0), 600, 600)).toBe(true);
+  });
+  it("OrderBook.order uses the compressed delay and refuses a late one", () => {
+    const b = new OrderBook();
+    expect(b.order("tsh", 10, 600)).toBe("ok");
+    expect(b.pending[0].readyAt).toBe(130);
+    expect(b.order("bmp", 590, 600)).toBe("late");
+    expect(b.ordered().has("bmp")).toBe(false);
   });
 });

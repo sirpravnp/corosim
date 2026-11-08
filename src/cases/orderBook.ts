@@ -1,6 +1,6 @@
 // The order book: what the learner has ordered, what is still pending, and what came back. Pure and DOM-free.
 // A lab's value is read when it returns (inside `tick`), from the patient as they are then, not when it was ordered.
-import { itemById, PatientNow, Reading } from "./orders";
+import { backBeforeEnd, effectiveDelayS, itemById, PatientNow, Reading } from "./orders";
 
 export interface Returned { id: string; t: number; reading: Reading }
 
@@ -16,12 +16,16 @@ export class OrderBook {
   private queue: { id: string; readyAt: number }[] = [];
   private entries: LogEntry[] = [];
 
-  /** Orders an item at case time `t`. Ordering an item already pending adds nothing and says so. */
-  order(id: string, t: number): "ok" | "duplicate" | "unknown" {
+  /**
+   * Orders an item at case time `t`. Ordering an item already pending adds nothing and says so. With the case's time limit the turnaround is
+   * compressed to fit the case (effectiveDelayS), and an order whose result could not return before the limit is refused ("late").
+   */
+  order(id: string, t: number, limitS?: number): "ok" | "duplicate" | "unknown" | "late" {
     const item = itemById(id);
     if (!item) return "unknown";
     if (this.queue.some((q) => q.id === id)) return "duplicate";
-    this.queue.push({ id, readyAt: t + item.delayS });
+    if (limitS !== undefined && !backBeforeEnd(item, t, limitS)) return "late";
+    this.queue.push({ id, readyAt: t + (limitS === undefined ? item.delayS : effectiveDelayS(item, limitS)) });
     this.entries.push({ id, orderedAt: t });
     return "ok";
   }

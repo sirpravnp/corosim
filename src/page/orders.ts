@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------- cases: the Order menu, the pending list and the safe time skip
 // The book (src/cases/orderBook.ts) holds what was ordered; this module draws it in the case panel and carries out a skip. A skip raises
 // the page clock for as long as the rules in src/cases/skip.ts allow: it stops on a result, a stop reason, or the cap, never past them.
-import { CATALOG, itemById, resolveMonitor, stageVisible } from "../cases/orders";
+import { CATALOG, TOO_LATE_NOTE, backBeforeEnd, effectiveDelayS, itemById, resolveMonitor, stageVisible } from "../cases/orders";
 import { OrderBook, noteReturned } from "../cases/orderBook";
 import { canSkip, skipStop, skipSpeed, SKIP_CAP_S, SKIP_PAUSED_NOTE } from "../cases/skip";
 import type { CaseRunner, Probe, Tick } from "../cases/engine";
@@ -71,9 +71,13 @@ function startSkip(target: string | null) {
   if (r.harmActive(p)) { note = "Time skip is unavailable while a harm is active."; ordersUi(); return; }
   if (playClock.paused) { note = SKIP_PAUSED_NOTE; ordersUi(); return; }
   if (skip.target === null && target && !orders.book.pending.some((x) => x.id === target)) return;
+  if (target) { const due = orders.book.pending.find((x) => x.id === target)?.readyAt; if (due !== undefined && due > limitS()) { note = TOO_LATE_NOTE; ordersUi(); return; } }
   note = ""; skip.on = true; skip.target = target; skip.start = r.t; skip.prev = p; skip.saved = S.speed;
   ordersUi();
 }
+
+/** The running case's time limit in case seconds. */
+const limitS = () => K.def?.limitS ?? Infinity;
 
 function show(id: string) {
   if (shown.includes(id)) return;
@@ -115,14 +119,16 @@ export function ordersUi() {
   const pend = orders.book.pending;
   $("o_menu").setAttribute("aria-expanded", String(menuOpen));
   $("o_list").hidden = !menuOpen;
-  const msig = `${menuOpen}|${shown.join()}|${pend.map((p) => p.id).join()}`;
+  const late = new Set(CATALOG.filter((i) => !backBeforeEnd(i, r.t, limitS())).map((i) => i.id));
+  const msig = `${menuOpen}|${shown.join()}|${pend.map((p) => p.id).join()}|${[...late].join()}`;
   if (msig !== menuSig) {
     menuSig = msig;
     const pending = new Set(pend.map((p) => p.id));
     $("o_list").innerHTML = GROUPS.map((g) => `<div class="o-group"><h4>${g.title}</h4>${CATALOG.filter((i) => i.group === g.id).map((i) => {
       const onMon = shown.includes(i.id), isPend = pending.has(i.id);
-      const tag = onMon ? "on monitor" : isPend ? "pending" : i.delayS >= 1 ? `back in ${clock(i.delayS)}` : "";
-      return `<button class="o-item" data-o="${i.id}"${onMon || isPend ? " disabled" : ""}><span>${esc(i.label)}</span><em>${tag}</em></button>`;
+      const isLate = !onMon && !isPend && late.has(i.id);
+      const tag = onMon ? "on monitor" : isPend ? "pending" : isLate ? TOO_LATE_NOTE : i.delayS >= 1 ? `back in ${clock(effectiveDelayS(i, limitS()))}` : "";
+      return `<button class="o-item" data-o="${i.id}"${onMon || isPend || isLate ? " disabled" : ""}><span>${esc(i.label)}</span><em>${tag}</em></button>`;
     }).join("")}</div>`).join("");
   }
   const psig = pend.map((p) => p.id).join();
@@ -144,7 +150,8 @@ export function wireOrders() {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-o]");
     const r = K.runner;
     if (!b || !r || K.phase !== "run") return;
-    orders.book.order(b.dataset.o!, r.t);
+    const res = orders.book.order(b.dataset.o!, r.t, limitS());
+    note = res === "late" ? TOO_LATE_NOTE : "";
     menuOpen = false; menuSig = ""; ordersUi();
   });
   $("o_pending").addEventListener("click", (e) => {
