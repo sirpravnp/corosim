@@ -10,7 +10,6 @@ export const LM_SHOCK: CaseDef = {
   complaint: "Chest pain",
   devices: ["Impella"],
   blurb: "Chest pain, then breathlessness, in a woman whose pressure is falling.",
-  monitor: ["hr", "bp", "ecg", "spo2", "rr", "temp", "heart3d", "loops", "numbers"],
   card: {
     presents: "72-year-old woman with three hours of chest pain, now breathless and clammy with mottled skin. Heart rate 112, BP 77/64, crackles to the mid-lung fields.",
     pmh: "Hypertension, type 2 diabetes, stage 3 kidney disease. Takes metoprolol, amlodipine and metformin. No allergies.",

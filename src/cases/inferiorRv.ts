@@ -12,7 +12,6 @@ export const INFERIOR_RV: CaseDef = {
   complaint: "Chest pain",
   devices: ["Pacing"],
   blurb: "Chest pressure, a heart rate in the 40s and a falling blood pressure.",
-  monitor: ["hr", "bp", "ecg", "spo2", "rr", "temp", "jvp", "rhc", "heart3d"],
   card: {
     presents: "64-year-old man with two hours of crushing chest pressure, nausea and sweating. He nearly fainted getting out of the car. Heart rate 42, BP 88/48, clear lungs, distended neck veins.",
     pmh: "Hypertension, type 2 diabetes, 30 pack-year smoker. Takes lisinopril and metformin. No allergies.",
