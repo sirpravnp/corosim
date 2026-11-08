@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { CATALOG, byId, balloonDiameter } from "../src/config/devices";
+import { CATALOG, byId, balloonDiameter } from "../src/config/labDevices";
 import type { Balloon, Guidewire, Stent } from "../src/lab/types";
 
 describe("device catalog", () => {
