@@ -1,6 +1,6 @@
 import type { Cond, Harm, CaseDef, Checkpoint, Outcome, Probe } from "./engine";
 import { normalizePatient } from "../sim/patient";
-import { itemById } from "./orders";
+import { isDisplayId, itemById } from "./orders";
 import { ANALYTES } from "../sim/labs";
 
 /**
@@ -166,7 +166,11 @@ export function validateCase(s: CaseSpec): string[] {
   }
   for (const [w, f] of usedFlags) if (!setFlags.has(f)) errs.push(`${w} depends on flag '${f}', which nothing sets.`);
   for (const m of s.musts ?? []) if (!setFlags.has(m.flag)) errs.push(`Required step '${m.flag}' is never set by any outcome.`);
-  for (const m of s.monitor ?? []) need(itemById(m), `The monitor lists '${m}', which is not an orderable item.`);
+  for (const m of s.monitor ?? []) {
+    const it = itemById(m);
+    if (!it) errs.push(`The monitor lists '${m}', which is not an orderable item.`);
+    else need(isDisplayId(m), `The monitor lists '${m}', which is a result to order, not a display.`);
+  }
   if (s.tempC !== undefined) need(Number.isFinite(s.tempC) && s.tempC >= 20 && s.tempC <= 45, "Body temperature must be between 20 and 45 C.");
   for (const [k, x] of Object.entries(s.labs ?? {})) {
     need((ANALYTES as readonly string[]).includes(k), `The labs name '${k}', which is not a lab value the simulator knows.`);

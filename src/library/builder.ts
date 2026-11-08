@@ -30,7 +30,7 @@ export function blankCase(taken: string[]): CaseSpec {
   };
 }
 
-const MONITOR_GROUPS: [string, string][] = [["monitor", "Numbers on the monitor"], ["panel", "Workspace panels shown from the start"], ["lab", "Results shown from the start"], ["bedside", "Bedside findings"]];
+const MONITOR_GROUPS: [string, string][] = [["monitor", "Numbers on the monitor"], ["panel", "Workspace panels shown from the start"]];
 /** Lab overrides, grouped the way a clinician reads them. The order lists every analyte once. */
 const LAB_GROUPS: [string, Analyte[]][] = [
   ["Electrolytes and kidney", ["na", "k", "cl", "hco3", "bun", "cr", "egfr", "glu", "ca", "mg", "phos"]],

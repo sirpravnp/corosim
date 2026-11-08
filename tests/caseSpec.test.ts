@@ -80,6 +80,9 @@ describe("case spec", () => {
     const e = validateCase({ ...spec(), monitor: ["hr", "crystal-ball"] });
     expect(e.join("\n")).toMatch(/'crystal-ball'.*not an orderable item\./);
   });
+  it("a draft with a lab id in the monitor fails validateCase", () => {
+    expect(validateCase({ ...spec(), monitor: ["hr", "lactate"] }).join("\n")).toMatch(/'lactate'.*result to order/);
+  });
   it("a draft with an empty monitor array validates and resolves to the standard six", () => {
     const s = { ...spec(), monitor: [] };
     expect(validateCase(s)).toEqual([]);

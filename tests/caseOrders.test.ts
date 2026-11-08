@@ -60,6 +60,15 @@ describe("case monitor validation", () => {
     const errs = validateCase({ ...spec(), monitor: ["hr", "foo"] });
     expect(errs).toContain("The monitor lists 'foo', which is not an orderable item.");
   });
+  it("rejects a lab or bedside id in the monitor, naming it and why", () => {
+    expect(validateCase({ ...spec(), monitor: ["hr", "lactate"] })).toContain("The monitor lists 'lactate', which is a result to order, not a display.");
+    expect(validateCase({ ...spec(), monitor: ["urine"] })).toContain("The monitor lists 'urine', which is a result to order, not a display.");
+    expect(validateCase({ ...spec(), monitor: ["hr", "heart3d", "jvp"] })).toEqual([]);
+  });
+  it("resolveMonitor drops lab and bedside ids like unknown ones", () => {
+    expect(resolveMonitor({ monitor: ["bp", "lactate", "urine", "hr"] })).toEqual(["bp", "hr"]);
+    expect(resolveMonitor({ monitor: ["lactate"] })).toEqual([...STANDARD_MONITOR]);
+  });
   it("accepts a case with no monitor or an empty one", () => {
     expect(validateCase(spec())).toEqual([]);
     expect(validateCase({ ...spec(), monitor: [] })).toEqual([]);

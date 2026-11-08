@@ -91,8 +91,14 @@ export const STANDARD_MONITOR: readonly string[] = ["hr", "bp", "ecg", "spo2", "
 const BY_ID = new Map(CATALOG.map((i) => [i.id, i]));
 export const itemById = (id: string): OrderItem | undefined => BY_ID.get(id);
 
+/** A monitor may list only displays: monitor readings and workspace panels. A lab or bedside result is ordered, never pre-shown. */
+export function isDisplayId(id: string): boolean {
+  const g = BY_ID.get(id)?.group;
+  return g === "monitor" || g === "panel";
+}
+
 /** The monitor a case shows. A case may never show nothing: no setting, an empty one, or only unknown ids give the standard six. */
 export function resolveMonitor(def: { monitor?: string[] }): string[] {
-  const kept = (def.monitor ?? []).filter((id) => BY_ID.has(id));
+  const kept = (def.monitor ?? []).filter(isDisplayId);
   return kept.length ? kept : [...STANDARD_MONITOR];
 }
