@@ -1,16 +1,17 @@
 import type { V3 } from "../../anatomy/curve";
-import type { Balloon, Device, LabState, Plaque, Stent, VGraph } from "../../lab/types";
-import { AngioOptions, frameOf } from "../angio";
+import type { Balloon, Device, LabState, Plaque, Stent, VGraph, VSeg } from "../../lab/types";
+import { AngioOptions, frameOf, type Frame } from "../angio";
 import { routeTo } from "../../lab/route";
 import { zoneOf } from "../../lab/camera";
+import { arcLengths, balloonProfile, smoothPath, wallLines, type P2 } from "../lumen";
 
 /** Where each device is, as patient-frame polylines (mm). Pure, so the tests can check it without a canvas. */
 export interface DeviceGeometry {
   guide: V3[];
   wire: V3[];
   wireTip: V3 | null;
-  balloon?: { from: V3; to: V3; diameterMm: number; inflatedAtm: number };
-  stent?: { from: V3; to: V3; diameterMm: number; deployed: boolean };
+  balloon?: { from: V3; to: V3; diameterMm: number; inflatedAtm: number; path: V3[]; segId: string; centerMm: number; lengthMm: number; nominalAtm: number };
+  stent?: { from: V3; to: V3; diameterMm: number; deployed: boolean; path: V3[] };
   /** Radiopaque markers: the two balloon or stent ends. */
   markers: V3[];
 }
@@ -34,12 +35,13 @@ function pathTo(g: VGraph, route: readonly string[], tipSeg: string, tipMm: numb
   return out;
 }
 
-/** A point `mm` along a vessel, and the one `halfLen` either side of it on the same vessel. */
-function span(g: VGraph, segId: string, centerMm: number, lengthMm: number): { from: V3; to: V3 } | null {
+/** The points of a vessel from `lengthMm` centered at `centerMm`: both ends and every sample between, so a device can follow the vessel's bends. */
+function span(g: VGraph, segId: string, centerMm: number, lengthMm: number): { from: V3; to: V3; path: V3[] } | null {
   const seg = g.byId[segId];
   if (!seg) return null;
-  const NS = seg.samples.length - 1, at = (mm: number) => seg.samples[Math.min(NS, Math.max(0, Math.round((mm / seg.length) * NS)))];
-  return { from: at(centerMm - lengthMm / 2), to: at(centerMm + lengthMm / 2) };
+  const NS = seg.samples.length - 1, ix = (mm: number) => Math.min(NS, Math.max(0, Math.round((mm / seg.length) * NS)));
+  const a = ix(centerMm - lengthMm / 2), b = ix(centerMm + lengthMm / 2);
+  return { from: seg.samples[a], to: seg.samples[b], path: seg.samples.slice(a, b + 1) };
 }
 
 export function deviceGeometry(st: Readonly<LabState>, g: VGraph, plaques: readonly Plaque[], lookup: (id: string) => Device | undefined): DeviceGeometry {
@@ -69,7 +71,7 @@ export function deviceGeometry(st: Readonly<LabState>, g: VGraph, plaques: reado
     const b = lookup(st.balloon.id) as Balloon | undefined, s = b ? span(g, st.balloon.segId, st.balloon.centerMm, b.lengthMm) : null;
     if (b && s) {
       const d = b.nominalMm + b.slopeMmPerAtm * ((st.balloon.inflatedAtm || b.nominalAtm) - b.nominalAtm);
-      out.balloon = { ...s, diameterMm: st.balloon.inflatedAtm > 0 ? d : Math.min(1, d), inflatedAtm: st.balloon.inflatedAtm };
+      out.balloon = { ...s, diameterMm: st.balloon.inflatedAtm > 0 ? d : Math.min(1, d), inflatedAtm: st.balloon.inflatedAtm, segId: st.balloon.segId, centerMm: st.balloon.centerMm, lengthMm: b.lengthMm, nominalAtm: b.nominalAtm };
       out.markers.push(s.from, s.to);
     }
   }
@@ -87,46 +89,106 @@ export function deviceGeometry(st: Readonly<LabState>, g: VGraph, plaques: reado
 const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s) % 60).padStart(2, "0")}`;
 
 /**
- * Draws the devices over the angiogram. It sits on a second canvas stacked on the angiogram's, and maps patient-frame points through
- * the same `frameOf` the angiogram uses, so a wire lies on its vessel and moves with the heart. Devices are radiopaque: dark, no color.
+ * Draws the devices. They go on an attenuation canvas (`att`: white is dense) that the angiogram reads as part of its optical density,
+ * so a wire gets the same noise, scatter and display curve as the anatomy instead of sitting on it like a vector overlay. The roadmap,
+ * which is a monitor feature and not x-ray, and the counters go on the visible canvas. Everything maps through the angiogram's `frameOf`,
+ * so a wire lies on its vessel and moves with the heart.
  */
 export class FluoroView {
   private ctx: CanvasRenderingContext2D;
-  constructor(private canvas: HTMLCanvasElement) { this.ctx = canvas.getContext("2d")!; }
+  readonly att: HTMLCanvasElement; private A: CanvasRenderingContext2D;
+  constructor(private canvas: HTMLCanvasElement) {
+    this.ctx = canvas.getContext("2d")!;
+    this.att = document.createElement("canvas"); this.att.width = canvas.width; this.att.height = canvas.height;
+    this.A = this.att.getContext("2d")!;
+  }
 
-  draw(now: number, centre: V3, opts: AngioOptions, geom: DeviceGeometry, st: Readonly<LabState>, roadmap: VGraph | null = null) {
-    const { width: W, height: H } = this.canvas, C = this.ctx;
-    C.clearRect(0, 0, W, H);
-    const F = frameOf(centre, opts, now, W, H), sc = F.sc, S = (p: V3) => F.toScreen(p);
-    const line = (pts: V3[], width: number, style: string) => {
-      if (pts.length < 2) return;
-      C.beginPath(); pts.forEach((p, i) => { const [x, y] = S(p); if (i) C.lineTo(x, y); else C.moveTo(x, y); });
-      C.lineWidth = width; C.strokeStyle = style; C.lineCap = "round"; C.lineJoin = "round"; C.stroke();
+  /** The devices as attenuation. Radiopacity, from most to least: marker bands, the wire's distal coil, the guide's braided wall, stent struts, the contrast in an inflated balloon. */
+  private paintDevices(F: Frame, geom: DeviceGeometry, st: Readonly<LabState>, plaques: readonly Plaque[], g: VGraph | null) {
+    const A = this.A, W = this.att.width, H = this.att.height, sc = F.sc, S = (p: V3): P2 => F.toScreen(p);
+    A.globalCompositeOperation = "source-over"; A.fillStyle = "#000"; A.fillRect(0, 0, W, H); A.globalCompositeOperation = "lighter";
+    A.lineCap = "butt"; A.lineJoin = "round";
+    const white = (a: number) => `rgba(255,255,255,${a})`;
+    const trace = (pts: P2[]) => { A.beginPath(); pts.forEach((p, i) => (i ? A.lineTo(p[0], p[1]) : A.moveTo(p[0], p[1]))); };
+    const ribbon = (L: P2[], R: P2[]) => { A.beginPath(); L.forEach((p, i) => (i ? A.lineTo(p[0], p[1]) : A.moveTo(p[0], p[1]))); for (let i = R.length - 1; i >= 0; i--) A.lineTo(R[i][0], R[i][1]); A.closePath(); };
+    const bar = (p: P2, a: P2, lenPx: number, wPx: number, alpha: number) => {
+      const dx = a[0] - p[0], dy = a[1] - p[1], l = Math.hypot(dx, dy) || 1, tx = dx / l, ty = dy / l;
+      A.beginPath(); A.moveTo(p[0] - tx * lenPx / 2, p[1] - ty * lenPx / 2); A.lineTo(p[0] + tx * lenPx / 2, p[1] + ty * lenPx / 2);
+      A.lineWidth = wPx; A.strokeStyle = white(alpha); A.stroke();
     };
-    if (roadmap) for (const seg of roadmap.segs) {
-      if (zoneOf(seg.id, 0) === "coronary") continue; // the coronaries are the angiogram's
-      for (let i = 1; i < seg.samples.length; i++) line([seg.samples[i - 1], seg.samples[i]], Math.max(2, seg.diameterMm[i] * sc), "rgba(12,12,14,.26)");
+    const dirNear = (pts: P2[], i: number): P2 => pts[Math.min(pts.length - 1, i + 1)] === pts[i] ? pts[Math.max(0, i - 1)] : pts[Math.min(pts.length - 1, i + 1)];
+
+    // the guide: a braided wall (two dense edges) around a lighter lumen, with a soft tip
+    if (geom.guide.length > 1) {
+      const pts = smoothPath(geom.guide.map(S), 2), wpx = Math.max(3.4, 1.9 * sc), { left, right } = wallLines(pts, pts.map(() => wpx), undefined, 3);
+      ribbon(left, right); A.fillStyle = white(0.17); A.fill();
+      for (const edge of [left, right]) { trace(edge); A.lineWidth = Math.max(1.1, 0.34 * sc); A.strokeStyle = white(0.34); A.stroke(); }
+      const tail = pts.slice(-Math.max(2, Math.round(pts.length * 0.03))); // the distal shaft is softer and carries a marker band
+      bar(pts[pts.length - 1], tail[0], Math.max(3, 1.2 * sc), wpx, 0.2);
     }
-    line(geom.guide, Math.max(4, 1.8 * sc * 0.9), "rgba(18,18,20,.78)");
-    line(geom.guide, 1.2, "rgba(210,210,205,.35)"); // the lumen of the catheter reads lighter down its middle
-    line(geom.wire, 1.7, "rgba(0,0,0,.92)");
-    if (geom.balloon) {
-      const b = geom.balloon, a = S(b.from), z = S(b.to), w = Math.max(3, b.diameterMm * sc);
-      C.lineCap = "butt"; C.strokeStyle = b.inflatedAtm > 0 ? "rgba(235,235,225,.55)" : "rgba(235,235,225,.2)"; C.lineWidth = w;
-      C.beginPath(); C.moveTo(a[0], a[1]); C.lineTo(z[0], z[1]); C.stroke();
+    // the wire: a thin core, then a denser distal coil with a rounded tip that is bent a little
+    if (geom.wire.length > 1) {
+      const pts = smoothPath(geom.wire.map(S), 2), cum = arcLengths(pts), total = cum[cum.length - 1], coilPx = 30 * sc;
+      trace(pts); A.lineWidth = Math.max(1.05, 0.4 * sc); A.strokeStyle = white(0.42); A.stroke();
+      const from = Math.max(0, cum.findIndex((c) => c >= total - coilPx));
+      const coil = pts.slice(from);
+      if (coil.length > 1) { trace(coil); A.lineWidth = Math.max(1.5, 0.62 * sc); A.strokeStyle = white(0.34); A.stroke(); A.save(); A.setLineDash([Math.max(1, 0.5 * sc), Math.max(1, 0.35 * sc)]); trace(coil); A.lineWidth = Math.max(1.5, 0.62 * sc); A.strokeStyle = white(0.22); A.stroke(); A.restore(); }
+      const tip = pts[pts.length - 1], prev = pts[Math.max(0, pts.length - 4)], dx = tip[0] - prev[0], dy = tip[1] - prev[1], l = Math.hypot(dx, dy) || 1;
+      const bend = ((st.wire?.bendDeg || 28) * Math.PI) / 180, ca = Math.cos(bend), sa = Math.sin(bend), len = Math.max(5, 3.2 * sc);
+      const jx = tip[0] + ((dx / l) * ca - (dy / l) * sa) * len, jy = tip[1] + ((dx / l) * sa + (dy / l) * ca) * len;
+      A.beginPath(); A.moveTo(tip[0], tip[1]); A.lineTo(jx, jy); A.lineWidth = Math.max(1.5, 0.62 * sc); A.strokeStyle = white(0.4); A.stroke();
+      A.beginPath(); A.arc(jx, jy, Math.max(0.9, 0.34 * sc), 0, 6.283); A.fillStyle = white(0.5); A.fill();
     }
-    if (geom.stent) {
-      const s = geom.stent, a = S(s.from), z = S(s.to), w = Math.max(3, s.diameterMm * sc * 0.9);
-      const dx = z[0] - a[0], dy = z[1] - a[1], len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len, n = Math.max(3, Math.round(len / 3));
-      C.strokeStyle = s.deployed ? "rgba(0,0,0,.8)" : "rgba(0,0,0,.45)"; C.lineWidth = 0.9; C.lineCap = "butt"; C.beginPath();
-      for (let i = 0; i <= n; i++) {
-        const u = i / n, x = a[0] + dx * u, y = a[1] + dy * u, sg = i % 2 ? 1 : -1;
-        C.lineTo(x + nx * w * 0.5 * sg, y + ny * w * 0.5 * sg);
+    // the balloon: invisible deflated except for its two marker bands; inflated it holds dilute contrast, waisted where the lesion resists
+    if (geom.balloon && geom.balloon.path.length > 1) {
+      const b = geom.balloon, pts = smoothPath(b.path.map(S), 1), n = pts.length;
+      const pl = plaques.find((p) => p.segId === b.segId && Math.abs(p.centerMm - b.centerMm) < p.lengthMm / 2 + b.lengthMm / 2);
+      const prof = balloonProfile(n, b.lengthMm, b.diameterMm / 2, b.inflatedAtm, b.nominalAtm, pl ? { offsetMm: pl.centerMm - b.centerMm, lengthMm: pl.lengthMm, lumenRadiusMm: (pl.referenceMm * (1 - pl.ds)) / 2 } : undefined);
+      const { left, right } = wallLines(pts, prof.map((r) => Math.max(2, 2 * r * sc)), undefined, 2);
+      ribbon(left, right); A.fillStyle = white(b.inflatedAtm > 0 ? 0.2 : 0.06); A.fill();
+      for (const edge of [left, right]) { trace(edge); A.lineWidth = 1; A.strokeStyle = white(b.inflatedAtm > 0 ? 0.3 : 0.12); A.stroke(); }
+    }
+    // the stent: a diamond mesh of struts across its width
+    if (geom.stent && geom.stent.path.length > 1) {
+      const s = geom.stent, pts = smoothPath(s.path.map(S), 1), n = pts.length, wpx = Math.max(2.6, s.diameterMm * sc * (s.deployed ? 1 : 0.38));
+      const { left, right } = wallLines(pts, pts.map(() => wpx), undefined, 2);
+      for (const edge of [left, right]) { trace(edge); A.lineWidth = s.deployed ? 1.1 : 1.6; A.strokeStyle = white(s.deployed ? 0.34 : 0.5); A.stroke(); }
+      const cells = Math.max(4, Math.round(n / 1.6));
+      A.beginPath();
+      for (let c = 0; c < cells; c++) {
+        const i = Math.floor((c / cells) * (n - 1)), j = Math.min(n - 1, Math.floor(((c + 1) / cells) * (n - 1)));
+        A.moveTo(left[i][0], left[i][1]); A.lineTo(right[j][0], right[j][1]); A.moveTo(right[i][0], right[i][1]); A.lineTo(left[j][0], left[j][1]);
       }
-      C.stroke();
+      A.lineWidth = 0.8; A.strokeStyle = white(s.deployed ? 0.2 : 0.3); A.stroke();
     }
-    for (const m of geom.markers) { const [x, y] = S(m); C.fillStyle = "rgba(0,0,0,.95)"; C.fillRect(x - 3, y - 1.5, 6, 3); }
-    if (geom.wireTip) { const [x, y] = S(geom.wireTip); C.fillStyle = "rgba(0,0,0,.95)"; C.beginPath(); C.arc(x, y, 2.2, 0, 6.283); C.fill(); }
+    // platinum marker bands at the two ends: the densest thing on the screen
+    for (const m of geom.markers) {
+      const k = [geom.balloon?.path, geom.stent?.path].find((p) => p && p.length > 1);
+      const p = S(m), toward = k ? S(k[Math.min(k.length - 1, Math.max(0, k.indexOf(m) === 0 ? 1 : k.length - 2))]) : [p[0], p[1] + 1] as P2;
+      const dx = toward[0] - p[0], dy = toward[1] - p[1], l = Math.hypot(dx, dy) || 1, nx = -dy / l, ny = dx / l, half = Math.max(2.2, 0.55 * sc * 1.4);
+      A.beginPath(); A.moveTo(p[0] - nx * half, p[1] - ny * half); A.lineTo(p[0] + nx * half, p[1] + ny * half);
+      A.lineWidth = Math.max(2.2, 1.3 * sc * 0.55); A.strokeStyle = white(0.8); A.stroke();
+    }
+    void dirNear; void g;
+  }
+
+  draw(now: number, centre: V3, opts: AngioOptions, geom: DeviceGeometry, st: Readonly<LabState>, roadmap: VGraph | null = null, plaques: readonly Plaque[] = []) {
+    const { width: W, height: H } = this.canvas, C = this.ctx;
+    const F = frameOf(centre, opts, now, W, H), sc = F.sc;
+    this.paintDevices(F, geom, st, plaques, roadmap);
+    C.clearRect(0, 0, W, H);
+    // the roadmap: the access vessels as a faint outline on the monitor, only where there is no dye of the angiogram's own
+    if (roadmap) {
+      const all: VSeg[] = [...roadmap.segs, ...(roadmap.branches ?? [])];
+      for (const seg of all) {
+        if (zoneOf(seg.id, 0) === "coronary") continue;
+        const pts = seg.samples.map((p) => F.toScreen(p)), { left, right } = wallLines(pts, seg.diameterMm.map((d) => d * sc), undefined, 2);
+        C.beginPath(); left.forEach((p, i) => (i ? C.lineTo(p[0], p[1]) : C.moveTo(p[0], p[1]))); for (let i = right.length - 1; i >= 0; i--) C.lineTo(right[i][0], right[i][1]); C.closePath();
+        C.fillStyle = "rgba(244,241,234,.045)"; C.fill();
+        C.lineWidth = 1; C.strokeStyle = "rgba(244,241,234,.2)";
+        for (const edge of [left, right]) { C.beginPath(); edge.forEach((p, i) => (i ? C.lineTo(p[0], p[1]) : C.moveTo(p[0], p[1]))); C.stroke(); }
+      }
+    }
     // the counters a lab monitor prints in the corner
     C.font = '12px "JetBrains Mono", ui-monospace, Menlo, monospace'; C.textBaseline = "alphabetic"; C.fillStyle = "rgba(220,220,210,.85)"; C.textAlign = "right";
     C.fillText(`FLUORO ${fmtTime(st.fluoroSeconds)}  AK ${Math.round(st.doseMGy)} mGy`, W - 14, H - 32);

@@ -6,8 +6,9 @@ import { Simulation } from "../../sim/simulation";
 import { angioModel, wireModel, AngioModel } from "../../sim/cath";
 import { AngioView } from "../angio";
 import { FluoroView, deviceGeometry, DeviceGeometry } from "./fluoro";
+import { drawSchematic } from "./schematic";
 import { createEngine, catalog, PHYSICS_LIVE, CASE, SCENARIO } from "./engine";
-import { camTarget, easeCam, Cam, CameraMode } from "./camera";
+import { camTarget, easeCam, isSchematic, Cam, CameraMode } from "./camera";
 import { deviceShelf, monitorModel, eventFeed, procedureSummary, nextStep, Slot, Vitals } from "./panels";
 import type { Action, LabEvent } from "../../lab/types";
 
@@ -156,13 +157,24 @@ buildShelf();
 angleText();
 remodel();
 render();
+const angCtx = $<HTMLCanvasElement>("ang").getContext("2d")!;
+const devCanvas = $<HTMLCanvasElement>("dev");
 const frame = (now: number) => {
+  if (isSchematic(mode)) {
+    // Overview: a schematic of the route, drawn without the fluoro backdrop
+    drawSchematic(angCtx, devCanvas.width, devCanvas.height, engine.graph(), geom, engine.state());
+    devCanvas.getContext("2d")!.clearRect(0, 0, devCanvas.width, devCanvas.height);
+    requestAnimationFrame(frame);
+    return;
+  }
   view.opts.heartRate = sim.state().rolling10s.hr ?? 70;
   const want = camTarget(mode, engine.state(), engine.graph(), model.centre);
   cam = cam ? easeCam(cam, want) : want;
-  view.opts.cam = cam;
+  view.opts.cam = mode === "heart" && cam.spanMm === want.spanMm ? undefined : cam;
+  view.opts.plaques = engine.plaques();
+  view.opts.overlay = fluoro.att;
+  fluoro.draw(now, model.centre, view.opts, geom, engine.state(), mode === "heart" ? null : engine.graph(), engine.plaques());
   view.draw(now);
-  fluoro.draw(now, model.centre, view.opts, geom, engine.state(), mode === "heart" ? null : engine.graph());
   requestAnimationFrame(frame);
 };
 requestAnimationFrame(frame);
