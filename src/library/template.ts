@@ -1,9 +1,10 @@
 import { caseToMarkdown } from "../cases/markdown";
+import { STANDARD_MONITOR } from "../cases/orders";
 import type { CaseSpec } from "../cases/spec";
 
 /** A small complete case, as the document format writes it: the template people download to start from. */
 export const exampleCase = (): CaseSpec => ({
-  id: "example-chest-pain", title: "Example: pressure in the chest", tier: "easy", complaint: "Chest pain", devices: [],
+  id: "example-chest-pain", title: "Example: pressure in the chest", tier: "easy", complaint: "Chest pain", devices: [], monitor: [...STANDARD_MONITOR],
   blurb: "One line for the case list: who the patient is and what the case teaches.",
   card: { presents: "55-year-old man with 90 minutes of substernal pressure. Heart rate 102, BP 98/77.", pmh: "Smoker. No regular medicines. No allergies.", info: ["The ECG shows ST elevation in V1 to V4."] },
   start: { lesions: [{ artery: "LAD", occluded: true, position: 0.1 }], seed: 3 },
