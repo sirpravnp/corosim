@@ -49,10 +49,18 @@
         <span>Gain</span><button data-gain="5">5</button><button data-gain="10" class="on">10</button><button data-gain="20">20</button>
       </div>
       <label class="rate" id="rateWrap"><span>Rate</span><input id="rate" type="range" min="20" max="240" step="1"><output id="rateVal"></output></label>
+      <label class="drug" id="drugWrap">
+        <span>Drug</span>
+        <select id="drug" aria-label="Antiarrhythmic"></select>
+        <button type="button" id="drugGive" class="primary">Give</button>
+        <button type="button" id="drugClear" hidden>Clear</button>
+      </label>
       <label class="chk"><input id="posterior" type="checkbox"> V7–V9</label>
       <label class="chk"><input id="artifact" type="checkbox"> Artifact</label>
       <button id="pause">Pause</button>
     </div>
+
+    <p class="drugnote" id="drugNote" hidden></p>
 
     <div class="read" id="read">
       <div class="meas" id="meas"></div>

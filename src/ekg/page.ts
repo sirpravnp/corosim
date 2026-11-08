@@ -9,6 +9,7 @@ import { HeartScene } from "../viewer/heartScene";
 import { EkgEngine, EkgSpec, Measurements, measure } from "./engine";
 import { CATEGORIES, EkgPreset, PRESETS, PRESET_BY_ID, findPreset, resolveSpec } from "./presets";
 import { CustomEkg, buildCustom, decodeCustom, encodeCustom } from "./custom";
+import { ANTIARRHYTHMICS, DRUG_LABEL, applyDrug, effectiveRateBpm, type Antiarrhythmic } from "./drugs";
 import { Paper } from "./paper";
 import { LeadAxes, LeadSet } from "./leadScene";
 
@@ -53,6 +54,7 @@ let spec: EkgSpec = preset.spec;
 let engine = new EkgEngine(spec);
 let meas: Measurements = measure(spec);
 let rate: number | null = null; // the learner's rate override
+let drug: Antiarrhythmic | null = null;
 let t = 0, paused = false, artifact = false;
 let selected: LeadName = "II";
 
@@ -91,11 +93,57 @@ pick.innerHTML = CATEGORIES.map((c) => `<optgroup label="${esc(c)}">${PRESETS.fi
 pick.addEventListener("change", () => { if (pick.value === "custom") { if (customDesc) loadCustom(customDesc); } else { stopQuiz(); load(PRESET_BY_ID[pick.value]); } });
 if (embedded) $("pickwrap").hidden = false;
 
+const isAntiarrhythmic = (x: string): x is Antiarrhythmic => (ANTIARRHYTHMICS as readonly string[]).includes(x);
+const drugSel = $<HTMLSelectElement>("drug");
+drugSel.innerHTML = `<option value="">None</option>${ANTIARRHYTHMICS.map((id) => `<option value="${id}">${esc(DRUG_LABEL[id])}</option>`).join("")}`;
+
 // ---------------------------------------------------------------- load a preset
 const hasRate = (s: EkgSpec) => "rate" in s.rhythm && s.rhythm.kind !== "torsades";
-function engineSpec(): EkgSpec {
+function baseSpec(): EkgSpec {
   if (rate === null || !hasRate(spec)) return spec;
   return { ...spec, rhythm: { ...spec.rhythm, rate } as EkgSpec["rhythm"] };
+}
+function given() {
+  if (!drug) return null;
+  const s = baseSpec();
+  const rateBpm = effectiveRateBpm(s) ?? undefined;
+  return applyDrug(s, drug, { rateBpm });
+}
+function engineSpec(): EkgSpec {
+  return given()?.spec ?? baseSpec();
+}
+
+function clearDrug() {
+  drug = null;
+  drugSel.value = "";
+  $("drugClear").hidden = true;
+  $("drugNote").hidden = true;
+  $("drugNote").textContent = "";
+}
+function syncDrugUi(quizHidden: boolean) {
+  $("drugWrap").hidden = quizHidden;
+  const note = $("drugNote"), clear = $("drugClear");
+  if (quizHidden || !drug) {
+    clear.hidden = true;
+    note.hidden = true;
+    note.textContent = "";
+    return;
+  }
+  clear.hidden = false;
+  const result = given()!;
+  const notes = result.notes.join(" ");
+  const warns = result.warnings.join(" ");
+  if (!notes && !warns) { note.hidden = true; note.textContent = ""; return; }
+  note.hidden = false;
+  if (result.warnings.length) {
+    const rest = [warns, notes].filter(Boolean).join(" ");
+    const w = document.createElement("span");
+    w.className = "warn";
+    w.textContent = "Warning:";
+    note.replaceChildren(w, ` ${rest}`);
+  } else {
+    note.textContent = notes;
+  }
 }
 
 function rebuildEngine(prefill = true) {
@@ -111,6 +159,7 @@ function rebuildEngine(prefill = true) {
 /** A tracing built from a description (by Claude, or opened from a #c= link). */
 let customDesc: CustomEkg | null = null;
 function loadCustom(c: CustomEkg, opts: { quiz?: boolean } = {}) {
+  clearDrug();
   const { preset: p } = buildCustom(c);
   customDesc = c;
   let opt = pick.querySelector<HTMLOptionElement>('option[value="custom"]');
@@ -122,6 +171,7 @@ const isCustom = (p: EkgPreset) => p.id === "custom";
 
 function load(p: EkgPreset, opts: { quiz?: boolean } = {}) {
   preset = p; rate = null;
+  clearDrug();
   if (!isCustom(p)) customDesc = null;
   if (p.coronary) spec = resolveSpec(p, sim);
   else { sim.reset({}, { settled: true }); spec = p.spec; }
@@ -144,6 +194,7 @@ function axisWord(a: number | null) {
 }
 function render() {
   const hidden = quiz.on && !quiz.answered;
+  syncDrugUi(hidden);
   $("cat").textContent = hidden ? "Quiz" : isCustom(preset) ? "Custom tracing" : preset.category;
   $("title").textContent = hidden ? "Unknown tracing" : preset.name;
   $("summary").textContent = hidden ? "Read it the usual way (rate, rhythm, axis, intervals, morphology), then choose." : preset.summary;
@@ -201,6 +252,18 @@ $<HTMLInputElement>("rate").addEventListener("input", (e) => {
   rate = +(e.target as HTMLInputElement).value; $("rateVal").textContent = `${rate} bpm`;
   rebuildEngine(); render();
 });
+$("drugGive").addEventListener("click", () => {
+  const v = drugSel.value;
+  if (!isAntiarrhythmic(v)) return;
+  drug = v;
+  rebuildEngine();
+  render();
+});
+$("drugClear").addEventListener("click", () => {
+  clearDrug();
+  rebuildEngine();
+  render();
+});
 $<HTMLInputElement>("search").addEventListener("input", (e) => renderList((e.target as HTMLInputElement).value));
 
 // ---------------------------------------------------------------- quiz
@@ -239,6 +302,9 @@ function score() { $("qscore").textContent = quiz.total ? `${quiz.right}/${quiz.
 function stopQuiz() {
   if (!quiz.on) return;
   quiz.on = false; $("quiz").hidden = true;
+  const had = drug !== null;
+  clearDrug();
+  if (had) rebuildEngine();
   if (!embedded) history.replaceState(null, "", `#p=${preset.id}`);
   render();
 }
@@ -273,7 +339,7 @@ function frame(now: number) {
 }
 
 // ---------------------------------------------------------------- in a chat: the AI picks the tracing
-interface Shown { ekg?: { preset?: string; custom?: CustomEkg; quiz?: boolean; rate?: number; lead?: string } }
+interface Shown { ekg?: { preset?: string; custom?: CustomEkg; quiz?: boolean; rate?: number; lead?: string; drug?: string } }
 if (embedded) {
   const app = new App({ name: "CoroSim EKG", version: "0.5.0" }, {}, { autoResize: true });
   app.ontoolresult = (r) => {
@@ -286,6 +352,11 @@ if (embedded) {
     }
     if (e?.rate && hasRate(spec)) { rate = Math.round(e.rate); $<HTMLInputElement>("rate").value = String(rate); $("rateVal").textContent = `${rate} bpm`; rebuildEngine(); render(); }
     if (e?.lead && (ALL_LEADS as readonly string[]).includes(e.lead)) select(e.lead as LeadName);
+    if (typeof e?.drug === "string") {
+      const raw = e.drug;
+      const id = ANTIARRHYTHMICS.find((d) => d === raw || d === raw.toLowerCase());
+      if (id) { drug = id; drugSel.value = id; rebuildEngine(); render(); }
+    }
   };
   const theme = () => { document.documentElement.dataset.theme = app.getHostContext()?.theme === "light" ? "light" : "dark"; };
   app.onhostcontextchanged = theme;
