@@ -7,6 +7,10 @@ export const SKIP_CAP_S = 60;
 export const SKIP_SPEED = 30;
 
 const MAP_FLOOR = 65;
+const RHYTHM_LABEL: Record<string, string> = {
+  vf: "ventricular fibrillation", pulselessVt: "pulseless ventricular tachycardia", asystole: "asystole",
+  pea: "pulseless electrical activity", perfusing: "a perfusing rhythm",
+};
 
 /**
  * Whether a time skip may start. A skip is refused while the case's stable condition is false, because the patient is
@@ -29,8 +33,8 @@ export function skipStop(
   if (o.promptOpen) return "Stopped: a checkpoint prompt is open.";
   if (now.arrest === "arrest") return "Stopped: the patient is in arrest.";
   if (o.harmActive) return "Stopped: a harm is active.";
-  if (now.rhythmClass !== prev.rhythmClass) return `Stopped: rhythm changed to ${now.rhythmClass}.`;
-  if (prev.map >= MAP_FLOOR && now.map < MAP_FLOOR) return `Stopped: pressure fell to ${Math.round(now.map)}`;
+  if (now.rhythmClass !== prev.rhythmClass) return `Stopped: rhythm changed to ${RHYTHM_LABEL[now.rhythmClass] ?? now.rhythmClass}.`;
+  if (prev.map >= MAP_FLOOR && now.map < MAP_FLOOR) return `Stopped: pressure fell to ${Math.round(now.map)}.`;
   if (o.spo2 < OXYGEN_PANEL.spo2Low) return `Stopped: saturation fell to ${Math.round(o.spo2 * 100)}%.`;
   return null;
 }

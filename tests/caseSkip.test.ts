@@ -52,9 +52,10 @@ describe("time skip rules", () => {
     const rhythm = skipStop(base, probe({ rhythmClass: "vf" }), quiet);
     expect(rhythm).toMatch(/^Stopped: /);
     expect(rhythm).toMatch(/rhythm/i);
+    expect(rhythm).toBe("Stopped: rhythm changed to ventricular fibrillation.");
 
     const map = skipStop(base, probe({ map: 58 }), quiet);
-    expect(map).toBe("Stopped: pressure fell to 58");
+    expect(map).toBe("Stopped: pressure fell to 58.");
 
     const spo2 = skipStop(base, base, { ...quiet, spo2: 0.85 });
     expect(spo2).toMatch(/^Stopped: /);

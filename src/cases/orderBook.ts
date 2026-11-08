@@ -71,3 +71,18 @@ export function orderLines(book: OrderBook): string[] {
     return `${name}: ordered ${clock(e.orderedAt)}, ${state}`;
   });
 }
+
+/** The line a returned order adds to what is known about the patient. */
+export function returnedLine(r: Returned): string {
+  return `${itemById(r.id)?.label ?? r.id}: ${r.reading.text}${r.reading.estimate ? " (estimate)" : ""}`;
+}
+
+/** Puts each returned result in the case log (through `note`), so it survives a redraw of the page. */
+export function noteReturned(runner: { note(text: string): void }, back: Returned[]): void {
+  for (const r of back) runner.note(returnedLine(r));
+}
+
+/** The debrief with one line per order (placed, back, cancelled, or still pending) added at the end. */
+export function withOrderLines<D extends { lines: string[] }>(d: D, book: OrderBook): D {
+  return { ...d, lines: [...d.lines, ...orderLines(book)] };
+}

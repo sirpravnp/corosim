@@ -16,6 +16,9 @@ const spec = (): CaseSpec => ({
 });
 
 describe("case spec", () => {
+  it("a spec with tempC compiles through compileCase", () => {
+    expect(compileCase({ ...spec(), tempC: 38.6 }).tempC).toBe(38.6);
+  });
   it("round-trips through JSON and runs in the engine", () => {
     const def = compileCase(JSON.parse(JSON.stringify(spec())));
     const r = new CaseRunner(def);
