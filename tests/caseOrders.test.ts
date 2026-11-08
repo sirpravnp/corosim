@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { CASES, caseById } from "../src/cases";
 import { CATALOG, STANDARD_MONITOR, itemById, resolveMonitor, PatientNow } from "../src/cases/orders";
 import { CaseSpec, validateCase } from "../src/cases/spec";
 
@@ -62,5 +63,49 @@ describe("case monitor validation", () => {
   it("accepts a case with no monitor or an empty one", () => {
     expect(validateCase(spec())).toEqual([]);
     expect(validateCase({ ...spec(), monitor: [] })).toEqual([]);
+  });
+});
+
+describe("built-in cases", () => {
+  const std = [...STANDARD_MONITOR];
+  // The case's start spec needs the DOM-bound simulator to yield a PatientNow, so each case reads a representative patient instead:
+  // the sickest plausible start for its story (rhythm, pressure and ischemia taken from the case card).
+  const startPatient: Record<string, Partial<PatientNow>> = {
+    "anterior-stemi": { hr: 102, sbp: 98, dbp: 77, map: 84, lvIschemia: 0.5, rhythmLabel: "Sinus tachycardia" },
+    "af-rvr": { hr: 146, sbp: 98, dbp: 76, map: 83, rhythmLabel: "Atrial fibrillation" },
+    "inferior-rv": { hr: 42, sbp: 88, dbp: 48, map: 61, rvIschemia: 0.6, rhythmLabel: "Complete heart block" },
+    "af-hf": { hr: 158, sbp: 83, dbp: 69, map: 74, congestion: 0.7, lvIschemia: 0.2, rhythmLabel: "Atrial fibrillation", co: 3.2, lvEf: 25 },
+    "lm-shock": { hr: 112, sbp: 77, dbp: 64, map: 68, lactate: 5, congestion: 0.8, lvIschemia: 0.8, urineMlHr: 8, rhythmLabel: "Sinus tachycardia", co: 2.4, lvEf: 15 },
+    ecpella: { hr: 0, sbp: 0, dbp: 0, map: 0, arrest: "arrest", rhythmLabel: "Ventricular fibrillation", respRate: 0, spo2: 0, lvIschemia: 0.8 },
+  };
+  it("every built-in case resolves a monitor containing the standard six or an explicit author list", () => {
+    expect(CASES.length).toBe(6);
+    for (const c of CASES) {
+      const m = resolveMonitor(c);
+      expect(m.length, c.id).toBeGreaterThan(0);
+      if (c.monitor?.length) expect(m, c.id).toEqual(c.monitor);
+      else expect(m, c.id).toEqual(std);
+    }
+  });
+  it("every id in a built-in case's monitor exists in the catalog", () => {
+    for (const c of CASES) for (const id of c.monitor ?? []) expect(itemById(id), `${c.id}: ${id}`).toBeDefined();
+  });
+  it("every case with an explicit monitor keeps the standard six", () => {
+    for (const c of CASES) if (c.monitor?.length) for (const id of std) expect(c.monitor, c.id).toContain(id);
+  });
+  it("cases whose lesion is revealed by PCI keep the 3D heart on the monitor", () => {
+    for (const id of ["anterior-stemi", "inferior-rv", "lm-shock", "ecpella"]) expect(resolveMonitor(caseById(id)!), id).toContain("heart3d");
+  });
+  it("every catalog item with a read returns finite non-NaN text on each built-in case's own start patient", () => {
+    for (const c of CASES) {
+      const p = now(startPatient[c.id]);
+      for (const item of CATALOG) {
+        if (!item.read) continue;
+        const t = item.read(p).text;
+        expect(typeof t, `${c.id}/${item.id}`).toBe("string");
+        expect(t, `${c.id}/${item.id}`).not.toMatch(/NaN|Infinity|undefined/);
+        expect(t.length, `${c.id}/${item.id}`).toBeGreaterThan(0);
+      }
+    }
   });
 });
