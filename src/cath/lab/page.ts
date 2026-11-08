@@ -178,4 +178,4 @@ const frame = (now: number) => {
   requestAnimationFrame(frame);
 };
 requestAnimationFrame(frame);
-(window as unknown as { corosimLab: object }).corosimLab = { sim, engine, act };
+(window as unknown as { corosimLab: object }).corosimLab = { sim, engine, act, view };
