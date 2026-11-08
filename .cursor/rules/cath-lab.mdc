@@ -1,0 +1,19 @@
+---
+description: Cath lab simulator engine work (plan tasks 1-10 and 13-16)
+alwaysApply: false
+globs: src/lab/**,src/config/devices.ts,src/config/plaque.ts,src/config/lab.ts,src/physics/network.ts,src/sim/simulation.ts,tests/lab*.test.ts,tests/network.lesions.test.ts
+---
+
+# Cath lab engine rules
+
+You are implementing one numbered task from `docs/superpowers/plans/2026-11-07-cath-lab-simulator.md`. Read `CLAUDE.md`, that task's section, and `src/lab/types.ts` first.
+
+1. Work test-first: write the task's failing tests, run them and see them fail, then implement, then run them green.
+2. Touch only the files in the task's **Files** list. No UI work: no CSS, HTML, canvas drawing, or edits to `src/cath/*` (except `src/cath/lab/cases.ts` in Task 13). Claude owns the UI.
+3. `src/lab/types.ts` and `src/lab/stub.ts` are a contract owned by Claude. You may add a field to a type. Never rename or remove one. If a task needs a breaking change, stop and say so in your report.
+4. Constants live in `src/config/*.ts`, each tagged `[lit]` or `[assumed]`, in the style of `src/config/cath.ts`.
+5. Seeded randomness only: use `mulberry32` from `src/physics/ecg.ts`. Same seed plus same action log must give identical results.
+6. American English in code, comments and commit messages.
+7. Before finishing the task run `npx vitest run && npm run typecheck`. Both must pass. Report the actual output, including failures.
+8. Commit with explicit paths (`git add <paths>`), never `git add -A`. One commit per task, message as in the plan.
+9. Do not start the next task. Stop and report; Claude reviews each commit first.
