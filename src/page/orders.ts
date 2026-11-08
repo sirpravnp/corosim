@@ -29,10 +29,10 @@ const skip: { on: boolean; target: string | null; start: number; prev: Probe | n
 /** A case begins: an empty book and the monitor the case names. */
 export function ordersBegin(def: { monitor?: string[] }) {
   orders.book = new OrderBook(); shown = resolveMonitor(def); menuOpen = false; note = ""; stopSkip("");
-  setCaseMonitor(shown); document.body.classList.add("case-no-3d"); // the 3D stage is hidden in cases until the case screen drops it
+  setCaseMonitor(shown);
 }
 /** The case is left: the viewer's own layout comes back. */
-export function ordersEnd() { stopSkip(""); orders.book = new OrderBook(); shown = []; menuOpen = false; note = ""; setCaseMonitor(null); document.body.classList.remove("case-no-3d"); }
+export function ordersEnd() { stopSkip(""); orders.book = new OrderBook(); shown = []; menuOpen = false; note = ""; setCaseMonitor(null); }
 
 /** The case is over: a running skip ends and the clock goes back to its own speed. */
 export function ordersStop() { stopSkip(""); }

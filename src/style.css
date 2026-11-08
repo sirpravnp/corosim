@@ -212,11 +212,18 @@ body.gated { overflow: hidden; }
 .c-case .tier.easy { color: var(--ok); } .c-case .tier.medium { color: var(--warn); } .c-case .tier.hard { color: var(--bad); }
 #cp_opts { display: grid; gap: 8px; margin-top: 4px; }
 #cp_opts button { padding: 11px 14px; font-size: 13px; text-align: left; font-weight: 500; }
-/* A case whose monitor lacks the heart model hides the 3D canvas, its controls and the caption until it is ordered. The arrest, ROSC and clock alerts live inside #view, so it stays, shortened, and they keep their place. */
-body.case-no-3d #view canvas, body.case-no-3d #vc, body.case-no-3d #pick, body.case-no-3d #legend, body.case-no-3d #tag, body.case-no-3d #stagefig figcaption { display: none !important; } /* !important: the 3D view sets display on the canvas inline */
-body.case-no-3d #view { height: auto; min-height: 0; background: none; overflow: visible; }
-body.case-no-3d #view:has(.arrest-dead:not([hidden])) { min-height: 260px; }
-body.case-no-3d #view > :is(.arrest-banner, .clock-critical):not([hidden]) { position: static; transform: none; margin: 0 0 8px; max-width: none; }
+/* The case screen (src/page/caseChrome.ts): the simulator's chrome is absent, not hidden behind a blank frame. */
+body.case-bare :is(#pgentry, #stagefig, #bedsfig, #stmap, #xlinks, #sec-assess, .ws-tools, .ws-pick, #dock .dtab, #dock .dpane:not([data-pane="support"])) { display: none; }
+body.case-bare main > section:not(.ws-sec) { display: contents; } /* its figures are gone: no empty row, no gap */
+body.case-bare #casemon { grid-column: 1; }
+body.case-bare .ws-bar { display: none; }
+body.case-bare .ws-phone .ws-bar { display: flex; }
+body.case-bare #dock .dpane[data-pane="support"] { display: grid; gap: 14px; }
+body.case-bare #dock .dock-tabs { margin-bottom: 10px; }
+#casemon { position: relative; display: grid; gap: 8px; min-width: 0; }
+#casemon:not(:has(> :not([hidden]))) { display: none; } /* nothing to show: no frame, no gap */
+#casemon:has(> .arrest-dead:not([hidden])) { min-height: 260px; }
+#casemon > :is(.arrest-banner, .clock-critical):not([hidden]) { position: static; transform: none; margin: 0; max-width: none; }
 body.case-run #lesionctl, body.case-run #lesionsec { display: none; }
 .q-result { margin: 6px 0 0; font-size: 14px; line-height: 1.45; font-weight: 700; }
 .q-result.vessel { color: var(--ok); } .q-result.territory { color: var(--warn); } .q-result.miss { color: var(--bad); }
