@@ -219,6 +219,7 @@ body.case-bare main > section:not(.ws-sec) { display: contents; } /* its figures
 @media (min-width: 981px) { body.case-bare main { grid-template-rows: auto auto 1fr; } body.case-bare main > aside { grid-row: 1 / 4; } } /* the tall rail spans a spare row, so it cannot stretch the monitor row and push ordered panels far below it */
 body.case-bare #casemon { grid-column: 1; order: -2; } /* phone: the monitor, then the case card, then orders and treatments */
 body.case-bare :is(label[for="bl"], #bl, #blv, [data-disease], #openCath) { display: none; } /* blood loss, hemorrhage and leak create disease; the cath-lab link leaves the case */
+body.case-bare :is(#a_rhythm, #a_shockable) { display: none; } /* the ACLS panel names no rhythm and gives no shockable verdict: the learner reads the tracing */
 body.case-bare .ws-bar { display: none; }
 body.case-bare .ws-phone .ws-bar { display: flex; }
 body.case-bare #dock .dpane[data-pane="support"] { display: grid; gap: 14px; }
