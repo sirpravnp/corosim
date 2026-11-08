@@ -26,9 +26,12 @@ export function resizeRing(old: Float32Array, idx: number, n: number): { ring: F
  */
 export class EcgStrip {
   posterior = false;
-  /** "twelve" is the Simulator's 2.5 s twelve-lead page; "strip" is lead II alone on a long rhythm strip that fills the canvas width at 25 mm/s (the case monitor). */
+  /** "twelve" is the Simulator's 2.5 s twelve-lead page; "strip" is lead II alone on a long rhythm strip that fills the canvas width at 25 mm/s;
+   *  "full" is the twelve-lead with a lead II rhythm strip under it across the whole width (the case monitor). */
   private ring = Object.fromEntries(ALL_LEADS.map((l) => [l, new Float32Array(N).fill(NaN)])) as Record<LeadName, Float32Array>;
   private n = N;
+  private rhy: Float32Array = new Float32Array(FS * 10).fill(NaN); // "full" mode: the rhythm strip's own ring of lead II
+  private rIdx = 0;
   private acc = 0;
   private idx = 0;
   t = 0;
@@ -37,12 +40,12 @@ export class EcgStrip {
   private fWave = 0;
   private potassium: number = POTASSIUM_ECG.normal;
 
-  constructor(private canvas: HTMLCanvasElement, public stream: BeatStream = new BeatStream(1), private mode: "twelve" | "strip" = "twelve") {}
+  constructor(private canvas: HTMLCanvasElement, public stream: BeatStream = new BeatStream(1), private mode: "twelve" | "strip" | "full" = "twelve") {}
 
   private get beats(): Beat[] { return this.stream.beats; }
 
   /** Blank the paper and restart the clock (the simulation was reset). */
-  reset(t = 0) { for (const l of ALL_LEADS) this.ring[l].fill(NaN); this.acc = 0; this.idx = 0; this.t = t; }
+  reset(t = 0) { for (const l of ALL_LEADS) this.ring[l].fill(NaN); this.rhy.fill(NaN); this.acc = 0; this.idx = 0; this.rIdx = 0; this.t = t; }
 
   /** Strip mode: lead II only; the ring holds as many samples as the canvas shows seconds. A change of width restarts the sweep. */
   private fit(secs: number) {
@@ -61,7 +64,10 @@ export class EcgStrip {
     this.acc -= n;
     for (let k = 0; k < n; k++) {
       if (this.mode === "strip") this.ring.II[this.idx % this.n] = projectLeads(this.vector(this.t)).II;
-      else { const s = this.sample(this.t); for (const l of ALL_LEADS) this.ring[l][this.idx % this.n] = s[l]; }
+      else {
+        const s = this.sample(this.t); for (const l of ALL_LEADS) this.ring[l][this.idx % this.n] = s[l];
+        if (this.mode === "full") this.rhy[this.rIdx++ % this.rhy.length] = s.II;
+      }
       this.idx++; this.t += 1 / FS;
     }
   }
@@ -116,11 +122,11 @@ export class EcgStrip {
     if (this.mode === "strip") return this.drawStrip();
     const c = this.canvas, dpr = devicePixelRatio || 1;
     const layout = this.posterior ? LAYOUT.map((row, r) => [...row, POSTERIOR[r]]) : LAYOUT;
-    const cols = layout[0].length, rows = 3, w = c.clientWidth;
+    const cols = layout[0].length, rows = 3, w = c.clientWidth, full = this.mode === "full";
     if (!w) return; // not laid out (its panel is closed or on a hidden tab): nothing to draw, and the paper loop below would not end
     const mm = w / cols / (WIN * 25);
     const ph = Math.max(96, Math.round(mm * 22));
-    const h = rows * ph;
+    const h = (rows + (full ? 1 : 0)) * ph; // "full" adds the rhythm strip as a fourth row
     if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
       c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c.style.height = h + "px";
     }
@@ -151,9 +157,24 @@ export class EcgStrip {
       g.stroke();
       g.fillStyle = "#1a1a1a"; g.font = `600 12px ${SANS}`; g.fillText(lead, x0 + from + 6, r * ph + 15);
     }));
+    if (full) { // lead II across the whole width: w / (mm x 25) seconds, the newest samples at the sweep
+      const rn = Math.max(FS, Math.round((w / (mm * 25)) * FS));
+      if (rn !== this.rhy.length) { const r = resizeRing(this.rhy, this.rIdx, rn); this.rhy = r.ring; this.rIdx = r.idx; }
+      const mid = rows * ph + ph / 2, rc = this.rIdx % rn;
+      g.strokeStyle = "#141414"; g.lineWidth = 1.25; g.lineJoin = "round"; g.beginPath();
+      let pen2 = false;
+      for (let i = 0; i < rn; i++) {
+        const v = this.rhy[i], x = (i / rn) * w;
+        if (Number.isNaN(v) || x < cal || (i - rc + rn) % rn < FS * 0.1) { pen2 = false; continue; }
+        const y = mid - Math.max(-ph / 2 + 2, Math.min(ph / 2 - 2, v * pxMv));
+        if (!pen2) { g.moveTo(x, y); pen2 = true; } else g.lineTo(x, y);
+      }
+      g.stroke();
+      g.fillStyle = "#1a1a1a"; g.font = `600 12px ${SANS}`; g.fillText("II rhythm", cal + 6, rows * ph + 15);
+    }
     // calibration pulse, 1 mV × 0.2 s, standing on the baseline at the start of each row
     g.strokeStyle = "#141414"; g.lineWidth = 1.25;
-    for (let r = 0; r < rows; r++) {
+    for (let r = 0; r < rows + (full ? 1 : 0); r++) {
       const mid = r * ph + ph / 2, x = 1;
       g.beginPath(); g.moveTo(x, mid); g.lineTo(x + mm, mid); g.lineTo(x + mm, mid - pxMv); g.lineTo(x + 6 * mm, mid - pxMv); g.lineTo(x + 6 * mm, mid); g.lineTo(x + 7 * mm, mid); g.stroke();
     }

@@ -1,4 +1,4 @@
-// The bedside monitor in a case: lead II on pink paper above a row of measurement tiles (numbers in ./caseMonitor.ts). It mounts into #casemon,
+// The bedside monitor in a case: the twelve-lead and lead II rhythm strip on pink paper above a row of measurement tiles (numbers in ./caseMonitor.ts). It mounts into #casemon,
 // reads the page's one patient snapshot every frame, and shows only what the case's monitor list names. No text besides labels, numbers and units.
 import "./caseMonitor.css";
 import { EcgStrip } from "../ecgStrip";
@@ -18,10 +18,10 @@ function mount(): void {
   if (root) return;
   root = document.createElement("div");
   root.className = "cm"; root.hidden = true;
-  root.innerHTML = `<figure class="cm-fig"><canvas class="cm-ecg" role="img" aria-label="Lead II rhythm strip"></canvas><figcaption><b>Figure 1.</b> Lead II, 25 mm/s, 10 mm/mV.</figcaption></figure><div class="cm-tiles" role="group" aria-label="Vital signs"></div>`;
+  root.innerHTML = `<figure class="cm-fig"><canvas class="cm-ecg" role="img" aria-label="Twelve-lead ECG with a lead II rhythm strip"></canvas><figcaption><b>Figure 1.</b> Twelve-lead ECG with a lead II rhythm strip, 25 mm/s, 10 mm/mV.</figcaption></figure><div class="cm-tiles" role="group" aria-label="Vital signs"></div>`;
   $("casemon").prepend(root);
   figure = root.querySelector<HTMLElement>(".cm-fig")!; tilesEl = root.querySelector<HTMLElement>(".cm-tiles")!;
-  strip = new EcgStrip(root.querySelector<HTMLCanvasElement>(".cm-ecg")!, sim.stream, "strip");
+  strip = new EcgStrip(root.querySelector<HTMLCanvasElement>(".cm-ecg")!, sim.stream, "full");
 }
 
 /** The monitor items the case shows (ids of cases/orders.ts), or null when no case runs. */
