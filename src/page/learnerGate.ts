@@ -3,8 +3,8 @@ import { learnerMayApply } from "../cases/gate";
 import type { PatientSpec } from "../sim/patient";
 import { inCases, K } from "./state";
 
-/** True while a case is running: a learner may then treat the patient but not give the patient disease. */
-export const caseGateOn = () => inCases && K.phase === "run";
+/** True while a case is running or over and its stripped screen is still showing (the phase is idle again only after the learner leaves): a learner may then treat the patient but not give the patient disease. */
+export const caseGateOn = () => inCases && K.phase !== "idle";
 
 let timer = 0;
 import { mayReplace as replaceVerdict } from "../cases/gate";
