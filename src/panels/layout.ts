@@ -88,3 +88,29 @@ export function loadLayout(defs: readonly PanelDef[], store: KV | null = default
 export function saveLayout(s: LayoutState, store: KV | null = defaultStorage()): void {
   try { store?.setItem(LAYOUT_KEY, JSON.stringify({ ...s, v: LAYOUT_VERSION })); } catch { /* private window, quota */ }
 }
+
+/** A case's layout: exactly the named panels, in that order. Unknown ids and repeats are dropped. */
+export function sessionLayout(on: string[], defs: readonly PanelDef[]): LayoutState {
+  return sanitizeLayout({ on, active: on[0] }, defs);
+}
+
+/**
+ * Holds the layout on screen. A session layout (a case's) replaces it without ever touching storage, and clearing the
+ * session brings back the viewer's saved layout. Only `set` outside a session saves.
+ */
+export class LayoutKeeper {
+  private saved: LayoutState;
+  private session: LayoutState | null = null;
+  constructor(private defs: readonly PanelDef[], private store: KV | null = defaultStorage()) {
+    this.saved = loadLayout(defs, store);
+  }
+  get layout(): LayoutState { return this.session ?? this.saved; }
+  get inSession(): boolean { return this.session !== null; }
+  set(next: LayoutState): void {
+    if (this.session) this.session = next;
+    else { this.saved = next; saveLayout(next, this.store); }
+  }
+  setSession(on: string[] | null): void {
+    this.session = on ? sessionLayout(on, this.defs) : null;
+  }
+}

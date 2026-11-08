@@ -9,7 +9,7 @@ import { createPlaygroundBar, type PlaygroundBar } from "./playgroundBar";
 import { snapshots, type SnapshotStore } from "./snapshots";
 import type { ClinicalClock, PlayClock } from "./timeControl";
 import {
-  PHONE_MAX_WIDTH, loadLayout, pickerItems, saveLayout, setActive, setPanelOn, visibleIds, type LayoutState,
+  LayoutKeeper, PHONE_MAX_WIDTH, pickerItems, setActive, setPanelOn, visibleIds, type LayoutState,
 } from "./layout";
 
 /** Optional page hooks: the simulation clock's play controls (absent in tests), and the snapshot store panels share. */
@@ -18,7 +18,8 @@ export interface WorkspaceOptions { clock?: PlayClock; clinical?: ClinicalClock;
 interface Live { panel: Panel; card: HTMLElement; tab: HTMLButtonElement }
 
 export class Workspace {
-  private layout: LayoutState;
+  private keeper: LayoutKeeper;
+  private get layout(): LayoutState { return this.keeper.layout; }
   private live = new Map<string, Live>();
   private phone = false;
   private raf = 0;
@@ -31,7 +32,7 @@ export class Workspace {
   private tools: PlaygroundBar;
 
   constructor(private root: HTMLElement, private defs: readonly PanelDef[], private source: HemoSource, opts: WorkspaceOptions = {}) {
-    this.layout = loadLayout(defs);
+    this.keeper = new LayoutKeeper(defs);
     root.classList.add("ws");
     this.bar.className = "ws-bar";
     this.tabs.className = "ws-tabs";
@@ -77,8 +78,16 @@ export class Workspace {
   private isPhone(): boolean { return (this.root.clientWidth || innerWidth) < PHONE_MAX_WIDTH; }
 
   private update(next: LayoutState): void {
-    this.layout = next;
-    saveLayout(next);
+    this.keeper.set(next); // not saved while a case's session layout is set
+    this.sync();
+  }
+
+  /** The panels on now. */
+  get panelIds(): string[] { return [...this.layout.on]; }
+
+  /** Show exactly these panels for a case (never saved), or null to bring back the viewer's saved layout. */
+  setSession(on: string[] | null): void {
+    this.keeper.setSession(on);
     this.sync();
   }
 

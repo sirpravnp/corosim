@@ -124,10 +124,13 @@
       <h2>Monitor</h2>
       <table class="readout">
         <tr><td>Circulation</td><td id="circ"></td></tr>
-        <tr><td>Blood pressure (MAP)</td><td id="bp"></td></tr>
+        <tr data-row="bp"><td>Blood pressure (MAP)</td><td id="bp"></td></tr>
         <tr><td>Cardiac output</td><td id="co"></td></tr>
         <tr><td>Rhythm</td><td id="rhythm"></td></tr>
-        <tr><td>Ventricular rate</td><td id="hr"></td></tr>
+        <tr data-row="hr"><td>Ventricular rate</td><td id="hr"></td></tr>
+        <tr data-row="spo2"><td>Oxygen saturation</td><td id="spo2"></td></tr>
+        <tr data-row="rr"><td>Respiratory rate <small>estimate</small></td><td id="rr"></td></tr>
+        <tr data-row="temp"><td>Temperature <small>estimate</small></td><td id="temp"></td></tr>
         <tr><td>Atrial rate</td><td id="arate"></td></tr>
         <tr><td>PR interval</td><td id="pr"></td></tr>
         <tr><td>ST elevation</td><td id="stup"></td></tr>

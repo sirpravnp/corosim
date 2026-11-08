@@ -5,9 +5,12 @@ import { ischemicBurden } from "../physics/ecgLink";
 import { EcgStrip } from "../ecgStrip";
 import { RhythmState } from "../physics/rhythm";
 import { libraryRhythm } from "../physics/rhythmSource";
-import { tree, A, sites, circ, $, V, S, sim, sev, PHYS, ecg, rstate, pageVitals } from "./state";
+import { tree, A, sites, circ, $, V, S, sim, sev, PHYS, ecg, rstate, pageVitals, panelSource } from "./state";
 import { monitorText } from "../sim/vitals";
 import { monitorHooks } from "../panels/monitor";
+import { readout } from "../readout";
+import { estimateRespRate, bodyTempC, type BedsideInput } from "../sim/bedside";
+import { AUTONOMIC } from "../physics/autonomic";
 import { rhythmPickerUi } from "./rhythmPicker";
 import { manageUi } from "./manage";
 import { dockUi } from "./dock";
@@ -52,8 +55,27 @@ const leadOrder = () => (S.posterior ? ALL_LEADS : LEADS);
  * the same numbers the Hemodynamics table and the cath panels show; the Monitor panel redraws them in the same frame as those panels
  * (workspace.ts hooks it), so the labels agree frame by frame. Without a live source (the game) they keep the legacy readouts.
  */
+/** A case may set the body temperature here (degrees C); unset gives the default. */
+export const bedsideOverride: { tempOverrideC?: number } = {};
+
+/** The monitor's SpO2, respiratory rate and temperature. SpO2 is the Oxygen panel's own source value; rate and temperature are estimates (bedside.ts). */
+function bedsideUi(vit: ReturnType<typeof pageVitals>) {
+  const sat = panelSource?.saturations().spo2 ?? NaN;
+  $("spo2").innerHTML = Number.isFinite(sat) ? readout(`${Math.round(sat * 100)} %`) : "…";
+  const ox = sim.oxygenState();
+  const arrest: BedsideInput["arrest"] = sim.dead ? "dead" : sim.arrest?.status ?? "none";
+  const inp: BedsideInput = {
+    respRateBase: sim.autonomic?.controls.respRate ?? AUTONOMIC.respRate,
+    map: vit ? vit.map : sim.map, spo2: Number.isFinite(sat) ? sat : 1, lactate: ox?.lactate ?? 0,
+    congestion: circ?.congestion ?? 0, arrest, tempOverrideC: bedsideOverride.tempOverrideC,
+  };
+  $("rr").innerHTML = readout(`${estimateRespRate(inp)} /min`);
+  $("temp").innerHTML = readout(`${bodyTempC(inp).toFixed(1)} °C`);
+}
+
 export function vitalsUi() {
   const vit = pageVitals();
+  bedsideUi(vit);
   const mt = vit ? monitorText(vit, CIRC.shockMap, CIRC.hypotensionMap) : null;
   const hr = vit && Math.round(vit.hr) > 0 ? Math.round(vit.hr) : Math.round(ecg.rhythm().hr);
   $("hr").textContent = hr ? hr + " bpm" : "…";
