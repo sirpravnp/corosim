@@ -7,7 +7,10 @@ import { buildAccess, unify } from "./access";
 import { routeTo } from "./route";
 import { advanceWire } from "./wire";
 import { wireModel } from "../sim/cath";
-import type { Guidewire } from "./types";
+import { inflateBalloon, deployStentAt } from "./balloonStent";
+import { applyToSim } from "./coupling";
+import type { Balloon, Guidewire, Stent } from "./types";
+import type { Lesion } from "../physics/network";
 import type { Simulation } from "../sim/simulation";
 import type {
   AccessSite, AccessVariant, Action, GuideCatheter, LabEngineLike, LabEvent, LabState, Plaque, VGraph,
@@ -34,12 +37,16 @@ export class LabEngine implements LabEngineLike {
   private tipMm = 0;
   private active: "guide" | "wire" | "balloon" | "stent" | null = null;
   private rand: () => number;
+  private plaqueList: Plaque[];
+  private occlusions: Lesion[] = [];
+  private bedResistance: Record<string, number> = {};
 
   constructor(
     private sim: Simulation,
     private opts: { seed: number; access: AccessVariant; plaques: Plaque[] },
   ) {
     this.rand = mulberry32(opts.seed);
+    this.plaqueList = opts.plaques.map((p) => ({ ...p, stents: [...p.stents] }));
     const tree = buildTree(this.sim.n.anatomy);
     const roots = [tree.byId.LM.samples[0], tree.byId.RCA.samples[0]];
     this.g = unify(buildAccess(opts.access, roots), tree);
@@ -48,7 +55,11 @@ export class LabEngine implements LabEngineLike {
 
   state(): Readonly<LabState> { return this.st; }
   graph(): VGraph { return this.g; }
-  plaques(): readonly Plaque[] { return this.opts.plaques; }
+  plaques(): readonly Plaque[] { return this.plaqueList; }
+
+  private syncSim(): void {
+    applyToSim(this.sim, this.plaqueList, { occlusions: this.occlusions, bedResistance: this.bedResistance });
+  }
 
   /** Hyperemic Pd/Pa at the wire tip (pressure-wire selection only). */
   wirePdPa(): number | null {
@@ -66,7 +77,11 @@ export class LabEngine implements LabEngineLike {
     this.route = [];
     this.active = null;
     this.sim.setLive(null);
+    this.plaqueList = this.opts.plaques.map((p) => ({ ...p, stents: [...p.stents] }));
+    this.occlusions = [];
+    this.bedResistance = {};
     this.rand = mulberry32(this.opts.seed);
+    this.sim.setLive(null);
   }
 
   replay(actions: Action[]): LabEvent[] {
@@ -186,14 +201,28 @@ export class LabEngine implements LabEngineLike {
           }
           s.wire = { id: a.id, tipSeg: this.tipSeg, tipMm: this.tipMm, bendDeg: 0, rotDeg: 0, route: [...this.route] };
           out.push(this.ev("wire", `Wire ${a.id} loaded.`));
+        } else if (a.slot === "balloon") {
+          if (!s.wire) return [this.ev("no-wire", "Cross with a wire first.", "bad")];
+          this.active = "balloon";
+          s.balloon = { id: a.id, segId: this.tipSeg, centerMm: this.tipMm, inflatedAtm: 0 };
+          out.push(this.ev("balloon", `Balloon ${a.id} ready.`));
+        } else if (a.slot === "stent") {
+          if (!s.wire) return [this.ev("no-wire", "Cross with a wire first.", "bad")];
+          this.active = "stent";
+          s.stent = { id: a.id, segId: this.tipSeg, centerMm: this.tipMm, deployed: false };
+          out.push(this.ev("stent", `Stent ${a.id} ready.`));
         }
         break;
       case "advance":
+        if (s.balloon && s.balloon.inflatedAtm > 0) {
+          out.push(this.ev("balloon-inflated", "Deflate the balloon before moving.", "bad"));
+          break;
+        }
         if (this.active === "wire" && s.wire && s.guide) {
           const w = byId[s.wire.id] as Guidewire | undefined;
           const gdev = byId[s.guide.id] as GuideCatheter;
           if (!w || w.kind !== "wire") break;
-          const r = advanceWire(this.g, s, w, [...this.opts.plaques], gdev.support, a.mm, this.rand);
+          const r = advanceWire(this.g, s, w, [...this.plaqueList], gdev.support, a.mm, this.rand);
           this.tipSeg = r.tipSeg;
           this.tipMm = r.tipMm;
           this.route = r.route;
@@ -202,7 +231,7 @@ export class LabEngine implements LabEngineLike {
           else if (r.moved < Math.abs(a.mm) * 0.25 && a.mm > 2) {
             out.push(this.ev("resistance", "Heavy lesion resistance.", "caution"));
           }
-          const pl = this.opts.plaques.find((p) => p.segId === r.tipSeg && Math.abs(p.centerMm - r.tipMm) < p.lengthMm / 2 + 2);
+          const pl = this.plaqueList.find((p) => p.segId === r.tipSeg && Math.abs(p.centerMm - r.tipMm) < p.lengthMm / 2 + 2);
           if (pl && a.mm > 0) {
             if (this.rand() < perforationRisk(w, pl)) out.push(this.ev("perforation", "Wire perforation risk.", "bad"));
             if (this.rand() < subintimalRisk(w, pl)) out.push(this.ev("subintimal", "Subintimal tracking.", "caution"));
@@ -225,13 +254,51 @@ export class LabEngine implements LabEngineLike {
         s.contrastMl += a.ml;
         out.push(this.ev("contrast", `${a.ml} mL contrast into the ${a.where}.`));
         break;
+      case "inflate": {
+        if (!s.balloon) return [this.ev("no-balloon", "Select a balloon first.", "bad")];
+        const b = byId[s.balloon.id] as Balloon;
+        const r = inflateBalloon(s, b, a.atm, a.seconds, this.plaqueList, this.tipMm, this.tipSeg, this.rand);
+        this.plaqueList = r.plaques;
+        out.push(...r.events);
+        s.balloon = { ...s.balloon, inflatedAtm: a.atm, centerMm: this.tipMm, segId: this.tipSeg };
+        if (r.occludesFlow) {
+          const seg = this.g.byId[this.tipSeg];
+          this.occlusions = [{
+            segId: this.tipSeg, pos: this.tipMm / seg.length, ds: 0.99, occluded: true, lengthMm: b.lengthMm,
+          }];
+        }
+        this.syncSim();
+        break;
+      }
+      case "deflate":
+        if (s.balloon) s.balloon = { ...s.balloon, inflatedAtm: 0 };
+        this.occlusions = [];
+        this.syncSim();
+        out.push(this.ev("deflate", "Balloon deflated."));
+        break;
+      case "deploy": {
+        if (!s.stent) return [this.ev("no-stent", "Select a stent first.", "bad")];
+        const st = byId[s.stent.id] as Stent;
+        const r = deployStentAt(s, st, a.atm, a.seconds, this.plaqueList, this.g, this.tipMm, this.tipSeg, this.rand);
+        this.plaqueList = r.plaques;
+        out.push(...r.events);
+        s.stent = { ...s.stent, deployed: true, centerMm: this.tipMm, segId: this.tipSeg };
+        if (r.jailed.length) {
+          for (const j of r.jailed) {
+            out.push(this.ev("jailed", `Jailed branch ${j.branchSeg}.`, "caution", j));
+            this.bedResistance[j.branchSeg] = (this.bedResistance[j.branchSeg] ?? 1) * (1 + j.ostialDs);
+          }
+        }
+        this.syncSim();
+        break;
+      }
       default:
         break;
     }
 
-    if (a.t === "inflate" || a.t === "deploy") s.elapsedS += a.seconds;
-    this.decayAct(a.t === "advance" ? Math.abs(a.mm) * 0.02 : 0);
+    this.decayAct(a.t === "advance" ? Math.abs(a.mm) : 0);
     s.log = [...s.log, a];
+    if (a.t !== "carm" && a.t !== "shape" && a.t !== "torque") this.syncSim();
     return out;
   }
 }
