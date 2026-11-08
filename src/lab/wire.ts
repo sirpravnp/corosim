@@ -46,10 +46,31 @@ export function branchChoice(
 const plaqueAt = (plaques: Plaque[], segId: string, mm: number): Plaque | undefined =>
   plaques.find((p) => p.segId === segId && Math.abs(p.centerMm - mm) < p.lengthMm / 2 + 2);
 
+const v3 = (a: [number, number, number], b: [number, number, number]) => {
+  const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
+  const l = Math.hypot(dx, dy, dz) || 1;
+  return [dx / l, dy / l, dz / l] as const;
+};
+
+const branchAngleAt = (g: VGraph, parent: string, childId: string): number => {
+  const p = g.byId[parent], c = g.byId[childId];
+  const u = c.attach;
+  const i = Math.min(p.samples.length - 2, Math.max(0, Math.floor(u * (p.samples.length - 1))));
+  const pt = v3(p.samples[i], p.samples[i + 1]);
+  const ct = v3(c.samples[0], c.samples[Math.min(2, c.samples.length - 1)]);
+  const dot = Math.min(1, Math.max(-1, pt[0] * ct[0] + pt[1] * ct[1] + pt[2] * ct[2]));
+  return (Math.acos(dot) * 180) / Math.PI;
+};
+
 const childBranches = (g: VGraph, segId: string) =>
   g.segs
     .filter((s) => s.parent === segId)
-    .map((s) => ({ id: s.id, angleDeg: s.attach * 75, diameterMm: Math.min(...s.diameterMm), attachMm: s.attach * g.byId[segId].length }));
+    .map((s) => ({
+      id: s.id,
+      angleDeg: branchAngleAt(g, segId, s.id),
+      diameterMm: Math.min(...s.diameterMm),
+      attachMm: s.attach * g.byId[segId].length,
+    }));
 
 /** Push the wire along its route, with lesion crossing and branch choice. */
 export function advanceWire(

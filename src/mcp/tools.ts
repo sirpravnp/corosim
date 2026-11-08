@@ -459,7 +459,10 @@ export const TOOLS: ToolDef[] = [
       const seed = typeof a.seed === "number" ? a.seed : 11;
       ctx.sim.reset(c.scenario);
       ctx.sim.warmup(40);
-      labSession = { engine: new LabEngine(ctx.sim, { seed, access: c.access, plaques: c.plaques }), caseId: c.id };
+      labSession = {
+        engine: new LabEngine(ctx.sim, { seed, access: c.access, plaques: c.plaques, forced: c.forced }),
+        caseId: c.id,
+      };
       return { caseId: c.id, title: c.title, blurb: c.blurb, goals: c.goals, egfr: c.egfr };
     },
   },

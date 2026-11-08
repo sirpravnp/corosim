@@ -10,7 +10,7 @@ Copied from the implementation plan for review.
 4. **Steady-state solver with real-time stepping** for inflation ischemia.
 5. **Deterministic** seeded `LabEngine` and replay.
 6. **Complications** as risk functions with optional forced triggers on cases.
-7. **Constants** in `src/config/*.ts` tagged `[lit]` or `[assumed]`.
+7. **Constants** in `src/config/*.ts` tagged `[lit]` or `[assumed]`. PCI device ids live in `src/config/labDevices.ts` (`guide-jl4`, `wire-workhorse`, `bal-semi-2.50-12`, …).
 
 ## Open decisions (defaults chosen)
 
