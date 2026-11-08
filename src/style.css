@@ -212,7 +212,11 @@ body.gated { overflow: hidden; }
 .c-case .tier.easy { color: var(--ok); } .c-case .tier.medium { color: var(--warn); } .c-case .tier.hard { color: var(--bad); }
 #cp_opts { display: grid; gap: 8px; margin-top: 4px; }
 #cp_opts button { padding: 11px 14px; font-size: 13px; text-align: left; font-weight: 500; }
-body.case-no-3d #stagefig { display: none; } /* a case whose monitor lacks the heart model hides the stage until it is ordered */
+/* A case whose monitor lacks the heart model hides the 3D canvas, its controls and the caption until it is ordered. The arrest, ROSC and clock alerts live inside #view, so it stays, shortened, and they keep their place. */
+body.case-no-3d #view canvas, body.case-no-3d #vc, body.case-no-3d #pick, body.case-no-3d #legend, body.case-no-3d #tag, body.case-no-3d #stagefig figcaption { display: none; }
+body.case-no-3d #view { height: auto; min-height: 0; background: none; overflow: visible; }
+body.case-no-3d #view:has(.arrest-dead:not([hidden])) { min-height: 260px; }
+body.case-no-3d #view > :is(.arrest-banner, .clock-critical):not([hidden]) { position: static; transform: none; margin: 0 0 8px; max-width: none; }
 body.case-run #lesionctl, body.case-run #lesionsec { display: none; }
 .q-result { margin: 6px 0 0; font-size: 14px; line-height: 1.45; font-weight: 700; }
 .q-result.vessel { color: var(--ok); } .q-result.territory { color: var(--warn); } .q-result.miss { color: var(--bad); }

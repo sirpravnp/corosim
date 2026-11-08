@@ -143,12 +143,13 @@ function startCase(def: CaseDef) {
   casesUi();
 }
 function quit() {
+  ordersEnd(); // first: it restores the speed a skip saved, and the reset below must win
   for (const id of LOCKED) ($(id) as HTMLButtonElement).disabled = false;
   document.body.classList.remove("case-run");
   K.phase = "idle"; K.def = null; K.runner = null; debrief = null; opening = false;
   S.hide = S.hideIsch = false; revealed = false; S.speed = 1;
   pgAdopt({});
-  setBedsideTemp(undefined); setCaseLabs(undefined); resetLowFlow(); ordersEnd();
+  setBedsideTemp(undefined); setCaseLabs(undefined); resetLowFlow();
   buildVessels(); initParticles(); paintMyocardium();
   casesUi();
 }
