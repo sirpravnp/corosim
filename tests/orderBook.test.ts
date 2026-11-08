@@ -89,6 +89,23 @@ describe("order book", () => {
   });
 });
 
+describe("debrief estimate label", () => {
+  it("a respiratory-rate line carries the estimate label", () => {
+    const b = new OrderBook();
+    b.order("rr", 0);
+    b.tick(1, N({ respRate: 16 }));
+    const lines = orderLines(b);
+    expect(lines.length).toBe(1);
+    expect(lines[0]).toContain("(estimate)");
+  });
+  it("a lactate line does not carry the estimate label", () => {
+    const b = new OrderBook();
+    b.order("lactate", 0);
+    b.tick(600, N({ lactate: 3 }));
+    expect(orderLines(b)[0]).not.toContain("(estimate)");
+  });
+});
+
 describe("waiting while unstable harm", () => {
   const harm = GENERIC_HARMS.find((h) => h.tag === "waiting while unstable")!;
 

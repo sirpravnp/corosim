@@ -4,7 +4,7 @@ import { itemById, PatientNow, Reading } from "./orders";
 
 export interface Returned { id: string; t: number; reading: Reading }
 
-interface LogEntry {
+export interface LogEntry {
   id: string; orderedAt: number;
   returnedAt?: number; reading?: Reading;
   cancelled?: true;
@@ -66,7 +66,7 @@ export function orderLines(book: OrderBook): string[] {
   return book.log.map((e) => {
     const name = itemById(e.id)?.label ?? e.id;
     const state = e.cancelled ? "cancelled"
-      : e.returnedAt !== undefined ? `back ${clock(e.returnedAt)}, ${e.reading?.text ?? ""}`
+      : e.returnedAt !== undefined ? `back ${clock(e.returnedAt)}, ${e.reading?.text ?? ""}${e.reading?.estimate ? " (estimate)" : ""}`
       : "not back yet";
     return `${name}: ordered ${clock(e.orderedAt)}, ${state}`;
   });
