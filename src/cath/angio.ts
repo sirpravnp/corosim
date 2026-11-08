@@ -17,9 +17,12 @@ export interface AngioOptions {
   catheter?: boolean; // draw the stand-in catheter; the lab turns it off because it draws the real guide
   cam?: { centre: V3; spanMm: number }; // the lab's Follow view: aim and zoom the picture; unset frames the heart
   plaques?: readonly Plaque[]; // the lab's plaque model: eccentric lesions take the lumen off-center and calcium shows before dye
+  effusionMl?: number; // blood in the pericardium: the heart's shadow grows and its beat weakens
+  /** Where the wire went through the vessel wall: after the next injection the dye stays there as a blush. */
+  perforation?: { point: V3 } | null;
   loop?: boolean; // repeat the injection forever (the heart-cath page); false plays it once per injection (the lab)
   /** Dye in the access vessels (an injection with the guide not in a coronary, or through the sheath): it spreads from `origin` and washes out in a couple of seconds. */
-  accessDye?: { segs: { samples: V3[]; diameterMm: number[] }[]; origin: V3; reachMm: number } | null;
+  accessDye?: { segs: { id?: string; samples: V3[]; diameterMm: number[]; calcification?: number; length?: number }[]; origin: V3; reachMm: number } | null;
   overlay?: HTMLCanvasElement | null; // devices drawn as attenuation (white = dense) by the lab; they go through the same image formation
 }
 
@@ -39,7 +42,7 @@ export function frameOf(centre: V3, o: AngioOptions, now: number, W: number, H: 
   const ry = (o.rot * Math.PI) / 180, rx = (o.tilt * Math.PI) / 180;
   const c0 = o.cam?.centre ?? centre, sc = W / (o.cam?.spanMm ?? DEFAULT_SPAN_MM), cm = project(c0, ry, rx);
   const ox = W / 2 - cm[0] * sc, oy = H / 2 + cm[1] * sc;
-  const m1 = bodyMotion(now, o.heartRate, 1);
+  const m1 = bodyMotion(now, o.heartRate, Math.max(0.15, 1 - (o.effusionMl ?? 0) / 320)); // tamponade: a heart squeezed by fluid barely moves
   const toStatic = (p: V3): P2 => { const q = project(p, ry, rx); return [ox + q[0] * sc, oy - q[1] * sc]; };
   const toScreen = (p: V3): P2 => {
     const w = motionWeight(len(sub(p, centre))), above = smooth((62 - (p[1] - centre[1])) / 22) * smooth((p[2] - centre[2] + 48) / 22), wp = w > 0.02 && above > 0 ? tortuosity(p, w * above) : p; // the aorta (above and behind the heart) and the guide in it stay smooth; only epicardial vessels wander
@@ -139,8 +142,8 @@ export class AngioView {
     if (replay) this.inject();
   }
   /** Start an injection now. A coronary injection leaves a faint roadmap of the filled tree behind, valid only at the C-arm angle it was taken at; an aortic one does not. */
-  inject(coronary = true) { this.t0 = performance.now(); this.pendingRoadmap = coronary; this.roadmap = false; }
-  private pendingRoadmap = false; private roadmap = false; private roadmapPose = "";
+  inject(coronary = true) { this.t0 = performance.now(); this.pendingRoadmap = coronary; this.pendingAccessRoadmap = !coronary; this.roadmap = false; this.accessRoadmap = false; if (this.opts.perforation) this.stain = true; }
+  private pendingRoadmap = false; private roadmap = false; private roadmapPose = ""; private pendingAccessRoadmap = false; private accessRoadmap = false; private stain = false;
 
   /** Which vessels the catheter is filling: the left coronary system, the right, or (aortic root injection) both. */
   private visible(s: AngioSegment): boolean {
@@ -210,18 +213,24 @@ export class AngioView {
     }
   }
 
-  /** Dye in the access vessels: each sample fills when the front from the injection point reaches it, holds for the injection, then washes out fast (the aorta is quick). */
+  private accTwigs = new WeakMap<object, Twig[]>();
+  /**
+   * Dye in the access vessels, drawn the way the coronaries are (nested density layers, calcium on the wall, fine branches), spreading
+   * from the injection point, holding a moment and washing out fast; a roadmap of what filled stays at this C-arm angle.
+   */
   private paintAccessDye(F: Frame, t: number) {
     const d = this.opts.accessDye; if (!d) return;
-    const A = this.actx, SPEED = 420, HOLD = 1.5, LV = 6, layers: [number, number][] = [[1, 0.2], [0.85, 0.08], [0.6, 0.08]];
+    const A = this.actx, SPEED = 420, HOLD = 1.5, LV = 6, layers: [number, number][] = [[1, 0.24], [0.9, 0.09], [0.77, 0.1], [0.6, 0.1], [0.4, 0.09]];
+    const front = (dist: number, tt: number) => (dist > d.reachMm ? 0 : smooth((tt - dist / SPEED) / 0.3) * (1 - smooth((tt - dist / SPEED - HOLD) / 0.9)) * (1 - smooth((dist - d.reachMm * 0.7) / (d.reachMm * 0.3)) * 0.6));
     for (const seg of d.segs) {
       const n = seg.samples.length, pts: P2[] = [], width: number[] = [], level: number[] = [];
       let any = false;
       for (let i = 0; i < n; i++) {
-        const p = seg.samples[i], dist = len(sub(p, d.origin)), ta = dist / SPEED;
-        const c = dist > d.reachMm ? 0 : smooth((t - ta) / 0.3) * (1 - smooth((t - ta - HOLD) / 0.9)) * (1 - smooth((dist - d.reachMm * 0.7) / (d.reachMm * 0.3)) * 0.6);
+        const p = seg.samples[i], dist = len(sub(p, d.origin));
+        let c = front(dist, t);
+        if (this.accessRoadmap && dist <= d.reachMm) c = Math.max(c, ROADMAP_LEVEL);
         level.push(Math.round(c * LV)); if (c > 0.02) any = true;
-        pts.push(F.toScreen(p)); width.push(seg.diameterMm[i] * F.sc);
+        pts.push(F.toScreen(p)); width.push(seg.diameterMm[i] * F.sc * VESSEL_MAG);
       }
       if (!any) continue;
       const walls = wallLines(pts, width, undefined, 1.6);
@@ -231,9 +240,40 @@ export class AngioView {
           A.beginPath();
           for (let i = r.a; i <= r.b; i++) { const c = pts[i], l = walls.left[i]; const x = c[0] + (l[0] - c[0]) * wf, y = c[1] + (l[1] - c[1]) * wf; if (i === r.a) A.moveTo(x, y); else A.lineTo(x, y); }
           for (let i = r.b; i >= r.a; i--) { const c = pts[i], l = walls.right[i]; A.lineTo(c[0] + (l[0] - c[0]) * wf, c[1] + (l[1] - c[1]) * wf); }
-          A.closePath(); A.fillStyle = `rgba(255,255,255,${(dd * dens * 0.8).toFixed(3)})`; A.fill();
+          A.closePath(); A.fillStyle = `rgba(255,255,255,${(dd * dens * 0.85).toFixed(3)})`; A.fill();
         }
       }
+      // calcified iliacs: a dense line along each wall, seen before and after dye
+      if ((seg.calcification ?? 0) > 0.5) {
+        for (const wall of [walls.left, walls.right]) {
+          A.beginPath(); wall.forEach((q, i) => (i ? A.lineTo(q[0], q[1]) : A.moveTo(q[0], q[1])));
+          A.lineWidth = 1.5; A.strokeStyle = `rgba(255,255,255,${(0.05 + 0.12 * (seg.calcification ?? 0)).toFixed(3)})`; A.stroke();
+        }
+      }
+      // the small branches off the aorta and iliacs, filling just after the point they leave
+      if (seg.id && seg.length) {
+        let tw = this.accTwigs.get(seg);
+        if (!tw) { tw = makeTwigs({ id: seg.id, samples: seg.samples, diameterMm: seg.diameterMm, length: seg.length }, 0.05); this.accTwigs.set(seg, tw); }
+        for (const x of tw) {
+          const c = Math.max(front(len(sub(seg.samples[x.at], d.origin)) + 12, t), this.accessRoadmap ? ROADMAP_LEVEL : 0);
+          if (c < 0.03) continue;
+          const sp = smoothPath(x.pts.map((q) => F.toScreen(q)), 2), w = Math.max(1.4, x.dMm * F.sc * 1.2);
+          A.beginPath(); sp.forEach((q, i) => (i ? A.lineTo(q[0], q[1]) : A.moveTo(q[0], q[1])));
+          A.lineJoin = "round"; A.lineCap = "round"; A.lineWidth = w; A.strokeStyle = `rgba(255,255,255,${(0.16 * c).toFixed(3)})`; A.stroke();
+        }
+      }
+    }
+  }
+
+  /** Contrast that has left the vessel through a perforation: a blush that grows after the injection and stays. */
+  private paintLeak(F: Frame, t: number) {
+    const o = this.opts; if (!o.perforation || !this.stain) return;
+    const ramp = smooth((t - 0.7) / 1.8); if (ramp <= 0) return;
+    const A = this.actx, [x, y] = F.toScreen(o.perforation.point), R = (5 + 11 * ramp) * F.sc;
+    for (const [dx, dy, k] of [[0, 0, 1], [R * 0.35, R * 0.2, 0.7], [-R * 0.3, R * 0.35, 0.6]]) {
+      const g = A.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, R * (0.6 + 0.4 * k));
+      g.addColorStop(0, `rgba(255,255,255,${(0.85 * ramp * k).toFixed(3)})`); g.addColorStop(1, "rgba(255,255,255,0)");
+      A.fillStyle = g; A.beginPath(); A.arc(x + dx, y + dy, R, 0, 6.283); A.fill();
     }
   }
 
@@ -244,14 +284,17 @@ export class AngioView {
     if (t > this.run) { if (o.loop === false) t = this.run + 1; else { this.t0 = now; t = 0; } }
     const pose = `${o.rot},${o.tilt}`;
     if (this.pendingRoadmap && t > ANGIO.injectSeconds + 1.2 && t < this.run) { this.pendingRoadmap = false; this.roadmap = true; this.roadmapPose = pose; }
-    if (this.roadmap && pose !== this.roadmapPose) this.roadmap = false; // a roadmap is only good at the angle it was taken
+    if (this.pendingAccessRoadmap && t > 4.2 && t < this.run) { this.pendingAccessRoadmap = false; this.accessRoadmap = true; this.roadmapPose = pose; }
+    if ((this.roadmap || this.accessRoadmap) && pose !== this.roadmapPose) { this.roadmap = false; this.accessRoadmap = false; } // a roadmap is only good at the angle it was taken
+    if (!o.perforation) this.stain = false;
     const F = frameOf(m.centre, o, now, W, H);
     const sf: StaticFrame = { W, H, sc: F.sc, ox: F.ox, oy: F.oy, basis: F.basis, project: F.toStatic };
-    this.backdrop.update(sf, m.centre, now, o.heartRate);
+    this.backdrop.update(sf, m.centre, now, o.heartRate, o.effusionMl ?? 0);
 
     A.globalCompositeOperation = "source-over"; A.fillStyle = "#000"; A.fillRect(0, 0, W, H); A.globalCompositeOperation = "lighter";
     this.paintVessels(F, m, t);
     this.paintAccessDye(F, t);
+    this.paintLeak(F, t);
     // the stand-in catheter (the heart-cath page), from the injected ostium up and out
     const root = m.segments.find((s) => this.visible(s) && !s.parent);
     if (root && o.catheter !== false) {
@@ -301,7 +344,7 @@ export class AngioView {
     C.fillText(`${o.rot < 0 ? "RAO" : "LAO"} ${Math.abs(o.rot)}  ${o.tilt < 0 ? "CAUD" : "CRAN"} ${Math.abs(o.tilt)}`, 14, 24);
     C.fillText(`t ${Math.max(0, t).toFixed(1)} s`, 14, H - 14);
     if (t >= 0 && t < ANGIO.injectSeconds) { C.fillStyle = "rgba(255,235,120,.9)"; C.fillText("INJECTING", W - 100, 24); }
-    if (this.roadmap && !(t >= 0 && t < ANGIO.injectSeconds)) { C.fillStyle = "rgba(220,220,210,.8)"; C.fillText("ROADMAP", W - 88, 24); }
+    if ((this.roadmap || this.accessRoadmap) && !(t >= 0 && t < ANGIO.injectSeconds)) { C.fillStyle = "rgba(220,220,210,.8)"; C.fillText("ROADMAP", W - 88, 24); }
     if (o.labels) this.drawLabels(m, F);
   }
 

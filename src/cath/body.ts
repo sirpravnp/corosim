@@ -24,6 +24,7 @@ export interface Ellipsoid {
   w: number; // tissue-equivalent millimeters per millimeter of path: +1 soft tissue, -0.8 lung, +2.2 bone
   group: Group;
   clipY?: number; // half-height (mm, along the screen's vertical) where the chord is cut off with a soft edge: turns an ellipsoid into a rounded block, like a vertebral body
+  cutBelow?: number; // the chord is cut off this far (mm, screen vertical) below the center with a soft edge: a crisp lower surface, like the diaphragm under a lung
   sharp?: number; // >0 flattens the chord profile into a plateau with a steeper edge (lungs, whose boundary is a surface, not a dome)
 }
 
@@ -39,7 +40,7 @@ export function axesOf(e: Ellipsoid): [V3, V3, V3] {
 }
 
 /** An ellipsoid prepared for one view: its projected center, the inverse of its silhouette matrix, and the chord through its center. */
-export interface Prepared { clip: number; c1: number; c2: number; i11: number; i12: number; i22: number; ext1: number; ext2: number; chord: number; w: number; sharp: number; group: Group }
+export interface Prepared { cutB: number; clip: number; c1: number; c2: number; i11: number; i12: number; i22: number; ext1: number; ext2: number; chord: number; w: number; sharp: number; group: Group }
 export function prepare(e: Ellipsoid, b: Basis, shift: [number, number] = [0, 0]): Prepared {
   const ax = axesOf(e), a = e.a;
   let m11 = 0, m12 = 0, m22 = 0, q = 0;
@@ -49,7 +50,7 @@ export function prepare(e: Ellipsoid, b: Basis, shift: [number, number] = [0, 0]
   }
   const det = m11 * m22 - m12 * m12 || 1e-9;
   return {
-    clip: e.clipY ?? 0, c1: dot(b.e1, e.c) + shift[0], c2: dot(b.e2, e.c) + shift[1],
+    cutB: e.cutBelow ?? 0, clip: e.clipY ?? 0, c1: dot(b.e1, e.c) + shift[0], c2: dot(b.e2, e.c) + shift[1],
     i11: m22 / det, i12: -m12 / det, i22: m11 / det, ext1: Math.sqrt(m11), ext2: Math.sqrt(m22), // half-width and half-height of the silhouette
     chord: 2 / Math.sqrt(q || 1e-9), w: e.w, sharp: e.sharp ?? 0, group: e.group,
   };
@@ -61,7 +62,8 @@ export function chordAt(p: Prepared, x1: number, x2: number): number {
   const r2 = p.i11 * q1 * q1 + 2 * p.i12 * q1 * q2 + p.i22 * q2 * q2;
   if (r2 >= 1) return 0;
   const s = Math.sqrt(1 - r2), cut = p.clip > 0 ? Math.min(1, Math.max(0, (p.clip - Math.abs(q2)) / 1.3)) : 1; // soft end plates
-  return cut * p.chord * (p.sharp > 0 ? Math.min(1, s / p.sharp) : s);
+  const below = p.cutB > 0 ? Math.min(1, Math.max(0, (q2 + p.cutB + 0.0075 * q1 * q1) / 1.6)) : 1; // q2 is up from the center; the cut curves down away from the middle: a dome, highest in the center
+  return below * cut * p.chord * (p.sharp > 0 ? Math.min(1, s / p.sharp) : s);
 }
 
 const xm = BODY.midlineX;
@@ -71,7 +73,7 @@ const sym = (e: Omit<Ellipsoid, "c"> & { c: V3 }): Ellipsoid[] => [
 ];
 
 /** The patient, as ellipsoids. `heartCentre` is the middle of the coronary tree. */
-export function patientEllipsoids(heartCentre: V3, breath = 0): Ellipsoid[] {
+export function patientEllipsoids(heartCentre: V3, breath = 0, effusionMl = 0): Ellipsoid[] {
   const br = breath * 3.5; // the diaphragm moves about 7 mm peak to peak in quiet breathing
   const out: Ellipsoid[] = [
     // soft tissue
@@ -82,10 +84,12 @@ export function patientEllipsoids(heartCentre: V3, breath = 0): Ellipsoid[] {
     { c: [xm, -345, 0], a: [150, 126, 98], w: 1, group: "body" },
     ...sym({ c: [xm - 80, -500, 10], a: [62, 150, 60], w: 1, group: "body" }),
     // lungs, with the diaphragm as their lower surface
-    { c: [xm - 64, 76 - br, -2], a: [84, 102 + br, 84], w: -0.7, group: "lung" },
-    { c: [xm + 64, 56 - br, -2], a: [84, 102 + br, 84], w: -0.7, group: "lung" },
-    { c: [xm - 20, -150 - br, 0], a: [260, 120, 92], w: 0.9, group: "mediastinum", sharp: 0.22 }, // liver, stomach and spleen under the domes: the dark mass below the diaphragm edge
-    { c: [xm + 4, 40, -32], a: [30, 108, 38], w: 0.3, group: "mediastinum" },
+    { c: [xm - 64, 12 - br, -2], a: [84, 132, 84], cutBelow: 36 + br, w: -0.7, group: "lung" },
+    { c: [xm + 64, -6 - br, -2], a: [84, 126, 84], cutBelow: 38 + br, w: -0.7, group: "lung" },
+    // liver under the right dome and spleen under the left: soft, rounded organs, so the diaphragm edge comes from the lung above and not from a hard shape below
+    { c: [xm - 58, -92 - br, 8], a: [88, 52, 70], roll: -12, w: 0.5, group: "mediastinum" },
+    { c: [xm + 92, -96 - br, -34], a: [24, 40, 28], roll: 15, w: 0.4, group: "mediastinum" },
+    { c: [xm + 4, 40, -32], a: [30, 108, 38], w: 0.14, group: "mediastinum" },
     { c: [xm + 1, 108, -22], a: [8, 62, 8], w: -0.9, group: "gas" }, // trachea
     // gas in the stomach and bowel
     { c: [xm + 74, -96 - br, -8], a: [22, 18, 22], w: -0.85, group: "gas" },
@@ -96,6 +100,7 @@ export function patientEllipsoids(heartCentre: V3, breath = 0): Ellipsoid[] {
     // the heart: left ventricle and the right-sided chambers, long axis down and to the left
     { c: [heartCentre[0] + 16, heartCentre[1] - 4, heartCentre[2] + 4], a: [48, 72, 42], roll: 40, w: 0.8, group: "heart", sharp: 0.55 },
     { c: [heartCentre[0] - 12, heartCentre[1] + 6, heartCentre[2] + 8], a: [40, 56, 38], roll: 15, w: 0.7, group: "heart", sharp: 0.55 },
+    ...(effusionMl > 5 ? [{ c: [heartCentre[0] + 6, heartCentre[1], heartCentre[2] + 5] as V3, a: [50 + effusionMl / 14, 74 + effusionMl / 14, 46 + effusionMl / 20] as V3, roll: 30, w: 0.45, group: "heart" as Group, sharp: 0.5 }] : []), // blood in the pericardium: a larger, rounder shadow (the water-bottle heart)
     // flat bones: scapulae, iliac wings, sacrum, pubic rami, femoral heads, necks, shafts
     ...sym({ c: [xm + 118, 96, -62], a: [46, 62, 5], yaw: 18, roll: -12, w: 2.2, group: "bone" }),
     ...sym({ c: [xm + 88, -240, -22], a: [52, 56, 9], yaw: 38, roll: 22, w: 2.2, group: "bone" }),

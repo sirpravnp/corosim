@@ -80,3 +80,5 @@ table.score caption b { color: var(--ink); font-weight: 600; margin-right: 4px; 
 table.score th { text-align: left; font-weight: 600; padding: 5px 8px 5px 0; }
 table.score td { padding: 5px 8px 5px 0; border-top: 1px solid var(--rule-light); }
 table.score tr:first-child th, table.score tr:first-child td { border-top: 1px solid var(--rule-light); }
+
+.ecg { display: block; width: 100%; border: 1px solid var(--sh-line); }

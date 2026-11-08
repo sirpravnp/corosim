@@ -16,6 +16,8 @@ const SANS = '"Hanken Grotesk", -apple-system, Helvetica, Arial, sans-serif';
  */
 export class EcgStrip {
   posterior = false;
+  /** A rhythm strip: these leads, one per row, instead of the 3 x 4 twelve-lead page (the cath lab's monitor). */
+  strip: LeadName[] | null = null;
   private ring = Object.fromEntries(ALL_LEADS.map((l) => [l, new Float32Array(N).fill(NaN)])) as Record<LeadName, Float32Array>;
   private acc = 0;
   private idx = 0;
@@ -93,11 +95,11 @@ export class EcgStrip {
 
   draw() {
     const c = this.canvas, dpr = devicePixelRatio || 1;
-    const layout = this.posterior ? LAYOUT.map((row, r) => [...row, POSTERIOR[r]]) : LAYOUT;
-    const cols = layout[0].length, rows = 3, w = c.clientWidth;
+    const layout = this.strip ? this.strip.map((l) => [l]) : this.posterior ? LAYOUT.map((row, r) => [...row, POSTERIOR[r]]) : LAYOUT;
+    const cols = layout[0].length, rows = layout.length, w = c.clientWidth;
     if (!w) return; // not laid out (its panel is closed or on a hidden tab): nothing to draw, and the paper loop below would not end
     const mm = w / cols / (WIN * 25);
-    const ph = Math.max(96, Math.round(mm * 22));
+    const ph = this.strip ? 78 : Math.max(96, Math.round(mm * 22));
     const h = rows * ph;
     if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
       c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c.style.height = h + "px";

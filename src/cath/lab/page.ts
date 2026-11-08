@@ -8,8 +8,11 @@ import { AngioView } from "../angio";
 import { FluoroView, deviceGeometry, DeviceGeometry } from "./fluoro";
 import { drawSchematic } from "./schematic";
 import { scoreProcedure } from "../../lab/score";
+import { EcgStrip } from "../../ecgStrip";
 import type { LabEngine } from "../../lab/engine";
 import { deviceFocus, zoneOf } from "../../lab/camera";
+import { samplePoint } from "../../lab/geometry";
+import type { V3 } from "../../anatomy/curve";
 import { createEngine, catalog, PHYSICS_LIVE, CASE, SCENARIO } from "./engine";
 import { camTarget, easeCam, isSchematic, Cam, CameraMode } from "./camera";
 import { STANDARD_VIEWS as VIEWS, deviceShelf, monitorModel, eventFeed, procedureSummary, nextStep, Slot, Vitals } from "./panels";
@@ -29,10 +32,19 @@ sim.warmup(20);
 const engine = createEngine(sim);
 const view = new AngioView($<HTMLCanvasElement>("ang"));
 view.opts.catheter = false; view.opts.loop = false; // one injection per press, and none until the first
+const ecg = new EcgStrip($<HTMLCanvasElement>("ecg"), sim.stream); ecg.strip = ["II", "V3"]; ecg.reset(sim.t); // the paper starts from now: the strip's clock is the simulation's
 const fluoro = new FluoroView($<HTMLCanvasElement>("dev"));
 let model: AngioModel, geom: DeviceGeometry;
 const log: LabEvent[] = [];
 
+/** Where the wire went through the vessel, once it has: the picture leaks dye there. */
+let perfPoint: V3 | null = null;
+function noteEvents(events: LabEvent[]) {
+  for (const e of events) {
+    const d = e.data as { segId?: string; mm?: number } | undefined;
+    if (e.kind === "perforation" && d?.segId) perfPoint = samplePoint(engine.graph(), d.segId, d.mm ?? 0);
+  }
+}
 function remodel() { model = angioModel(sim); view.setModel(model, false); }
 
 // ---------------------------------------------------------------- camera: Heart (the angiographic frame), Follow (the leading device tip) or Overview (puncture to heart)
@@ -59,13 +71,13 @@ function act(a: Action, refreshVessels = false) {
   const eng = engine.state().guide?.engaged ?? null;
   if (a.t === "inject") a = { ...a, where: eng === "RCA" ? "RCA" : eng === "LM" ? "LCA" : "aorta" };
   const events = engine.apply(a);
-  log.push(...events);
+  log.push(...events); noteEvents(events);
   if (a.t === "inject" && events.some((e) => e.kind === "contrast")) {
     const g = engine.graph(), st = engine.state();
     view.opts.injection = eng === "RCA" ? "right" : eng === "LM" ? "left" : "none";
     view.opts.accessDye = eng ? null : {
-      segs: [...g.segs.filter((sg) => zoneOf(sg.id, 0) !== "coronary"), ...(g.branches ?? [])],
-      origin: deviceFocus(st as never, g).point, reachMm: 240,
+      segs: [...g.segs.filter((sg) => zoneOf(sg.id, 0) !== "coronary"), ...(g.branches ?? [])].map((sg) => ({ id: sg.id, samples: sg.samples, diameterMm: sg.diameterMm, calcification: sg.calcification, length: sg.length })),
+      origin: deviceFocus(st as never, g).point, reachMm: 260,
     };
     view.setModel(model, false); view.inject(!!eng);
   }
@@ -102,6 +114,9 @@ function vitals(): Vitals {
   try { ffr = wireModel(sim, "LAD").ffr; } catch { /* no such vessel */ }
   return { hr: r.hr, map: r.map, sbp: r.sbp, dbp: r.dbp, ffr };
 }
+function renderTiles() {
+  $("tiles").innerHTML = monitorModel(vitals(), engine.state()).map((t) => `<div><b>${t.label}</b><span class="${t.tone}"><i>${esc(t.value)}</i><em>${esc(t.unit)}</em></span></div>`).join("");
+}
 function render() {
   const st = engine.state();
   geom = deviceGeometry(st, engine.graph(), engine.plaques(), (id) => catalog.find((d) => d.id === id));
@@ -109,7 +124,7 @@ function render() {
   const lastEv = eventFeed(log, 1)[0], lastEl = $("last");
   lastEl.textContent = lastEv ? lastEv.text : ""; lastEl.className = `last ${lastEv?.severity ?? ""}`;
   renderShelf();
-  $("tiles").innerHTML = monitorModel(vitals(), st).map((t) => `<div><b>${t.label}</b><span class="${t.tone}"><i>${esc(t.value)}</i><em>${esc(t.unit)}</em></span></div>`).join("");
+  renderTiles();
   $("feed").innerHTML = eventFeed(log, 8).map((e) => `<li class="${e.severity}"><time>${e.at.toFixed(0)} s</time>${esc(e.text)}</li>`).join("");
   const s = procedureSummary(st);
   $("summary").textContent = `Contrast ${s.contrastMl} mL. Fluoroscopy ${s.fluoroLabel}. Air kerma ${s.doseMGy} mGy.`;
@@ -144,7 +159,7 @@ $("rotR").addEventListener("click", () => act({ t: "torque", deg: 15 }));
 $("inflate").addEventListener("click", () => act({ t: "inflate", atm: atm(), seconds: 5 }));
 $("deflate").addEventListener("click", () => act({ t: "deflate" }));
 $("deploy").addEventListener("click", () => act({ t: "deploy", atm: atm(), seconds: 5 }));
-$("reset").addEventListener("click", () => { engine.reset(); sim.reset(SCENARIO, { settled: true }); sim.warmup(20); log.length = 0; remodel(); render(); });
+$("reset").addEventListener("click", () => { perfPoint = null; view.opts.perforation = null; engine.reset(); sim.reset(SCENARIO, { settled: true }); sim.warmup(20); ecg.reset(sim.t); log.length = 0; remodel(); render(); });
 
 /** Hold a button to keep moving the device, about 55 mm a second. */
 function holdToMove(id: string, mm: number) {
@@ -199,7 +214,20 @@ remodel();
 render();
 const angCtx = $<HTMLCanvasElement>("ang").getContext("2d")!;
 const devCanvas = $<HTMLCanvasElement>("dev");
+let lastFrame = performance.now(), tilesClock = 0, ringClock = 0;
+/** Real time passes in the lab: the patient bleeds, ischemia builds and the rhythm runs whether or not the learner acts. */
+function liveStep(now: number) {
+  const dt = Math.min(0.05, (now - lastFrame) / 1000); lastFrame = now;
+  const events = engine.tick ? engine.tick(dt) : [];
+  if (!engine.state().access) sim.step(dt, { minutes: 0 }); // before access the patient is just on the table: heart, pressure and ECG run, the infarct clock does not
+  if (events.length) { log.push(...events); noteEvents(events); if (events.some((e) => ["perforation", "no-reflow", "spasm", "dissection", "arrest"].includes(e.kind))) remodel(); render(); }
+  const fx = sim.ecgInputs();
+  if (!sim.dead) ecg.step(dt, fx.injury, fx.tBoost, sim.rstate.rhythm, fx.potassium);
+  ecg.draw();
+  if ((tilesClock += dt) > 0.4) { tilesClock = 0; renderTiles(); }
+}
 const frame = (now: number) => {
+  liveStep(now);
   if (isSchematic(mode)) {
     // Overview: a schematic of the route, drawn without the fluoro backdrop
     drawSchematic(angCtx, devCanvas.width, devCanvas.height, engine.graph(), geom, engine.state());
@@ -213,9 +241,10 @@ const frame = (now: number) => {
   view.opts.cam = mode === "heart" && cam.spanMm === want.spanMm ? undefined : cam;
   view.opts.plaques = engine.plaques();
   view.opts.overlay = fluoro.att;
+  view.opts.effusionMl = engine.effusionMl ? engine.effusionMl() : 0; view.opts.perforation = perfPoint ? { point: perfPoint } : null;
   fluoro.draw(now, model.centre, view.opts, geom, engine.state(), mode === "heart" ? null : engine.graph(), engine.plaques());
   view.draw(now);
   requestAnimationFrame(frame);
 };
 requestAnimationFrame(frame);
-(window as unknown as { corosimLab: object }).corosimLab = { sim, engine, act, view };
+(window as unknown as { corosimLab: object }).corosimLab = { sim, engine, act, view, noteEvents };

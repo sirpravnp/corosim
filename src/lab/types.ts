@@ -97,4 +97,8 @@ export interface LabEngineLike {
   apply(a: Action): LabEvent[];
   replay(actions: Action[]): LabEvent[];
   reset(): void;
+  /** Optional: let real time pass (the live lab calls it every frame). */
+  tick?(seconds: number): LabEvent[];
+  /** Optional: blood in the pericardium, mL. */
+  effusionMl?(): number;
 }

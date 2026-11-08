@@ -50,17 +50,17 @@ export class Backdrop {
   }
 
   /** Rebuild what changed: the bones when the pose or the camera moved, the soft-tissue field every frame (the heart and the diaphragm move). */
-  update(F: StaticFrame, heartCentre: V3, now: number, heartRate: number) {
+  update(F: StaticFrame, heartCentre: V3, now: number, heartRate: number, effusionMl = 0) {
     const key = `${F.sc.toFixed(3)},${F.ox.toFixed(1)},${F.oy.toFixed(1)},${F.basis.e3.map((v) => v.toFixed(4)).join(",")}`;
     if (key !== this.key) { this.key = key; this.drawBones(F); }
-    this.solveSoft(F, heartCentre, now, heartRate);
+    this.solveSoft(F, heartCentre, now, heartRate, effusionMl);
   }
 
-  private solveSoft(F: StaticFrame, hc: V3, now: number, heartRate: number) {
+  private solveSoft(F: StaticFrame, hc: V3, now: number, heartRate: number, effusionMl: number) {
     const { soft, lin, cub, bon } = this, R = RES, cell = F.W / R;
     lin.fill(0); cub.fill(0); bon.fill(0);
-    const heartMove = bodyMotion(now, heartRate, 1), breath = heartMove.breath;
-    const ells = [...patientEllipsoids(hc, breath), ...spine().flatMap((v, i) => vertebraEllipsoids(v, i))];
+    const heartMove = bodyMotion(now, heartRate, Math.max(0.15, 1 - effusionMl / 320)), breath = heartMove.breath;
+    const ells = [...patientEllipsoids(hc, breath, effusionMl), ...spine().flatMap((v, i) => vertebraEllipsoids(v, i))];
     for (const e of ells) {
       const p: Prepared = prepare(e, F.basis, e.group === "heart" ? [heartMove.dx, heartMove.dy] : [0, 0]);
       const sx0 = F.ox + (p.c1 - p.ext1) * F.sc, sx1 = F.ox + (p.c1 + p.ext1) * F.sc;

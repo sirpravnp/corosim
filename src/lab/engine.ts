@@ -51,6 +51,7 @@ export class LabEngine implements LabEngineLike {
   private accessClosed = false;
   private manualHold = false;
   private tamponadeRate = 0;
+  private effusion = 0; // mL of blood in the pericardium; it fills while a perforation is open
   private perforationSealed = false;
   private ischemiaSeconds = 0;
   private forcedFired = new Set<string>();
@@ -100,7 +101,7 @@ export class LabEngine implements LabEngineLike {
     this.accessUltrasound = false;
     this.accessClosed = false;
     this.manualHold = false;
-    this.tamponadeRate = 0;
+    this.tamponadeRate = 0; this.effusion = 0;
     this.perforationSealed = false;
     this.ischemiaSeconds = 0;
     this.forcedFired = new Set();
@@ -108,6 +109,17 @@ export class LabEngine implements LabEngineLike {
     this.sim.setRealtime(false);
     this.sim.setLive(null);
   }
+
+  /** Let `seconds` of the procedure pass with no action: the patient keeps bleeding, ischemic and breathing. The page calls this every frame once access is gained. */
+  tick(seconds: number): LabEvent[] {
+    const out: LabEvent[] = [];
+    if (!this.st.access || seconds <= 0) return out;
+    this.advanceTime(seconds, out);
+    return out;
+  }
+
+  /** Blood in the pericardium, in mL. */
+  effusionMl(): number { return this.effusion; }
 
   replay(actions: Action[]): LabEvent[] {
     this.reset();
@@ -132,10 +144,10 @@ export class LabEngine implements LabEngineLike {
     applyEffect(this.sim, eff);
     mergeBedResistance(this.bedResistance, eff);
     if (eff.lesions) this.extraLiveLesions.push(...eff.lesions);
-    if (eff.tamponade && eff.tamponade > 0) this.tamponadeRate = 0.05;
+    if (eff.tamponade && eff.tamponade > 0) { this.tamponadeRate = 0.05; this.effusion = Math.max(this.effusion, eff.tamponade * 100); }
     if (label) {
       const kind = label === "arrhythmia-vf" ? "arrest" : label;
-      out.push(this.ev(kind, `${label} with hemodynamic effect.`, kind === "arrest" || kind === "perforation" ? "bad" : "caution"));
+      out.push(this.ev(kind, `${label} with hemodynamic effect.`, kind === "arrest" || kind === "perforation" ? "bad" : "caution", kind === "perforation" ? { segId: this.tipSeg, mm: this.tipMm } : undefined)); // where it happened, so the picture can show the leak
     }
   }
 
@@ -164,7 +176,10 @@ export class LabEngine implements LabEngineLike {
     }
 
     if (this.tamponadeRate > 0 && !this.perforationSealed) {
-      applyEffect(this.sim, { tamponade: this.tamponadeRate * seconds });
+      // an open perforation bleeds into the pericardium about 2.5 mL a second (150 mL a minute: a free perforation tamponades in a minute or two); the sac's own pressure-volume curve does the rest
+      const before = Math.floor(this.effusion / 2);
+      this.effusion += 2.5 * seconds;
+      if (Math.floor(this.effusion / 2) !== before) this.sim.apply({ pericardium: { effusionMl: this.effusion, effusionRateMlMin: 0 } });
     }
 
     if (this.occlusions.length) {
