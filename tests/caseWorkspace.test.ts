@@ -1,8 +1,9 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { LAYOUT_KEY, LayoutKeeper, defaultLayout, sessionLayout, type KV } from "../src/panels/layout";
 import type { PanelDef } from "../src/panels/panel";
 import { bedsideOverride, bodyTempC, setBedsideTemp, type BedsideInput } from "../src/sim/bedside";
-import { monitorRowVisibility } from "../src/panels/monitor";
+import { monitorRowHidden } from "../src/panels/monitor";
 
 const defs = ["ecg", "monitor", "oxygen", "jvp"].map((id, i) => ({ id, title: id, defaultOn: i < 2 }) as unknown as PanelDef);
 
@@ -36,9 +37,15 @@ describe("case workspace", () => {
     expect(st.writes).toEqual([LAYOUT_KEY]); // clearing wrote nothing
     expect(defaultLayout(defs).on).toEqual(["ecg", "monitor"]);
   });
-  it("monitor rows: with rows {hr,bp} the spo2, rr and temp rows are hidden", () => {
-    expect(monitorRowVisibility(new Set(["hr", "bp"]))).toEqual({ hr: true, bp: true, spo2: false, rr: false, temp: false });
-    expect(monitorRowVisibility(null)).toEqual({ hr: true, bp: true, spo2: true, rr: true, temp: true });
+  it("monitor rows: for the standard six only hr, bp, spo2, rr, temp, circulation and rhythm remain; null shows everything", () => {
+    const html = readFileSync("sim/index.html", "utf8");
+    const table = html.slice(html.indexOf('<table class="readout">'), html.indexOf("</table>", html.indexOf('<table class="readout">')));
+    const rowIds = [...table.matchAll(/<tr( data-row="([^"]+)")?>/g)].map((m) => m[2] ?? null);
+    expect(rowIds.length).toBeGreaterThan(12);
+    const std = new Set(["hr", "bp", "spo2", "rr", "temp"]); // the standard six minus ecg, which is a panel
+    expect(rowIds.filter((id) => !monitorRowHidden(id, std)).sort()).toEqual(["bp", "circulation", "hr", "rhythm", "rr", "spo2", "temp"]);
+    expect(rowIds.filter((id) => !monitorRowHidden(id, new Set(["hr"]))).sort()).toEqual(["circulation", "hr", "rhythm"]);
+    expect(rowIds.filter((id) => monitorRowHidden(id, null))).toEqual([]);
   });
   it("setBedsideTemp changes the temperature the monitor uses, and undefined restores 37.0", () => {
     const base: BedsideInput = { respRateBase: 15, map: 80, spo2: 0.98, lactate: 1, congestion: 0, arrest: "none" };

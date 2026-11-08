@@ -6,15 +6,21 @@ import { createAdopter } from "./adopt";
 /** Set by the page: redraws the monitor's vital signs. The Monitor panel calls it in the same frame as the other panels, so they read the same snapshot. */
 export const monitorHooks: { draw: (() => void) | null; rows: Set<string> | null } = { draw: null, rows: null };
 
-export const MONITOR_ROWS = ["hr", "bp", "spo2", "rr", "temp"] as const;
-/** Which vital-sign rows show. `rows` null shows all; otherwise only the ids in it. */
-export function monitorRowVisibility(rows: Set<string> | null): Record<(typeof MONITOR_ROWS)[number], boolean> {
-  return Object.fromEntries(MONITOR_ROWS.map((id) => [id, !rows || rows.has(id)])) as Record<(typeof MONITOR_ROWS)[number], boolean>;
+/** Rows that stay in a case session whatever the monitor lists: the circulation state and the rhythm are what the bedside always shows. */
+export const ALWAYS_ROWS: readonly string[] = ["circulation", "rhythm"];
+/**
+ * Whether a row of the Monitor table is hidden. `rows` null (the ordinary Simulator page) hides nothing. In a case session only the rows the
+ * monitor lists and the always-shown ones remain: every other row (output, ischemia, FFR, ST, infarct, atrial rate, PR) gives information for free.
+ */
+export function monitorRowHidden(rowId: string | null, rows: Set<string> | null): boolean {
+  if (!rows) return false;
+  if (!rowId) return true;
+  return !(rows.has(rowId) || ALWAYS_ROWS.includes(rowId));
 }
-/** Hide or show the page's rows (`tr[data-row]`) to match `monitorHooks.rows`. */
+/** Hide or show the page's rows (`tr`) to match `monitorHooks.rows`. */
 export function applyMonitorRows(): void {
-  const vis = monitorRowVisibility(monitorHooks.rows);
-  for (const id of MONITOR_ROWS) { const tr = document.querySelector<HTMLElement>(`tr[data-row="${id}"]`); if (tr) tr.hidden = !vis[id]; }
+  const rows = monitorHooks.rows;
+  for (const tr of document.getElementById("bp")?.closest("table")?.querySelectorAll<HTMLElement>("tr") ?? []) tr.hidden = monitorRowHidden(tr.dataset.row ?? null, rows);
 }
 
 export const findMonitor = (): HTMLElement | null => document.getElementById("bp")?.closest("section") ?? null;
