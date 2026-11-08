@@ -1,182 +1,272 @@
-# Renal Denervation (RDN) Implementation Plan
+# Renal Denervation (RDN) — standalone real-time procedure simulator
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Use superpowers:subagent-driven-development or superpowers:executing-plans task-by-task. Steps use checkbox (`- [ ]`) syntax.
 
-**Goal:** Teach catheter-based renal sympathetic denervation for resistant hypertension: how it differs from baroreceptor denervation, what it does to resting sympathetic tone and blood pressure, and (optionally) how the procedure is performed on a fluoroscopy-style view reusing the cath-lab access graph.
+**Goal:** A **separate, real-time** catheter simulator for teaching bilateral renal sympathetic denervation: access, angiography, wire and catheter manipulation, RF or ultrasound energy delivery, coverage scoring, and complications. It does **not** plug into CoroSim's `Simulation`, MCP patient state, or the coronary playground.
 
-**Architecture:** A new **partial sympathetic efferent denervation** channel in the existing closed-loop autonomic model (`src/physics/autonomic.ts`), distinct from `autonomic.baroreflexGain` (which scales the whole baroreflex, including vagal). RDN lowers the **resting and reflex-driven renal sympathetic outflow** that contributes to vascular resistance and heart rate, with a slow **set-point drift** over simulated days (chronic hypertension reset). The playground exposes fraction denervated; MCP adds `corosim_treat` kind `rdn` and a teaching preset. An optional **Phase C** extends `src/lab/` with bilateral renal arteries and ablation points, coupled to the same `renalSnaDenervation` state.
+**Architecture:** A DOM-free procedure engine (`src/rdn/`) holds a 1D device model on an abdominal vascular graph (femoral or radial access → aorta → renal arteries and segmental branches). Wall-clock time advances contrast washout, ablation dwell, impedance/temperature feedback, spasm, and a procedure timer (fluoro minutes, dose proxy). A **local monitor model** (`src/rdn/physiology.ts`) gives optional teaching vitals (MAP/HR trends vs denervation coverage %) for debrief only — not beat-by-beat hemodynamics. A new Vite page (`rdn/index.html`) renders fluoroscopy and the monitor from engine state. Every user action is a reducible `Action` with a seeded RNG for reproducible cases.
 
-**Tech Stack:** TypeScript, Vite, Vitest. Optional Phase C: Canvas 2D fluoroscopy (same stack as cath lab). No new dependencies.
+**Tech stack:** TypeScript, Vite multi-page, Canvas 2D, Vitest. No new npm dependencies. No imports from `src/sim/simulation.ts`, `LiveHeart`, or coronary `src/lab/` coupling layers.
 
-**Spec:** This document is the spec until a copy lands in `docs/superpowers/specs/` after clinician review of `[assumed]` numbers.
+**Spec:** This document is the spec until `docs/superpowers/specs/2026-11-08-rdn-simulator-design.md` is confirmed.
 
-## Design decisions (fixed for this plan)
+**Relation to CoroSim:** Same repo and design system (`DESIGN.md`, `CLAUDE.md`). Home/library may link to `/rdn/` as its own experience. The main simulator tab is unchanged.
 
-1. **Not the same as `baroreflexGain = 0`.** Baroreceptor denervation removes the pressure feedback loop (afferent and both arms). RDN targets **efferent renal sympathetic nerves**; baroreflex sensing and vagal control stay intact. Teaching must show: vasopressor still slows the heart at gain 1 after RDN, but MAP rises less at the same drug dose because baseline SVR is lower.
-2. **One scalar for teaching, two scalars in the engine.** User-facing: `autonomic.renalDenervation` 0..1 (0 = native kidneys, 1 = complete bilateral RDN as in trial responders). Internal: multiply **resting sympathetic tone** and the **sympathetic arm's baro-driven component** by `(1 − renalDenervEffect·fraction)`, where `renalDenervEffect` is a constant in `src/config/autonomic.ts` tagged `[assumed]`. Do **not** scale vagal gain or `baroreflexGain` itself.
-3. **Slow MAP fall, not instant.** On treat or when fraction steps from 0 → 1, `setPointShift` decays toward a lower chronic target over **simulated days** (first-order τ in clinical minutes at 1× time), modeling vascular remodeling and reduced central sympathetic drive. Immediate beat-to-beat effects come from lower `restSympathetic` effective tone; the shift decay is the weeks-long trial narrative.
-4. **No RAAS layer.** The model card lists hormones and renal volume control as not simulated. RDN must not promise aldosterone or sodium effects; copy and MCP narration say sympathetic-vascular mechanism only.
-5. **Resistant hypertension preset.** Default teaching patient: `setPointShift` +15..+20, `betaBlocker` and vasodilator doses high, MAP ~155–165 at rest, normal coronaries. Compare RDN vs adding another drug vs `baroreflexGain 0` on the same seed.
-6. **Constants tagged `[lit]` or `[assumed]`** in `src/config/autonomic.ts` (new file or extend `physics/autonomic.ts` exports). Targets (tune in Task 2): complete RDN drops MAP ~8–12 mmHg at rest after set-point decay; SBP variability falls slightly; resting HR unchanged or −2..−4 bpm; reflex bradycardia to vasopressor preserved.
+---
+
+## Design decisions
+
+1. **Real time is first-class.** `RdnEngine.tick(dtMs)` runs on the page's animation frame (or a fixed 50 ms step when paused). Ablation requires holding energy for `RDN.ablationDwellS` real seconds per lesion; moving the catheter mid-dwell interrupts and may warn. Contrast opacity decays with `RDN.contrastHalfLifeS`. Fluoro time accumulates whenever the X-ray is on.
+2. **1D on a graph, same lesson as cath lab.** Devices are `{ routeSegs; tipMm }` on `RdnGraph`. Forces and support follow the cath-lab pattern (curvature transmission) but code lives under `src/rdn/`, not `src/lab/`, so PCI and RDN can ship independently.
+3. **Denervation is spatial coverage, not a patient patch.** Each artery keeps `coverage: Float32Array` (0..1 denervation per mm along the main and branch segments). Bilateral main + branch targets set a **procedure score**; the stub MAP model reads total coverage, nothing is written to `corosim_adjust`.
+4. **Modality switch.** Cases or device shelf pick **radiofrequency** (impedance drop, temperature cap) or **ultrasound** (circumferential preset sectors, no impedance). Constants in `src/config/rdn.ts`, tagged `[lit]` or `[assumed]`.
+5. **Teaching arteries, not patient CT.** Centerlines are analytic or lightly templated (length, diameter taper, early branching). Optional later: import a static JSON graph; no voxel heart required for v1.
+6. **Determinism.** Seeded complication draws; replay `Action[]` + seed → identical `coverage` and events (timestamps in ms for real-time replay use the same dt stream).
+
+---
 
 ## Global constraints
 
-- American English in copy, comments and commit messages.
-- UI follows `CLAUDE.md` and `DESIGN.md` (hairline frames, one dominant stage, no generic dashboard chrome).
-- Educational only; page and MCP carry the existing educational notice.
-- Verification: `npx vitest run tests/<file>`, `npm run typecheck`, `npm run build`.
-- Registry is source of truth: new fields go through `src/sim/registry.ts` (D1 spec registry).
-- Explicit `git add <paths>` per commit, not `git add -A`.
+- American English in copy, comments and commits.
+- UI: one dominant fluoroscopy stage; hairline divisions; no card chrome per `DESIGN.md`.
+- Educational notice on the page; output is not clinical advice.
+- Fluoroscopy overlay is grayscale; color only for cautions (complication, cap breach).
+- Verification: `npx vitest run tests/rdn*.test.ts`, `npm run typecheck`, `npm run build`.
+- `git add <paths>` per commit, not `git add -A`.
+
+---
 
 ## Review focus
 
-1. Learner sets `baroreflexGain` to 0 and `renalDenervation` to 1 on the same patient: reflex tachycardia to hemorrhage and reflex bradycardia to vasopressor must **differ** between the two (RDN keeps baroreflex, gain 0 removes it).
-2. `corosim_compare` resistant HTN vs RDN vs beta blocker increase: MAP and HR deltas are plausible and explained in `corosim_explain`.
-3. Stepping `renalDenervation` from 0 to 1 mid-run does not jump MAP in one beat; set-point decay visible over `corosim_run` 300–600 s.
-4. Phase C (if built): bilateral treatment required for full effect; unilateral gives half the scalar; renal artery complication raises resistance locally without breaking the solver.
-
-## Literature anchors (for notes and clinician review)
-
-| Topic | Anchor |
-|---|---|
-| Mechanism | Renal efferent and afferent sympathetic ablation; ↓ central sympathetic outflow [assumed aggregate] |
-| BP effect magnitude | Office SBP ~5–10 mmHg vs sham in SPYRAL HTN-ON Med (2023); teach 8–12 mmHg at full effect [lit direction, `[assumed]` exact gain] |
-| Distinction from drugs | Adds to pharmacotherapy; does not replace adherence or secondary causes [teaching copy only] |
-| Complications (Phase C) | Renal artery stenosis, dissection, bleeding [assumed rates] |
-
-PMIDs for the checklist: 36944993 (SPYRAL HTN-ON Med), 23439113 (SYMPLICITY HTN-3 sham). Worker fills note column after verification.
+1. Ablation with the tip in a branch ostium vs in the parent: coverage maps differ; overtreating a stenotic branch raises stenosis complication risk.
+2. Withdrawing the catheter during active RF: dwell resets; learner sees "energy interrupted."
+3. Bilateral case cannot "complete" until both sides meet minimum longitudinal overlap and branch quota.
+4. Replay of a scored case reproduces the same coverage heatmap and debrief numbers.
+5. No import path from `src/rdn/` into `src/sim/` (enforce with a small `tests/rdnIsolation.test.ts` that fails if `simulation.ts` or `mcp/tools.ts` references `src/rdn`).
 
 ---
 
 ## File structure
 
-### Phase A–B (engine, UI, MCP, teaching) — required
+### Engine (pure)
 
-Create:
-- `src/config/renalDenervation.ts` — effect sizes, set-point decay τ, unilateral factor `[assumed]`.
-- `docs/RENAL_DENERVATION.md` — clinician checklist and what the scalar does in equations.
+| File | Role |
+|------|------|
+| `src/rdn/types.ts` | Contract: graph, devices, actions, events, state, `RdnEngineLike` |
+| `src/rdn/graph.ts` | `buildRdnGraph(variant)`, renal ostia, branch angles |
+| `src/rdn/route.ts` | Arc length, advance, torque into branch |
+| `src/rdn/engine.ts` | Reducer + `tick(dtMs)` |
+| `src/rdn/ablation.ts` | Dwell, overlap rules, modality physics |
+| `src/rdn/contrast.ts` | Inject and decay along segments |
+| `src/rdn/complications.ts` | Spasm, dissection, access hematoma, non-target (iliac) |
+| `src/rdn/coverage.ts` | Score vs guideline pattern (SPYRAL-style spacing `[assumed]`) |
+| `src/rdn/physiology.ts` | Stub MAP/HR for debrief vs coverage (decoupled from core engine) |
+| `src/rdn/score.ts` | Rubric and debrief text |
+| `src/rdn/stub.ts` | `StubRdnEngine` for UI-first work |
+| `src/config/rdn.ts` | Dwell, spacing, complication rates, monitor gains |
 
-Modify:
-- `src/physics/autonomic.ts` — apply `renalDenervation` fraction to sympathetic tone paths; optional slow `setPointShift` target driven by simulation clock.
-- `src/sim/simulation.ts` — wire control, persist in state, apply on `treat("rdn")` or patch.
-- `src/sim/registry.ts` — `autonomic.renalDenervation` 0..1.
-- `src/sim/scenario.ts`, `src/sim/narrate.ts`, `src/sim/explain.ts` — phrasing.
-- `src/panels/advancedControls.ts` — slider (or Patient tab when C2 dock lands).
-- `src/mcp/tools.ts` — `corosim_treat` accepts `rdn`; schema from registry.
-- `src/mcp/content.ts` — `PROMPTS.rdn_demo` compare script.
-- `src/library/presets.ts` — preset `resistant-htn-rdn`.
-- `scripts/eval/matrixSupport.ts` — states `rdn-0`, `rdn-1`, `resistant-htn-rdn`.
+### UI
 
-Tests:
-- `tests/renalDenervation.test.ts` — distinct from baroreflex gain 0; MAP/HRV deltas; set-point decay monotonic.
-- Extend `tests/specRegistry.test.ts` if needed.
-- `tests/mcpTreatRdn.test.ts` (slow) — treat then narrate.
+| File | Role |
+|------|------|
+| `rdn/index.html` | Page shell |
+| `src/rdn/page.ts` | Frame loop, input, bind engine |
+| `src/rdn/fluoro.ts` | Project graph + devices + coverage heat |
+| `src/rdn/panels.ts` | Monitor, device shelf, event feed, timers |
+| `src/rdn/rdn.css` | Styles |
+| `src/rdn/cases.ts` | Resistant HTN, fibromuscular dysplasia angle, etc. |
 
-### Phase C (procedure UI) — optional, after cath lab engine merges
+### Wiring
 
-Modify / create (only if `src/lab/` is on main):
-- `src/lab/access.ts` — renal artery segments off abdominal aorta.
-- `src/lab/renal.ts` — ablation actions, bilateral coverage fraction.
-- `src/lab/coupling.ts` — map coverage → `autonomic.renalDenervation`.
-- `src/cath/lab/cases.ts` or new `hypertension/lab/` page — one teaching case.
-- Tests: `tests/labRenal.test.ts`, `tests/labRenalCoupling.test.ts`.
+| File | Change |
+|------|--------|
+| `vite.config.ts` | Register `rdn` entry |
+| `src/home.ts` or library | Optional link card to RDN lab |
+| `tests/rdn*.test.ts` | Engine, ablation, real-time tick, isolation |
+| `docs/RDN_SIMULATOR.md` | Clinician checklist, what is `[assumed]` |
 
----
-
-## Phase A: Autonomic physics
-
-### Task 1: Config and types
-
-**Files:** `src/config/renalDenervation.ts`, `src/physics/autonomic.ts` (`AutonomicControls`)
-
-- [ ] **Step 1:** Write failing tests: at `renalDenervation: 1`, resting MAP (seed 1, 180 s) is below baseline by ≥6 mmHg; at `baroreflexGain: 0`, vasopressor 0.8 **increases** HR vs baseline+vasopressor (reflex abolished), while at `renalDenervation: 1` HR still **decreases** vs baseline+vasopressor.
-- [ ] **Step 2:** Add `renalDenervation: number` to `AutonomicControls` (default 0). In `tone()` / `step()`, scale sympathetic targets: `symTarget` and vascular branch use `(1 − RDN.efferentMax · clamp(fraction,0,1))` on the **baro and noise terms**, and lower effective `restSympathetic` by `(1 − RDN.restingMax · fraction)`.
-- [ ] **Step 3:** Document in `docs/RENAL_DENERVATION.md` with equations copied from comments.
-- [ ] **Step 4:** `npx vitest run tests/renalDenervation.test.ts && npm run typecheck`.
-
-### Task 2: Chronic set-point decay
-
-**Files:** `src/sim/simulation.ts`, `src/config/renalDenervation.ts`
-
-- [ ] **Step 1:** Failing test: patient with `setPointShift: 18`, `renalDenervation` stepped to 1 at t=0; MAP at 30 s > MAP at 600 s; `setPointShift` in exported state drifts toward `18 − RDN.setPointDrop·fraction` with τ `RDN.setPointTauMin` clinical minutes.
-- [ ] **Step 2:** Implement decay in simulation clock (clinical minutes), not in `Autonomic.step` dt alone, so pause and run behave.
-- [ ] **Step 3:** Commit.
-
-### Task 3: Registry and playground
-
-**Files:** `src/sim/registry.ts`, `src/panels/advancedControls.ts`, `tests/specRegistry.test.ts`
-
-- [ ] Add field with description distinguishing from `baroreflexGain`.
-- [ ] Slider 0..1, step 0.05.
-- [ ] Regenerate or update MCP schema exports if the repo script requires it (`npm run export-tools` or documented equivalent).
+**Explicitly out of scope for v1:** MCP tools, `Simulation` coupling, 3D mesh, hemodynamic waveforms, ECG.
 
 ---
 
-## Phase B: Treat, teach, evaluate
+## Real-time loop (page)
 
-### Task 4: `corosim_treat` rdn
+```
+onFrame(ts):
+  dt = min(ts - lastTs, 100)
+  if (!paused && xrayOn) engine.tick(dt)
+  fluoro.draw(engine.state())
+  panels.sync(engine.state(), engine.eventsSinceLastFrame())
+```
 
-**Files:** `src/sim/simulation.ts`, `src/mcp/tools.ts`, `tests/mcpTreatRdn.test.ts`
+`tick` responsibilities:
 
-- [ ] **Step 1:** `treat("rdn")` sets `renalDenervation` to 1 (bilateral complete); idempotent message if already 1.
-- [ ] **Step 2:** Narration: "Renal sympathetic denervation was performed; over the next days central sympathetic drive and vascular set point should fall."
-- [ ] **Step 3:** MCP tool schema and slow test.
-
-### Task 5: Presets and MCP prompt
-
-**Files:** `src/library/presets.ts`, `src/mcp/content.ts`
-
-- [ ] Preset `resistant-htn`: HTN drugs + shift + no coronaries.
-- [ ] `PROMPTS.rdn_demo`: compare (1) resistant HTN, (2) after `corosim_treat` rdn + `corosim_run` 300 s, (3) baroreflex gain 0 for contrast; one learner question.
-
-### Task 6: Eval matrix
-
-**Files:** `scripts/eval/matrixSupport.ts`, optional `scripts/eval/spec/resistant-htn.csv` (owner fills expectations)
-
-- [ ] States for observe/check pipeline; document in `docs/EVALUATION.md` one row.
+- Advance `procedureTimeMs`, `fluoroMs` if C-arm live.
+- Decay contrast per segment.
+- If `energyOn`, integrate dwell at current `tipSeg`/`tipMm`; update impedance or US sector progress; merge into `coverage`.
+- Resolve spasm recovery tau in real seconds.
+- Emit events on thresholds (overlap gap, temperature cap, completion).
 
 ---
 
-## Phase C: Procedure lab (optional)
+## Actions (initial set)
 
-**Depends on:** cath lab plan Tasks 1–8 merged (`src/lab/engine.ts`, access graph).
+| Action | Effect |
+|--------|--------|
+| `access` | femoral-R/L or radial-R/L |
+| `sheath` | French size |
+| `select` | guide / wire / ablation catheter |
+| `advance` / `torque` | mm, degrees (branch entry rules) |
+| `inject` | aorta or renal side; ml → contrast field |
+| `carm` | rotation, angulation (projection for fluoro) |
+| `xray` | on/off |
+| `energy` | on/off (modality-specific) |
+| `spasmRx` | nitroglycerin dose (from shelf) |
+| `close` | access closure; ends case |
 
-### Task 7: Renal access graph
+---
 
-**Files:** `src/lab/access.ts`, `src/lab/renal.ts`, `tests/labRenal.test.ts`
+## Phase 0 — Contract
 
-- [ ] Segments: `AO_ABD`, `RENAL_L_MAIN`, `RENAL_L_BRANCH*`, `RENAL_R_*`.
-- [ ] Actions: `advance`, `ablating` (dwell time), `withdraw`.
-- [ ] Coverage fraction 0..1 per kidney; bilateral average → `renalDenervation`.
+### Task 0: Types and stub
 
-### Task 8: Coupling and case
+**Files:** `src/rdn/types.ts`, `src/rdn/stub.ts`, `tests/rdnStub.test.ts`
 
-**Files:** `src/lab/coupling.ts`, case JSON, UI link from Simulator Management or Library.
+- [ ] `RdnEngineLike`: `state()`, `graph()`, `apply(Action)`, `tick(dtMs)`, `replay`, `reset`
+- [ ] Stub script: access → renal L → ablate → renal R → close
+- [ ] Tests: stub advances tip; `tick` increases `procedureTimeMs`
 
-- [ ] One scripted case: access, treat both arteries, debrief MAP at 30 days simulated (`corosim_run`).
-- [ ] Complication draw: dissection → focal `resistance` bump `[assumed]`.
+---
+
+## Phase 1 — Graph and devices
+
+### Task 1: `RdnGraph`
+
+**Files:** `src/rdn/graph.ts`, `tests/rdnGraph.test.ts`
+
+- [ ] Segments: `CFA`, `EIA`, `AO_INFRA`, `AO_SUPRA`, `RENAL_L`, `RENAL_L_1..3`, mirror R
+- [ ] Ostia positions, diameters 4–7 mm taper, branch takeoff angles
+- [ ] Variant: tortuous renal, early bifurcation (case hooks)
+
+### Task 2: Route and advance
+
+**Files:** `src/rdn/route.ts`, `src/rdn/engine.ts` (partial), `tests/rdnRoute.test.ts`
+
+- [ ] Wire + guide + ablation catheter lengths; support decay with curvature
+- [ ] Branch selection: wire bend + torque → probability into segmental branch
+
+---
+
+## Phase 2 — Real-time ablation and contrast
+
+### Task 3: Contrast
+
+**Files:** `src/rdn/contrast.ts`, tests
+
+- [ ] Inject raises segment opacity array; exponential decay in `tick`
+- [ ] Selective renal injection requires wire past ostium
+
+### Task 4: Ablation
+
+**Files:** `src/rdn/ablation.ts`, `src/config/rdn.ts`, `tests/rdnAblation.test.ts`
+
+- [ ] RF: dwell 8–12 s `[assumed]` per site; min spacing along artery; impedance curve
+- [ ] US: sector buttons as actions `sector {0..3}`; circumferential coverage
+- [ ] `coverage` merge with max; gaps penalized in score
+- [ ] Real-time tests use fake `tick(100)` loops, not `Simulation`
+
+### Task 5: Complications
+
+**Files:** `src/rdn/complications.ts`, tests
+
+- [ ] Spasm on wire manipulation; NTG relaxes over 5–15 s real time
+- [ ] Dissection risk if oversized device or excessive push
+- [ ] Non-target: energy with tip in aorta/iliac → event + score penalty
+
+---
+
+## Phase 3 — Engine completion
+
+### Task 6: `RdnEngine` reducer
+
+**Files:** `src/rdn/engine.ts`, `tests/rdnEngine.test.ts`
+
+- [ ] Full action set; seeded RNG; event log
+- [ ] Bilateral completion flag when L/R coverage thresholds met
+
+### Task 7: Stub physiology and score
+
+**Files:** `src/rdn/physiology.ts`, `src/rdn/score.ts`, `src/rdn/coverage.ts`, tests
+
+- [ ] MAP debrief: baseline 165 → minus up to 12 mmHg at 100 % patterned coverage `[assumed]`
+- [ ] Rubric: access, anticoagulation (if modeled), selective angio, spacing, bilateral symmetry, complications, fluoro time
+
+---
+
+## Phase 4 — UI
+
+### Task 8: Fluoroscopy
+
+**Files:** `src/rdn/fluoro.ts`, `tests/rdnFluoro.test.ts` (projection math only)
+
+- [ ] AP and LAO/RAO projections; devices as lines; coverage as thin heat along centerline
+- [ ] Caption: Figure 1. Renal angiography (simulated).
+
+### Task 9: Page and panels
+
+**Files:** `rdn/index.html`, `src/rdn/page.ts`, `src/rdn/panels.ts`, `src/rdn/rdn.css`, `vite.config.ts`
+
+- [ ] Dominant fluoro; monitor strip (HR, MAP stub, SpO2 placeholder); fluoro timer
+- [ ] Device shelf: guide, wire, RF vs US catheter
+- [ ] Energy button hold-to-treat or toggle with dwell feedback bar
+- [ ] Debrief modal on `close` with score + coverage maps
+
+### Task 10: Cases
+
+**Files:** `src/rdn/cases.ts`, one scripted test `tests/rdnCaseResistantHtn.test.ts`
+
+- [ ] Resistant hypertension: straightforward anatomy; teach bilateral pattern
+- [ ] Optional: tortuous renal — harder wire support
+
+---
+
+## Phase 5 — Docs and polish
+
+### Task 11: `docs/RDN_SIMULATOR.md`
+
+- [ ] Checklist of `[assumed]` constants
+- [ ] Explicit "not connected to CoroSim hemodynamics"
+
+### Task 12: Isolation test
+
+**Files:** `tests/rdnIsolation.test.ts`
+
+- [ ] Grep or static import guard: no `src/sim/simulation` from `src/rdn/*`
 
 ---
 
 ## Done when
 
-| Phase | Criterion |
-|---|---|
-| A | Tests green; learner can contrast RDN vs `baroreflexGain 0` on playground |
-| B | MCP treat + preset + eval states; `docs/RENAL_DENERVATION.md` on checklist |
-| C | Optional: procedure replay sets same `renalDenervation` as slider at 1.0 |
-
-## Open decisions (confirm before Task 2 tuning)
-
-| # | Question | Default |
-|---|---|---|
-| D1 | Single slider vs per-kidney 0..1 | Single bilateral scalar for Phase A–B; per-kidney only in Phase C |
-| D2 | Set `renalDenervation` only via treat vs adjustable slider | Both: slider for experiments, treat for case narrative |
-| D3 | Interaction with beta blocker | Multiplicative on cardiac sympathetic effect only (same as today); RDN does not add extra beta block |
-| D4 | Page for Phase C | Link from Library case, not a third top-level product tab, until content justifies it |
+| Criterion | |
+|-----------|---|
+| Learner completes bilateral RDN in real time with dwell and contrast | |
+| Debrief shows coverage and stub MAP change; no CoroSim URL params | |
+| `npm run build` includes `/rdn/` | |
+| All `tests/rdn*.test.ts` pass | |
 
 ---
 
-## Task prompt snippet (for Cursor)
+## Open decisions
 
-Paste for each task: the task section above, plus: "Read `CLAUDE.md`, `src/physics/autonomic.ts`, and `docs/RENAL_DENERVATION.md`. Write failing tests first. Do not edit files outside this task's file list. Run verification and report output."
+| # | Question | Default |
+|---|----------|---------|
+| D1 | RF hold vs click-to-apply dwell | Hold-to-treat (teaches continuous contact) |
+| D2 | Anticoagulation / ACT | Omit in v1; note on checklist |
+| D3 | Share `src/lab/route.ts` vs duplicate | Duplicate in `src/rdn/route.ts` for isolation; refactor later if both stabilize |
+| D4 | Ultrasound in v1 | RF only for MVP; US behind `modality` flag in Task 4 |
+
+---
+
+## Task prompt (Cursor)
+
+Paste the task section plus: "Read `CLAUDE.md`, `DESIGN.md`, and `src/rdn/types.ts`. This is **not** the CoroSim hemodynamic simulator: do not import `Simulation` or change `src/sim/*`. Write failing tests first. Report `vitest` and `typecheck` output."
