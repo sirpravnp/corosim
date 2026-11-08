@@ -108,6 +108,14 @@
         <ul class="c-log" id="c_debrief"></ul>
         <div class="row" style="margin-top:0"><button id="c_again" class="primary">Back to the cases</button></div>
       </div>
+      <div class="c-orders" id="c_orders" hidden>
+        <h3>Orders</h3>
+        <div class="row"><button id="o_menu" aria-expanded="false" aria-controls="o_list">Order</button><button id="o_skip">Skip ahead</button></div>
+        <p class="note o-note" id="o_note" role="status"></p>
+        <div id="o_list" hidden></div>
+        <h3 id="o_pendhead" hidden>Pending</h3>
+        <ul class="c-log" id="o_pending"></ul>
+      </div>
       <div class="row c-live"><button id="c_quit">Leave the case</button></div>
     </section>
 

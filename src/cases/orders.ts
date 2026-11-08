@@ -22,7 +22,7 @@ const num = (...xs: number[]) => xs.every(Number.isFinite);
 const round = (x: number, d = 0) => x.toFixed(d);
 
 const monitor = (id: string, label: string, read: (n: PatientNow) => Reading): OrderItem => ({ id, label, group: "monitor", delayS: 0, read });
-const panel = (id: string, label: string, delayS = 0): OrderItem => ({ id, label, group: "panel", delayS, panel: id });
+const panel = (id: string, label: string, delayS = 0, workspaceId = id): OrderItem => ({ id, label, group: "panel", delayS, panel: workspaceId });
 
 export const CATALOG: readonly OrderItem[] = [
   monitor("hr", "Heart rate", (n) => (num(n.hr) ? { text: `${round(n.hr)} /min` } : NA)),
@@ -34,7 +34,7 @@ export const CATALOG: readonly OrderItem[] = [
   panel("oxygen", "Oxygen delivery"),
   panel("jvp", "Neck veins"),
   panel("rhc", "Right heart catheterization"),
-  panel("lhc", "Left heart catheterization"),
+  panel("lhc", "Left heart catheterization", 0, "left-heart-cath"), // the workspace panel is "left-heart-cath"
   panel("loops", "Pressure-volume loops"),
   panel("traces", "Waveform traces"),
   panel("ischemia", "Ischemia map"),
