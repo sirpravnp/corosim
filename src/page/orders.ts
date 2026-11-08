@@ -66,7 +66,7 @@ function startSkip(target: string | null) {
   if (r.open) { note = "Answer the checkpoint first."; ordersUi(); return; }
   const p = probe(), ok = canSkip(p, (q) => r.isStable(q));
   if (!ok.ok) { note = ok.why; ordersUi(); return; }
-  if (r.harmActive(p)) { note = "Time skip is unavailable while a harm is active."; ordersUi(); return; }
+  if (r.harmActive(p)) { note = "Time skip is unavailable right now."; ordersUi(); return; }
   if (playClock.paused) { note = SKIP_PAUSED_NOTE; ordersUi(); return; }
   if (skip.target === null && target && !orders.book.pending.some((x) => x.id === target)) return;
   if (target) { const due = orders.book.pending.find((x) => x.id === target)?.readyAt; if (due !== undefined && due > limitS()) { note = TOO_LATE_NOTE; ordersUi(); return; } }
@@ -99,7 +99,7 @@ export function ordersStep(r: CaseRunner, p: Probe, _tick: Tick) {
   if (hit) why = `Stopped: ${label(hit.id)} result is back.`;
   else if (K.phase !== "run" || r.over) why = "";
   else if (skip.prev && (why = skipStop(skip.prev, p, { promptOpen: r.open !== null, harmActive: r.harmActive(p), spo2: now.spo2 })) === null) {
-    if (!r.isStable(p)) why = "Stopped: the patient is unstable.";
+    if (!r.isStable(p)) why = "Stopped: the patient changed.";
     else if (skip.target && !orders.book.pending.some((x) => x.id === skip.target)) why = "";
     else if (!skip.target && r.t - skip.start >= SKIP_CAP_S) why = `Skipped ${clock(SKIP_CAP_S)}.`;
   }
