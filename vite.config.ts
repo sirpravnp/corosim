@@ -26,6 +26,6 @@ export default defineConfig({
   plugins: [casePage()],
   // No module-preload polyfill: with two pages sharing style.css it would become a third chunk both bundles import,
   // which scripts/prepare-publish.mjs (one script beside one page) could not carry.
-  build: { modulePreload: { polyfill: false }, rollupOptions: { input: { home: "index.html", sim: "sim/index.html", ekg: "ekg/index.html", cath: "cath/index.html", cathlab: "cath/lab/index.html", structural: "structural/index.html", echo: "echo/index.html", cases: "cases/index.html", simbook: "simbook/index.html" } } },
+  build: { modulePreload: { polyfill: false }, rollupOptions: { input: { home: "index.html", sim: "sim/index.html", ekg: "ekg/index.html", cath: "cath/index.html", cathlab: "cath/lab/index.html", cathlabplay: "cath/lab/play/index.html", structural: "structural/index.html", echo: "echo/index.html", cases: "cases/index.html", simbook: "simbook/index.html" } } },
   test: { include: ["tests/**/*.test.ts"] },
 });

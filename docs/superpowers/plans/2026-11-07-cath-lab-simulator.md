@@ -52,7 +52,7 @@ Create (pure engine, no DOM):
 - `src/lab/complications.ts`: risk functions and seeded draws.
 - `src/lab/coupling.ts`: `applyToSim`, `guideTrace`, contrast and heparin effects.
 - `src/lab/score.ts`: scoring and debrief.
-- `src/config/devices.ts`, `src/config/plaque.ts`, `src/config/lab.ts`: constants and catalog.
+- `src/config/labDevices.ts` (PCI catalog; Impella/ECMO stay in `devices.ts`), `src/config/plaque.ts`, `src/config/lab.ts`: constants and catalog.
 
 Create (UI):
 - `cath/lab/index.html`, `src/cath/lab/page.ts`, `src/cath/lab/fluoro.ts`, `src/cath/lab/panels.ts`, `src/cath/lab/lab.css`, `src/cath/lab/cases.ts`.
@@ -246,7 +246,7 @@ git commit -m "Lab: plaque model with dilation, stent and projection response"
 ### Task 4: Device catalog [Cursor]
 
 **Files:**
-- Create: `src/config/devices.ts`
+- Create: `src/config/labDevices.ts`
 - Test: `tests/labDevices.test.ts`
 
 **Interfaces:**
@@ -263,7 +263,7 @@ git commit -m "Lab: plaque model with dilation, stent and projection response"
 - [ ] **Step 3: Implement** the catalog as typed data and `balloonDiameter` as `nominalMm + slopeMmPerAtm * (atm - nominalAtm)`.
 - [ ] **Step 4: Run to verify they pass,** then commit.
 ```bash
-git add src/config/devices.ts tests/labDevices.test.ts
+git add src/config/labDevices.ts tests/labDevices.test.ts
 git commit -m "Lab: device catalog"
 ```
 

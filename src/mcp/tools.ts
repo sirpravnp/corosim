@@ -22,7 +22,13 @@ import type { ArrestDrug } from "../sim/arrest";
  * Tool definitions in one place, as plain JSON Schema. The MCP server, the HTTP/OpenAPI adapter and the
  * OpenAI/Anthropic function-calling exports are all generated from this list, so they cannot drift apart.
  */
+import { LabEngine } from "../lab/engine";
+import { LAB_CASES, caseById } from "../cath/lab/cases";
+import { scoreProcedure } from "../lab/score";
+import type { Action } from "../lab/types";
+
 export interface ToolContext { sim: Simulation; appUrl: string }
+let labSession: { engine: LabEngine; caseId: string } | null = null;
 export interface ToolDef {
   name: string; title: string; description: string;
   inputSchema: Record<string, unknown>;
@@ -434,6 +440,99 @@ export const TOOLS: ToolDef[] = [
         ...(!custom && simRhythmId(p.id) ? { applyToPatient: { offer: `To see what ${p.name} does to the patient's blood pressure and output, apply it to the patient.`, tool: "corosim_adjust", args: { patch: { patient: { rhythm: simRhythmId(p.id) } } } } } : {}),
         link: custom ? `${root}/ekg/#c=${encodeCustom(custom)}` : `${root}/ekg/#p=${p.id}`,
       };
+    },
+  },
+  {
+    name: "corosim_lab_start",
+    title: "Start a cath-lab case",
+    readOnly: false,
+    description: `Start an interactive PCI teaching case on the current patient. Returns the case title and initial hemodynamics. ${NOT_CLINICAL}`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        caseId: { type: "string", description: "Lab case id (see LAB_CASES)." },
+        seed: { type: "number", description: "Deterministic procedure seed." },
+      },
+    },
+    run(ctx, a) {
+      const c = caseById(typeof a.caseId === "string" ? a.caseId : "") ?? LAB_CASES[0];
+      const seed = typeof a.seed === "number" ? a.seed : 11;
+      ctx.sim.reset(c.scenario);
+      ctx.sim.warmup(40);
+      labSession = {
+        engine: new LabEngine(ctx.sim, { seed, access: c.access, plaques: c.plaques, forced: c.forced }),
+        caseId: c.id,
+      };
+      return { caseId: c.id, title: c.title, blurb: c.blurb, goals: c.goals, egfr: c.egfr };
+    },
+  },
+  {
+    name: "corosim_lab_act",
+    title: "Apply cath-lab actions",
+    readOnly: false,
+    description: `Run one or more cath-lab actions (access, devices, inflate, deploy). Returns events and a short state summary. ${NOT_CLINICAL}`,
+    inputSchema: {
+      type: "object",
+      properties: { actions: { type: "array", items: { type: "object" }, description: "Lab Action objects." } },
+      required: ["actions"],
+    },
+    run(_ctx, a) {
+      if (!labSession) throw new Error("Start a case with corosim_lab_start first.");
+      const acts = (a.actions as Action[]) ?? [];
+      const events = acts.flatMap((x) => labSession!.engine.apply(x));
+      const st = labSession.engine.state();
+      return {
+        events,
+        state: {
+          access: st.access, act: st.act, guide: st.guide, wire: st.wire, balloon: st.balloon, stent: st.stent,
+          contrastMl: st.contrastMl, fluoroSeconds: st.fluoroSeconds,
+        },
+      };
+    },
+  },
+  {
+    name: "corosim_lab_state",
+    title: "Cath-lab state",
+    readOnly: true,
+    description: `Devices, plaques, hemodynamics summary for the active lab case. ${NOT_CLINICAL}`,
+    inputSchema: { type: "object", properties: {} },
+    run(ctx) {
+      if (!labSession) throw new Error("No active lab case.");
+      const st = labSession.engine.state();
+      return {
+        caseId: labSession.caseId,
+        devices: st,
+        plaques: labSession.engine.plaques(),
+        map: ctx.sim.state().rolling10s.map,
+        hr: ctx.sim.state().rolling10s.hr,
+      };
+    },
+  },
+  {
+    name: "corosim_lab_score",
+    title: "Score the cath-lab case",
+    readOnly: true,
+    description: `Scoring rubric and debrief for the finished procedure. ${NOT_CLINICAL}`,
+    inputSchema: { type: "object", properties: {} },
+    run() {
+      if (!labSession) throw new Error("No active lab case.");
+      const c = caseById(labSession.caseId)!;
+      return scoreProcedure(labSession.engine, c);
+    },
+  },
+  {
+    name: "corosim_lab_hint",
+    title: "Graded cath-lab hint",
+    readOnly: true,
+    description: `Level 1 is conceptual only; level 3 names specific devices from the recommended plan. ${NOT_CLINICAL}`,
+    inputSchema: { type: "object", properties: { level: { type: "number", enum: [1, 2, 3] } }, required: ["level"] },
+    run(_ctx, a) {
+      if (!labSession) throw new Error("No active lab case.");
+      const c = caseById(labSession.caseId)!;
+      const level = a.level as 1 | 2 | 3;
+      if (level === 1) return { hint: "Establish access, anticoagulate, then engage the coronary ostium with an appropriate guide before wiring." };
+      if (level === 2) return { hint: `Use a ${c.recommended.guide.startsWith("guide-j") ? "judkins-style" : "supportive"} guide and cross the lesion with a workhorse wire before PCI.` };
+      return { hint: `Suggested devices: guide ${c.recommended.guide}, wire ${c.recommended.wire}, balloon ${c.recommended.balloon ?? "per lesion"}, stent ${c.recommended.stent ?? "per vessel"}.` };
     },
   },
 ];
