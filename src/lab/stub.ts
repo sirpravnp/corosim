@@ -93,7 +93,7 @@ export class StubLabEngine implements LabEngineLike {
       case "drug": if (a.id === "heparin") s.act = Math.min(300, s.act + a.dose * 0.05); out.push(this.ev("drug", `Gave ${a.id}.`)); break;
       case "select":
         if (a.slot === "guide") {
-          s.guide = { id: a.id, engaged: "LM", quality: 0.9, tipSeg: ACCESS, tipMm: 0 };
+          s.guide = { id: a.id, engaged: "LM", quality: 0.9, tipSeg: "LM", tipMm: 0 };
           out.push(this.ev("guide", `Guide ${a.id} engaged the left main.`));
         }
         else if (a.slot === "wire") { s.wire = { id: a.id, tipSeg: ACCESS, tipMm: 0, bendDeg: 0, rotDeg: 0, route: ROUTE }; this.pos = 0; out.push(this.ev("wire", `Wire ${a.id} loaded.`)); }

@@ -10,13 +10,14 @@ export interface AngioOptions {
   labels: boolean;
   heartRate: number; // bpm, drives the small cardiac motion of the picture
   catheter?: boolean; // draw the stand-in catheter; the lab turns it off because it draws the real guide
+  cam?: { centre: V3; spanMm: number }; // the lab's Follow and Overview views: aim and zoom the picture; unset frames the heart
 }
 
 /** Where the C-arm puts the picture at time `now`: scale, origin (with the small cardiac motion) and a patient-frame to canvas-pixel mapper. Devices draw through the same mapper so they sit on the vessels. */
 export function frameOf(centre: V3, o: AngioOptions, now: number, W: number, H: number) {
   const ry = (o.rot * Math.PI) / 180, rx = (o.tilt * Math.PI) / 180;
   const beat = ((now / 1000) * (o.heartRate / 60)) % 1, dx = Math.sin(beat * 6.283) * 1.4, dy = Math.cos(beat * 6.283) * 2.2;
-  const sc = W / 135, cm = project(centre, ry, rx), cx0 = W / 2 + dx - cm[0] * sc, cy0 = H / 2 + dy + cm[1] * sc;
+  const c0 = o.cam?.centre ?? centre, sc = W / (o.cam?.spanMm ?? 135), cm = project(c0, ry, rx), cx0 = W / 2 + dx - cm[0] * sc, cy0 = H / 2 + dy + cm[1] * sc;
   const toScreen = (p: V3): [number, number] => { const q = project(p, ry, rx); return [cx0 + q[0] * sc, cy0 - q[1] * sc]; };
   return { sc, cx0, cy0, toScreen };
 }

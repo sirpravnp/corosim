@@ -26,7 +26,14 @@
       <canvas id="ang" width="640" height="640" aria-label="Fluoroscopy and angiogram"></canvas>
       <canvas id="dev" class="overlay" width="640" height="640" aria-hidden="true"></canvas>
     </div>
-    <p class="caption"><b>Figure 1.</b> Live fluoroscopy. Contrast fills the vessels at their solved flow; the guide, wire, balloon and stent are drawn as dark radiopaque devices on the same view.</p>
+    <p class="caption"><b>Figure 1.</b> Live fluoroscopy. Contrast fills the coronaries at their solved flow; the guide, wire, balloon and stent are drawn as dark radiopaque devices on the same view. In Follow and Overview a faint roadmap of the access route is drawn.</p>
+    <div class="carm cams" role="group" aria-label="Camera">
+      <span>View</span>
+      <button type="button" data-cam="heart" aria-pressed="true">Heart</button>
+      <button type="button" data-cam="follow" aria-pressed="false">Follow device</button>
+      <button type="button" data-cam="overview" aria-pressed="false">Overview</button>
+      <button type="button" id="skip">Skip to coronaries</button>
+    </div>
     <div class="carm">
       <label><span>LAO / RAO</span><input id="rot" type="range" min="-60" max="60" value="30"><output id="rotv"></output></label>
       <label><span>Cranial / caudal</span><input id="tilt" type="range" min="-45" max="45" value="20"><output id="tiltv"></output></label>

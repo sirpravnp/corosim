@@ -1,6 +1,8 @@
 import type { V3 } from "../../anatomy/curve";
 import type { Balloon, Device, LabState, Plaque, Stent, VGraph } from "../../lab/types";
 import { AngioOptions, frameOf } from "../angio";
+import { routeTo } from "../../lab/route";
+import { zoneOf } from "../../lab/camera";
 
 /** Where each device is, as patient-frame polylines (mm). Pure, so the tests can check it without a canvas. */
 export interface DeviceGeometry {
@@ -44,14 +46,19 @@ export function deviceGeometry(st: Readonly<LabState>, g: VGraph, plaques: reado
   const out: DeviceGeometry = { guide: [], wire: [], wireTip: null, markers: [] };
   const w = st.wire;
   if (st.guide && st.access) {
-    // the guide runs to the ostium it is engaged in, or to the aortic root when it is not engaged
-    const ostium = st.guide.engaged ? g.ostium[st.guide.engaged].segId : null;
-    const route = w?.route ?? [];
-    const ids = route.length ? route : Object.values(g.byId).filter((s) => !s.parent).slice(0, 1).map((s) => s.id);
-    const stop = ostium ? ids.indexOf(ostium) : -1;
-    const upTo = stop >= 0 ? ids.slice(0, stop + 1) : ids;
-    const last = upTo[upTo.length - 1];
-    out.guide = last ? pathTo(g, upTo, last, ostium ? 0 : g.byId[last].length) : [];
+    // the guide runs from the puncture along the access route to its own tip: the aortic root until it is engaged, then the ostium
+    const target = st.guide.engaged === "RCA" ? "RCA" : "LM";
+    let route: readonly string[] = w?.route?.length ? w.route : [];
+    if (!route.includes(st.guide.tipSeg)) { try { route = routeTo(g, st.access, target); } catch { route = []; } }
+    if (route.includes(st.guide.tipSeg)) out.guide = pathTo(g, route, st.guide.tipSeg, st.guide.tipMm);
+    else {
+      const ostium = st.guide.engaged ? g.ostium[st.guide.engaged].segId : null;
+      const ids = route.length ? route : Object.values(g.byId).filter((s) => !s.parent).slice(0, 1).map((s) => s.id);
+      const stop = ostium ? ids.indexOf(ostium) : -1;
+      const upTo = stop >= 0 ? ids.slice(0, stop + 1) : ids;
+      const last = upTo[upTo.length - 1];
+      out.guide = last ? pathTo(g, upTo, last, ostium ? 0 : g.byId[last].length) : [];
+    }
   }
   if (w) {
     out.wire = pathTo(g, w.route, w.tipSeg, w.tipMm);
@@ -87,7 +94,7 @@ export class FluoroView {
   private ctx: CanvasRenderingContext2D;
   constructor(private canvas: HTMLCanvasElement) { this.ctx = canvas.getContext("2d")!; }
 
-  draw(now: number, centre: V3, opts: AngioOptions, geom: DeviceGeometry, st: Readonly<LabState>) {
+  draw(now: number, centre: V3, opts: AngioOptions, geom: DeviceGeometry, st: Readonly<LabState>, roadmap: VGraph | null = null) {
     const { width: W, height: H } = this.canvas, C = this.ctx;
     C.clearRect(0, 0, W, H);
     const F = frameOf(centre, opts, now, W, H), sc = F.sc, S = (p: V3) => F.toScreen(p);
@@ -96,6 +103,10 @@ export class FluoroView {
       C.beginPath(); pts.forEach((p, i) => { const [x, y] = S(p); if (i) C.lineTo(x, y); else C.moveTo(x, y); });
       C.lineWidth = width; C.strokeStyle = style; C.lineCap = "round"; C.lineJoin = "round"; C.stroke();
     };
+    if (roadmap) for (const seg of roadmap.segs) {
+      if (zoneOf(seg.id, 0) === "coronary") continue; // the coronaries are the angiogram's
+      for (let i = 1; i < seg.samples.length; i++) line([seg.samples[i - 1], seg.samples[i]], Math.max(2, seg.diameterMm[i] * sc), "rgba(12,12,14,.26)");
+    }
     line(geom.guide, Math.max(4, 1.8 * sc * 0.9), "rgba(18,18,20,.78)");
     line(geom.guide, 1.2, "rgba(210,210,205,.35)"); // the lumen of the catheter reads lighter down its middle
     line(geom.wire, 1.7, "rgba(0,0,0,.92)");

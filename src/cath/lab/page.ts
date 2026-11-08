@@ -6,7 +6,8 @@ import { Simulation } from "../../sim/simulation";
 import { angioModel, wireModel, AngioModel } from "../../sim/cath";
 import { AngioView } from "../angio";
 import { FluoroView, deviceGeometry, DeviceGeometry } from "./fluoro";
-import { createEngine, catalog, PHYSICS_LIVE } from "./engine";
+import { createEngine, catalog, PHYSICS_LIVE, CASE, SCENARIO } from "./engine";
+import { camTarget, easeCam, Cam, CameraMode } from "./camera";
 import { deviceShelf, monitorModel, eventFeed, procedureSummary, nextStep, Slot, Vitals } from "./panels";
 import type { Action, LabEvent } from "../../lab/types";
 
@@ -19,7 +20,6 @@ const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt
 
 mountShell({ page: "cath", root: "../../" }).ai.start();
 
-const SCENARIO = { seed: 1, lesions: [{ artery: "LAD", stenosis: 0.75, position: 0.5 }] };
 const sim = new Simulation(SCENARIO);
 sim.warmup(20);
 const engine = createEngine(sim);
@@ -30,6 +30,24 @@ let model: AngioModel, geom: DeviceGeometry;
 const log: LabEvent[] = [];
 
 function remodel() { model = angioModel(sim); view.setModel(model); }
+
+// ---------------------------------------------------------------- camera: Heart (the angiographic frame), Follow (the leading device tip) or Overview (puncture to heart)
+let mode: CameraMode = "heart";
+let cam: Cam | null = null;
+function setMode(m: CameraMode) {
+  mode = m;
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-cam]")) b.setAttribute("aria-pressed", String(b.dataset.cam === m));
+}
+for (const b of document.querySelectorAll<HTMLButtonElement>("[data-cam]")) b.addEventListener("click", () => setMode(b.dataset.cam as CameraMode));
+/** Bring a fresh procedure straight to the coronaries: access, sheath, heparin, the guide, then the guide to the left main. */
+function skipToCoronaries() {
+  const st = engine.state();
+  if (!st.access) { act({ t: "access", site: "femoral-R" }); act({ t: "sheath", french: 6 }); act({ t: "drug", id: "heparin", dose: 6000 }); }
+  if (!engine.state().guide) act({ t: "select", slot: "guide", id: CASE.recommended.guide });
+  act({ t: "autoAdvance", to: "LM" }, true);
+  setMode("heart");
+}
+$("skip").addEventListener("click", skipToCoronaries);
 
 /** Run one action, keep its events, and redraw everything that depends on the result. */
 function act(a: Action, refreshVessels = false) {
@@ -79,6 +97,7 @@ function render() {
   const s = procedureSummary(st);
   $("summary").textContent = `Contrast ${s.contrastMl} mL. Fluoroscopy ${s.fluoroLabel}. Air kerma ${s.doseMGy} mGy.`;
   $("monitorNote").textContent = PHYSICS_LIVE ? "" : "Preview: the procedure engine is not connected yet, so vital signs and FFR stay at the baseline of the untreated patient.";
+  $("title").textContent = CASE.title;
   $<HTMLButtonElement>("doSheath").disabled = !st.access;
   const hb = ["doHeparin", "doNitro"]; for (const id of hb) $<HTMLButtonElement>(id).disabled = !st.access;
   const on = (id: string, v: boolean) => { $<HTMLButtonElement>(id).disabled = !v; };
@@ -139,8 +158,11 @@ remodel();
 render();
 const frame = (now: number) => {
   view.opts.heartRate = sim.state().rolling10s.hr ?? 70;
+  const want = camTarget(mode, engine.state(), engine.graph(), model.centre);
+  cam = cam ? easeCam(cam, want) : want;
+  view.opts.cam = cam;
   view.draw(now);
-  fluoro.draw(now, model.centre, view.opts, geom, engine.state());
+  fluoro.draw(now, model.centre, view.opts, geom, engine.state(), mode === "heart" ? null : engine.graph());
   requestAnimationFrame(frame);
 };
 requestAnimationFrame(frame);

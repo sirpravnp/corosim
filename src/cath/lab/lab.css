@@ -54,3 +54,9 @@ body.lab main.lab-main { display: grid; grid-template-columns: minmax(0, 1fr) 38
 .feed li.caution { color: var(--warn); } .feed li.bad { color: var(--bad); font-weight: 600; }
 .feed li time { font: 12px var(--font-data); color: var(--muted); margin-right: 8px; }
 .fine { margin: 8px 0 0; font-size: 12px; color: var(--muted); max-width: 110ch; }
+
+/* camera: a row of hairline buttons; the pressed one is the active view */
+.cams > span { color: var(--muted); font-weight: 600; }
+.cams button { padding: 4px 10px; border: 1px solid var(--rule); background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
+.cams button[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: var(--bg); }
+.cams #skip { margin-left: auto; }
