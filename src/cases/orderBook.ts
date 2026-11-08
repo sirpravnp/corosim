@@ -74,7 +74,7 @@ export function orderLines(book: OrderBook): string[] {
 
 /** The line a returned order adds to what is known about the patient. */
 export function returnedLine(r: Returned): string {
-  return `${itemById(r.id)?.label ?? r.id}: ${r.reading.text}${r.reading.estimate ? " (estimate)" : ""}`;
+  return `${itemById(r.id)?.label ?? r.id}:${r.reading.text.includes("\n") ? "\n" : " "}${r.reading.text}${r.reading.estimate ? " (estimate)" : ""}`;
 }
 
 /** Puts each returned result in the case log (through `note`), so it survives a redraw of the page. */

@@ -1,6 +1,7 @@
 import type { Cond, Harm, CaseDef, Checkpoint, Outcome, Probe } from "./engine";
 import { normalizePatient } from "../sim/patient";
 import { itemById } from "./orders";
+import { ANALYTES } from "../sim/labs";
 
 /**
  * A case as plain data, so it can be stored, edited in the builder and sent over the wire. It is a `CaseDef` whose conditions are written in a small
@@ -166,6 +167,10 @@ export function validateCase(s: CaseSpec): string[] {
   for (const [w, f] of usedFlags) if (!setFlags.has(f)) errs.push(`${w} depends on flag '${f}', which nothing sets.`);
   for (const m of s.musts ?? []) if (!setFlags.has(m.flag)) errs.push(`Required step '${m.flag}' is never set by any outcome.`);
   for (const m of s.monitor ?? []) need(itemById(m), `The monitor lists '${m}', which is not an orderable item.`);
+  for (const [k, x] of Object.entries(s.labs ?? {})) {
+    need((ANALYTES as readonly string[]).includes(k), `The labs name '${k}', which is not a lab value the simulator knows.`);
+    need(Number.isFinite(x), `The lab value for '${k}' must be a number.`);
+  }
   for (const x of s.stable ?? []) need(isCond(x), "A 'stable' condition is not valid.");
   for (const h of s.harms ?? []) { need(h.tag && h.label, "A harm needs a tag and a label."); for (const x of h.when ?? []) need(isCond(x), `Harm '${h.tag}': a condition is not valid.`); }
   return errs;

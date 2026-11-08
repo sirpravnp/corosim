@@ -1,11 +1,14 @@
 // The order catalog: everything a case monitor can show and everything the
 // learner can order. Pure and DOM-free; later tasks consume these names.
 import { BedsideInput } from "../sim/bedside";
+import { Analyte, estimateLabs, labLine, labsOverride, toLabsInput } from "../sim/labs";
 
 export interface PatientNow extends BedsideInput {
   hr: number; sbp: number; dbp: number; urineMlHr: number;
   lvIschemia: number; rvIschemia: number; rhythmLabel: string;
   tempC: number; respRate: number;
+  /** Optional: a snapshot without them reads as a baseline patient for the labs. */
+  co?: number; lvEf?: number; lowFlowMin?: number; caseMin?: number; ageY?: number;
 }
 export interface Reading { text: string; estimate?: boolean }
 export interface OrderItem {
@@ -29,6 +32,16 @@ export function stageVisible(monitor: readonly string[], ordered: Iterable<strin
 
 const panel = (id: string, label: string, delayS = 0, workspaceId = id): OrderItem => ({ id, label, group: "panel", delayS, panel: workspaceId });
 
+/** A lab panel: one line per analyte, flags as text. An estimate unless the case author set every value. */
+const lab = (id: string, label: string, delayS: number, analytes: Analyte[]): OrderItem => ({
+  id, label, group: "lab", delayS, // delays are teaching approximations [assumed]
+  read: (n) => {
+    const v = estimateLabs(toLabsInput(n), labsOverride.values);
+    const set = labsOverride.values ?? {};
+    return { text: analytes.map((a) => labLine(a, v[a])).join("\n"), estimate: !analytes.every((a) => Number.isFinite(set[a])) };
+  },
+});
+
 export const CATALOG: readonly OrderItem[] = [
   monitor("hr", "Heart rate", (n) => (num(n.hr) ? { text: `${round(n.hr)} /min` } : NA)),
   monitor("bp", "Blood pressure", (n) => (num(n.sbp, n.dbp) ? { text: `${round(n.sbp)}/${round(n.dbp)} mmHg` } : NA)),
@@ -50,6 +63,23 @@ export const CATALOG: readonly OrderItem[] = [
     id: "lactate", label: "Lactate", group: "lab", delayS: 600, // [assumed]
     read: (n) => (num(n.lactate) ? { text: `${round(n.lactate, 1)} mmol/L` } : NA),
   },
+  lab("bmp", "Basic metabolic panel", 900, ["na", "k", "cl", "hco3", "bun", "cr", "glu", "ca"]),
+  lab("renal", "Renal panel", 900, ["bun", "cr", "egfr"]),
+  lab("mg-phos", "Magnesium and phosphate", 900, ["mg", "phos"]),
+  lab("cbc", "Complete blood count", 900, ["hgb", "wbc", "plt"]),
+  lab("lft", "Liver panel", 1800, ["ast", "alt", "alp", "tbili", "alb"]),
+  lab("coags", "Coagulation (PT/INR, aPTT)", 1200, ["inr", "aptt"]),
+  lab("troponin", "Troponin", 1200, ["trop"]),
+  lab("bnp", "BNP and NT-proBNP", 1200, ["bnp", "ntprobnp"]),
+  lab("tsh", "TSH and free T4", 3600, ["tsh", "ft4"]),
+  lab("abg", "Arterial blood gas", 300, ["ph", "pco2", "po2", "hco3", "be"]),
+  lab("ddimer", "D-dimer", 1800, ["ddimer"]),
+  lab("lipase", "Lipase", 1800, ["lipase"]),
+  lab("procalcitonin", "Procalcitonin", 3600, ["pct"]),
+  lab("lipids", "Lipid panel", 3600, ["tchol", "ldl", "hdl", "tg"]),
+  lab("a1c", "Hemoglobin A1c", 3600, ["a1c"]),
+  lab("ua", "Urinalysis", 900, ["ua"]),
+  lab("tox", "Toxicology screen", 1800, ["tox"]),
   {
     id: "urine", label: "Urine output", group: "bedside", delayS: 0,
     read: (n) => (num(n.urineMlHr) ? { text: `${round(n.urineMlHr)} mL/h` } : NA),

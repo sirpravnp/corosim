@@ -175,7 +175,7 @@ button:disabled, button:disabled:hover { color: var(--muted); background: var(--
 #cases h3 { margin: 14px 0 4px; font: 600 12px/1.4 var(--font-ui); color: var(--muted); }
 .c-status { display: flex; justify-content: space-between; gap: 10px; font: 600 12px/1.4 var(--font-data); font-variant-numeric: tabular-nums; }
 .c-log { list-style: none; margin: 0; padding: 0; font-size: 13px; line-height: 1.45; }
-.c-log li { padding: 5px 0; border-top: 1px solid var(--rule-light); }
+.c-log li { padding: 5px 0; border-top: 1px solid var(--rule-light); white-space: pre-line; } /* a lab result is one line per analyte */
 .c-log li span { display: inline-block; min-width: 38px; margin-right: 8px; font: 600 11px/1.4 var(--font-data); color: var(--muted); }
 .c-log li.none { color: var(--muted); }
 #cases .c-orders button { border-radius: 2px; }

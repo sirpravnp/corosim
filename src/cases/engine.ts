@@ -97,6 +97,8 @@ export interface CaseDef {
   monitor?: string[];
   /** Body temperature in degrees C the monitor shows. Absent means 37.0. */
   tempC?: number;
+  /** Author-set lab values by analyte id (see `ANALYTES` in `src/sim/labs.ts`). Anything not set is derived from the patient. */
+  labs?: Record<string, number>;
 }
 
 export type Result = "success" | "fail" | "died" | "timeout";

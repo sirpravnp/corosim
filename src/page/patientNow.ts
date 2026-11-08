@@ -10,6 +10,14 @@ export interface PatientSource {
   lvIschemia: number; rvIschemia: number; congestion: number;
   arrest: PatientNow["arrest"]; rhythmLabel: string;
   respRateBase: number; tempOverrideC?: number;
+  co?: number; lvEf?: number; lowFlowMin?: number; caseMin?: number; ageY?: number;
+}
+
+/** Minutes the case has spent with MAP below 65 mmHg. The page feeds it each frame; reset on start and quit. */
+export const lowFlow = { min: 0 };
+export function resetLowFlow(): void { lowFlow.min = 0; }
+export function accrueLowFlow(dtS: number, map: number): void {
+  if (Number.isFinite(dtS) && dtS > 0 && Number.isFinite(map) && map < 65) lowFlow.min += dtS / 60;
 }
 
 const fin = (x: number | undefined, d: number) => (x !== undefined && Number.isFinite(x) ? x : d);
@@ -27,5 +35,6 @@ export function buildPatientNow(s: PatientSource): PatientNow {
     urineMlHr: fin(s.urineMlPerMin, 0) * 60,
     lvIschemia: fin(s.lvIschemia, 0), rvIschemia: fin(s.rvIschemia, 0), rhythmLabel: s.rhythmLabel,
     tempC: bodyTempC(inp), respRate: estimateRespRate(inp),
+    co: fin(s.co, NaN), lvEf: fin(s.lvEf, NaN), lowFlowMin: fin(s.lowFlowMin, 0), caseMin: fin(s.caseMin, 0), ageY: fin(s.ageY, 65),
   };
 }

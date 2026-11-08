@@ -6,7 +6,8 @@ import { compileCase } from "../cases/spec";
 import { builtinEntries, getPreview, playable } from "../library/api";
 import { CaseDef, CaseRunner, Debrief, Probe, Tick } from "../cases/engine";
 import { $, K, S, sim, T, inCases, on, ecg, rstate, circ, panelSource, pageVitals } from "./state";
-import { buildPatientNow } from "./patientNow";
+import { buildPatientNow, accrueLowFlow, resetLowFlow, lowFlow } from "./patientNow";
+import { setCaseLabs } from "../sim/labs";
 import { orderProbe, ordersBegin, ordersEnd, ordersStop, ordersStep, ordersUi, wireOrders, orders } from "./orders";
 import { rhythmLabel, setBedsideTemp } from "./readouts";
 import { bedsideOverride } from "../sim/bedside";
@@ -67,6 +68,7 @@ export function patientNow(): PatientNow {
     arrest: sim.dead ? "dead" : st.status,
     rhythmLabel: st.status === "arrest" ? ARREST_LABEL[st.rhythmClass] ?? st.rhythmClass : rhythmLabel(ecg.rhythm(), rstate),
     respRateBase: sim.autonomic?.controls.respRate ?? AUTONOMIC.respRate, tempOverrideC: bedsideOverride.tempOverrideC,
+    co: circ?.cardiacOutput, lvEf: circ?.ejectionFraction, lowFlowMin: lowFlow.min, caseMin: (K.runner?.t ?? 0) / 60,
   });
 }
 const ARREST_LABEL: Record<string, string> = { vf: "Ventricular fibrillation", pulselessVt: "Pulseless ventricular tachycardia", asystole: "Asystole", pea: "Pulseless electrical activity", perfusing: "Perfusing rhythm" };
@@ -121,6 +123,7 @@ export function caseStep(dt: number) {
     opening = false;
     return;
   }
+  accrueLowFlow(dt, sim.map);
   const p = probe(), t = r.tick(p, dt);
   carry(t);
   if (K.phase === "run") ordersStep(r, p, t);
@@ -135,7 +138,7 @@ function startCase(def: CaseDef) {
   S.hide = S.hideIsch = true;
   document.body.classList.add("case-run");
   pgAdopt(def.start);
-  setBedsideTemp(def.tempC); ordersBegin(def);
+  setBedsideTemp(def.tempC); setCaseLabs(def.labs); resetLowFlow(); ordersBegin(def);
   history.replaceState(null, "", location.pathname + location.search);
   casesUi();
 }
@@ -145,7 +148,7 @@ function quit() {
   K.phase = "idle"; K.def = null; K.runner = null; debrief = null; opening = false;
   S.hide = S.hideIsch = false; revealed = false; S.speed = 1;
   pgAdopt({});
-  setBedsideTemp(undefined); ordersEnd();
+  setBedsideTemp(undefined); setCaseLabs(undefined); resetLowFlow(); ordersEnd();
   buildVessels(); initParticles(); paintMyocardium();
   casesUi();
 }
