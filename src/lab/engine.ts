@@ -2,7 +2,12 @@ import { buildTree } from "../anatomy/tree";
 import { mulberry32 } from "../physics/ecg";
 import { byId } from "../config/labDevices";
 import { LAB } from "../config/lab";
-import { perforationRisk, subintimalRisk, thrombusRisk } from "./complications";
+import {
+  draw, forcedEffect, perforationRisk, subintimalRisk, thrombusRisk, type Complication, type Effect, type ForcedEvent,
+} from "./complications";
+import {
+  applyEffect, baseRiskContext, mergeBedResistance, ostialJailLesion,
+} from "./effects";
 import { buildAccess, unify } from "./access";
 import { routeTo } from "./route";
 import { advanceWire } from "./wire";
@@ -39,11 +44,19 @@ export class LabEngine implements LabEngineLike {
   private rand: () => number;
   private plaqueList: Plaque[];
   private occlusions: Lesion[] = [];
+  private extraLiveLesions: Lesion[] = [];
   private bedResistance: Record<string, number> = {};
+  private accessUltrasound = false;
+  private accessClosed = false;
+  private manualHold = false;
+  private tamponadeRate = 0;
+  private perforationSealed = false;
+  private ischemiaSeconds = 0;
+  private forcedFired = new Set<string>();
 
   constructor(
     private sim: Simulation,
-    private opts: { seed: number; access: AccessVariant; plaques: Plaque[] },
+    private opts: { seed: number; access: AccessVariant; plaques: Plaque[]; forced?: ForcedEvent[] },
   ) {
     this.rand = mulberry32(opts.seed);
     this.plaqueList = opts.plaques.map((p) => ({ ...p, stents: [...p.stents] }));
@@ -58,10 +71,13 @@ export class LabEngine implements LabEngineLike {
   plaques(): readonly Plaque[] { return this.plaqueList; }
 
   private syncSim(): void {
-    applyToSim(this.sim, this.plaqueList, { occlusions: this.occlusions, bedResistance: this.bedResistance });
+    applyToSim(this.sim, this.plaqueList, {
+      occlusions: this.occlusions,
+      bedResistance: this.bedResistance,
+      liveLesions: this.extraLiveLesions,
+    });
   }
 
-  /** Hyperemic Pd/Pa at the wire tip (pressure-wire selection only). */
   wirePdPa(): number | null {
     if (!this.st.wire || this.st.wire.id !== "wire-pressure") return null;
     const seg = this.sim.tree.byId[this.tipSeg];
@@ -76,11 +92,19 @@ export class LabEngine implements LabEngineLike {
     this.tipMm = 0;
     this.route = [];
     this.active = null;
-    this.sim.setLive(null);
     this.plaqueList = this.opts.plaques.map((p) => ({ ...p, stents: [...p.stents] }));
     this.occlusions = [];
+    this.extraLiveLesions = [];
     this.bedResistance = {};
+    this.accessUltrasound = false;
+    this.accessClosed = false;
+    this.manualHold = false;
+    this.tamponadeRate = 0;
+    this.perforationSealed = false;
+    this.ischemiaSeconds = 0;
+    this.forcedFired = new Set();
     this.rand = mulberry32(this.opts.seed);
+    this.sim.setRealtime(false);
     this.sim.setLive(null);
   }
 
@@ -95,6 +119,100 @@ export class LabEngine implements LabEngineLike {
 
   private decayAct(dt: number) {
     if (dt > 0) this.st.act = Math.max(0, this.st.act - LAB.actDecayPerSecond * dt);
+  }
+
+  private territorySeg(): string {
+    if (this.tipSeg && this.sim.tree.byId[this.tipSeg]) return this.tipSeg;
+    return this.plaqueList[0]?.segId ?? "LAD";
+  }
+
+  private applyComplicationResult(eff: Effect | null, out: LabEvent[], label?: Complication) {
+    if (!eff) return;
+    applyEffect(this.sim, eff);
+    mergeBedResistance(this.bedResistance, eff);
+    if (eff.lesions) this.extraLiveLesions.push(...eff.lesions);
+    if (eff.tamponade && eff.tamponade > 0) this.tamponadeRate = 0.05;
+    if (label) {
+      const kind = label === "arrhythmia-vf" ? "arrest" : label;
+      out.push(this.ev(kind, `${label} with hemodynamic effect.`, kind === "arrest" || kind === "perforation" ? "bad" : "caution"));
+    }
+  }
+
+  private checkForced(trigger: string, out: LabEvent[]) {
+    for (const f of this.opts.forced ?? []) {
+      if (f.trigger !== trigger || this.forcedFired.has(trigger)) continue;
+      const eff = forcedEffect(f.complication, this.territorySeg());
+      this.applyComplicationResult(eff, out, f.complication);
+      if (f.once) this.forcedFired.add(trigger);
+    }
+  }
+
+  private advanceTime(seconds: number, out: LabEvent[]) {
+    if (seconds <= 0) return;
+    const s = this.st;
+    s.elapsedS += seconds;
+    this.decayAct(seconds);
+
+    if (s.access?.startsWith("femoral") && !this.accessClosed) {
+      const rate = this.accessUltrasound ? 0.006 : 0.012;
+      applyEffect(this.sim, { bloodLoss: rate * (seconds / 60) });
+      if (!this.accessUltrasound) applyEffect(this.sim, { bloodLoss: 0.004 * (seconds / 1200) });
+    }
+    if (s.access?.startsWith("radial") && this.manualHold) {
+      /* manual hold stops radial ooze */
+    }
+
+    if (this.tamponadeRate > 0 && !this.perforationSealed) {
+      applyEffect(this.sim, { tamponade: this.tamponadeRate * seconds });
+    }
+
+    if (this.occlusions.length) {
+      this.ischemiaSeconds += seconds;
+      const ctx = baseRiskContext({
+        territorySeg: this.occlusions[0].segId,
+        ischemiaSeverity: 0.92,
+        ischemiaSeconds: this.ischemiaSeconds,
+      });
+      const vf = draw("arrhythmia-vf", ctx, this.rand, this.ischemiaSeconds >= 25);
+      if (vf) {
+        applyEffect(this.sim, vf);
+        out.push(this.ev("arrest", "Ventricular fibrillation from sustained ischemia.", "bad"));
+      }
+    }
+
+    this.sim.step(seconds);
+    this.syncSim();
+  }
+
+  private riskFromAction(a: Action): Partial<import("./complications").RiskContext> {
+    const territory = this.territorySeg();
+    const pl = this.plaqueList.find((p) => p.segId === territory);
+    const radial = !!this.st.access?.startsWith("radial");
+    if (a.t === "inflate") {
+      const b = this.st.balloon ? (byId[this.st.balloon.id] as Balloon) : null;
+      return { pressureAtm: a.atm, ratedAtm: b?.ratedBurstAtm ?? 16, calcium: pl?.calcium ?? 0, territorySeg: territory, thrombus: pl?.thrombus ?? 0 };
+    }
+    if (a.t === "deploy") {
+      const st = this.st.stent ? (byId[this.st.stent.id] as Stent) : null;
+      const ref = pl?.referenceMm ?? 3;
+      const oversize = st ? Math.max(0, st.nominalMm / ref - 1) : 0;
+      return { pressureAtm: a.atm, ratedAtm: 16, calcium: pl?.calcium ?? 0, oversize, territorySeg: territory, thrombus: pl?.thrombus ?? 0 };
+    }
+    return { territorySeg: territory, thrombus: pl?.thrombus ?? 0, act: this.st.act, radial };
+  }
+
+  private rollComplications(a: Action, out: LabEvent[]) {
+    const territory = this.territorySeg();
+    const extra = this.riskFromAction(a);
+    const ctx = baseRiskContext(extra);
+    const checks: Complication[] = [];
+    if (a.t === "inflate") checks.push("dissection", "no-reflow");
+    if (a.t === "deploy") checks.push("no-reflow", "dissection");
+    if (a.t === "advance" && this.active === "wire") checks.push("perforation");
+    for (const c of checks) {
+      const eff = draw(c, ctx, this.rand);
+      this.applyComplicationResult(eff, out, c);
+    }
   }
 
   private guideQuality(curve: GuideCatheter["curve"], target: "LM" | "RCA"): number {
@@ -123,7 +241,6 @@ export class LabEngine implements LabEngineLike {
 
   private moveActive(mm: number, out: LabEvent[]) {
     if (!this.active || !this.st.access) return;
-    const target = this.route[this.route.length - 1] ?? "LM";
     let left = mm;
     let idx = Math.max(0, this.route.indexOf(this.tipSeg));
     if (idx < 0) idx = 0;
@@ -141,7 +258,7 @@ export class LabEngine implements LabEngineLike {
         this.tipMm = 0;
       } else break;
     }
-  if (this.active === "guide" && this.st.guide) {
+    if (this.active === "guide" && this.st.guide) {
       const g = byId[this.st.guide.id] as GuideCatheter;
       this.syncGuideEngagement(g);
     }
@@ -167,19 +284,37 @@ export class LabEngine implements LabEngineLike {
       case "access":
         s.access = a.site;
         this.site = a.site;
+        this.accessUltrasound = a.ultrasound ?? false;
         this.route = routeTo(this.g, a.site, "LM");
         this.tipSeg = this.route[0];
         this.tipMm = 0;
+        this.sim.setRealtime(true);
         out.push(this.ev("access", `Access at the ${a.site}.`));
         break;
       case "sheath":
         s.sheathFr = a.french;
         out.push(this.ev("sheath", `${a.french} French sheath in.`));
         break;
+      case "close":
+        this.accessClosed = true;
+        this.manualHold = a.method === "manual";
+        if (a.method === "closure-device") out.push(this.ev("closure", "Femoral closure device deployed."));
+        else out.push(this.ev("closure", "Manual hold at the access site."));
+        break;
       case "drug":
-        if (a.id === "heparin") s.act = Math.min(300, s.act + a.dose * LAB.actPerHeparinUnit);
-        if (a.id === "nitro" && s.access?.startsWith("radial")) out.push(this.ev("drug", "Nitroglycerin for radial spasm.", "info"));
-        else out.push(this.ev("drug", `Gave ${a.id}.`));
+        if (a.id === "heparin") {
+          s.act = Math.min(300, s.act + a.dose * LAB.actPerHeparinUnit);
+          out.push(this.ev("drug", "Heparin given."));
+        } else if (a.id === "protamine") {
+          this.perforationSealed = true;
+          this.tamponadeRate = 0;
+          out.push(this.ev("drug", "Protamine given; perforation sealed."));
+        } else if (a.id === "adenosine" || a.id === "nitro") {
+          for (const k of Object.keys(this.bedResistance)) this.bedResistance[k] = 1 + (this.bedResistance[k] - 1) * 0.45;
+          out.push(this.ev("drug", `${a.id} for microvascular recovery.`));
+        } else {
+          out.push(this.ev("drug", `Gave ${a.id}.`));
+        }
         break;
       case "select":
         if (a.slot === "guide") {
@@ -227,13 +362,19 @@ export class LabEngine implements LabEngineLike {
           this.tipMm = r.tipMm;
           this.route = r.route;
           s.wire = { ...s.wire, tipSeg: r.tipSeg, tipMm: r.tipMm, route: r.route };
-          if (r.event) out.push(r.event);
-          else if (r.moved < Math.abs(a.mm) * 0.25 && a.mm > 2) {
+          if (r.event) {
+            out.push(r.event);
+            if (r.event.kind === "perforation") {
+              this.applyComplicationResult(draw("perforation", baseRiskContext({ calcium: 0.5, tipLoad: w.tipLoadGf, territorySeg: this.territorySeg() }), this.rand, true), out, "perforation");
+            }
+          } else if (r.moved < Math.abs(a.mm) * 0.25 && a.mm > 2) {
             out.push(this.ev("resistance", "Heavy lesion resistance.", "caution"));
           }
           const pl = this.plaqueList.find((p) => p.segId === r.tipSeg && Math.abs(p.centerMm - r.tipMm) < p.lengthMm / 2 + 2);
           if (pl && a.mm > 0) {
-            if (this.rand() < perforationRisk(w, pl)) out.push(this.ev("perforation", "Wire perforation risk.", "bad"));
+            if (this.rand() < perforationRisk(w, pl)) {
+              this.applyComplicationResult(draw("perforation", baseRiskContext({ tipLoad: w.tipLoadGf, calcium: pl.calcium, territorySeg: pl.segId, hydrophilic: w.coating === "hydrophilic" }), this.rand), out, "perforation");
+            }
             if (this.rand() < subintimalRisk(w, pl)) out.push(this.ev("subintimal", "Subintimal tracking.", "caution"));
           }
           if (s.act < 250 && a.mm > 0) out.push(this.ev("thrombus-risk", "Low ACT: thrombus risk on the wire.", "caution"));
@@ -260,21 +401,31 @@ export class LabEngine implements LabEngineLike {
         const r = inflateBalloon(s, b, a.atm, a.seconds, this.plaqueList, this.tipMm, this.tipSeg, this.rand);
         this.plaqueList = r.plaques;
         out.push(...r.events);
-        s.balloon = { ...s.balloon, inflatedAtm: a.atm, centerMm: this.tipMm, segId: this.tipSeg };
-        if (r.occludesFlow) {
+        const rupture = r.events.some((e) => e.kind === "balloon-rupture");
+        if (rupture) {
+          s.balloon = { ...s.balloon, inflatedAtm: 0 };
+          const ctx = baseRiskContext({ pressureAtm: a.atm, ratedAtm: b.ratedBurstAtm, calcium: 0.2, territorySeg: this.territorySeg() });
+          this.applyComplicationResult(draw("dissection", ctx, this.rand, true), out, "dissection");
+        } else if (a.atm > 0) {
+          s.balloon = { ...s.balloon, inflatedAtm: a.atm, centerMm: this.tipMm, segId: this.tipSeg };
           const seg = this.g.byId[this.tipSeg];
           this.occlusions = [{
             segId: this.tipSeg, pos: this.tipMm / seg.length, ds: 0.99, occluded: true, lengthMm: b.lengthMm,
           }];
+          this.ischemiaSeconds = 0;
         }
-        this.syncSim();
+        if (a.atm > 0 && !rupture) this.advanceTime(a.seconds, out);
+        else if (a.seconds > 0) this.advanceTime(a.seconds, out);
+        this.rollComplications(a, out);
         break;
       }
       case "deflate":
         if (s.balloon) s.balloon = { ...s.balloon, inflatedAtm: 0 };
         this.occlusions = [];
+        this.ischemiaSeconds = 0;
         this.syncSim();
         out.push(this.ev("deflate", "Balloon deflated."));
+        if (s.balloon?.inflatedAtm === 0 && this.perforationSealed) this.tamponadeRate = 0;
         break;
       case "deploy": {
         if (!s.stent) return [this.ev("no-stent", "Select a stent first.", "bad")];
@@ -286,18 +437,22 @@ export class LabEngine implements LabEngineLike {
         if (r.jailed.length) {
           for (const j of r.jailed) {
             out.push(this.ev("jailed", `Jailed branch ${j.branchSeg}.`, "caution", j));
-            this.bedResistance[j.branchSeg] = (this.bedResistance[j.branchSeg] ?? 1) * (1 + j.ostialDs);
+            this.extraLiveLesions.push(ostialJailLesion(j.branchSeg, j.ostialDs));
           }
         }
-        this.syncSim();
+        this.checkForced("post-stent", out);
+        this.advanceTime(a.seconds, out);
+        this.rollComplications(a, out);
         break;
       }
       default:
         break;
     }
 
-    this.decayAct(a.t === "advance" ? Math.abs(a.mm) : 0);
     s.log = [...s.log, a];
+    if (a.t !== "carm" && a.t !== "shape" && a.t !== "torque" && a.t !== "inflate" && a.t !== "deploy") {
+      this.rollComplications(a, out);
+    }
     if (a.t !== "carm" && a.t !== "shape" && a.t !== "torque") this.syncSim();
     return out;
   }

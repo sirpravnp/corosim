@@ -1,5 +1,6 @@
 import type { Guidewire, Plaque } from "./types";
 import type { Lesion } from "../physics/network";
+import { terminalBedKey } from "./effects";
 
 export type Complication =
   | "dissection" | "perforation" | "tamponade" | "no-reflow" | "spasm" | "access-bleed"
@@ -24,6 +25,13 @@ export interface RiskContext {
   hydrophilic?: boolean;
   act?: number;
   radial?: boolean;
+  territorySeg?: string;
+  ischemiaSeverity?: number;
+  ischemiaSeconds?: number;
+  ultrasound?: boolean;
+  femoralOpen?: boolean;
+  closureDevice?: boolean;
+  manualHold?: boolean;
 }
 
 export interface ForcedEvent { complication: Complication; trigger: string; once: boolean }
@@ -58,30 +66,41 @@ export function risk(c: Complication, ctx: RiskContext): number {
     case "dissection":
       return clamp01(Math.max(0, (ctx.pressureAtm / ctx.ratedAtm - 0.8) * 0.9));
     case "access-bleed":
-      return ctx.radial ? 0.05 : 0.25;
-  case "arrhythmia-vf":
-      return clamp01(ctx.thrombus * 0.2);
+      if (ctx.closureDevice || ctx.manualHold) return 0;
+      if (ctx.radial) return 0.06;
+      return ctx.ultrasound ? 0.08 : 0.22;
+    case "arrhythmia-vf":
+      return clamp01((ctx.ischemiaSeverity ?? 0) > 0.75 && (ctx.ischemiaSeconds ?? 0) > 20 ? 0.9 : 0.04);
+    case "retroperitoneal-bleed":
+      return ctx.femoralOpen && !ctx.ultrasound ? 0.15 : 0.02;
     default:
       return 0.1;
   }
 }
 
-export function draw(c: Complication, ctx: RiskContext, rand: () => number): Effect | null {
-  if (rand() > risk(c, ctx) && c !== "no-reflow") return null;
+export function draw(c: Complication, ctx: RiskContext, rand: () => number, force = false): Effect | null {
+  if (!force && rand() > risk(c, ctx) && c !== "no-reflow") return null;
+  const bed = terminalBedKey(ctx.territorySeg ?? "LAD");
   switch (c) {
     case "no-reflow":
-      return { bedResistance: { "LAD#dist": 3 + ctx.thrombus * 3 } };
+      return { bedResistance: { [bed]: 3 + ctx.thrombus * 3 } };
     case "perforation":
-      return { tamponade: 0.1 + ctx.calcium * 0.15, bloodLoss: 0.02 };
+      return { tamponade: 0.08 + ctx.calcium * 0.12, bloodLoss: 0.015 };
     case "access-bleed":
-      return { bloodLoss: ctx.radial ? 0.005 : 0.02 };
+      return { bloodLoss: ctx.radial ? 0.004 : 0.012 };
+    case "retroperitoneal-bleed":
+      return { bloodLoss: 0.02 };
     case "spasm":
-      return { bedResistance: { "RADIAL_R": 1.35 } };
+      return { coronaryBlock: { segId: ctx.territorySeg ?? "LAD", posMm: 2 } };
     case "arrhythmia-vf":
       return { rhythm: "vf" };
     default:
       return {};
   }
+}
+
+export function forcedEffect(c: Complication, territorySeg = "LAD"): Effect {
+  return draw(c, { tipLoad: 0, calcium: 0, oversize: 0, thrombus: 1, pressureAtm: 0, ratedAtm: 16, territorySeg }, () => 0, true)!;
 }
 
 export function scriptedComplication(c: Complication, trigger: string): ForcedEvent {
