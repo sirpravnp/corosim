@@ -28,7 +28,10 @@
       <p id="summary" class="summary"></p>
       <div id="xlinks" hidden></div>
     </div>
-    <div class="screen"><canvas id="ang" width="560" height="560" aria-label="Coronary angiogram"></canvas></div>
+    <figure class="angio">
+      <div class="screen"><canvas id="ang" width="560" height="560" aria-label="Coronary angiogram"></canvas></div>
+      <figcaption id="angcap"><b>Figure 1.</b> Angiogram on a real fluoro field. Ribs and diaphragm are a teaching cine, processed frame by frame; the tree is this patient's and fills at each vessel's solved flow.</figcaption>
+    </figure>
     <div class="toolbar">
       <label><span>LAO / RAO</span><input id="rot" type="range" min="-60" max="60" value="30"><output id="rotv"></output></label>
       <label><span>Cranial / caudal</span><input id="tilt" type="range" min="-45" max="45" value="-20"><output id="tiltv"></output></label>
@@ -62,7 +65,7 @@
     <div class="tabpanel" role="tabpanel" id="tabpanel-lhc" aria-labelledby="tab-lhc" hidden></div>
   </section>
 </main>
-<p class="fine" id="credit">Flows, pressures and FFR come from the same coronary model as the simulator (<a href="../sim/">Simulator</a>); contrast moves at each vessel's solved blood velocity, so a tight lesion fills late and an occlusion stops the dye.</p>
+<p class="fine" id="credit">Flows, pressures and FFR come from the same coronary model as the simulator (<a href="../sim/">Simulator</a>); contrast moves at each vessel's solved blood velocity, so a tight lesion fills late and an occlusion stops the dye. Fluoro field: Alextogus, <a href="https://commons.wikimedia.org/wiki/File:Coronarographie.gif">Coronarographie.gif</a>, <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>; contrast stripped, collimated, looped.</p>
 <footer id="shell-foot"></footer>
 </div>
 <script type="module" src="../src/cath/page.ts"></script>

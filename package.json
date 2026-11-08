@@ -17,7 +17,8 @@
     "export:tools": "tsx scripts/export-tools.ts",
     "build:viewer": "vite build -c vite.viewer.config.ts",
     "build:ekg-viewer": "vite build -c vite.ekg-viewer.config.ts",
-    "build:heart": "bash scripts/cath/build-heart.sh"
+    "build:heart": "bash scripts/cath/build-heart.sh",
+    "build:fluoro": "tsx scripts/cath/bake-fluoro.ts"
   },
   "devDependencies": {
     "@types/d3-delaunay": "^6.0.4",

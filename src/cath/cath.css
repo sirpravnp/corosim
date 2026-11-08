@@ -88,6 +88,9 @@ main > * { min-width: 0; }
 
 .screen { position: relative; background: #000; border: 1px solid var(--sh-line); }
 .screen canvas { display: block; width: 100%; height: auto; }
+.angio { margin: 0; }
+.angio figcaption { margin-top: 8px; font-size: 13px; line-height: 1.45; color: var(--muted); max-width: 72ch; }
+.angio figcaption b { color: var(--ink); font-weight: 600; letter-spacing: 0; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; font-size: 13px; }
 .toolbar label { display: inline-flex; align-items: center; gap: 8px; }
 .toolbar label > span:first-child, .field > span:first-child { color: var(--muted); font-size: 13px; letter-spacing: 0; font-weight: 600; }
