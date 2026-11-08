@@ -27,6 +27,8 @@ export interface Probe {
   /** Left-ventricular ejection fraction (0..1), ischemic fraction of each ventricle (0..1), pulmonary congestion (0..1), litres of fluid given. */
   ef: number; lvIschemia: number; rvIschemia: number; congestion: number; fluidsL: number;
   dead: boolean;
+  /** The order system's view (see orderBook.ts). Optional, so a probe built without it still compiles. */
+  ordered?: Set<string>; pending?: string[]; waiting?: boolean;
 }
 export type Cond = (p: Probe) => boolean;
 

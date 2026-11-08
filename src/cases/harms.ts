@@ -22,5 +22,6 @@ export const GENERIC_HARMS: Harm[] = [
   { tag: "diuretic", label: "a diuretic with low pressure and no congestion", when: (p) => on(p, "furosemide") && p.map < 65 && p.congestion < 0.2 && p.arrest === "none" },
   { tag: "calcium channel blocker", label: "diltiazem with a failing ventricle or low pressure", when: (p) => on(p, "diltiazem") && (failingLv(p) || p.map < 65 || p.congestion > 0.3) },
   { tag: "dual AV-nodal blockade", label: "a beta blocker and diltiazem together", when: (p) => on(p, "betaBlocker") && on(p, "diltiazem") },
+  { tag: "waiting while unstable", label: "waiting on a result with low pressure or in arrest", when: (p) => !!p.waiting && lowPressure(p) },
   { tag: "fluid into congestion", label: "volume into a failing ventricle with congested lungs", when: (p) => p.fluidsL > 0.5 && failingLv(p) && p.congestion > 0.4 },
 ];
