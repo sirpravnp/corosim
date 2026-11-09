@@ -35,8 +35,22 @@ export type CoroPumpPosition = "correct" | "aortic" | "deep";
 export type PurgeSolution = "dextrose-heparin" | "bicarbonate";
 export type PurgeLine = "clear" | "kinked" | "blocked";
 
-/** Stub purge readout until C3 (`purgeState` replaces these). [assumed] */
-export const COROPUMP_PURGE_STUB = { flowMlHr: 15, pressureMmHg: 450 } as const;
+/** Purge line model starting points (C3). [assumed] */
+export const COROPUMP_PURGE = {
+  lineMult: { clear: 1, kinked: 2.5, blocked: 10 } as const,
+  solutionMult: { "dextrose-heparin": 1, bicarbonate: 0.85 } as const,
+  pressureBase: 450,
+  pressureCap: 1500,
+  flowBase: 15,
+  flowFallLo: 900,
+  flowFallHi: 1500,
+  alarmPressureHigh: 1000,
+  alarmFlowLow: 5,
+  defaultHeparinUml: 25,
+} as const;
+
+/** Legacy stub exports used before simulation wires purgeState. */
+export const COROPUMP_PURGE_STUB = { flowMlHr: COROPUMP_PURGE.flowBase, pressureMmHg: COROPUMP_PURGE.pressureBase } as const;
 /** Stub free hemoglobin baseline (mg/dL). [assumed] */
 export const COROPUMP_HEMOLYSIS_STUB = { plasmaFreeHbMgDl: 2 } as const;
 

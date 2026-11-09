@@ -1,4 +1,4 @@
-import type { CoroPumpPosition, CoroPumpModelName, PurgeLine, PurgeSolution } from "../config/devices";
+import { COROPUMP_PURGE, type CoroPumpPosition, type CoroPumpModelName, type PurgeLine, type PurgeSolution } from "../config/devices";
 import { migrateLegacyKeys } from "./aliases";
 import { normalizeScenario } from "./scenario";
 import type { Normalized, Scenario } from "./scenario";
