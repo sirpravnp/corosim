@@ -46,7 +46,7 @@ export const STEMI_SHOCK_UNLOAD_SPEC: CaseSpec = {
         ],
       },
     },
-    { id: "open", requires: ["pciOrdered"], when: [{ is: "pci" }], outcome: { end: "success", reveal: ["The LAD is open. She goes to the cardiac ICU on the CoroPump."] } },
+    { id: "open", requires: ["unloaded", "pciOrdered"], when: [{ is: "pci" }], outcome: { end: "success", reveal: ["The LAD is open. She goes to the cardiac ICU on the CoroPump."] } },
   ],
 };
 export const STEMI_SHOCK_UNLOAD = compileCase(STEMI_SHOCK_UNLOAD_SPEC);

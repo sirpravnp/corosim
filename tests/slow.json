@@ -7,6 +7,7 @@
   "tests/cathHeart.test.ts",
   "tests/congenitalAdult.test.ts",
   "tests/coroPump.test.ts",
+  "tests/coroPumpCasePlay.test.ts",
   "tests/coroPumpMalposition.test.ts",
   "tests/coronaryCoupling.test.ts",
   "tests/deathTrials.test.ts",

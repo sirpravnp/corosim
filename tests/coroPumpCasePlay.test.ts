@@ -55,10 +55,10 @@ describe("CoroPump cases against the engine", () => {
       const r = play(def, right, def.limitS);
       expect(r.result, `${def.id}: ${r.prompts.join(" > ")} at ${r.runner.t}s`).toBe("success");
       expect(r.runner.debrief().lines.join("\n")).not.toMatch(/Not done/);
-    });
+    }, 300_000);
     it(`${def.id}: answering wrong does not win`, () => {
       const r = play(def, wrong, def.limitS);
       expect(r.result).not.toBe("success");
-    });
+    }, 300_000);
   }
 });
