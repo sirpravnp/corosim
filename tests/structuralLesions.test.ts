@@ -258,6 +258,9 @@ describe("hash and input handling", () => {
     expect(parseLesionHash("#lesion=as&severity=abc").values).toEqual({});
     expect(parseLesionHash("#lesion=as&severity=7").values.severity).toBe(1);
     expect(parseLesionHash("#lesion=tof&spasm=0.333").values.spasm).toBeCloseTo(0.35, 6); // snapped to the slider's step
+    expect(parseLesionHash("#lesion=normal&lvEf=0.25").values.lvEf).toBeCloseTo(0.25, 6);
+    expect(lesionHash("normal", { lvEf: 0.25 })).toBe("#lesion=normal&lvEf=0.25");
+    expect(lesionHash("normal", { lvEf: PATIENTS.adult.lvEf })).toBe("#lesion=normal"); // adult baseline omitted
     expect(() => assess("toString" as never)).toThrow(/Unknown lesion/);
   });
   it("clamps out-of-range values instead of solving nonsense", () => {

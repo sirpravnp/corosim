@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { analyze, StructuralSpec } from "../src/physics/structural";
+import { analyze, clampStructuralSpec, StructuralSpec } from "../src/physics/structural";
 import { CIRC } from "../src/physics/circulation";
 
 const adult = analyze({});
@@ -66,6 +66,22 @@ describe("overrides change only what they name", () => {
   it("blood volume is conserved across lesions", () => {
     for (const s of [{ pda: { diameterMm: 4 } }, { asd: { diameterMm: 12 } }, { tof: { vsdMm: 8, rvotFrac: 0.15 } }] as StructuralSpec[])
       expect(analyze({ patient: "neonate", ...s }).bloodVolume).toBeCloseTo(neo.bloodVolume, 3);
+  });
+  it("starting EF is an independent design input: a lower starting EF produces a lower measured EF at rest", () => {
+    const low = analyze({ lvEf: 0.25 }), high = analyze({ lvEf: 0.70 });
+    expect(low.lvEf).toBeLessThan(adult.lvEf - 0.15);
+    expect(high.lvEf).toBeGreaterThan(adult.lvEf + 0.04);
+    expect(Math.abs(low.lvEf - 0.25)).toBeLessThan(0.12);
+    expect(Math.abs(high.lvEf - 0.70)).toBeLessThan(0.12);
+  });
+  it("starting EF stays a dependent output: raising afterload at a fixed starting EF lowers the measured EF", () => {
+    const rest = analyze({ lvEf: 0.40 }), loaded = analyze({ lvEf: 0.40, svrScale: 1.8 });
+    expect(loaded.lvEf).toBeLessThan(rest.lvEf - 0.02);
+  });
+  it("a percent is read as a fraction", () => {
+    expect(clampStructuralSpec({ lvEf: 25 }).lvEf).toBeCloseTo(0.25, 6);
+    expect(clampStructuralSpec({ rvEf: 0.4 }).rvEf).toBe(0.4);
+    expect(analyze({ lvEf: 25 }).lvEf).toBeCloseTo(analyze({ lvEf: 0.25 }).lvEf, 6);
   });
 });
 

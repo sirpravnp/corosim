@@ -1,6 +1,6 @@
 import { analyze, resolveValve, StructuralReport, StructuralSpec } from "../physics/structural";
 import { MISMATCH, PROSTHESIS_GRADIENT, REGURG_AREA_FRAC, STENOSIS_SPAN } from "../config/valves";
-import type { PatientSpec } from "./patient";
+import type { HeartSpec, PatientSpec } from "./patient";
 import { GORLIN, GRADE, ORIFICE_EPS, PATIENTS, PatientKind } from "../config/structural";
 
 /**
@@ -9,11 +9,34 @@ import { GORLIN, GRADE, ORIFICE_EPS, PATIENTS, PatientKind } from "../config/str
  * Grades are adult criteria; the engine has no reflexes, so pressures and flows show the lesion's raw effect.
  */
 export type LesionId = "normal" | "as" | "ar" | "ms" | "mr" | "ts" | "tr" | "ps" | "pr" | "pda" | "asd" | "vsd" | "tof" | "vsd-eisenmenger" | "tof-repaired" | "pda-adult" | "pa-vsd" | "pa-ivs" | "tri-atresia" | "ebstein";
-export interface LesionParam { key: string; label: string; min: number; max: number; step: number; default: number; unit?: string }
+export interface LesionParam { key: string; label: string; min: number; max: number; step: number; default: number; unit?: string; fmt?: (v: number) => string }
 export interface LesionDef {
   id: LesionId; label: string; group: "valve" | "congenital"; patient: PatientKind;
   params: LesionParam[]; teach: string;
   build(v: Record<string, number>): StructuralSpec;
+}
+
+const pct = (v: number) => `${Math.round(v * 100)}%`;
+/** Starting EF sliders shown on every lesion. Independent design-point input; the page's measured EF is the dependent result. */
+export function patientParams(kind: PatientKind): LesionParam[] {
+  const p = PATIENTS[kind];
+  return [
+    { key: "lvEf", label: "Starting LV ejection fraction", min: 0.1, max: 0.8, step: 0.01, default: p.lvEf, fmt: pct },
+    { key: "rvEf", label: "Starting RV ejection fraction", min: 0.1, max: 0.8, step: 0.01, default: p.rvEf, fmt: pct },
+  ];
+}
+export const allParams = (d: LesionDef): LesionParam[] => [...d.params, ...patientParams(d.patient)];
+/** Copy starting EF onto a lesion spec when it is not the patient's own baseline. */
+export function applyPatientParams(spec: StructuralSpec, values: Record<string, number>, kind: PatientKind): StructuralSpec {
+  const p = PATIENTS[kind], out: StructuralSpec = { ...spec };
+  if (values.lvEf !== undefined && Math.abs(values.lvEf - p.lvEf) > 1e-9) out.lvEf = values.lvEf;
+  if (values.rvEf !== undefined && Math.abs(values.rvEf - p.rvEf) > 1e-9) out.rvEf = values.rvEf;
+  return out;
+}
+/** The heart a lesion pick builds, including a non-default starting EF, without `patient` and `hr`. */
+export function heartFromLesion(d: LesionDef, values: Record<string, number>): HeartSpec {
+  const { patient: _p, hr: _h, ...heart } = applyPatientParams(d.build(values), values, d.patient);
+  return heart;
 }
 
 const sev = (default_ = 0.6): LesionParam => ({ key: "severity", label: "Severity", min: 0, max: 1, step: 0.05, default: default_ });
@@ -64,7 +87,7 @@ export const LESIONS: LesionDef[] = [
 ];
 /** By id. No prototype, so "constructor" or "toString" are not lessons. */
 export const LESION_BY_ID: Record<string, LesionDef | undefined> = Object.assign(Object.create(null), Object.fromEntries(LESIONS.map((l) => [l.id, l])));
-export const defaults = (l: LesionDef): Record<string, number> => Object.fromEntries(l.params.map((p) => [p.key, p.default]));
+export const defaults = (l: LesionDef): Record<string, number> => Object.fromEntries(allParams(l).map((p) => [p.key, p.default]));
 
 export type Grade = "none" | "mild" | "moderate" | "severe";
 export type StenosisGrade = Grade | "atretic";
@@ -168,8 +191,8 @@ export function assess(lesion: LesionId, values: Record<string, number> = {}, op
   const def = LESION_BY_ID[lesion];
   if (!def) throw new Error(`Unknown lesion ${lesion}`);
   const v = { ...defaults(def) };
-  for (const p of def.params) { const x = values[p.key]; if (x !== undefined && Number.isFinite(x)) v[p.key] = Math.min(p.max, Math.max(p.min, x)); }
-  const spec = def.build(v), report = analyze(spec, opts);
+  for (const p of allParams(def)) { const x = values[p.key]; if (x !== undefined && Number.isFinite(x)) v[p.key] = Math.min(p.max, Math.max(p.min, x)); }
+  const spec = applyPatientParams(def.build(v), v, def.patient), report = analyze(spec, opts);
   const valves = gradeValves(spec, report);
   const r = report, bits: string[] = [];
   bits.push(`${def.label}: aortic ${r.pressure.AO.max.toFixed(0)}/${r.pressure.AO.min.toFixed(0)} mmHg, saturation ${(r.preductalSat * 100).toFixed(0)}%`);
@@ -184,7 +207,7 @@ export function assess(lesion: LesionId, values: Record<string, number> = {}, op
  */
 export function parseLesionHash(hash: string): { id: LesionId; values: Record<string, number> } {
   const q = new URLSearchParams(hash.replace(/^#/, "")), asked = q.get("lesion") ?? "", d = LESION_BY_ID[asked] ?? LESIONS[0], values: Record<string, number> = {};
-  for (const p of d.params) {
+  for (const p of allParams(d)) {
     const raw = q.get(p.key), x = raw === null || raw.trim() === "" ? NaN : Number(raw);
     if (Number.isFinite(x)) values[p.key] = Math.min(p.max, Math.max(p.min, Math.round((x - p.min) / p.step) * p.step + p.min));
   }
@@ -196,11 +219,10 @@ export function parseLesionHash(hash: string): { id: LesionId; values: Record<st
  */
 export function patientFromLesionHash(hash: string): PatientSpec {
   const { id, values } = parseLesionHash(hash), d = LESION_BY_ID[id]!;
-  const { patient: _p, hr: _h, ...heart } = d.build({ ...defaults(d), ...values });
-  return { heart };
+  return { heart: heartFromLesion(d, { ...defaults(d), ...values }) };
 }
 /** The hash that opens `id` with `values`, leaving out sliders at their defaults. */
 export function lesionHash(id: LesionId, values: Record<string, number>): string {
   const d = LESION_BY_ID[id]!;
-  return `#${[`lesion=${id}`, ...d.params.filter((p) => values[p.key] !== undefined && values[p.key] !== p.default).map((p) => `${p.key}=${+values[p.key].toFixed(4)}`)].join("&")}`;
+  return `#${[`lesion=${id}`, ...allParams(d).filter((p) => values[p.key] !== undefined && values[p.key] !== p.default).map((p) => `${p.key}=${+values[p.key].toFixed(4)}`)].join("&")}`;
 }

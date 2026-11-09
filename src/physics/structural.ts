@@ -64,6 +64,13 @@ export interface StructuralSpec {
   vsd?: { diameterMm: number };
   bt?: { diameterMm: number }; // modified Blalock–Taussig shunt, aorta to pulmonary artery
   lvSize?: number; laSize?: number; // the same, for the left side
+  /**
+   * Starting (design-point) ejection fraction of each ventricle, 0..1. Independent of the live EF the engine reports:
+   * this sizes the chamber (EDV = design stroke / EF) and sets its end-systolic elastance so a resting heart ejects
+   * near this fraction; afterload, ischemia, valves and support then move the measured EF as a dependent output.
+   * A value above 1 is read as a percent (25 → 0.25).
+   */
+  lvEf?: number; rvEf?: number;
   lvEes?: number; rvEes?: number; // multiply a ventricle's end-systolic elastance only (passive filling unchanged): ischemic or stunned muscle
   lvStiffness?: number; rvStiffness?: number; // multiply a ventricle's passive stiffness (the diastolic pressure-volume curve) only: ischemic muscle relaxes and fills poorly
   rvContractility?: number; // multiplies right ventricular contractility and stiffness (a pressure-loaded, thick right ventricle)
@@ -81,6 +88,8 @@ const passive = (P: number, v0: number, b: number, a: number) => v0 + Math.log(1
 
 /** A finite number inside [lo, hi], or undefined (NaN, Infinity and missing values all become "not set"). */
 const clamp = (x: number | undefined, lo: number, hi: number) => (x === undefined || !Number.isFinite(x) ? undefined : Math.min(hi, Math.max(lo, x)));
+/** Ejection fraction as a fraction 0..1; a number above 1 is a percent (25 → 0.25), the way case authors write it. */
+const efFrac = (x: number | undefined, lo: number, hi: number) => (x === undefined || !Number.isFinite(x) ? undefined : clamp(x > 1 ? x / 100 : x, lo, hi));
 const frac = (x: number | undefined) => clamp(x, 0, 1);
 const diam = (d: { diameterMm: number } | undefined) => (d && Number.isFinite(d.diameterMm) ? { diameterMm: clamp(d.diameterMm, 0, 40)! } : undefined);
 const prosthesis = (p: Prosthesis | null | undefined, k: ValveKey): Prosthesis | undefined => {
@@ -95,7 +104,7 @@ export function clampStructuralSpec(input: StructuralSpec = {}): StructuralSpec 
   return {
     ...input, hr: clamp(input.hr, 20, 300), pvri: clamp(input.pvri, 0.2, 60), svrScale: clamp(input.svrScale, 0.1, 5),
     rvSize: clamp(input.rvSize, 0.05, 4), raSize: clamp(input.raSize, 0.05, 4), lvSize: clamp(input.lvSize, 0.05, 4), laSize: clamp(input.laSize, 0.05, 4),
-    rvContractility: clamp(input.rvContractility, 0.2, 5), lvEes: clamp(input.lvEes, 0.2, 5), rvEes: clamp(input.rvEes, 0.2, 5), lvStiffness: clamp(input.lvStiffness, 0.2, 5), rvStiffness: clamp(input.rvStiffness, 0.2, 5), satLung: clamp(input.satLung, 0.3, 1), volumeMl: clamp(input.volumeMl, -1000, 5000),
+    rvContractility: clamp(input.rvContractility, 0.2, 5), lvEf: efFrac(input.lvEf, 0.1, 0.8), rvEf: efFrac(input.rvEf, 0.1, 0.8), lvEes: clamp(input.lvEes, 0.2, 5), rvEes: clamp(input.rvEes, 0.2, 5), lvStiffness: clamp(input.lvStiffness, 0.2, 5), rvStiffness: clamp(input.rvStiffness, 0.2, 5), satLung: clamp(input.satLung, 0.3, 1), volumeMl: clamp(input.volumeMl, -1000, 5000),
     valves: input.valves && { tv: valveLesion(input.valves.tv, "tv"), pv: valveLesion(input.valves.pv, "pv"), mv: valveLesion(input.valves.mv, "mv"), av: valveLesion(input.valves.av, "av") },
     pda: diam(input.pda), asd: diam(input.asd), vsd: diam(input.vsd), bt: diam(input.bt),
     tof: input.tof && { vsdMm: clamp(input.tof.vsdMm, 0, 40) ?? 0, rvotFrac: frac(input.tof.rvotFrac) ?? 1, spasm: frac(input.tof.spasm), override: frac(input.tof.override), rvHypertrophy: clamp(input.tof.rvHypertrophy, 0.2, 5) },
@@ -173,7 +182,7 @@ export function buildModel(input: StructuralSpec = {}, volumeOffset = 0, build: 
     const v0 = 0.35 * vm, b = K / (vm - v0), a = pm / (Math.exp(K) - 1);
     return { v0, ees: (6 * (build.atrialEesScale ?? ACTIVATION.atrialEesScale)) / (vm - v0), a, b, atrial: true };
   };
-  const lv = ventricle(sv / p.lvEf, sysLv, p.lap), rv = ventricle(sv / p.rvEf, sysRv, p.rap);
+  const lv = ventricle(sv / (spec.lvEf ?? p.lvEf), sysLv, p.lap), rv = ventricle(sv / (spec.rvEf ?? p.rvEf), sysRv, p.rap);
   const la = atrium(0.55 * W, p.lap), ra = atrium(0.65 * W, p.rap);
   const chambers: (Chamber | null)[] = [null, null, ra, rv, null, null, la, lv, null, null, null];
 

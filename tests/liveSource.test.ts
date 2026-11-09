@@ -98,6 +98,16 @@ describe("the source of a normal adult", () => {
   });
 });
 
+describe("starting ejection fraction", () => {
+  it("a starting EF of 25% lowers the live (dependent) EF, and afterload lowers it further", () => {
+    const base = patient().n, weak = patient({ heart: { lvEf: 0.25 } }).n, loaded = patient({ heart: { lvEf: 0.25, svrScale: 1.8 } }).n;
+    expect(weak.lvEf).toBeLessThan(base.lvEf - 0.15);
+    expect(weak.lvEf).toBeGreaterThan(0.12);
+    expect(weak.lvEf).toBeLessThan(0.40);
+    expect(loaded.lvEf).toBeLessThan(weak.lvEf - 0.01);
+  });
+});
+
 describe("beat-level signs on the live page", () => {
   it("anterior STEMI: wedge pressure and LVEDP up, low ejection fraction, lower output; the Impella unloads it and has a console", () => {
     const base = patient().n, s = patient(LAD), i = patient({ ...LAD, devices: { impella: { model: "CP", level: 6 } } });

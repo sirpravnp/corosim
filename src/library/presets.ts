@@ -14,6 +14,8 @@ export const START_PRESETS: Preset[] = [
   { label: "Complete heart block", patch: { patient: { rhythm: "chb" } } },
   { label: "Ventricular fibrillation", patch: { patient: { rhythm: "vf-coarse" } } },
   { label: "Blood loss, 15%", patch: { bloodLoss: 0.15 } },
+  { label: "HFrEF, EF 25%", patch: { heart: { lvEf: 0.25 } } },
+  { label: "HFrEF, EF 35%", patch: { heart: { lvEf: 0.35 } } },
 ];
 
 /** Changes a time point can make to the patient. */

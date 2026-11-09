@@ -25,6 +25,14 @@ describe("baseline circulation", () => {
     expect(c.diastolic).toBeGreaterThan(65); expect(c.diastolic).toBeLessThan(80);
     expect(c.state).toBe("stable");
   });
+  it("starting EF is an independent input; ischemia then moves it as a dependent output", () => {
+    const rest = circulation(sites, {}, calm, undefined, {}, 1, 0.25);
+    expect(rest.ejectionFraction).toBeCloseTo(0.25, 6);
+    const { sites: s, sev, rs } = afterOcclusion(TYPICAL, "LAD", 0.1);
+    const isch = circulation(s, sev, rs, undefined, {}, 1, 0.25);
+    expect(isch.ejectionFraction).toBeLessThan(0.25 - 0.05);
+    expect(isch.ejectionFraction).toBeGreaterThan(0);
+  });
   it("classifies right-ventricular beds by their arteries", () => {
     expect(isRightVentricular("AM#end")).toBe(true);
     expect(isRightVentricular("RCA#1")).toBe(true);

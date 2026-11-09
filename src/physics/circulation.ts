@@ -73,8 +73,10 @@ export interface Circulation {
  * so a reperfused infarct keeps its lost contraction. `support` is what the team is giving.
  * `baroreflexRetained` is the static stand-in for pressure buffering. Pass 1 when the dynamic baroreflex
  * (physics/autonomic.ts) closes the loop instead, so the buffering is not applied twice.
+ * `lvef0` is the starting (independent) LV ejection fraction; omitted, `INFARCT.lvefNormal`. Ischemia then
+ * moves the reported EF as a dependent output.
  */
-export function circulation(sites: BedSite[], sev: Record<string, number>, rhythm: RhythmState, support: Support = NO_SUPPORT, scar: Record<string, number> = {}, baroreflexRetained = CIRC.baroreflexRetained): Circulation {
+export function circulation(sites: BedSite[], sev: Record<string, number>, rhythm: RhythmState, support: Support = NO_SUPPORT, scar: Record<string, number> = {}, baroreflexRetained = CIRC.baroreflexRetained, lvef0?: number): Circulation {
   const K = SUPPORT;
   const { lv: lvF, rv: rvF } = ischemicFractions(sites, sev, scar);
   const hr = ventricularRate(rhythm);
@@ -100,6 +102,6 @@ export function circulation(sites: BedSite[], sev: Record<string, number>, rhyth
   return {
     hr, strokeVolume: sv, cardiacOutput: co, map, systolic, diastolic, svr, lvIschemia: lvF, rvIschemia: rvF,
     coronaryPressure: map + (support.iabp ? K.iabpCoronaryAug : 0), demandFactor: demandFactor(support), deviceFlow, congestion,
-    ejectionFraction: INFARCT.lvefNormal * (1 - lvLoss), state,
+    ejectionFraction: (lvef0 ?? INFARCT.lvefNormal) * (1 - lvLoss), state,
   };
 }

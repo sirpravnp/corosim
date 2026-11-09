@@ -1,12 +1,17 @@
 /**
- * The Valves tab's "Defect settings" (shunt, defect and outflow sizes) and the Patient tab's "Hemodynamic baseline" (systemic
- * resistance, pulmonary resistance, lung saturation, right ventricular contractility, the tetralogy flag). DOM only; every control
+ * The Valves tab's "Defect settings" (shunt, defect and outflow sizes) and the Patient tab's "Hemodynamic baseline" (starting
+ * ejection fraction, systemic resistance, pulmonary resistance, lung saturation, right ventricular contractility, the tetralogy flag). DOM only; every control
  * edits the playground state's `heart`, the same fields the Preset menu fills and the chat's `heart.*` fields set.
  */
+import { PATIENTS } from "../config/structural";
 import type { PlaygroundState } from "../sim/playground";
 import type { HeartSpec } from "../sim/patient";
 import type { ValvesCtx } from "./valvesPanel";
 import { heartOf, withHeart } from "./valvesPanel";
+
+const DEFAULT_LV_EF = PATIENTS.adult.lvEf, DEFAULT_RV_EF = PATIENTS.adult.rvEf;
+const atDefault = (v: number, d: number) => Math.round(v * 100) === Math.round(d * 100);
+const pctEf = (v: number, d: number) => `${Math.round(v * 100)}%${atDefault(v, d) ? " (normal)" : ""}`;
 
 const DEFAULT_PVRI = 1.5, DEFAULT_SAT_LUNG = 0.98;
 const unit01 = (x: number) => Math.min(1, Math.max(0, x));
@@ -30,7 +35,7 @@ function heartSlider(c: ValvesCtx, body: HTMLElement, o: {
 }
 const patchHeart = (s: PlaygroundState, f: (h: HeartSpec) => HeartSpec) => withHeart(s, f(heartOf(s)));
 /** Set one top-level number of the heart; `undefined` removes it (the field's own default). */
-const setNum = (s: PlaygroundState, k: "pvri" | "svrScale" | "satLung" | "rvContractility", v: number | undefined) => patchHeart(s, (h) => { const n = { ...h }; if (v === undefined) delete n[k]; else n[k] = v; return n; });
+const setNum = (s: PlaygroundState, k: "pvri" | "svrScale" | "satLung" | "rvContractility" | "lvEf" | "rvEf", v: number | undefined) => patchHeart(s, (h) => { const n = { ...h }; if (v === undefined) delete n[k]; else n[k] = v; return n; });
 const shuntDiameter = (k: "pda" | "asd" | "vsd" | "bt") => (s: PlaygroundState, v: number) => patchHeart(s, (h) => ({ ...h, [k]: { ...h[k], diameterMm: v } }));
 export const hasShunt = (h: HeartSpec) => !!(h.pda || h.asd || h.vsd || h.bt || h.tof);
 
@@ -57,7 +62,9 @@ export function buildDefects(c: ValvesCtx) {
 /** The Patient tab's Hemodynamic baseline: the patient's systemic and pulmonary circulation, apart from the valves. */
 export function buildBaseline(c: ValvesCtx) {
   const { body } = c;
-  body.append(c.h("p", { className: "note", textContent: "The circulation the heart works in. Defaults are a normal adult; a preset on the Valves tab sets these too when its lesson needs it." }));
+  body.append(c.h("p", { className: "note", textContent: "The circulation the heart works in. Starting ejection fraction is an independent design-point input; the live EF on the monitor is the dependent result (afterload, ischemia, valves). Defaults are a normal adult; a preset on the Valves tab sets these too when its lesson needs it." }));
+  heartSlider(c, body, { path: "heart.lvEf", label: "Starting LV ejection fraction", min: 0.1, max: 0.8, step: 0.01, dflt: DEFAULT_LV_EF, fmt: (v) => pctEf(v, DEFAULT_LV_EF), get: (h) => h.lvEf, set: (s, v) => setNum(s, "lvEf", atDefault(v, DEFAULT_LV_EF) ? undefined : v) });
+  heartSlider(c, body, { path: "heart.rvEf", label: "Starting RV ejection fraction", min: 0.1, max: 0.8, step: 0.01, dflt: DEFAULT_RV_EF, fmt: (v) => pctEf(v, DEFAULT_RV_EF), get: (h) => h.rvEf, set: (s, v) => setNum(s, "rvEf", atDefault(v, DEFAULT_RV_EF) ? undefined : v) });
   heartSlider(c, body, { path: "heart.svrScale", label: "Systemic resistance", min: 0.2, max: 3, step: 0.05, dflt: 1, fmt: (v) => (v === 1 ? "normal" : `${v.toFixed(2)}× normal`), get: (h) => h.svrScale, set: (s, v) => setNum(s, "svrScale", v === 1 ? undefined : v) });
   heartSlider(c, body, { path: "heart.pvri", label: "Pulmonary resistance index", min: 0.5, max: 60, step: 0.5, dflt: DEFAULT_PVRI, fmt: (v) => `${+v.toFixed(1)} WU·m²`, get: (h) => h.pvri, set: (s, v) => setNum(s, "pvri", v === DEFAULT_PVRI ? undefined : v) });
   heartSlider(c, body, { path: "heart.satLung", label: "Lung saturation", min: 0.5, max: 1, step: 0.01, dflt: DEFAULT_SAT_LUNG, fmt: (v) => `${Math.round(v * 100)}%`, get: (h) => h.satLung, set: (s, v) => setNum(s, "satLung", v === DEFAULT_SAT_LUNG ? undefined : v) });

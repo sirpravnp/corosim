@@ -42,7 +42,7 @@ describe("encodePatient / decodePatient", () => {
     expect(decodePatient(code)).toEqual(OLD[2]);
   });
   it("the LLM reference mentions every new field", () => {
-    for (const k of ["heart", "pericardium", "fluids", "ventilation", "devices", "effusionMl", "peep", "ecmo"]) expect(SCENARIO_REFERENCE).toContain(`"${k}"`);
+    for (const k of ["heart", "pericardium", "fluids", "ventilation", "devices", "effusionMl", "peep", "ecmo", "lvEf"]) expect(SCENARIO_REFERENCE).toContain(`"${k}"`);
   });
 });
 
@@ -53,7 +53,7 @@ describe("normalizePatient", () => {
     expect(r.scenario.bloodLoss).toBe(0.6);
   });
   it("accepts in-range values unchanged, with no warnings", () => {
-    const p: PatientSpec = { pericardium: { effusionMl: 500, open: false }, fluids: { given: [{ kind: "crystalloid", ml: 1000 }], legRaise: true }, ventilation: { mode: "positive", peep: 10, tidalMlKg: 6 }, devices: { impella: { model: "5.5", level: 9, position: "deep" }, ecmo: { flowLpm: 7, fio2: 1 } }, heart: { asd: { diameterMm: 12 } } };
+    const p: PatientSpec = { pericardium: { effusionMl: 500, open: false }, fluids: { given: [{ kind: "crystalloid", ml: 1000 }], legRaise: true }, ventilation: { mode: "positive", peep: 10, tidalMlKg: 6 }, devices: { impella: { model: "5.5", level: 9, position: "deep" }, ecmo: { flowLpm: 7, fio2: 1 } }, heart: { asd: { diameterMm: 12 }, lvEf: 0.25 } };
     const r = normalizePatient(p);
     expect(r.warnings).toEqual([]);
     expect(r.spec).toEqual(p);

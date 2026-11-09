@@ -3,7 +3,7 @@ import "./structural.css";
 import { mountShell } from "../shell/shell";
 import { readout } from "../readout";
 import { mountCrossLinks } from "../shell/crossLinkRow";
-import { assess, defaults, lesionHash, LESIONS, LESION_BY_ID, LesionDef, parseLesionHash, patientFromLesionHash, StructuralFindings, ValveFinding } from "../sim/structural";
+import { allParams, assess, defaults, lesionHash, LESIONS, LESION_BY_ID, LesionDef, parseLesionHash, patientFromLesionHash, StructuralFindings, ValveFinding } from "../sim/structural";
 import { NodeName } from "../physics/structural";
 import { morphFor, satMap } from "./morph";
 import { buildProps } from "./props";
@@ -36,11 +36,12 @@ function renderList() {
 }
 
 function renderControls() {
-  $("controls").innerHTML = def.params.map((p) =>
+  const params = allParams(def);
+  $("controls").innerHTML = params.map((p) =>
     `<label><span>${esc(p.label)}</span><output id="o-${p.key}"></output><input type="range" id="p-${p.key}" min="${p.min}" max="${p.max}" step="${p.step}" value="${values[p.key]}"></label>`).join("");
-  for (const p of def.params) {
+  for (const p of params) {
     const input = $<HTMLInputElement>(`p-${p.key}`), out = $(`o-${p.key}`);
-    const show = () => (out.textContent = `${values[p.key]}${p.unit ? " " + p.unit : ""}`);
+    const show = () => (out.textContent = p.fmt ? p.fmt(values[p.key]) : `${values[p.key]}${p.unit ? " " + p.unit : ""}`);
     show();
     input.addEventListener("input", () => { values[p.key] = +input.value; show(); schedule(); });
   }
@@ -73,7 +74,7 @@ function refresh(push = false) {
     tile("Qp:Qs", f2(r.qpQs), tone(r.qpQs > 2 || r.qpQs < 0.6, r.qpQs > 1.3 || r.qpQs < 0.9)),
     tile("Systemic flow", `${f2(r.qs)} L/min`), tile("Pulmonary flow", `${f2(r.qp)} L/min`),
     ...(shunt ? [tile("Right → left", `${f2(Math.max(0, r.rightToLeft))} L/min`, r.rightToLeft > 0.05 ? "bad" : ""), tile("Left → right", `${f2(Math.max(0, r.leftToRight))} L/min`, r.leftToRight > 0.05 ? "warn" : "")] : []),
-    tile("LV / RV ejection fraction", `${pct(r.lvEf)} / ${pct(r.rvEf)}`),
+    tile("Measured LV / RV ejection fraction", `${pct(r.lvEf)} / ${pct(r.rvEf)}`),
     tile("SVRi / PVRi", `${f1(r.svri)} / ${f1(r.pvri)} WU·m²`),
   ].join("");
 

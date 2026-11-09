@@ -2,7 +2,7 @@ import { decodePatient, encodePatient } from "./llm";
 import type { HeartSpec, PatientSpec } from "./patient";
 import type { Scenario } from "./scenario";
 import { ALTERNANS, alternansAmplitude } from "../config/pericardium";
-import { defaults, LESIONS, LesionDef, lesionHash, patientFromLesionHash } from "./structural";
+import { allParams, defaults, heartFromLesion, LESIONS, LesionDef, lesionHash, patientFromLesionHash } from "./structural";
 import { isLibraryRhythm } from "../physics/rhythmSource";
 
 /**
@@ -70,7 +70,7 @@ const gridOf = (p: LesionDef["params"][number]) => {
   for (let i = 0; i <= n; i++) out.push(+(p.min + i * p.step).toFixed(6));
   return out;
 };
-const heartOf = (d: LesionDef, v: Record<string, number>): HeartSpec => { const { patient: _p, hr: _h, ...heart } = d.build(v); return heart; };
+const heartOf = (d: LesionDef, v: Record<string, number>): HeartSpec => heartFromLesion(d, v);
 
 /** How close a heart must be to a library lesion (summed relative difference over its fields) to count as that lesion. */
 export const LESION_MATCH_TOLERANCE = 0.02;
@@ -86,7 +86,7 @@ export function lesionForHeart(patient: PatientSpec): { id: LesionDef["id"]; val
   for (const d of LESIONS) {
     if (d.patient !== "adult") continue; // the Simulator has adult patients only; a newborn lesson has no Simulator patient
     const values = defaults(d);
-    for (const p of d.params) {
+    for (const p of allParams(d)) {
       let bv = values[p.key], bd = Infinity;
       for (const x of gridOf(p)) { const dist = heartDistance(heartOf(d, { ...values, [p.key]: x }), heart); if (dist < bd - 1e-12) { bd = dist; bv = x; } }
       values[p.key] = bv;

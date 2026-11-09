@@ -34,6 +34,13 @@ describe("structural <-> simulator and cath lab for every adult lesion", () => {
       expect(hashOf(link("sim", spec, "structural")!.href), hash).toBe(hash);
     }
   });
+  it("starting EF on a normal heart is carried to structural", () => {
+    const spec: PatientSpec = { heart: { lvEf: 0.25 } };
+    const s = link("sim", spec, "structural")!;
+    expect(s, "structural link").toBeDefined();
+    expect(hashOf(s.href)).toBe("#lesion=normal&lvEf=0.25");
+    expect(patientFromLesionHash(hashOf(s.href))).toEqual({ heart: { lvEf: 0.25 } });
+  });
 });
 
 describe("hash round trips", () => {

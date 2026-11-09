@@ -441,7 +441,7 @@ export class Simulation {
     const fx = this.engine === "core" ? this.pk.effects() : null, csup = fx ? { ...sup, fluids: 0, norepi: 0, dobutamine: 0, nitro: 0 } : sup;
     this.rstate = supportedRhythm(rhythmState(this.sites, this.sev, g, this.patient), csup, fx ?? undefined);
     if (isLibraryRhythm(this.rstate.rhythm)) this.rstate = { ...this.rstate, avDegree: 0, bbb: this.patient.bbb }; // B2: a library rhythm brings its own conduction (ischemic AV block and pacing are not laid over it)
-    const c = circulation(this.sites, this.sev, this.rstate, csup, this.scar, 1); // the baroreflex is dynamic here
+    const c = circulation(this.sites, this.sev, this.rstate, csup, this.scar, 1, this.heartSpec.lvEf); // the baroreflex is dynamic here; starting EF is the independent design, live EF the dependent result
     this.base = c;
     this.circ = this.live && this.liveSeen ? this.coreCirc(c) : c;
   }

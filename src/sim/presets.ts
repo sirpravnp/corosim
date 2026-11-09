@@ -69,5 +69,9 @@ export const PRESETS: Preset[] = [
     id: "va-ecmo-poor-lv", label: "VA-ECMO with a poor LV", blurb: "A large infarct with a left ventricle at 30% of its contractility, on VA-ECMO at 4 L/min. The left ventricle cannot open its valve against the flow and is not vented: the wedge pressure climbs, which is why a vent is added.",
     spec: { lesions: [{ artery: "LAD", occluded: true, position: 0.15 }], heart: { lvEes: 0.3 }, support: { norepinephrine: 0.3 }, devices: { ecmo: { flowLpm: 4, sweepLpm: 2, fio2: 0.6 } } },
   },
+  {
+    id: "hfref", label: "HFrEF (EF 25%)", blurb: "A dilated, poorly contracting left ventricle designed for a starting ejection fraction of 25%. The live EF on the monitor is the dependent result: it falls further with afterload or ischemia, and rises with inotropes or unloading.",
+    spec: { heart: { lvEf: 0.25 } },
+  },
 ];
 export const PRESET_BY_ID: Record<string, Preset | undefined> = Object.assign(Object.create(null), Object.fromEntries(PRESETS.map((p) => [p.id, p])));

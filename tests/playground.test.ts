@@ -97,7 +97,7 @@ describe("presets", () => {
   it("has the required patients, with unique ids", () => {
     const ids = PRESETS.map((p) => p.id);
     expect(new Set(ids).size).toBe(ids.length);
-    for (const id of ["anterior-stemi", "inferior-stemi-rv", "stemi-mr", "shock-impella", "tamponade", "severe-as", "hemorrhage-fluids", "va-ecmo-poor-lv"]) expect(ids).toContain(id);
+    for (const id of ["anterior-stemi", "inferior-stemi-rv", "stemi-mr", "shock-impella", "tamponade", "severe-as", "hemorrhage-fluids", "va-ecmo-poor-lv", "hfref"]) expect(ids).toContain(id);
   });
   it("the ischemic MR preset sets heart.valves.mv.reg on top of the LAD occlusion", () => {
     const p = PRESETS.find((x) => x.id === "stemi-mr")!.spec;

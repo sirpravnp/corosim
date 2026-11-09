@@ -69,7 +69,7 @@ function levelsOf(schema: Record<string, unknown>): Level[] | null {
 export function sweepStates(): State[] {
   const out: State[] = [];
   const patient = FIELDS.filter((f) => f.target === "patient");
-  if (patient.length !== 91) throw new Error(`expected 91 patient fields, found ${patient.length}`);
+  if (patient.length !== 93) throw new Error(`expected 93 patient fields, found ${patient.length}`);
   for (const f of patient) {
     if (f.path === "seed") continue;
     const levels = OBJECTS[f.path] ?? levelsOf(f.schema);
@@ -88,7 +88,7 @@ export function sweepStates(): State[] {
   return out;
 }
 
-/** The patient fields the sweep does not run, so the report can still list all 91. */
+/** The patient fields the sweep does not run, so the report can still list all 93. */
 export const SWEEP_SKIPPED: { field: string; why: string }[] = [
   { field: "seed", why: "the harness sets the seed; sweeping it would re-roll the baseline instead of testing a control" },
 ];

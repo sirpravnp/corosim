@@ -1,7 +1,7 @@
 import type { Scenario } from "./scenario";
 import { DEFAULT_IABP, DEFAULT_IMPELLA, effectiveDevices, normalizePatient } from "./patient";
 import type { DeviceSpec, FluidSpec, HeartSpec, PatientSpec, PericardiumSpec, VentilationSpec } from "./patient";
-import { LESION_BY_ID, defaults } from "./structural";
+import { LESION_BY_ID, defaults, heartFromLesion } from "./structural";
 import type { LesionId } from "./structural";
 
 /**
@@ -58,8 +58,8 @@ const clone = <T>(x: T): T => (x === undefined ? x : (JSON.parse(JSON.stringify(
 export function heartOfPick(pick: NonNullable<PlaygroundState["structural"]>): HeartSpec | undefined {
   const def = LESION_BY_ID[pick.id];
   if (!def) return undefined;
-  const { patient: _p, hr: _h, ...heart } = def.build({ ...defaults(def), ...pick.values });
-  return isEmpty(heart) ? undefined : (heart as HeartSpec);
+  const heart = heartFromLesion(def, { ...defaults(def), ...pick.values });
+  return isEmpty(heart) ? undefined : heart;
 }
 
 /** The Scenario part of a spec: the playground fields removed. */
