@@ -16,6 +16,7 @@ import { buildValves, heartOf } from "./valvesPanel";
 import { buildBaseline, buildDefects, hasShunt } from "./heartDefects";
 import { buildAdvanced } from "./advancedControls";
 import type { Scenario } from "../sim/scenario";
+import type { CoroPumpShot } from "./coroPumpControls";
 import type { PatientSpec } from "../sim/patient";
 
 export interface PlaygroundHost {
@@ -30,7 +31,10 @@ export interface PlaygroundHost {
   scenario?(): Scenario;
   patch?(p: PatientSpec): void;
   reseed?(seed: number): void;
+  /** A one-shot treatment of the CoroPump: reposition, clear the purge line, exchange the pump. The page gives it to the engine once (the engine consumes the flag) and mirrors the result into the state. */
+  fire?(shot: CoroPumpShot): void;
 }
+export type { CoroPumpShot };
 export interface PlaygroundInfo { warnings: readonly string[]; link: string; presetId: string | null; scenario?: Scenario }
 export type MountId = "patient" | "valves" | "pericardium" | "volume" | "ventilation" | "iabp" | "coroPump" | "ecmo";
 export interface PlaygroundUi {
@@ -82,6 +86,7 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
   function slider(body: HTMLElement, path: string, label: string, min: number, max: number, step: number, get: (s: PlaygroundState) => number | undefined, dflt: number, fmt: (v: number) => string, set: (s: PlaygroundState, v: number) => PlaygroundState) {
     fields.push(path);
     const id = ctlId(), val = h("span", { className: "val" }), input = h("input", { id, type: "range", min: String(min), max: String(max), step: String(step) });
+    input.dataset.field = path;
     if (layout === "stack") body.append(h("label", { htmlFor: id }, label + " ", val), input);
     else body.append(h("label", { htmlFor: id, textContent: label, className: layout === "sub" ? "ctl-sub" : "" }), input, val);
     if (path === "fluids.hemorrhageMlMin" || path === "fluids.capillaryLeak") for (const el of [input, val, input.previousElementSibling ?? input]) (el as HTMLElement).dataset.disease = "1"; // disease, not treatment: the case screen hides these (style.css)
@@ -91,6 +96,7 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
   function choice<T extends string | number>(body: HTMLElement, path: string, label: string, options: readonly (readonly [T, string])[], get: (s: PlaygroundState) => T | undefined, dflt: T, set: (s: PlaygroundState, v: T) => PlaygroundState) {
     fields.push(path);
     const id = ctlId(), sel = h("select", { id });
+    sel.dataset.field = path;
     for (const [v, t] of options) sel.append(h("option", { value: String(v), textContent: t }));
     body.append(h("label", { htmlFor: id, textContent: label, className: layout === "sub" ? "ctl-sub" : "" }), sel);
     if (layout !== "stack") body.append(h("span", { className: "val" }));
@@ -223,10 +229,28 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     const imp = settings(mounts.coroPump, (s) => !!s.devices?.coroPump);
     choice<CoroPumpModel>(imp, "devices.coroPump.model", "Model", [["2.5", "CoroPump 2.5"], ["CP", "CoroPump CP"], ["5.5", "CoroPump 5.5"]], (s) => s.devices?.coroPump?.model, "CP", (s, m) => patchDevice(s, "coroPump", { model: m }));
     slider(imp, "devices.coroPump.level", "P-level", R.coroPumpLevel[0], R.coroPumpLevel[1], 1, (s) => s.devices?.coroPump?.level, 6, (v) => `P${v}`, (s, v) => patchDevice(s, "coroPump", { level: v }));
-    choice(imp, "devices.coroPump.position", "Position", [["correct", "Correct"], ["aortic", "Too far out"], ["deep", "Too deep"]] as const, (s) => s.devices?.coroPump?.position, "correct", (s, p) => patchDevice(s, "coroPump", { position: p }));
     choice(imp, "devices.coroPump.purge.solution", "Purge solution", [["dextrose-heparin", "Dextrose-heparin"], ["bicarbonate", "Bicarbonate"]] as const, (s) => s.devices?.coroPump?.purge?.solution, "dextrose-heparin", (s, v) => patchDevice(s, "coroPump", { purge: { ...s.devices?.coroPump?.purge, solution: v } }));
     slider(imp, "devices.coroPump.purge.heparinUml", "Purge heparin", 0, 50, 1, (s) => s.devices?.coroPump?.purge?.heparinUml, 25, (v) => `${v} U/ml`, (s, v) => patchDevice(s, "coroPump", { purge: { ...s.devices?.coroPump?.purge, heparinUml: v } }));
+    // one-shot treatments, always shown: a learner cannot see the hidden position or line state, so these never ask for it
+    const shots: readonly (readonly [CoroPumpShot, string, string, string])[] = [
+      ["reposition", "devices.coroPump.reposition", "Reposition", "Move the inlet back to the correct place under echo"],
+      ["clearLine", "devices.coroPump.purge.clearLine", "Clear purge line", "Flush a kinked or blocked purge line"],
+      ["exchange", "devices.coroPump.exchange", "Exchange pump", "Replace the pump with a new one"],
+    ];
+    const shotRow = h("div", { className: "row ctl-wide" });
+    for (const [shot, path, text, title] of shots) {
+      fields.push(path);
+      const b = h("button", { type: "button", textContent: text, title });
+      b.dataset.field = path;
+      b.addEventListener("click", () => host.fire?.(shot));
+      shotRow.append(b);
+    }
+    imp.append(shotRow);
+    // scenario controls (disease): free play only. The pane hides every element marked data-disease while a case's learner gate is on.
+    const nTreat = imp.children.length;
+    choice(imp, "devices.coroPump.position", "Position", [["correct", "Correct"], ["aortic", "Too far out"], ["deep", "Too deep"]] as const, (s) => s.devices?.coroPump?.position, "correct", (s, p) => patchDevice(s, "coroPump", { position: p }));
     choice(imp, "devices.coroPump.purge.line", "Purge line", [["clear", "Clear"], ["kinked", "Kinked"], ["blocked", "Blocked"]] as const, (s) => s.devices?.coroPump?.purge?.line, "clear", (s, v) => patchDevice(s, "coroPump", { purge: { ...s.devices?.coroPump?.purge, line: v } }));
+    for (const e of [...imp.children].slice(nTreat)) (e as HTMLElement).dataset.disease = "1";
     const iabp = settings(mounts.iabp, (s) => !!s.devices?.iabp);
     choice(iabp, "devices.iabp.ratio", "Ratio", [[1, "1:1"], [2, "1:2"], [3, "1:3"]] as const, (s) => s.devices?.iabp?.ratio, 1, (s, r) => patchDevice(s, "iabp", { ratio: r }));
     const timing = (v: number) => (v === 0 ? "correct" : `${v > 0 ? "late" : "early"} ${Math.abs(v)} ms`);

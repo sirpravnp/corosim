@@ -11,7 +11,9 @@ import { propsView } from "./scene";
 import { loadScenario, setPhys } from "./model";
 import { pushPatient } from "./workspace";
 import { mountDock } from "./dock";
-import { mayEdit, mayReplace } from "./learnerGate";
+import { mayEdit, mayReplace, caseGateOn } from "./learnerGate";
+import { coroPumpHost } from "../panels/coroPump";
+import { afterShot, shotSpec } from "../panels/coroPumpControls";
 import { editBetween } from "../cases/gate";
 
 /**
@@ -88,6 +90,14 @@ export function initPatient() {
     },
     loadPreset(id) { const p = PRESET_BY_ID[id]; if (p && mayReplace()) pgAdopt(p.spec, id); else pgApply(false); },
     exit: () => pgShow(false),
+    // a one-shot (reposition, clear the purge line, exchange): the engine consumes it once, then the state mirrors the result. The learner gate checks it like any edit.
+    fire(shot) {
+      const spec = shotSpec(shot);
+      if (!mayEdit(spec)) { pgApply(false); return; }
+      sim.apply(spec);
+      pg = afterShot(pg, shot); pgPreset = null; pgSticky = [];
+      pgApply(true);
+    },
     legacy: () => false,
     scenario: () => sim.scenario(),
     // the Advanced group's fields live in the Scenario: the Simulation takes the change, then the spec and the link follow
@@ -95,6 +105,13 @@ export function initPatient() {
     reseed(seed) { if (!mayEdit({ seed })) { pgApply(false); return; } pgAdopt({ ...buildPlaygroundSpec(sim.scenario(), pg).spec, seed }, null); },
   });
   mountDock(pgUi.mounts);
+  // the CoroPump console pane hosts the pump's controls; it asks the page for the case gate and for the pump's switch
+  coroPumpHost.inCase = caseGateOn;
+  coroPumpHost.setOn = (isOn) => {
+    if (!mayEdit({ support: { coroPump: isOn } })) { pgApply(false); return false; }
+    hooks.device?.("coroPump", isOn);
+    return true;
+  };
   // The Support tab's one switch per device edits `devices.*`; the legacy `support.iabp` / `support.coroPump` follow in pgApply.
   hooks.device = (id, isOn) => { if (!pgOn) pgShow(true); pg = withDevice(pg, id, isOn); pgPreset = null; pgSticky = []; pgApply(true); };
   // Reset treatment: the devices, the boluses and the beta blocker go; the insult (blood loss, hemorrhage) stays
