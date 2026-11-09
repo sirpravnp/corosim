@@ -5,7 +5,7 @@ import { ECPELLA } from "../src/cases/ecpella";
 import { Simulation } from "../src/sim/simulation";
 import { GENERIC_HARMS } from "../src/cases/harms";
 
-const P = (o: Partial<Probe> = {}): Probe => ({ map: 70, hr: 80, arrest: "none", rhythmClass: "perfusing", shocks: 0, epiDoses: 0, amioMg: 0, lidoDoses: 0, cpr: false, ecmo: false, impella: false, iabp: false, pci: false, pciPending: false, drugs: {}, ef: 0.6, lvIschemia: 0, rvIschemia: 0, congestion: 0, fluidsL: 0, dead: false, ...o });
+const P = (o: Partial<Probe> = {}): Probe => ({ map: 70, hr: 80, arrest: "none", rhythmClass: "perfusing", shocks: 0, epiDoses: 0, amioMg: 0, lidoDoses: 0, cpr: false, ecmo: false, coroPump: false, iabp: false, pci: false, pciPending: false, drugs: {}, ef: 0.6, lvIschemia: 0, rvIschemia: 0, congestion: 0, fluidsL: 0, dead: false, ...o });
 const run = (r: CaseRunner, p: Probe, s: number) => { for (let i = 0; i < s; i++) r.tick(p, 1); };
 
 const toy: CaseDef = {
@@ -90,12 +90,12 @@ describe("the cases", () => {
   });
   /** A patient just reactive enough for the ECPELLA case: a shock converts, ROSC is called 10 s after a perfusing rhythm and lost 15 s after VF, a PCI lands 12 s after it is ordered. */
   const patient = (r: CaseRunner) => {
-    const st = { arrest: "arrest" as Probe["arrest"], cls: "vf", cpr: true, ecmo: false, impella: false, pci: false, orderedAt: -1, since: 0, shocks: 0, pcis: 0, ordered: [] as string[] };
-    const probe = () => P({ arrest: st.arrest, rhythmClass: st.cls, cpr: st.cpr, ecmo: st.ecmo, impella: st.impella, pci: st.pci, pciPending: st.orderedAt >= 0 && !st.pci, map: st.cls === "perfusing" ? 62 : 35 });
+    const st = { arrest: "arrest" as Probe["arrest"], cls: "vf", cpr: true, ecmo: false, coroPump: false, pci: false, orderedAt: -1, since: 0, shocks: 0, pcis: 0, ordered: [] as string[] };
+    const probe = () => P({ arrest: st.arrest, rhythmClass: st.cls, cpr: st.cpr, ecmo: st.ecmo, coroPump: st.coroPump, pci: st.pci, pciPending: st.orderedAt >= 0 && !st.pci, map: st.cls === "perfusing" ? 62 : 35 });
     const note = (t: Tick) => {
       for (const p of t.patches) {
         const rh = p.patient?.rhythm; if (rh) { st.cls = rh === "sinus" ? "perfusing" : "vf"; st.since = 0; }
-        if (p.devices?.ecmo) st.ecmo = true; if (p.devices?.impella) st.impella = true;
+        if (p.devices?.ecmo) st.ecmo = true; if (p.devices?.coroPump) st.coroPump = true;
       }
       if (t.cpr !== undefined) st.cpr = t.cpr;
       for (const o of t.orders) { st.ordered.push(o); if (st.orderedAt < 0) st.orderedAt = r.t; }
@@ -127,23 +127,23 @@ describe("the cases", () => {
   };
   it("ECPELLA: the right path wins, with time on the table between the decisions", () => {
     const full = ECPELLA.checkpoints.find((c) => c.id === "device")!.prompt!.options[0].outcome!.patch!;
-    expect(full.devices?.ecmo?.flowLpm).toBeGreaterThan(0); expect(full.devices?.impella?.level).toBeGreaterThan(0); // both devices in one patch
+    expect(full.devices?.ecmo?.flowLpm).toBeGreaterThan(0); expect(full.devices?.coroPump?.level).toBeGreaterThan(0); // both devices in one patch
     const { r, w } = toLabArrest(); const t2 = r.t;
-    w.pick(0); expect(w.st.ecmo && w.st.impella).toBe(true); expect(["mcs", "vented"].every((f) => r.flags.has(f))).toBe(true);
+    w.pick(0); expect(w.st.ecmo && w.st.coroPump).toBe(true); expect(["mcs", "vented"].every((f) => r.flags.has(f))).toBe(true);
     expect(w.go(300)).toBe("artery"); expect(r.t - t2).toBeGreaterThanOrEqual(45);
     w.pick(0); expect(w.st.ordered).toEqual(["pci"]);
     // the storm: a transient ROSC before the artery opens sends the patient back to VF
     w.st.arrest = "rosc"; w.st.cls = "perfusing"; w.st.since = 0; const storm: Tick[] = [];
-    for (let i = 0; i < 4; i++) storm.push(r.tick(P({ arrest: "rosc", ecmo: true, impella: true }), 1));
-    for (let i = 0; i < 9; i++) storm.push(r.tick(P({ arrest: "rosc", ecmo: true, impella: true }), 1));
+    for (let i = 0; i < 4; i++) storm.push(r.tick(P({ arrest: "rosc", ecmo: true, coroPump: true }), 1));
+    for (let i = 0; i < 9; i++) storm.push(r.tick(P({ arrest: "rosc", ecmo: true, coroPump: true }), 1));
     expect(storm.flatMap((x) => x.patches).some((p) => p.patient?.rhythm === "vf-coarse")).toBe(true);
-    const done = r.tick(P({ pci: true, ecmo: true, impella: true }), 1);
+    const done = r.tick(P({ pci: true, ecmo: true, coroPump: true }), 1);
     expect(done.patches.some((p) => p.patient?.rhythm === "sinus")).toBe(true);
     expect(r.open).toBeNull(); // the recovery plays first
-    const t3 = r.t; run(r, P({ arrest: "rosc", pci: true, ecmo: true, impella: true }), 60);
+    const t3 = r.t; run(r, P({ arrest: "rosc", pci: true, ecmo: true, coroPump: true }), 60);
     expect(r.open?.id).toBe("after"); expect(r.t - t3).toBeGreaterThanOrEqual(35);
     expect(r.answer(1).over).toBe("success");
-    const d = r.debrief(); expect(d.result).toBe("success"); expect(d.lines.join(" ")).toContain("Impella"); expect(d.lines.join(" ")).not.toContain("Not done");
+    const d = r.debrief(); expect(d.result).toBe("success"); expect(d.lines.join(" ")).toContain("CoroPump"); expect(d.lines.join(" ")).not.toContain("Not done");
   });
   it("ECPELLA: the quick ROSC is not undone by the storm rule, and CPR comes off at ROSC and on at an arrest", () => {
     const r = new CaseRunner(ECPELLA), w = patient(r);
@@ -181,9 +181,9 @@ describe("the cases", () => {
   });
   it("ECPELLA: ECMO alone gets time to distend, then the venting prompt, then the PCI prompt", () => {
     const { r, w } = toLabArrest(); const t2 = r.t;
-    w.pick(1); expect(w.st.ecmo).toBe(true); expect(w.st.impella).toBe(false);
+    w.pick(1); expect(w.st.ecmo).toBe(true); expect(w.st.coroPump).toBe(false);
     expect(w.go(300)).toBe("distension"); expect(r.t - t2).toBeGreaterThanOrEqual(42);
-    w.pick(0); expect(w.st.impella).toBe(true); expect(r.flags.has("vented")).toBe(true);
+    w.pick(0); expect(w.st.coroPump).toBe(true); expect(r.flags.has("vented")).toBe(true);
     expect(w.go(300)).toBe("artery");
     w.pick(0); expect(w.st.ordered).toEqual(["pci"]);
   });
@@ -193,12 +193,12 @@ describe("the cases", () => {
   });
   it("ECPELLA: a vasodilator or beta blocker on support costs points and is named in the debrief", () => {
     const run2 = (drugs: Record<string, number>) => {
-      const r = new CaseRunner(ECPELLA); const p = P({ arrest: "arrest", ecmo: true, impella: true, drugs });
+      const r = new CaseRunner(ECPELLA); const p = P({ arrest: "arrest", ecmo: true, coroPump: true, drugs });
       // flags a player would have earned by now; the point here is the scoring of the drug during the support phase
       for (const f of ["rosc1", "cathLab", "labArrested", "deviceChosen", "mcs", "vented"]) r.flags.add(f);
       run(r, p, 46); expect(r.open?.id).toBe("artery"); r.answer(0);
-      const d = r.tick(P({ pci: true, ecmo: true, impella: true, drugs }), 1); expect(d.patches.length).toBeGreaterThan(0);
-      run(r, P({ pci: true, ecmo: true, impella: true, drugs }), 40); expect(r.open?.id).toBe("after"); r.answer(1);
+      const d = r.tick(P({ pci: true, ecmo: true, coroPump: true, drugs }), 1); expect(d.patches.length).toBeGreaterThan(0);
+      run(r, P({ pci: true, ecmo: true, coroPump: true, drugs }), 40); expect(r.open?.id).toBe("after"); r.answer(1);
       return r.debrief();
     };
     const clean = run2({}), harm = run2({ nitroglycerin: 0.6 });
@@ -223,11 +223,11 @@ describe("the cases", () => {
     sim.step(1);
     expect(sim.arrestState().status).toBe("arrest");
     const off = sim.devices();
-    expect(off?.ecmo?.flowLpm ?? 0).toBeLessThan(0.5); expect(off?.impella?.on).toBe(false);
+    expect(off?.ecmo?.flowLpm ?? 0).toBeLessThan(0.5); expect(off?.coroPump?.on).toBe(false);
     sim.apply(ECPELLA.checkpoints.find((c) => c.id === "device")!.prompt!.options[0].outcome!.patch!);
     sim.step(8);
     const d = sim.devices();
-    expect(d?.ecmo?.flowLpm).toBeGreaterThan(2.5); expect(d?.impella?.on).toBe(true);
+    expect(d?.ecmo?.flowLpm).toBeGreaterThan(2.5); expect(d?.coroPump?.on).toBe(true);
   }, 60000);
 });
 
@@ -244,6 +244,7 @@ describe("generic harms", () => {
       ["calcium channel blocker", P({ ef: 0.25, drugs: { diltiazem: 0.5 } }), P({ ef: 0.6, map: 90, drugs: { diltiazem: 0.5 } })],
       ["dual AV-nodal blockade", P({ ef: 0.6, map: 90, drugs: { betaBlocker: 0.5, diltiazem: 0.5 } }), P({ ef: 0.6, map: 90, drugs: { diltiazem: 0.5 } })],
       ["fluid into congestion", P({ ef: 0.25, congestion: 0.6, fluidsL: 1 }), P({ ef: 0.6, congestion: 0, fluidsL: 1 })],
+      ["waiting while unstable", P({ map: 55, waiting: true }), P({ map: 90, waiting: true })],
     ];
     expect(cases.map((c) => c[0]).sort()).toEqual(GENERIC_HARMS.map((h) => h.tag).sort()); // a new rule needs a test here
     for (const [tag, bad, ok] of cases) {

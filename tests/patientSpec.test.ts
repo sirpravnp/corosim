@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { decodePatient, decodeScenario, encodePatient, encodeScenario, SCENARIO_REFERENCE } from "../src/sim/llm";
-import { DEFAULT_IABP, DEFAULT_IMPELLA, effectiveDevices, normalizePatient, PatientSpec } from "../src/sim/patient";
+import { DEFAULT_IABP, DEFAULT_COROPUMP, effectiveDevices, normalizePatient, PatientSpec } from "../src/sim/patient";
 import { Scenario } from "../src/sim/scenario";
 import { LESIONS, parseLesionHash, patientFromLesionHash } from "../src/sim/structural";
 import { STENOSIS_SPAN } from "../src/config/valves";
@@ -11,7 +11,7 @@ const OLD: Scenario[] = [
   { lesions: [{ artery: "LAD", occluded: true, position: 0.2 }], seed: 7 },
   { anatomy: { dominance: "left", lm: "trifurcation" }, lesions: [{ artery: "RCA", stenosis: 0.9 }, { artery: "circumflex", stenosis: 0.6, position: 0.5 }], exertion: true, drugs: { betaBlocker: 0.5 }, seed: 42 },
   { bloodLoss: 0.3, patient: { rhythm: "af", bbb: "lbbb" }, support: { fluids: 1.5, norepinephrine: 0.4, pacing: true, paceRate: 80, iabp: true }, autonomic: { baroreflexGain: 0, noise: 0 } },
-  { lesions: [{ artery: "LAD", stenosis: 0.95 }], support: { impella: true, dobutamine: 0.3 }, autonomic: { respRate: 12, respDepth: 1.2, setPointShift: 20 }, drugs: { vasopressor: -0.5, atropine: 1 } },
+  { lesions: [{ artery: "LAD", stenosis: 0.95 }], support: { coroPump: true, dobutamine: 0.3 }, autonomic: { respRate: 12, respDepth: 1.2, setPointShift: 20 }, drugs: { vasopressor: -0.5, atropine: 1 } },
 ];
 
 describe("encodePatient / decodePatient", () => {
@@ -22,7 +22,7 @@ describe("encodePatient / decodePatient", () => {
       pericardium: { effusionMl: 300, effusionRateMlMin: 5, stiffness: 1.5 },
       fluids: { given: [{ kind: "blood", ml: 500, atMin: 10, overMin: 20 }], capillaryLeak: 0.2 },
       ventilation: { mode: "positive", peep: 8 },
-      devices: { impella: { model: "CP", level: 4 }, iabp: { ratio: 2, volumeMl: 30 }, ecmo: { flowLpm: 4, fio2: 0.6 } },
+      devices: { coroPump: { model: "CP", level: 4 }, iabp: { ratio: 2, volumeMl: 30 }, ecmo: { flowLpm: 4, fio2: 0.6 } },
     };
     const code = encodePatient(p);
     expect(code).toMatch(/^[A-Za-z0-9_-]+$/);
@@ -53,23 +53,23 @@ describe("normalizePatient", () => {
     expect(r.scenario.bloodLoss).toBe(0.6);
   });
   it("accepts in-range values unchanged, with no warnings", () => {
-    const p: PatientSpec = { pericardium: { effusionMl: 500, open: false }, fluids: { given: [{ kind: "crystalloid", ml: 1000 }], legRaise: true }, ventilation: { mode: "positive", peep: 10, tidalMlKg: 6 }, devices: { impella: { model: "5.5", level: 9, position: "deep" }, ecmo: { flowLpm: 7, fio2: 1 } }, heart: { asd: { diameterMm: 12 } } };
+    const p: PatientSpec = { pericardium: { effusionMl: 500, open: false }, fluids: { given: [{ kind: "crystalloid", ml: 1000 }], legRaise: true }, ventilation: { mode: "positive", peep: 10, tidalMlKg: 6 }, devices: { coroPump: { model: "5.5", level: 9, position: "deep" }, ecmo: { flowLpm: 7, fio2: 1 } }, heart: { asd: { diameterMm: 12 } } };
     const r = normalizePatient(p);
     expect(r.warnings).toEqual([]);
     expect(r.spec).toEqual(p);
   });
   it("clamps out-of-range numbers and says so", () => {
-    const r = normalizePatient({ pericardium: { effusionMl: 5000 }, ventilation: { peep: 40 }, devices: { impella: { level: 12 }, ecmo: { flowLpm: -1, fio2: 0.1 } }, fluids: { given: [{ kind: "blood", ml: 9000 }], capillaryLeak: 2 } });
+    const r = normalizePatient({ pericardium: { effusionMl: 5000 }, ventilation: { peep: 40 }, devices: { coroPump: { level: 12 }, ecmo: { flowLpm: -1, fio2: 0.1 } }, fluids: { given: [{ kind: "blood", ml: 9000 }], capillaryLeak: 2 } });
     expect(r.spec.pericardium?.effusionMl).toBe(2000);
     expect(r.spec.ventilation?.peep).toBe(25);
-    expect(r.spec.devices?.impella?.level).toBe(9);
+    expect(r.spec.devices?.coroPump?.level).toBe(9);
     expect(r.spec.devices?.ecmo).toEqual({ flowLpm: 0, fio2: 0.21 });
     expect(r.spec.fluids?.given?.[0].ml).toBe(5000);
     expect(r.spec.fluids?.capillaryLeak).toBe(1);
     expect(r.warnings.filter((w) => /clamped/.test(w))).toHaveLength(7);
   });
   it("drops invalid values with a warning and never throws", () => {
-    const bad = { kind: "child", pericardium: { effusionMl: NaN, stiffness: "2" }, fluids: { given: [{ kind: "wine", ml: 100 }, { kind: "blood" }, 5], hemorrhageMlMin: Infinity }, ventilation: { mode: "cpap", peep: null }, devices: { iabp: { ratio: 4 }, impella: "on" }, heart: 3 } as unknown as PatientSpec;
+    const bad = { kind: "child", pericardium: { effusionMl: NaN, stiffness: "2" }, fluids: { given: [{ kind: "wine", ml: 100 }, { kind: "blood" }, 5], hemorrhageMlMin: Infinity }, ventilation: { mode: "cpap", peep: null }, devices: { iabp: { ratio: 4 }, coroPump: "on" }, heart: 3 } as unknown as PatientSpec;
     const r = normalizePatient(bad);
     expect(r.spec).not.toHaveProperty("kind");
     expect(r.spec.pericardium).toBeUndefined();
@@ -103,15 +103,15 @@ describe("normalizePatient", () => {
 describe("effectiveDevices", () => {
   it("maps the legacy booleans to the documented defaults", () => {
     expect(DEFAULT_IABP).toEqual({ ratio: 1, inflateMs: 0, deflateMs: 0, volumeMl: 40 });
-    expect(DEFAULT_IMPELLA).toEqual({ model: "CP", level: 6, position: "correct" });
-    expect(effectiveDevices({ support: { iabp: true, impella: true } })).toEqual({ iabp: DEFAULT_IABP, impella: DEFAULT_IMPELLA });
+    expect(DEFAULT_COROPUMP).toEqual({ model: "CP", level: 6, position: "correct" });
+    expect(effectiveDevices({ support: { iabp: true, coroPump: true } })).toEqual({ iabp: DEFAULT_IABP, coroPump: DEFAULT_COROPUMP });
     expect(effectiveDevices({ support: { iabp: true } })).toEqual({ iabp: DEFAULT_IABP });
-    expect(effectiveDevices({ support: { iabp: false, impella: false } })).toEqual({});
+    expect(effectiveDevices({ support: { iabp: false, coroPump: false } })).toEqual({});
     expect(effectiveDevices({})).toEqual({});
   });
   it("explicit devices win over the booleans, and other devices are kept", () => {
-    const d = effectiveDevices({ support: { iabp: true, impella: true }, devices: { impella: { model: "5.5", level: 8 }, ecmo: { flowLpm: 3 } } });
-    expect(d.impella).toEqual({ model: "5.5", level: 8 });
+    const d = effectiveDevices({ support: { iabp: true, coroPump: true }, devices: { coroPump: { model: "5.5", level: 8 }, ecmo: { flowLpm: 3 } } });
+    expect(d.coroPump).toEqual({ model: "5.5", level: 8 });
     expect(d.iabp).toEqual(DEFAULT_IABP);
     expect(d.ecmo).toEqual({ flowLpm: 3 });
   });

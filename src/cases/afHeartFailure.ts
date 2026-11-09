@@ -21,7 +21,7 @@ export const AF_HF: CaseDef = {
   card: {
     presents: "66-year-old man with five days of worsening breathlessness, needing to sleep upright, with swollen legs and a racing, irregular heartbeat. He is using his neck muscles to breathe. Heart rate 158, BP 83/69, crackles to the mid-chest.",
     pmh: "Ischemic cardiomyopathy, ejection fraction about 25%. Takes carvedilol, lisinopril and furosemide but has run out of his medicines for a week. No allergies.",
-    info: ["The ECG shows atrial fibrillation with a rapid ventricular response and old Q waves.", "A bedside echo shows a dilated, poorly contracting left ventricle."],
+    info: ["A bedside echo shows a dilated, poorly contracting left ventricle."],
   },
   start: { patient: { rhythm: "af-rvr" }, heart: { lvEes: 0.2 }, fluids: { given: [{ kind: "crystalloid", ml: 1000 }] }, seed: 7 },
   stable: (p) => p.map >= 60 && p.arrest === "none",

@@ -1,5 +1,5 @@
-// P16: the core-engine Simulation reads the PatientSpec fields the page edits: structural heart, pericardium, ventilation, ECMO, Impella RP,
-// Impella model/position. `setPatient` rebuilds only what is built in and applies the rest live. Set CORE_VERBOSE=1 to print.
+// P16: the core-engine Simulation reads the PatientSpec fields the page edits: structural heart, pericardium, ventilation, ECMO, CoroPump RP,
+// CoroPump model/position. `setPatient` rebuilds only what is built in and applies the rest live. Set CORE_VERBOSE=1 to print.
 import { describe, it, expect } from "vitest";
 import { Simulation } from "../src/sim/simulation";
 import { LiveSource } from "../src/sim/liveSource";
@@ -55,24 +55,24 @@ describe("setPatient", () => {
     expect(b.cvp).toBeGreaterThan(a.cvp + 3);
     expect(v.rolling(20).cardiacOutput).toBeLessThan(5.2);
   });
-  it("ECMO and an Impella RP are added by a rebuild; ECMO flow is live", () => {
+  it("ECMO and a CoroPump RP are added by a rebuild; ECMO flow is live", () => {
     const e = mk({ devices: { ecmo: { flowLpm: 3 } } });
     expect(e.devices()!.ecmo!.flowLpm).toBeGreaterThan(2); // instantaneous, pulsatile
     e.setPatient({ devices: { ecmo: { flowLpm: 5 } } });
     const live = e.live; e.run(20);
     expect(e.live).toBe(live);
     expect(e.circ.deviceFlow).toBeGreaterThan(4);
-    const r = mk({ devices: { impellaRp: { level: 6 } } });
-    expect(r.devices()!.impellaRp!.on).toBe(true);
+    const r = mk({ devices: { coroPumpRp: { level: 6 } } });
+    expect(r.devices()!.coroPumpRp!.on).toBe(true);
     expect(mk().devices()!.ecmo).toBeUndefined();
   });
-  it("Impella model and position rebuild; the P-level is live", () => {
-    const i = mk({ support: { impella: true } });
-    const live = i.live; expect(i.devices()!.impella!.model).toBe("CP");
-    i.setPatient({ devices: { impella: { model: "CP", level: 3 } } });
-    expect(i.live).toBe(live); expect(i.devices()!.impella!.level).toBe(3);
-    i.setPatient({ devices: { impella: { model: "5.5", level: 3 } } });
-    expect(i.live).not.toBe(live); expect(i.devices()!.impella!.model).toBe("5.5");
+  it("CoroPump model and position rebuild; the P-level is live", () => {
+    const i = mk({ support: { coroPump: true } });
+    const live = i.live; expect(i.devices()!.coroPump!.model).toBe("CP");
+    i.setPatient({ devices: { coroPump: { model: "CP", level: 3 } } });
+    expect(i.live).toBe(live); expect(i.devices()!.coroPump!.level).toBe(3);
+    i.setPatient({ devices: { coroPump: { model: "5.5", level: 3 } } });
+    expect(i.live).not.toBe(live); expect(i.devices()!.coroPump!.model).toBe("5.5");
   });
   it("apply() takes a heart patch on the core engine, merged into what is there", () => {
     const x = mk({ heart: { valves: { av: { open: 0.4 } } } });

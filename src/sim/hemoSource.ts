@@ -77,10 +77,10 @@ export interface Saturations {
 
 /** A device's console, as its screen would show it. */
 export interface DeviceConsole {
-  id: string; // "impella", "iabp", "ecmo", "impellaRp"
+  id: string; // "coroPump", "iabp", "ecmo", "coroPumpRp"
   label: string;
   readings: Record<string, number>; // e.g. { flowLpm, motorCurrent, level } — panels show what they recognise
-  /** Waveforms the console draws (Impella placement signal, IABP arterial trace). */
+  /** Waveforms the console draws (CoroPump placement signal, IABP arterial trace). */
   traces?: Record<string, Series>;
   alarms: string[];
 }

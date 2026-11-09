@@ -59,3 +59,8 @@ button.ws-x:hover { color: var(--ink); }
 .ws-tools .dd, .ws-body .dd { display: inline-block; min-width: 120px; max-width: 100%; vertical-align: middle; }
 .ws-tools button.dd-btn, .ws-body button.dd-btn { padding: 5px 9px; font-size: 12px; }
 .ws-tools .dd-list, .ws-body .dd-list { min-width: 160px; }
+
+/* Monitor rows that are estimates carry a small data-face label, not a colored box. */
+.ws-body table.readout small { margin-left: 6px; font: 11px var(--font-data); color: var(--muted); }
+.ws-body table.readout td i { font: 700 15px var(--font-readout); font-style: normal; }
+.ws-body table.readout td em { font-style: normal; font-size: 12px; margin-left: 4px; opacity: 0.75; }

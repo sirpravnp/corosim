@@ -2,6 +2,8 @@ import type { Option, Outcome } from "../cases/engine";
 import { CaseSpec, condsText, parseConds, validateCase } from "../cases/spec";
 import { caseToMarkdown, parseDuration } from "../cases/markdown";
 import { CHANGE_PRESETS, START_PRESETS, Preset, mergePatch } from "./presets";
+import { CATALOG, STANDARD_MONITOR } from "../cases/orders";
+import { LABEL, REF, type Analyte } from "../sim/labs";
 import { deleteSpec, playUrl, saveSpec, setPreview } from "./api";
 
 /**
@@ -24,12 +26,24 @@ export function blankCase(taken: string[]): CaseSpec {
   return {
     id: `new-case-${n}`, title: "", tier: "easy", blurb: "", complaint: "", devices: [],
     card: { presents: "", pmh: "" }, start: {}, points: { survive: 30, stable: 25, harm: 20 }, limitS: 900,
-    checkpoints: [],
+    checkpoints: [], monitor: [...STANDARD_MONITOR],
   };
 }
+
+const MONITOR_GROUPS: [string, string][] = [["monitor", "Numbers on the monitor"], ["panel", "Workspace panels shown from the start"]];
+/** Lab overrides, grouped the way a clinician reads them. The order lists every analyte once. */
+const LAB_GROUPS: [string, Analyte[]][] = [
+  ["Electrolytes and kidney", ["na", "k", "cl", "hco3", "bun", "cr", "egfr", "glu", "ca", "mg", "phos"]],
+  ["Blood and clotting", ["hgb", "wbc", "plt", "inr", "aptt", "ddimer"]],
+  ["Liver and pancreas", ["ast", "alt", "alp", "tbili", "alb", "lipase"]],
+  ["Heart and thyroid", ["trop", "bnp", "ntprobnp", "tsh", "ft4"]],
+  ["Blood gas", ["ph", "pco2", "po2", "be"]],
+  ["Other", ["a1c", "pct", "tchol", "ldl", "hdl", "tg", "ua", "tox"]],
+];
 /** An imported or half-written draft may lack parts the form expects. */
 function fill(s: CaseSpec): CaseSpec {
   s.card ??= { presents: "", pmh: "" }; s.start ??= {}; s.checkpoints ??= [];
+  s.monitor ??= [...STANDARD_MONITOR];
   s.points = s.points ?? { survive: 30, stable: 25, harm: 20 }; s.limitS ??= 900; s.tier ??= "easy"; s.blurb ??= "";
   return s;
 }
@@ -126,7 +140,7 @@ export function openBuilder(host: HTMLElement, opt: BuilderOptions) {
         <div class="tp-tools"><button type="button" data-act="tpup" data-ci="${ci}">Move up</button><button type="button" data-act="tpdown" data-ci="${ci}">Move down</button><button type="button" data-act="tpdup" data-ci="${ci}">Duplicate</button><button type="button" data-act="tpdel" data-ci="${ci}">Remove</button></div>
         <h4>When it happens</h4>
         <div class="f3">${field("Name", `${base}.id`, "text", "", "A short label for this point.")}${field("At time (m:ss)", `${base}.atS`, "dur", 'placeholder="0:05"')}${field("Repeats every (seconds)", `${base}.repeatAfterS`, "int", 'placeholder="once"')}</div>
-        ${field("Only when (all must hold)", `${base}.when`, "conds", 'placeholder="map < 62; not pci"', "Measures: map, hr, ef, lvIschemia, rvIschemia, congestion, fluidsL, shocks, epiDoses, amioMg, lidoDoses. Also pci, pciPending, cpr, ecmo, impella, iabp, dead, rhythm = vf, arrest = rosc, drug betaBlocker &gt; 0.1. Join alternatives with “or”.")}
+        ${field("Only when (all must hold)", `${base}.when`, "conds", 'placeholder="map < 62; not pci"', "Measures: map, hr, ef, lvIschemia, rvIschemia, congestion, fluidsL, shocks, epiDoses, amioMg, lidoDoses. Also pci, pciPending, cpr, ecmo, coroPump, iabp, dead, rhythm = vf, arrest = rosc, drug betaBlocker &gt; 0.1. Join alternatives with “or”.")}
         <div class="f3">${field("…held for (seconds)", `${base}.forS`, "int")}${field("Requires flags", `${base}.requires`, "list")}${field("Skipped once flagged", `${base}.forbids`, "list")}</div>
         <label class="f chk"><input type="checkbox" data-p="${base}.branch" data-t="bool" ${c.branch ? "checked" : ""}><span>Only after a wrong turn (not counted in the best possible score)</span></label>
         <h4>What happens</h4>
@@ -144,13 +158,22 @@ export function openBuilder(host: HTMLElement, opt: BuilderOptions) {
     return `
     <section class="bs"><h2>Details</h2>
       <div class="f3">${field("Title", "title", "text")}${field("Id", "id", "text", saved ? "disabled" : "", "The address of the case. Fixed once saved.")}${field("Difficulty", "tier", "sel", "easy=Easy|medium=Medium|hard=Hard")}</div>
-      <div class="f3">${field("Chief complaint", "complaint", "text", 'placeholder="Chest pain"', "Cases are grouped by this on the Cases page.")}${field("Devices", "devices", "list", 'placeholder="ECMO, Impella"', "Comma separated.")}${field("Time limit (m:ss)", "limitS", "dur")}</div>
+      <div class="f3">${field("Chief complaint", "complaint", "text", 'placeholder="Chest pain"', "Cases are grouped by this on the Cases page.")}${field("Devices", "devices", "list", 'placeholder="ECMO, CoroPump"', "Comma separated.")}${field("Time limit (m:ss)", "limitS", "dur")}</div>
       ${field("One-line summary", "blurb", "text", "", "Shown in the case list.")}
     </section>
     <section class="bs"><h2>Patient card</h2>
       ${field("Presents", "card.presents", "opt", "", "What the learner reads first: age, story, vitals.")}
       ${field("History", "card.pmh", "opt")}
       ${field("Known findings", "card.info", "lines", "", "One line each, for example the ECG.")}
+    </section>
+    <section class="bs"><h2>Monitor</h2>
+      <p class="hint">What the learner sees at the bedside from the start. Anything not shown here can still be ordered during the case. An empty choice shows the standard six.</p>
+      ${MONITOR_GROUPS.map(([g, name]) => `<fieldset class="mon"><legend>${name}</legend><div class="checks">${CATALOG.filter((i) => i.group === g).map((i) => `<label class="f chk"><input type="checkbox" data-mon="${i.id}" ${spec.monitor?.includes(i.id) ? "checked" : ""}><span>${esc(i.label)}</span></label>`).join("")}</div></fieldset>`).join("")}
+      <div class="f3">${field("Body temperature (C), optional", "tempC", "num", 'min="20" max="45" placeholder="37.0"', "Between 20 and 45. Left blank, the patient reads 37.0.")}</div>
+      <details ${Object.keys(spec.labs ?? {}).length ? "open" : ""}><summary>Lab values</summary>
+        <p class="hint">Set related values together: a changed potassium does not move the creatinine or the ECG for you. Blank values are worked out from the patient.</p>
+        ${LAB_GROUPS.map(([name, xs]) => `<fieldset class="mon"><legend>${name}</legend><div class="f3 labs">${xs.map((a) => field(`${LABEL[a].name}${REF[a].unit ? ` (${REF[a].unit})` : a === "ua" || a === "tox" ? " (0 normal, above 0 abnormal)" : ""}`, `labs.${a}`, "num")).join("")}</div></fieldset>`).join("")}
+      </details>
     </section>
     <section class="bs"><h2>Starting patient</h2>
       <div class="f wide"><div class="presetrow">${presetSelect("start", START_PRESETS, "Add a preset…")}<button type="button" data-act="clearpatch" data-p="start">Clear</button></div>${input("start", "json", "")}<small>The simulator patient the case opens with. Presets merge into it; the JSON can be edited directly.</small></div>
@@ -256,6 +279,7 @@ export function openBuilder(host: HTMLElement, opt: BuilderOptions) {
       c.outcome = tidy(c.outcome); if (c.outcome === undefined) delete c.outcome;
       for (const op of c.prompt?.options ?? []) { op.outcome = tidy(op.outcome); if (op.outcome === undefined) delete op.outcome; }
     }
+    if (spec.labs && !Object.keys(spec.labs).length) delete spec.labs;
     if (spec.opening && !spec.opening.rhythm && !spec.opening.cpr && !spec.opening.drugs?.length) delete spec.opening;
   }
 
@@ -268,6 +292,12 @@ export function openBuilder(host: HTMLElement, opt: BuilderOptions) {
       const path = target === "start" ? ["start"] : target.split(".");
       setAt(spec as never, path, mergePatch(getAt(spec, path) as never, pre.patch));
       el.value = ""; touch(); draw(); return;
+    }
+    if (el.dataset.mon) { // a monitor checkbox: keep the catalog's order, and leave ids it does not know alone
+      const on = new Set(spec.monitor ?? []); if (el.checked) on.add(el.dataset.mon); else on.delete(el.dataset.mon);
+      const known = CATALOG.map((i) => i.id).filter((id) => on.has(id));
+      spec.monitor = [...known, ...[...on].filter((id) => !known.includes(id))];
+      touch(); return;
     }
     const p = el.dataset.p, kind = el.dataset.t; if (!p || !kind) return;
     const r = convert(el, kind);

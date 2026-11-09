@@ -16,7 +16,7 @@ export const AF_RVR: CaseDef = {
   card: {
     presents: "71-year-old woman with three days of palpitations and tiredness. She is comfortable, breathing easily, and talking in full sentences. Irregularly irregular pulse at 146, BP 98/76, oxygen saturation 97%.",
     pmh: "Hypertension. Takes amlodipine. No heart failure, no prior stroke, no bleeding problems. No allergies.",
-    info: ["The ECG shows atrial fibrillation with a narrow QRS and no ST changes.", "A bedside echo shows a normal ejection fraction."],
+    info: ["A bedside echo shows a normal ejection fraction."],
   },
   start: { patient: { rhythm: "af-rvr" }, seed: 7 },
   stable: (p) => p.map >= 60 && p.hr < 130 && p.arrest === "none",

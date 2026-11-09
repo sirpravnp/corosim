@@ -1,0 +1,35 @@
+/* The bedside monitor (src/page/caseMonitorView.ts): one stage. Lead II on pink paper, then a row of measurement tiles that share hairlines. */
+.cm { display: grid; gap: 0; min-width: 0; order: 1; }
+.cm[hidden], .cm-fig[hidden], .cm-tiles[hidden] { display: none; }
+#casemon > :is(.arrest-banner, .clock-critical, .arrest-dead) { order: 0; }
+
+.cm-fig { margin: 0; padding: 0; background: none; border: 0; border-radius: 0; }
+.cm-ecg { display: block; width: 100%; border: 1px solid var(--rule); background: #fffaf8; } /* the paper is pink in both themes; only its frame follows the page */
+.cm-fig figcaption { margin: 0; padding: 7px 0 14px; font: 400 12px/1.4 var(--font-data); color: var(--muted); max-width: none; }
+.cm-fig figcaption b { font-weight: 500; color: var(--ink); }
+
+/* Tiles: flex cells that grow to fill their row, one hairline between them (the gap shows the container's rule color). */
+.cm-tiles { display: flex; flex-wrap: wrap; gap: 1px; padding: 1px; background: var(--rule); border: 0; }
+.cm-tile { flex: 1 1 150px; min-width: 0; display: grid; gap: 14px; align-content: space-between; padding: 12px 16px 16px; background: var(--bg); }
+.cm-tile[data-tile="bp"] { flex-grow: 1.8; flex-basis: 230px; }
+.cm-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.cm-label { font: 500 13px/1.2 var(--font-ui); color: var(--muted); }
+.cm-est { font: 400 11px/1.2 var(--font-data); color: var(--muted); }
+.cm-val { white-space: nowrap; display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 8px; min-width: 0; color: var(--ink); }
+.cm-val i { font: 800 clamp(36px, 3.6vw, 54px)/1 var(--font-readout); font-style: normal; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
+.cm-val i.word { font: 500 22px/1.2 var(--font-data); letter-spacing: 0; }
+.cm-val i.dash { font: 400 clamp(30px, 3vw, 42px)/1 var(--font-data); color: var(--muted); }
+.cm-val small { font: 500 clamp(15px, 1.5vw, 19px)/1 var(--font-data); color: var(--muted); font-variant-numeric: tabular-nums; }
+.cm-val em { font: 400 13px/1 var(--font-data); font-style: normal; color: var(--muted); }
+.cm-tile.abn .cm-val i:not(.dash) { color: var(--bad); }
+
+@media (max-width: 560px) {
+  .cm-tile { flex-basis: calc(50% - 1px); padding: 10px 12px 12px; gap: 10px; }
+  .cm-tile[data-tile="bp"] { flex-basis: calc(50% - 1px); flex-grow: 1; } /* DOM order and visual order match: HR, BP, SpO2, RR, Temp */
+  .cm-val i { font-size: 38px; }
+  .cm-val i.word { font-size: 18px; }
+}
+@media (max-width: 420px) {
+  .cm-val i { font-size: 30px; } /* "135/100 (112)" must fit a half-width tile */
+  .cm-val small { font-size: 14px; }
+}

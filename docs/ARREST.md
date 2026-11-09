@@ -57,7 +57,7 @@ The rule now (`Simulation.step`, so the page, the MCP tools and the tests all ge
 | No flow | 600 clinical s of no-flow (CPR earns credit by its output and the coronary perfusion pressure) | `ARREST.deathAfterNoFlowS`, sim/arrest.ts |
 | Refractory shock (with a pulse) | MAP < 40 mmHg for 240 clinical s (the count runs back down above it) | `ARREST.shockDeath`, `shockDeathStep` |
 | Pulseless, by flow | native output (less CPR) < 20 % of the patient's own | `ARREST_SIM.pulselessOutput` |
-| Pulseless, by pressure (new) | MAP < 25, or systolic < 45, or pulse pressure < 5 mmHg, for 3 s; a pulse again at MAP >= 30, systolic >= 55 and pulse pressure >= 10 for 3 s. The pulse-pressure rule is skipped while a device carries more than 0.5 L/min (VA-ECMO, Impella) | `ARREST_SIM.pulsePressure` |
+| Pulseless, by pressure (new) | MAP < 25, or systolic < 45, or pulse pressure < 5 mmHg, for 3 s; a pulse again at MAP >= 30, systolic >= 55 and pulse pressure >= 10 for 3 s. The pulse-pressure rule is skipped while a device carries more than 0.5 L/min (VA-ECMO, CoroPump) | `ARREST_SIM.pulsePressure` |
 
 The pressure check is new. An emptied circulation can keep a stroke volume moving at no pressure (the bled-out patient showed MAP
 -0.4, systolic 0 and an output of 2 L/min, 53 % of normal, and was called "perfusing" for ever). Now an organized rhythm without the

@@ -3,7 +3,9 @@ import { normalizeScenario } from "../sim/scenario";
 import { BeatRecord, computeMetrics, meanRate } from "../sim/metrics";
 import { explain } from "../sim/explain";
 import { SCENARIO_REFERENCE } from "../sim/llm";
+import { migrateLegacyKeys } from "../sim/aliases";
 import type { PatientSpec } from "../sim/patient";
+import { learnerMayApply, REPLACE_WHY } from "../cases/gate";
 import { encodePatient } from "../sim/llm";
 import { rememberPatient, patchPatient, currentPatient, heartCath, jvp, oxygen, loopMetricsReport } from "./hemo";
 import { buildTree } from "../anatomy/tree";
@@ -27,8 +29,20 @@ import { LAB_CASES, caseById } from "../cath/lab/cases";
 import { scoreProcedure } from "../lab/score";
 import type { Action } from "../lab/types";
 
-export interface ToolContext { sim: Simulation; appUrl: string }
+export interface ToolContext {
+  sim: Simulation; appUrl: string;
+  /** A host that is running a case on this patient sets it: only treatments may be applied and the patient cannot be replaced (src/cases/gate.ts). The page does not set it; it refuses the whole connection while a case runs. */
+  inCase?: boolean;
+}
 let labSession: { engine: LabEngine; caseId: string } | null = null;
+/** Throws the gate's sentence when a case is running and the edit would give the patient disease. */
+const patientFromUnknown = (raw: unknown): PatientSpec => migrateLegacyKeys(raw ?? {}).spec as PatientSpec;
+
+function gateEdit(ctx: ToolContext, edit: PatientSpec) {
+  if (!ctx.inCase) return;
+  const v = learnerMayApply(edit);
+  if (!v.ok) throw new Error(v.why);
+}
 export interface ToolDef {
   name: string; title: string; description: string;
   inputSchema: Record<string, unknown>;
@@ -96,7 +110,7 @@ function bedside(sim: Simulation) {
     state: sim.state(),
     ...arrestView(sim),
     ecg: sim.ecg(),
-    ...(sim.devices() ? { devices: sim.devices() } : {}), // core engine: Impella and IABP consoles (see sim/coreDevices.ts)
+    ...(sim.devices() ? { devices: sim.devices() } : {}), // core engine: CoroPump and IABP consoles (see sim/coreDevices.ts)
     assessment: { problems: a.issues.map((i) => i.text), harmful: a.warnings.map((w) => w.text), guidelineNextSteps: a.steps.map((x) => ({ step: x.text, why: x.why })) },
   };
 }
@@ -138,12 +152,15 @@ export const TOOLS: ToolDef[] = [
   {
     name: "corosim_set_scenario", title: "Build a patient", readOnly: false,
     description: `Replace the current patient with this scenario, then run a warm-up so the reflexes have settled. Returns the monitor, the 12-lead ECG, the guideline assessment and a grounded explanation, plus warnings listing anything that was clamped or dropped (read them: they tell you what actually ran). Use settled=false to watch an occlusion develop from a healthy start. The warm-up does not advance the infarct clock; corosim_run and corosim_adjust do (2 clinical minutes per simulated second), so a closed artery loses muscle as you run it. To put a library rhythm on the patient (flutter, SVT, blocks, VT, VF...) so its hemodynamics follow, set patient.rhythm (every corosim_ekg_list id works); to only see a tracing, use corosim_ekg_show. ${NOT_CLINICAL}`,
-    inputSchema: { type: "object", properties: { scenario: patientSchema, engine: { enum: ["legacy", "core"], description: "Hemodynamic engine for this patient. Omit to keep the current one (a new server starts on core). 'core' is the beat-by-beat engine and adds the Impella and IABP consoles (devices) to every report. 'legacy' is the older circulation()+BeatHemodynamics path, kept for comparison." }, settled: { type: "boolean", description: "Start with ischemia already at its steady value (default true). False = ischemia develops over ~20 s." }, warmupSeconds: { type: "number", minimum: 0, maximum: 300, description: "Simulated seconds to run before returning (default 45)." } } },
-    run({ sim }, a) {
+    inputSchema: { type: "object", properties: { scenario: patientSchema, engine: { enum: ["legacy", "core"], description: "Hemodynamic engine for this patient. Omit to keep the current one (a new server starts on core). 'core' is the beat-by-beat engine and adds the CoroPump and IABP consoles (devices) to every report. 'legacy' is the older circulation()+BeatHemodynamics path, kept for comparison." }, settled: { type: "boolean", description: "Start with ischemia already at its steady value (default true). False = ischemia develops over ~20 s." }, warmupSeconds: { type: "number", minimum: 0, maximum: 300, description: "Simulated seconds to run before returning (default 45)." } } },
+    run(ctx, a) {
+      if (ctx.inCase) throw new Error(REPLACE_WHY);
+      const { sim } = ctx;
       if (a.engine !== undefined && a.engine !== "legacy" && a.engine !== "core") throw new Error("engine must be legacy or core.");
       if (a.engine) sim.engine = a.engine as "legacy" | "core"; // takes effect at the reset below
-      sim.reset((a.scenario ?? {}) as PatientSpec, { settled: a.settled !== false });
-      rememberPatient(sim, (a.scenario ?? {}) as PatientSpec);
+      const scenario = patientFromUnknown(a.scenario);
+      sim.reset(scenario, { settled: a.settled !== false });
+      rememberPatient(sim, scenario);
       const warm = num(a.warmupSeconds, 45, 0, 300);
       sim.warmup(warm);
       return { narrative: narrateNewPatient(currentPatient(sim), vitalsOf(sim), warm), warnings: sim.warnings, ...bedside(sim), explanation: explain(sim) };
@@ -151,12 +168,14 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "corosim_adjust", title: "Change the patient while it runs", readOnly: false,
-    description: `Apply a change to the running patient (give a drug, start a hemorrhage, occlude an artery) and optionally run on to watch the response. Fields you leave out are unchanged; drug and volume changes ramp in over ~10 s like a real bolus. Returns the response time course. Set patch.patient.rhythm to any library rhythm (corosim_ekg_list ids) to run it on the patient with its hemodynamics, including vf-coarse, vt-mono and asystole to start an arrest for teaching (then corosim_arrest). ${NOT_CLINICAL}`,
+    description: `Apply a change to the running patient (give a drug, start a hemorrhage, occlude an artery, adjust CoroPump purge heparin or solution, exchange or reposition the pump) and optionally run on to watch the response. Fields you leave out are unchanged; drug and volume changes ramp in over ~10 s like a real bolus. devices.coroPump.purge and exchange are live on the core engine; devices().coroPump reports purge pressure and flow, plasma free hemoglobin with urine color, and thrombusBurden. Returns the response time course. Set patch.patient.rhythm to any library rhythm (corosim_ekg_list ids) to run it on the patient with its hemodynamics, including vf-coarse, vt-mono and asystole to start an arrest for teaching (then corosim_arrest). ${NOT_CLINICAL}`,
     inputSchema: { type: "object", required: ["patch"], properties: { patch: patientSchema, runSeconds: { type: "number", minimum: 0, maximum: 600, description: "Simulated seconds to run after the change (default 60)." } } },
     run(ctx, a) {
+      const patch = patientFromUnknown(a.patch);
+      gateEdit(ctx, patch);
       const before = snapshot(ctx.sim), secs = num(a.runSeconds, 60, 0, 600);
-      ctx.sim.apply((a.patch ?? {}) as PatientSpec);
-      patchPatient(ctx.sim, (a.patch ?? {}) as PatientSpec);
+      ctx.sim.apply(patch);
+      patchPatient(ctx.sim, patch);
       const rep = runReport(ctx, secs, "none", 0), now = snapshot(ctx.sim);
       return { narrative: narrateChange(before.spec, now.spec, before.vitals, now.vitals, secs), applied: currentPatient(ctx.sim), ...rep };
     },
@@ -179,7 +198,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "corosim_treat", title: "Revascularize: PCI, fibrinolysis or CABG", readOnly: false,
-    description: `Treat the culprit artery. The order's real delay runs first on the infarct clock (primary PCI 60 min, fibrinolytic 40 min, CABG 4 h), so muscle keeps dying while the team gets there; then PCI stents the lesion open, a fibrinolytic opens an occlusion in about half of patients (fixed per patient) and leaves a 50% stenosis, CABG grafts beyond the lesion. Returns what happened, infarct size before and at arrival, and the patient afterwards. For support (fluids, pressors, inotropes, nitrates, atropine, pacing, balloon pump, Impella) use corosim_adjust. ${NOT_CLINICAL}`,
+    description: `Treat the culprit artery. The order's real delay runs first on the infarct clock (primary PCI 60 min, fibrinolytic 40 min, CABG 4 h), so muscle keeps dying while the team gets there; then PCI stents the lesion open, a fibrinolytic opens an occlusion in about half of patients (fixed per patient) and leaves a 50% stenosis, CABG grafts beyond the lesion. Returns what happened, infarct size before and at arrival, and the patient afterwards. For support (fluids, pressors, inotropes, nitrates, atropine, pacing, balloon pump, CoroPump) use corosim_adjust. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", required: ["procedure"], properties: { procedure: { enum: ["pci", "lysis", "cabg"] }, runSecondsAfter: { type: "number", minimum: 0, maximum: 300, description: "Seconds to run after the procedure lands, to watch recovery (default 30)." } } },
     run(ctx, a) {
       const kind = String(a.procedure);
@@ -216,6 +235,7 @@ export const TOOLS: ToolDef[] = [
       const before = vitalsOf(ctx.sim);
       const iv = { type, valve, kind: a.kind, sizeMm: opt("sizeMm"), leakCm2: opt("leakCm2"), effect: opt("effect"), clips: opt("clips") } as unknown as Intervention;
       const r = intervene(currentPatient(ctx.sim).heart ?? {}, iv);
+      gateEdit(ctx, { heart: r.patch });
       if (Object.keys(r.patch).length) { ctx.sim.apply({ heart: r.patch }); patchPatient(ctx.sim, { heart: r.patch }); }
       const rep = runReport(ctx, num(a.runSeconds, 30, 0, 300) || 0.02, "none", 0);
       const done = Object.keys(r.patch).length > 0, warnings = [...r.warnings, ...ctx.sim.warnings];
@@ -343,7 +363,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "corosim_loop_metrics", title: "LV pressure-volume loop metrics", readOnly: true,
-    description: `Energetics of the last left-ventricular beat: end-diastolic, end-systolic and stroke volume, EF, stroke work (mmHg.ml and J), pressure-volume area, potential energy, efficiency, arterial elastance Ea, end-systolic elastance Ees and Ea/Ees coupling, myocardial oxygen consumption (ml per beat, per minute, per 100 g), cardiac power output (W), peak dP/dt. Use for supply/demand questions (what does an Impella, a vasodilator or a higher afterload do to MVO2 and work). Does not advance time. Output format corosim.loop_metrics/1. ${NOT_CLINICAL}`,
+    description: `Energetics of the last left-ventricular beat: end-diastolic, end-systolic and stroke volume, EF, stroke work (mmHg.ml and J), pressure-volume area, potential energy, efficiency, arterial elastance Ea, end-systolic elastance Ees and Ea/Ees coupling, myocardial oxygen consumption (ml per beat, per minute, per 100 g), cardiac power output (W), peak dP/dt. Use for supply/demand questions (what does a CoroPump, a vasodilator or a higher afterload do to MVO2 and work). Does not advance time. Output format corosim.loop_metrics/1. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: {} },
     run({ sim }) { return loopMetricsReport(sim); },
   },
@@ -463,7 +483,10 @@ export const TOOLS: ToolDef[] = [
         engine: new LabEngine(ctx.sim, { seed, access: c.access, plaques: c.plaques, forced: c.forced }),
         caseId: c.id,
       };
-      return { caseId: c.id, title: c.title, blurb: c.blurb, goals: c.goals, egfr: c.egfr };
+      return {
+        narrative: `Started cath-lab case "${c.title}" (seed ${seed}): ${c.blurb}`,
+        caseId: c.id, title: c.title, blurb: c.blurb, goals: c.goals, egfr: c.egfr,
+      };
     },
   },
   {
@@ -481,7 +504,9 @@ export const TOOLS: ToolDef[] = [
       const acts = (a.actions as Action[]) ?? [];
       const events = acts.flatMap((x) => labSession!.engine.apply(x));
       const st = labSession.engine.state();
+      const kinds = acts.map((x) => x.t).join(", ") || "none";
       return {
+        narrative: `Applied ${acts.length} cath-lab action${acts.length === 1 ? "" : "s"} (${kinds}): now ${st.act}, access ${st.access ?? "none"}, guide ${st.guide ?? "none"}, wire ${st.wire ?? "none"}.`,
         events,
         state: {
           access: st.access, act: st.act, guide: st.guide, wire: st.wire, balloon: st.balloon, stent: st.stent,

@@ -29,7 +29,7 @@ export const CHANGE_PRESETS: Preset[] = [
   { label: "Give a beta blocker", patch: { drugs: { betaBlocker: 0.6 } } },
   { label: "Give 1 L of fluid", patch: { support: { fluids: 1 } } },
   { label: "Start pacing at 70", patch: { support: { pacing: true, paceRate: 70 } } },
-  { label: "Place an Impella (P6)", patch: { devices: { impella: { level: 6 } } } },
+  { label: "Place a CoroPump (P6)", patch: { devices: { coroPump: { level: 6 } } } },
   { label: "Start VA-ECMO (4 L/min)", patch: { devices: { ecmo: { flowLpm: 4 } } } },
   { label: "Place an IABP (1:1)", patch: { devices: { iabp: { ratio: 1 } } } },
   { label: "Bleeding, 15% of blood volume", patch: { bloodLoss: 0.15 } },

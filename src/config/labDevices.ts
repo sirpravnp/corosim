@@ -1,6 +1,6 @@
 import type { Balloon, Device, GuideCatheter, Guidewire, Stent } from "../lab/types";
 
-/** PCI device catalog (angioplasty tools). Impella and ECMO constants stay in `devices.ts`. */
+/** PCI device catalog (angioplasty tools). CoroPump and ECMO constants stay in `devices.ts`. */
 
 const guides: GuideCatheter[] = ([
   ["guide-jl35", "JL 3.5", "JL3.5", 0.55],

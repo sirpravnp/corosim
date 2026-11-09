@@ -20,13 +20,15 @@ export interface Probe {
   rhythmClass: string; // vf, pulselessVt, asystole, pea, perfusing
   shocks: number; epiDoses: number; amioMg: number; lidoDoses: number;
   cpr: boolean;
-  ecmo: boolean; impella: boolean; iabp: boolean;
+  ecmo: boolean; coroPump: boolean; iabp: boolean;
   pci: boolean; pciPending: boolean; // a stent is in / a PCI is on its way
   /** Infusion levels now, 0..1 of a full dose, by drug name (betaBlocker, nitroglycerin, ...). */
   drugs: Record<string, number>;
   /** Left-ventricular ejection fraction (0..1), ischemic fraction of each ventricle (0..1), pulmonary congestion (0..1), litres of fluid given. */
   ef: number; lvIschemia: number; rvIschemia: number; congestion: number; fluidsL: number;
   dead: boolean;
+  /** The order system's view (see orderBook.ts). Optional, so a probe built without it still compiles. */
+  ordered?: Set<string>; pending?: string[]; waiting?: boolean;
 }
 export type Cond = (p: Probe) => boolean;
 
@@ -75,7 +77,7 @@ export interface Harm { tag: string; label: string; when: Cond }
 export interface CaseDef {
   id: string; title: string; tier: "easy" | "medium" | "hard"; blurb: string;
   card: CaseCard;
-  /** For the landing page: the chief complaint the case opens with, and the devices it brings in ("ECMO", "Impella", "IABP", "Pacing"). */
+  /** For the landing page: the chief complaint the case opens with, and the devices it brings in ("ECMO", "CoroPump", "IABP", "Pacing"). */
   complaint?: string; devices?: string[];
   start: PatientSpec;
   /** What the team has already done when the case opens. */
@@ -91,6 +93,12 @@ export interface CaseDef {
   musts?: { flag: string; label: string }[];
   points: { survive: number; stable: number; harm: number };
   limitS: number; // case seconds before the case times out
+  /** Ids of the catalog items the bedside monitor shows (see `src/cases/orders.ts`). Absent or empty means the standard six. */
+  monitor?: string[];
+  /** Body temperature in degrees C the monitor shows. Absent means 37.0. */
+  tempC?: number;
+  /** Author-set lab values by analyte id (see `ANALYTES` in `src/sim/labs.ts`). Anything not set is derived from the patient. */
+  labs?: Record<string, number>;
 }
 
 export type Result = "success" | "fail" | "died" | "timeout";
@@ -126,6 +134,12 @@ export class CaseRunner {
   constructor(readonly def: CaseDef) { this.harms = [...GENERIC_HARMS.filter((h) => !def.skipHarms?.includes(h.tag)), ...(def.harms ?? [])]; }
 
   get paused() { return this.open !== null; }
+  /** Adds a line to what is known about the patient (an order result, for instance), stamped with the case time. */
+  note(text: string): void { this.log.push({ t: this.t, text }); }
+  /** Whether the case counts the patient as stable in `p` (a time skip is refused when not). */
+  isStable(p: Probe): boolean { return (this.def.stable ?? STABLE)(p); }
+  /** Whether any harm this case is scored against is active in `p`. */
+  harmActive(p: Probe): boolean { return this.harms.some((h) => h.when(p)); }
   get over() { return this.result !== null; }
 
   private eligible(c: Checkpoint, p: Probe, dt: number): boolean {

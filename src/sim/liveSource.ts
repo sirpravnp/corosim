@@ -36,7 +36,7 @@ interface Rec { lb: LiveBeat; rr: number; end: number; summary: BeatSummary | nu
 /**
  * `HemoSource` over the core engine's live heart (task P16, docs/HEMODYNAMICS_CORE.md §4G). Every beat here is the engine's own: a premature beat is small and the next one large, atrial fibrillation has
  * no atrial event and a beat-to-beat stroke volume, heart block has two atrial events per beat and cannon waves in the right atrium,
- * an Impella or a balloon pump shapes the aortic trace. `kind` is "live". The source reads `sim.live` (the core-engine `Simulation`
+ * a CoroPump or a balloon pump shapes the aortic trace. `kind` is "live". The source reads `sim.live` (the core-engine `Simulation`
  * keeps it current, rebuilds it when the patient's structure changes and steps it) and never steps anything itself.
  *
  * Clock. `now()` is the simulation's clock; every time the source reports is on it. The live heart runs on its own stream clock,
@@ -45,7 +45,7 @@ interface Rec { lb: LiveBeat; rr: number; end: number; summary: BeatSummary | nu
  * Beats. A `BeatSummary` is built when the live heart completes a beat (ventricular event to ventricular event; it lags the
  * beat's own end by nothing: the record closes at the event). `loops` and `pressure` are the engine's 2 ms trace samples over the beat,
  * `atrial` the atrial events the engine delivered in it (P waves that never conducted included), `edv`/`esv` the largest/smallest
- * volume of a chamber over the beat (a ventricle's EDV is its volume at the event), `strokeVolume` EDV - ESV of the LV (an Impella's
+ * volume of a chamber over the beat (a ventricle's EDV is its volume at the event), `strokeVolume` EDV - ESV of the LV (a CoroPump's
  * output leaves the LV too), `valves` the engine's per-valve forward and regurgitant volumes and open time (TV, MV, AV, PV = element PVL).
  * 30 s are kept (`CFG.maxBeats` beats at most).
  *
@@ -53,20 +53,20 @@ interface Rec { lb: LiveBeat; rr: number; end: number; summary: BeatSummary | nu
  * `CFG.minBeats` beats, duration-weighted), so it follows a change within a few beats and does not jump with a PVC; before the first
  * beat completes it is the settled beat the warm-up ended on (never NaN, never legacy). HR = beats per minute over the window (the
  * ventricular rate: 40 in complete heart block). CO = systemic bed flow (BEDU + BEDL, net) over the window, in L/min, so it counts
- * an Impella's and an ECMO circuit's flow and loses the blood an ECMO circuit drains; PVR from the lung flow; MAP, systolic and
+ * a CoroPump's and an ECMO circuit's flow and loses the blood an ECMO circuit drains; PVR from the lung flow; MAP, systolic and
  * diastolic = mean over the beats of the aortic mean, maximum and minimum (an IABP's augmented diastolic peak is a systolic maximum
  * of that beat if it exceeds the ejection peak, as a monitor reads it); EF = (EDV - ESV) / EDV.
  *
  * Saturations. The oxygen model (`solveOxygen`, physics/structural.ts), fed with the forward and backward
- * volumes through every element over the same window instead of one steady-state beat: an Impella and an Impella RP are streams
+ * volumes through every element over the same window instead of one steady-state beat: a CoroPump and a CoroPump RP are streams
  * between their nodes, an ECMO circuit the extra stream into the descending aorta through its oxygenator (`oxygenatorSat`), so
  * differential hypoxemia (upper body from the lungs, lower body from the circuit) appears. SpO2 = pre-ductal = AO; DO2, VO2 from
  * that solve. Lactate and per-bed myocardial tissue O₂ come from the core E6 transport (`sim.oxygenState`) when present, else
  * the ischemia placeholder (`bedOxygen`) and NaN lactate. Recomputed once per completed beat.
  *
- * Devices. `sim.devices()` as DeviceConsoles: Impella (flow, speed, current, placement signal, suction; the placement trace of the
+ * Devices. `sim.devices()` as DeviceConsoles: CoroPump (flow, speed, current, placement signal, suction; the placement trace of the
  * last seconds), IABP (settings, balloon, augmentation; the arterial trace), ECMO (flow, speed, sweep, FiO2, suction, return
- * saturation from the saturations above) and Impella RP. Only the devices that are in the patient and on are listed.
+ * saturation from the saturations above) and CoroPump RP. Only the devices that are in the patient and on are listed.
  */
 export class LiveSource implements HemoSource {
   readonly kind = "live" as const;
@@ -245,11 +245,11 @@ export class LiveSource implements HemoSource {
     const T = fb.reduce((s, r) => s + r.rr, 0); // the oxygen solve takes its flows from every beat of the flow window
     const fwd: Record<string, number> = {}, bwd: Record<string, number> = {};
     for (const r of fb) for (const [src, dst] of [[r.lb.flows.fwd, fwd], [r.lb.flows.bwd, bwd]] as const) for (const [n, v] of Object.entries(src)) dst[n] = (dst[n] ?? 0) + v;
-    // The pumps are streams between their nodes: an Impella carries the LV's blood into the aorta without crossing the aortic valve, an RP the cava's into the PA.
+    // The pumps are streams between their nodes: a CoroPump carries the LV's blood into the aorta without crossing the aortic valve, an RP the cava's into the PA.
     const m: Model = { ...live.model, T, edges: [...live.model.edges], patient: drop > 0 ? { ...live.model.patient, satLung: live.model.patient.satLung - drop } : live.model.patient }; // lung water (C3) lowers the saturation the lungs put out
-    for (const name of ["impella", "impellaRp"]) {
+    for (const name of ["coroPump", "coroPumpRp"]) {
       const p = live.engine.elements.find((e) => e.name === name) as RotaryPump | undefined;
-      if (p && name in fwd && p.from !== p.to) m.edges.push({ name, from: p.from, to: p.to, type: "resistor" }); // an Impella left in the aorta moves blood from the aorta to itself
+      if (p && name in fwd && p.from !== p.to) m.edges.push({ name, from: p.from, to: p.to, type: "resistor" }); // a CoroPump left in the aorta moves blood from the aorta to itself
     }
     const flow = ec ? (((fwd.ecmo ?? 0) - (bwd.ecmo ?? 0)) / T) : 0; // ml/s drained from RA (or IVC) and returned into DAO
     const ox = solveOxygen(m, { fwd, bwd }, ec ? { from: IDX(ec.drain), to: IDX("DAO"), flow, oxygenate: (c, cap) => ec.returnSat(c / cap) * cap } : undefined);
@@ -273,10 +273,10 @@ export class LiveSource implements HemoSource {
     const d: DevicesReadout | null = this.sim.devices();
     const out: DeviceConsole[] = [];
     const lazy = (c: DeviceConsole, make: () => Record<string, Series>) => { let tr: Record<string, Series> | undefined; Object.defineProperty(c, "traces", { enumerable: true, get: () => (tr ??= make()) }); return c; };
-    if (d?.impella?.on) {
-      const i = d.impella;
+    if (d?.coroPump?.on) {
+      const i = d.coroPump;
       out.push(lazy({
-        id: "impella", label: `Impella ${i.model} P-${i.level}`, alarms: i.alarms,
+        id: "coroPump", label: `CoroPump ${i.model} P-${i.level}`, alarms: i.alarms,
         readings: { flowLpm: i.flowLpm, flowMinLpm: i.flowMinLpm, flowMaxLpm: i.flowMaxLpm, level: i.level, speedKrpm: i.speedKrpm, motorCurrentMa: i.motorCurrentMa, currentPulsatilityMa: i.currentPulsatilityMa, placementMmHg: i.placementMmHg, placementAmplitudeMmHg: i.placementAmplitudeMmHg, suctionLevel: i.suctionLevel, suctionFraction: i.suctionFraction, inletMeanMmHg: i.inletMeanMmHg, inletMinMmHg: i.inletMinMmHg, inletMaxMmHg: i.inletMaxMmHg, inletAmplitudeMmHg: i.inletAmplitudeMmHg },
       }, () => ({ placement: this.difference("AO", i.position === "aortic" ? "AO" : "LV") })));
     }
@@ -295,9 +295,9 @@ export class LiveSource implements HemoSource {
         readings: { flowLpm: mean, targetLpm: e.targetLpm, rpm: e.rpm, sweepLpm: e.sweepLpm, fio2: e.fio2, returnSat: rs, suctionLevel: e.suctionLevel, membraneDpMmHg: e.membraneDpMmHg, headMmHg: e.headMmHg },
       });
     }
-    if (d?.impellaRp?.on) {
-      const r = d.impellaRp;
-      out.push({ id: "impellaRp", label: `Impella RP P-${r.level}`, alarms: r.suctionAlarm ? ["Suction: the inflow is collapsing in the vena cava"] : [], readings: { flowLpm: r.flowLpm, level: r.level, speedKrpm: r.speedKrpm, motorCurrentMa: r.motorCurrentMa, placementMmHg: r.placementMmHg } });
+    if (d?.coroPumpRp?.on) {
+      const r = d.coroPumpRp;
+      out.push({ id: "coroPumpRp", label: `CoroPump RP P-${r.level}`, alarms: r.suctionAlarm ? ["Suction: the inflow is collapsing in the vena cava"] : [], readings: { flowLpm: r.flowLpm, level: r.level, speedKrpm: r.speedKrpm, motorCurrentMa: r.motorCurrentMa, placementMmHg: r.placementMmHg } });
     }
     return (this.dev = out);
   }

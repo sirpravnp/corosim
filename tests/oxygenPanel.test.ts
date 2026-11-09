@@ -50,7 +50,7 @@ describe("pure derivations", () => {
   });
   it("reads the ECMO return saturation only from an ecmo console", () => {
     expect(ecmoReturnSat([])).toBeNaN();
-    expect(ecmoReturnSat([{ id: "impella", label: "", readings: { returnSat: 1 }, alarms: [] }])).toBeNaN();
+    expect(ecmoReturnSat([{ id: "coroPump", label: "", readings: { returnSat: 1 }, alarms: [] }])).toBeNaN();
     const e = [{ id: "ecmo", label: "", readings: { returnSat: 0.99 }, alarms: [] }];
     expect(ecmoReturnSat(e)).toBe(0.99);
     expect(oxygenReadout(createStubSource().saturations(), { qpQs: 1 }, e).hasEcmo).toBe(true);

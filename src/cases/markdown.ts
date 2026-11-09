@@ -1,3 +1,5 @@
+import { migrateLegacyDeviceWords } from "../sim/aliases";
+import { ANALYTES } from "../sim/labs";
 import type { Option, Outcome, ShockOrder } from "./engine";
 import { CaseSpec, condText, condsText, parseConds, validateCase } from "./spec";
 
@@ -8,10 +10,12 @@ import { CaseSpec, condText, condsText, parseConds, validateCase } from "./spec"
  *
  *   # Title
  *   - id: anterior-stemi            - difficulty: easy | medium | hard      - complaint: Chest pain
- *   - devices: ECMO, Impella        - summary: one line                     - time limit: 15:00
+ *   - devices: ECMO, CoroPump        - summary: one line                     - time limit: 15:00
+ *   - monitor: hr, bp, ecg, spo2   - temperature: 38.6
  *   - points: survive 30, stable 25, harm 20                                - skip harms: beta blocker, diuretic
  *   ## Card                (Presents:, History:, Info: and bullets)
  *   ## Starting patient    (a ```json block: the patient the case opens with)
+ *   ## Lab values         (- na: 128; one analyte per line, only the ones the author sets)
  *   ## Opening             (- rhythm: vf-coarse, - cpr: on, - drug: epinephrine 1)
  *   ## Required steps      (- flag: what the learner should do)
  *   ## Stable while        (- map >= 60)
@@ -53,10 +57,14 @@ export function caseToMarkdown(s: CaseSpec): string {
   if (s.complaint) L.push(`- complaint: ${s.complaint}`);
   if (s.devices?.length) L.push(`- devices: ${s.devices.join(", ")}`);
   L.push(`- summary: ${s.blurb}`, `- time limit: ${clock(s.limitS)}`, `- points: survive ${s.points.survive}, stable ${s.points.stable}, harm ${s.points.harm}`);
+  if (s.monitor?.length) L.push(`- monitor: ${s.monitor.join(", ")}`);
+  if (s.tempC !== undefined) L.push(`- temperature: ${s.tempC}`);
   if (s.skipHarms?.length) L.push(`- skip harms: ${s.skipHarms.join(", ")}`);
   L.push("", "## Card", "", `Presents: ${s.card.presents}`, `History: ${s.card.pmh}`);
   if (s.card.info?.length) { L.push("Info:"); for (const i of s.card.info) L.push(`- ${i}`); }
   L.push("", "## Starting patient", "", "```json", JSON.stringify(s.start ?? {}, null, 2), "```");
+  const labs = Object.entries(s.labs ?? {});
+  if (labs.length) { L.push("", "## Lab values", ""); for (const [k, v] of labs) L.push(`- ${k}: ${v}`); }
   const op = s.opening;
   if (op && (op.rhythm || op.cpr || op.drugs?.length)) {
     L.push("", "## Opening", "");
@@ -114,6 +122,7 @@ const empty = (o: Outcome) => Object.keys(o).length === 0;
 /** `errors` are things the format could not read (no case comes back); `warnings` are what a readable case still needs before it can be saved. */
 export function parseCaseMarkdown(text: string): { spec?: CaseSpec; errors: string[]; warnings: string[] } {
   const errors: string[] = [];
+  const parseWarnings: string[] = [];
   const fail: Fail = (n, msg) => errors.push(n ? `Line ${n}: ${msg}.` : `${msg}.`);
   const lines: Line[] = text.replace(/\r\n?/g, "\n").split("\n").map((t, i) => ({ n: i + 1, text: t }));
 
@@ -141,11 +150,18 @@ export function parseCaseMarkdown(text: string): { spec?: CaseSpec; errors: stri
       case "id": spec.id = p.v; break;
       case "difficulty": spec.tier = p.v.toLowerCase() as never; break;
       case "complaint": spec.complaint = p.v; break;
-      case "devices": spec.devices = list(p.v); break;
+      case "devices": {
+        const m = migrateLegacyDeviceWords(list(p.v));
+        spec.devices = m.devices;
+        parseWarnings.push(...m.warnings);
+        break;
+      }
       case "summary": spec.blurb = p.v; break;
       case "time limit": { const d = parseDuration(p.v); if (d === undefined) fail(b.n, `cannot read the time limit '${p.v}' (try 15:00)`); else spec.limitS = d; break; }
       case "points": { const o: Record<string, number> = {}; for (const part of list(p.v)) { const m = part.match(/^(survive|stable|harm)\s+(\d+)$/); if (m) o[m[1]] = +m[2]; else fail(b.n, `cannot read points '${part}' (try 'survive 30')`); } spec.points = { ...spec.points, ...o }; break; }
       case "skip harms": spec.skipHarms = list(p.v); break;
+      case "monitor": spec.monitor = list(p.v); break;
+      case "temperature": { const t = Number(p.v.replace(/\s*c$/i, "")); if (p.v.trim() && Number.isFinite(t)) spec.tempC = t; else fail(b.n, `cannot read the temperature '${p.v}' (try 38.6)`); break; }
       default: fail(b.n, `unknown setting '${p.k}'`);
     }
   }
@@ -174,6 +190,20 @@ export function parseCaseMarkdown(text: string): { spec?: CaseSpec; errors: stri
     const src = start.body.map((l) => l.text).join("\n").replace(/^[\s\S]*?```(?:json)?\s*\n/, "").replace(/\n```[\s\S]*$/, "");
     try { spec.start = src.trim() ? JSON.parse(src) : {}; } catch (e) { fail(start.at, `the starting patient is not valid JSON (${(e as Error).message})`); }
   } else spec.start = {};
+
+  // lab values
+  const labsSec = sec("lab values");
+  if (labsSec) {
+    const labs: Record<string, number> = {};
+    for (const b of bullets(labsSec.body)) {
+      const p = kv(b.text); if (!p) { fail(b.n, `cannot read '${b.text}' (use '- na: 128')`); continue; }
+      const x = Number(p.v);
+      if (!(ANALYTES as readonly string[]).includes(p.k)) fail(b.n, `'${p.k}' is not a lab value the simulator knows`);
+      else if (!p.v || !Number.isFinite(x)) fail(b.n, `cannot read the value '${p.v}' for '${p.k}' (use a number)`);
+      else labs[p.k] = x;
+    }
+    if (Object.keys(labs).length) spec.labs = labs;
+  }
 
   // opening
   const opening = sec("opening");
@@ -254,7 +284,7 @@ export function parseCaseMarkdown(text: string): { spec?: CaseSpec; errors: stri
     closeCp();
   }
 
-  if (errors.length) return { errors, warnings: [] };
+  if (errors.length) return { errors, warnings: parseWarnings };
   // Read cleanly: the case opens in the builder either way; what the checks find is for the author to fix before saving.
-  return { spec: spec as CaseSpec, errors, warnings: validateCase(spec as CaseSpec) };
+  return { spec: spec as CaseSpec, errors, warnings: [...parseWarnings, ...validateCase(spec as CaseSpec)] };
 }

@@ -49,7 +49,7 @@ export const ACS_SCENARIOS: Record<string, Scenario> = {
   normal: {},
   "lad-occlusion": CASE_BY_ID.ladocc.scenario,
   "rca-occlusion-chb-rv": CASE_BY_ID.rcaocc.scenario,
-  "lad-occlusion-all-support": { lesions: [{ artery: "LAD", occluded: true, position: 0.2 }], support: { fluids: 1, norepinephrine: 0.5, iabp: true, impella: true } },
+  "lad-occlusion-all-support": { lesions: [{ artery: "LAD", occluded: true, position: 0.2 }], support: { fluids: 1, norepinephrine: 0.5, iabp: true, coroPump: true } },
   "hemorrhage-fluids-norepi": { bloodLoss: 0.15, support: { fluids: 1, norepinephrine: 0.5 } },
 };
 

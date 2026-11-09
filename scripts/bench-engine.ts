@@ -68,11 +68,11 @@ const rows: Row[] = [
   solveRow("simulate(): adult normal (solve only)", {}, (m) => simulate(m)),
   solveRow("core: adult normal (fromModel + periodic)", {}, (m) => engineFromModel(m).periodic(m.hr)),
   solveRow("core + septum: adult normal (B2)", {}, (m) => engineFromModel(m, { septum: true }).periodic(m.hr)),
-  solveRow("core: adult shock + Impella CP P8 (fromModel + periodic)", { lvEes: 0.35, lvStiffness: 1.6 }, (m) => { const g = fromModel(m, { impella: { model: "CP", level: 8 } }); return createEngine(g.nodes, g.elements, g.options).periodic(m.hr); }),
+  solveRow("core: adult shock + CoroPump CP P8 (fromModel + periodic)", { lvEes: 0.35, lvStiffness: 1.6 }, (m) => { const g = fromModel(m, { coroPump: { model: "CP", level: 8 } }); return createEngine(g.nodes, g.elements, g.options).periodic(m.hr); }),
   headless("normal patient", {}),
   headless("proximal LAD occlusion", { lesions: [{ artery: "LAD", occluded: true, position: 0.15 }] }),
   live("normal adult", {}),
-  live("anterior STEMI + Impella CP P6", { lesions: [{ artery: "LAD", occluded: true, position: 0.15 }], devices: { impella: { model: "CP", level: 6 } } }),
+  live("anterior STEMI + CoroPump CP P6", { lesions: [{ artery: "LAD", occluded: true, position: 0.15 }], devices: { coroPump: { model: "CP", level: 6 } } }),
   live("tamponade 200 ml + ventilated PEEP 8", { pericardium: { effusionMl: 200 }, ventilation: { mode: "positive", peep: 8 } }),
   live("VA-ECMO 4 L/min + IABP 1:2", { devices: { ecmo: { flowLpm: 4 }, iabp: { ratio: 2 } } }),
 ];

@@ -16,12 +16,12 @@ export interface Support {
   atropine: boolean;
   pacing: boolean; paceRate: number;
   iabp: boolean;
-  impella: boolean;
+  coroPump: boolean;
 }
-export const NO_SUPPORT: Support = { fluids: 0, norepi: 0, dobutamine: 0, nitro: 0, epi: 0, milrinone: 0, vasopressin: 0, nitroprusside: 0, furosemide: 0, diltiazem: 0, atropine: false, pacing: false, paceRate: SUPPORT.paceDefault, iabp: false, impella: false };
+export const NO_SUPPORT: Support = { fluids: 0, norepi: 0, dobutamine: 0, nitro: 0, epi: 0, milrinone: 0, vasopressin: 0, nitroprusside: 0, furosemide: 0, diltiazem: 0, atropine: false, pacing: false, paceRate: SUPPORT.paceDefault, iabp: false, coroPump: false };
 export const noSupport = (): Support => ({ ...NO_SUPPORT });
 export const anySupport = (s: Support) =>
-  s.fluids > 0 || s.norepi > 0 || s.dobutamine > 0 || s.nitro > 0 || s.epi > 0 || s.milrinone > 0 || s.vasopressin > 0 || s.nitroprusside > 0 || s.furosemide > 0 || s.diltiazem > 0 || s.atropine || s.pacing || s.iabp || s.impella;
+  s.fluids > 0 || s.norepi > 0 || s.dobutamine > 0 || s.nitro > 0 || s.epi > 0 || s.milrinone > 0 || s.vasopressin > 0 || s.nitroprusside > 0 || s.furosemide > 0 || s.diltiazem > 0 || s.atropine || s.pacing || s.iabp || s.coroPump;
 
 /**
  * Support acting on the rhythm the ischemia produced:
@@ -55,6 +55,6 @@ export function supportedRhythm(r: RhythmState, s: Support, adrenergic?: { hrSca
 export function demandFactor(s: Support): number {
   const K = SUPPORT;
   const up = 1 + K.dobDemand * s.dobutamine + K.norepiDemand * s.norepi;
-  const down = 1 - K.impellaDemand * +s.impella - K.iabpDemand * +s.iabp - K.nitroDemand * s.nitro;
+  const down = 1 - K.coroPumpDemand * +s.coroPump - K.iabpDemand * +s.iabp - K.nitroDemand * s.nitro;
   return Math.max(0.5, up * down);
 }

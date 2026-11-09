@@ -3,7 +3,7 @@ import type { CaseDef } from "./engine";
 /**
  * A witnessed collapse in VF, a quick ROSC, and an anterolateral STEMI (proximal LAD occlusion) on the first 12-lead. The case is five decisions
  * with time to watch the consequences between them: stabilize in the ED or go to the cath lab (an ED that keeps running ACLS re-arrests him);
- * on the table he goes back into VF, and the question is what to do about it: mechanical support first (ECPELLA: VA-ECMO with an Impella CP),
+ * on the table he goes back into VF, and the question is what to do about it: mechanical support first (ECPELLA: VA-ECMO with a CoroPump CP),
  * because opening the artery with no circulation is a death on the table; then PCI with support kept running; then keep the support after reperfusion.
  * ECMO alone distends the left ventricle and needs a vent. Based on a published case report of ECPELLA for refractory ischemic VF.
  */
@@ -27,8 +27,8 @@ const STORM_EVERY_S = 25;
 
 // The circuit and the pump are built into the patient from the start, switched off: placing them is then a live change, not a rebuild.
 const ECMO = { devices: { ecmo: { flowLpm: 4 } } };
-const IMPELLA = { devices: { impella: { level: 6 } } };
-const BOTH = { devices: { ecmo: { flowLpm: 4 }, impella: { level: 6 } } }; // one `devices` object: spreading ECMO and IMPELLA together would keep only the second
+const COROPUMP = { devices: { coroPump: { level: 6 } } };
+const BOTH = { devices: { ecmo: { flowLpm: 4 }, coroPump: { level: 6 } } }; // one `devices` object: spreading ECMO and COROPUMP together would keep only the second
 const VF = { patient: { rhythm: "vf-coarse" } };
 const SINUS = { patient: { rhythm: "sinus" } };
 
@@ -37,14 +37,14 @@ export const ECPELLA: CaseDef = {
   title: "Collapse at home",
   tier: "hard",
   complaint: "Cardiac arrest",
-  devices: ["ECMO", "Impella"],
+  devices: ["ECMO", "CoroPump"],
   blurb: "A witnessed collapse in VF, a quick ROSC and a STEMI. Where does he go, and what keeps him alive?",
   card: {
-    presents: "62-year-old man who collapsed at home. His wife, a nurse, started CPR at once. EMS found VF and polymorphic VT, shocked him and gave amiodarone and lidocaine. He is back in the ED with CPR in progress. ROSC comes quickly, and the post-ROSC 12-lead shows an anterolateral STEMI.",
+    presents: "62-year-old man who collapsed at home. His wife, a nurse, started CPR at once. EMS found VF and polymorphic VT, shocked him and gave amiodarone and lidocaine. He is back in the ED with CPR in progress. ROSC comes quickly.",
     pmh: "Hypertension, hyperlipidemia. Southeast Asian man. No known coronary disease.",
-    info: ["The post-ROSC ECG shows anterolateral ST elevation: a proximal LAD occlusion.", "After ROSC his pressure holds, but his ventricle is stunned (ejection fraction about 0.3, high filling pressure) and ventricular ectopy is frequent."],
+    info: ["After ROSC his pressure holds, but his ventricle is stunned (ejection fraction about 0.3, high filling pressure) and ventricular ectopy is frequent."],
   },
-  start: { lesions: [{ artery: "LAD", occluded: true, position: 0.1 }], seed: 7, devices: { ecmo: { flowLpm: 0, sweepLpm: 3, fio2: 1 }, impella: { model: "CP", level: 0 } } },
+  start: { lesions: [{ artery: "LAD", occluded: true, position: 0.1 }], seed: 7, devices: { ecmo: { flowLpm: 0, sweepLpm: 3, fio2: 1 }, coroPump: { model: "CP", level: 0 } } },
   opening: { rhythm: "vf-coarse", cpr: true, drugs: [{ drug: "epinephrine", mg: 1 }, { drug: "amiodarone", mg: 300 }, { drug: "lidocaine", mg: 100 }] },
   stable: (p) => p.map >= 55 && !p.dead,
   points: { survive: 30, stable: 20, harm: 15 },
@@ -52,7 +52,7 @@ export const ECPELLA: CaseDef = {
   musts: [
     { flag: "cathLab", label: "take him to the cath lab promptly after ROSC" },
     { flag: "mcs", label: "start mechanical circulatory support (ECPELLA) before PCI" },
-    { flag: "vented", label: "vent the left ventricle (Impella)" },
+    { flag: "vented", label: "vent the left ventricle (CoroPump)" },
     { flag: "pciOrdered", label: "do the PCI with support running" },
   ],
   checkpoints: [
@@ -91,7 +91,7 @@ export const ECPELLA: CaseDef = {
       prompt: {
         text: "He is in VF in the lab, the LAD is occluded and compressions are the only flow. What now?",
         options: [
-          { label: "Mechanical support first: VA-ECMO with an Impella CP (ECPELLA), then revascularize", points: 25, correct: true, why: "The Impella vents the left ventricle while ECMO carries the circulation, which is what lets a fibrillating, ischemic heart rest and lets the operator open the artery on a perfused patient.", outcome: { flags: ["deviceChosen", "mcs", "vented"], patch: BOTH, reveal: ["VA-ECMO is running at 4 L/min and the Impella CP is unloading the LV."] } },
+          { label: "Mechanical support first: VA-ECMO with a CoroPump CP (ECPELLA), then revascularize", points: 25, correct: true, why: "The CoroPump vents the left ventricle while ECMO carries the circulation, which is what lets a fibrillating, ischemic heart rest and lets the operator open the artery on a perfused patient.", outcome: { flags: ["deviceChosen", "mcs", "vented"], patch: BOTH, reveal: ["VA-ECMO is running at 4 L/min and the CoroPump CP is unloading the LV."] } },
           { label: "VA-ECMO alone", points: 5, correct: false, why: "VA-ECMO restores flow, but in VF the left ventricle cannot eject. It distends against the ECMO afterload, the aortic valve stays shut and pulmonary edema follows. It needs a vent.", outcome: { flags: ["deviceChosen", "mcs", "ecmoOnly"], patch: ECMO, reveal: ["VA-ECMO is running at 4 L/min. Perfusion is back, but the LV is not ejecting."] } },
           { label: "Proceed straight to PCI of the LAD", points: -25, correct: false, why: "Opening the artery is the cure, but he has no circulation to carry him through the procedure. Revascularization on compressions alone ends in refractory shock before the stent is in. Support first, then the artery.", outcome: { flags: ["unsupportedPci"], reveal: ["The operator crosses the lesion on compressions alone."] } },
           { label: "Intra-aortic balloon pump", points: -10, correct: false, why: "A balloon pump needs a rhythm and a native output to augment. It does nothing in VF.", outcome: { flags: ["iabpOnly"], reveal: ["The balloon pump has nothing to augment. VF continues and flow is still CPR-only."] } },
@@ -109,7 +109,7 @@ export const ECPELLA: CaseDef = {
       prompt: {
         text: "On ECMO alone the arterial line is non-pulsatile, the LV looks dilated on echo and the aortic valve is not opening. The lungs are filling. How do you vent the LV?",
         options: [
-          { label: "Place an Impella CP across the aortic valve", points: 15, correct: true, why: "An Impella is the usual vent on ECMO: it empties the LV directly and brings the pulmonary pressures down.", outcome: { flags: ["vented"], patch: IMPELLA, reveal: ["The Impella CP is in. The LV decompresses and the pulmonary edema stops progressing."] } },
+          { label: "Place a CoroPump CP across the aortic valve", points: 15, correct: true, why: "An CoroPump is the usual vent on ECMO: it empties the LV directly and brings the pulmonary pressures down.", outcome: { flags: ["vented"], patch: COROPUMP, reveal: ["The CoroPump CP is in. The LV decompresses and the pulmonary edema stops progressing."] } },
           { label: "Give more fluid to improve ECMO drainage", points: -10, correct: false, why: "More volume loads a ventricle that is already overdistended.", outcome: { reveal: ["The LV distends further."] } },
           { label: "Add an inotrope to open the aortic valve", points: -5, correct: false, why: "An inotrope cannot make a fibrillating ventricle eject, and it raises demand in ischemic muscle.", outcome: { reveal: ["No effect on the valve; the myocardium is more irritable."] } },
         ],
@@ -120,9 +120,9 @@ export const ECPELLA: CaseDef = {
     {
       id: "artery", requires: ["vented"], forbids: ["pciOrdered"], when: (p) => p.ecmo, forS: ECPELLA_DWELL_S, repeatAfterS: DECISION3_REPEAT_S,
       prompt: {
-        text: "Flow is established and he is perfusing on ECMO and Impella, but he remains in VF. The LAD is still occluded. What now?",
+        text: "Flow is established and he is perfusing on ECMO and CoroPump, but he remains in VF. The LAD is still occluded. What now?",
         options: [
-          { label: "PCI of the proximal LAD with ECMO and Impella kept running", points: 20, correct: true, why: "The VF is driven by an open ischemic territory. Support buys time on the table; opening the artery is what ends the arrhythmia.", outcome: { flags: ["pciOrdered"], order: "pci", reveal: ["Proximal LAD occlusion on the angiogram. PCI is under way with ECMO and Impella running."] } },
+          { label: "PCI of the proximal LAD with ECMO and CoroPump kept running", points: 20, correct: true, why: "The VF is driven by an open ischemic territory. Support buys time on the table; opening the artery is what ends the arrhythmia.", outcome: { flags: ["pciOrdered"], order: "pci", reveal: ["Proximal LAD occlusion on the angiogram. PCI is under way with ECMO and CoroPump running."] } },
           { label: "Wean ECMO to test his rhythm before the PCI", points: -10, correct: false, why: "Support is what keeps him alive through the procedure. Taking it away before the artery is open returns him to compressions.", outcome: { reveal: ["The team holds off: flow is his only perfusion until the artery is open."] } },
           { label: "Systemic fibrinolysis", points: -10, correct: false, why: "Lysis is a poor choice after prolonged CPR and with cannulas in: bleeding risk is high and PCI is available.", outcome: { reveal: ["The team declines: bleeding risk after CPR and cannulation is too high."] } },
           { label: "More shocks and a second amiodarone bolus", points: -5, correct: false, why: "Drugs and shocks do not fix an electrical storm that comes from ischemia.", outcome: { reveal: ["VF persists."] } },
@@ -148,7 +148,7 @@ export const ECPELLA: CaseDef = {
         text: "VF has stopped with PCI, but the ventricle is stunned (ejection fraction very low) and he is support-dependent. What are your next steps?",
         options: [
           { label: "Decannulate now that the rhythm is back", points: -10, correct: false, why: "The myocardium is stunned and he is support-dependent. Taking support away now risks a return to shock.", outcome: { end: "fail", reveal: ["The patient decompensates after decannulation."] } },
-          { label: "Keep ECMO and Impella, admit to the cardiac ICU, and wean by echo and pressor needs", points: 20, correct: true, why: "ECMO and Impella stay until the ventricle recovers. The ICU team watches for the complications of support: bleeding, limb ischemia, abdominal compartment syndrome.", outcome: { end: "success", reveal: ["Admitted to the CTICU on ECMO and Impella, with a plan to wean."] } },
+          { label: "Keep ECMO and CoroPump, admit to the cardiac ICU, and wean by echo and pressor needs", points: 20, correct: true, why: "ECMO and CoroPump stay until the ventricle recovers. The ICU team watches for the complications of support: bleeding, limb ischemia, abdominal compartment syndrome.", outcome: { end: "success", reveal: ["Admitted to the CTICU on ECMO and CoroPump, with a plan to wean."] } },
           { label: "Send the patient to the ward on support", points: -15, correct: false, why: "A patient on mechanical support belongs in a cardiac ICU.", outcome: { end: "fail", reveal: ["The patient is not safe for the ward."] } },
         ],
       },

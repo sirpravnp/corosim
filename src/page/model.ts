@@ -6,6 +6,7 @@ import { prepareMyocardium } from "./heart3d";
 import { built, blockedFlags, buildVessels, lumen, shapeVessels, points, initParticles, buildGrafts } from "./vessels3d";
 import { resetManageSig } from "./manage";
 import { controlsUi, liveUi, physUi } from "./readouts";
+import { mayEdit } from "./learnerGate";
 
 let extraLesions: LesionSpec[] = []; // lesions from a loaded scenario beyond the one the controls edit
 
@@ -55,7 +56,11 @@ function applyPhys() { sim.apply({ bloodLoss: PHYS.bl / 100, drugs: { betaBlocke
 export const setPhys = (p: Partial<typeof PHYS>) => { Object.assign(PHYS, p); applyPhys(); };
 /** The blood loss and beta blocker sliders (Support tab: Volume, Drugs). */
 export function wireVolume() {
-  for (const k of Object.keys(PHYS) as (keyof typeof PHYS)[]) range(k, (v) => setPhys({ [k]: v }));
+  for (const k of Object.keys(PHYS) as (keyof typeof PHYS)[]) range(k, (v) => {
+    // learner gate: the beta blocker is a drug; the baseline blood loss is the patient's volume status
+    if (k === "bl" && !mayEdit({ bloodLoss: v / 100 })) { physUi(); return; }
+    setPhys({ [k]: v });
+  });
 }
 
 // ---------------------------------------------------------------- the simulation changed underneath the controls

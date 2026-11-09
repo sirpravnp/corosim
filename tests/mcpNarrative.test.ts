@@ -88,13 +88,18 @@ describe("parity: every tool that changes the patient returns a narrative", () =
     corosim_treat: { procedure: "pci", runSecondsAfter: 1 },
     corosim_valve: { type: "balloon", valve: "av", runSeconds: 1 },
     corosim_arrest: { action: "restart", runSeconds: 1 },
+    corosim_lab_start: { caseId: "stable-lad", seed: 3 },
+    corosim_lab_act: { actions: [{ t: "access", site: "femoral-R" }] },
   };
   it("the list of patient-changing tools is the list this test calls", () => {
     expect(TOOLS.filter((t) => !t.readOnly).map((t) => t.name).sort()).toEqual(Object.keys(CALLS).sort());
   });
   it.each(Object.keys(CALLS))("%s", (name) => {
     const sim = new Simulation({ seed: 1 });
-    if (name !== "corosim_set_scenario") run(sim, "corosim_set_scenario", { engine: "core", scenario: lad, warmupSeconds: 5 });
+    if (name !== "corosim_set_scenario" && name !== "corosim_lab_start") {
+      run(sim, "corosim_set_scenario", { engine: "core", scenario: lad, warmupSeconds: 5 });
+    }
+    if (name === "corosim_lab_act") run(sim, "corosim_lab_start", CALLS.corosim_lab_start);
     const r = run(sim, name, CALLS[name]);
     expect(typeof r.narrative).toBe("string");
     expect(r.narrative.length).toBeGreaterThan(20);

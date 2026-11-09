@@ -49,11 +49,11 @@ describe("hand-computed loops", () => {
 });
 
 // ---- engine runs ----
-type Imp = NonNullable<FromModelOptions["impella"]>;
+type Imp = NonNullable<FromModelOptions["coroPump"]>;
 const SHOCK: StructuralSpec = { lvEes: 0.35, lvStiffness: 1.6 };
 function run(spec: StructuralSpec, imp: Imp | null = null) {
   const m = buildModel(spec, volumeOffsetFor(spec));
-  const g = fromModel(m, imp ? { impella: imp } : {});
+  const g = fromModel(m, imp ? { coroPump: imp } : {});
   const eng = createEngine(g.nodes, g.elements, g.options);
   const T = 60 / m.hr, rec = new BeatRecorder(eng, T, ["MV", "AV"]);
   let P: number[] = [], V: number[] = [], T_: number[] = [], last = { P, V, t: T_ }, idx = 0;
@@ -75,7 +75,7 @@ const inotrope = run({ lvEes: 1.4 });
 
 describe("normal adult", () => {
   it("coupling, work, power", () => {
-    fmt("normal", normal); fmt("shock", shock); fmt("shock+Impella", shockImp); fmt("Ees x1.4", inotrope);
+    fmt("normal", normal); fmt("shock", shock); fmt("shock+CoroPump", shockImp); fmt("Ees x1.4", inotrope);
     expect(normal.lm.coupling).toBeGreaterThan(0.45); expect(normal.lm.coupling).toBeLessThan(1.2); // see the it.fails below for the 0.5 bound
     expect(normal.lm.strokeWorkJ).toBeGreaterThan(0.9); expect(normal.lm.strokeWorkJ).toBeLessThan(1.2);
     expect(normal.cpo).toBeGreaterThan(0.8); expect(normal.cpo).toBeLessThan(1.2);
@@ -100,7 +100,7 @@ describe("shock, support, inotrope", () => {
   it("shock has a higher Ea/Ees and a lower CPO than normal", () => {
     expect(shock.lm.coupling).toBeGreaterThan(normal.lm.coupling); expect(shock.cpo).toBeLessThan(normal.cpo);
   });
-  it("an Impella in shock lowers PVA and MVO2", () => {
+  it("a CoroPump in shock lowers PVA and MVO2", () => {
     expect(shockImp.lm.pva).toBeLessThan(shock.lm.pva);
     expect(shockImp.lm.mvo2.perBeatMl).toBeLessThan(shock.lm.mvo2.perBeatMl);
   });

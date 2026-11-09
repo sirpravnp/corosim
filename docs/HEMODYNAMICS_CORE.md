@@ -18,7 +18,7 @@ claim parity.
   Burkhoff 1991; interaction during LV support, 1989), so it is very likely in the model.
 - **Coronary vasculature** and **myocardial work–O₂ consumption** (PVA → MVO₂) are included.
 - **Simple cardiovascular drugs.**
-- **Devices:** IABP, ECMO and Impella CP / 5.0 appear in published Harvi case simulations (a VSD case report).
+- **Devices:** IABP, ECMO and CoroPump CP / 5.0 appear in published Harvi case simulations (a VSD case report).
   TandemHeart, LVAD and pump-curve detail: *unverified*.
 - **Outputs:** PV loops of all four chambers, pressure/flow/volume traces, BP, PA pressures, CVP, wedge, CO; a catheter
   position control.
@@ -31,7 +31,7 @@ claim parity.
 |---|---|---|
 | ACS / cath circulation | `src/physics/circulation.ts` | Algebraic: MAP = CO × SVR, stroke volume a product of tuned multipliers |
 | Beat pressure | `src/physics/beatHemo.ts` | 2-element Windkessel stepped per beat, Frank–Starling from the RR interval |
-| Support | `src/physics/support.ts`, `src/config/management.ts` | Drugs and devices as multipliers (Impella = 3.0 L/min constant); on the core engine the drugs are receptor-level (`src/physics/core/drugs.ts`, E4) |
+| Support | `src/physics/support.ts`, `src/config/management.ts` | Drugs and devices as multipliers (CoroPump = 3.0 L/min constant); on the core engine the drugs are receptor-level (`src/physics/core/drugs.ts`, E4) |
 | Autonomic | `src/physics/autonomic.ts` | Real closed loop: baroreflex arms, Mayer waves, RSA, CNS ischemic and volume reflexes |
 | Structural | `src/physics/structural.ts` | Real closed loop: 10 nodes, four elastance chambers, Gorlin orifices, O₂ solve; solved to a periodic steady state; no reflexes, devices, pericardium or inertance |
 | Coronary lesion | `src/physics/hemodynamics.ts` | Steady lesion physics (Poiseuille + Young–Tsai), collaterals, autoregulation, FFR |
@@ -54,7 +54,7 @@ core/
   oxygen.ts        transport in time (generalises structural's steady solve), DO₂/VO₂/SvO₂/lactate
   coronary.ts      coupling to hemodynamics.ts: perfusion pressure, intramyocardial pressure, supply/demand
   drugs.ts         receptor-level effects with onset/offset kinetics
-  devices/         pump.ts (generic rotary), impella.ts, ecmo.ts, iabp.ts, (lvad.ts, tandem.ts later)
+  devices/         pump.ts (generic rotary), coroPump.ts, ecmo.ts, iabp.ts, (lvad.ts, tandem.ts later)
   outputs.ts       catheter numbers, PV-loop metrics, device consoles
 ```
 
@@ -141,26 +141,31 @@ H(ω, Q) = a·ω² − b·ω·Q − c·Q·|Q|          (fitted per device to pub
 ```
 
 - **Suction:** R_inflow rises steeply as inflow-chamber pressure or volume collapses. This gives suction events, flow
-  drops and alarms, and makes the pump depend on preload and RV function (`impellaRvSuction` becomes physics).
+  drops and alarms, and makes the pump depend on preload and RV function (`coroPumpRvSuction` becomes physics).
 - **Device console outputs:** flow, motor current (∝ hydraulic load, so its waveform carries the LV–aortic gradient, the
   "placement signal"), pulsatility index, suction alarms.
 - **Hemolysis proxy** (optional): shear × exposure time, rising with speed and suction.
 
 Devices:
 
-1. **Impella 2.5 / CP / 5.5** (LV→ascending aorta). P-levels P1–P9 map to speed.
+1. **CoroPump 2.5 / CP / 5.5** (LV→ascending aorta). P-levels P1–P9 map to speed.
    - Teaches flow vs afterload, LV unloading on the PV loop, loss of aortic valve opening at high support, suction with
      hypovolemia or RV failure, and the oxygen-cost reduction (PVA falls).
    - Malposition scenario: inflow in the aorta, so the pump recirculates and does not unload. Placement-signal and motor
      current change accordingly.
-2. **Impella RP** (IVC→PA) for RV failure; BiPella.
+   - Purge line model (`COROPUMP_PURGE`, `[assumed]`): dextrose-heparin or bicarbonate solution, heparin 0–50 U/ml, line
+     clear / kinked / blocked; pressure and flow alarms when resistance rises (thrombus in the purge path included).
+   - Thrombus burden (`COROPUMP_THROMBUS`, `[assumed]`): grows with low heparin, low pump flow or a blocked line; exchange
+     resets it. Hemolysis (`COROPUMP_HEMOLYSIS`, `[assumed]`): patient plasma free hemoglobin with urine-color thresholds,
+     shear- and suction-driven production, six-hour clearance half-life in clinical time.
+2. **CoroPump RP** (IVC→PA) for RV failure; BiPella.
 3. **VA-ECMO** (RA/IVC drainage → femoral return into the descending-aorta node).
    - Oxygenator: return saturation from sweep and FiO₂, plus a resistance.
    - What emerges: afterload rise, LV distension and pulmonary edema without a vent, aortic valve closure and stasis,
      drainage chatter when the RA collapses (ties to fluids).
    - Differential hypoxemia: native lung blood fills the arch, ECMO blood fills the descending aorta. The existing
      AO/DAO split shows it already; Workstream F makes the mixing point move.
-   - Venting options: Impella (ECPELLA), IABP, and atrial septostomy using the existing ASD edge.
+   - Venting options: CoroPump (ECPELLA), IABP, and atrial septostomy using the existing ASD edge.
 4. **IABP:** 40 ml balloon as a time-varying volume in the descending aorta.
    - Triggered from the ECG (beats already exist), with timing from the dicrotic notch and the R wave.
    - 1:1 / 1:2 / 1:3 ratios. Diastolic augmentation and assisted end-diastolic dip emerge from the physics, as do the
@@ -173,7 +178,7 @@ Dynamic behaviour, not static numbers:
 - start-up and speed changes play out over beats;
 - the device–native-heart interaction depends on the current state;
 - weaning trials (step speed down, watch LVEDP, MAP, pulsatility);
-- arrhythmias during support (VF on Impella keeps some flow if RV preload holds, on ECMO it does not matter);
+- arrhythmias during support (VF on CoroPump keeps some flow if RV preload holds, on ECMO it does not matter);
 - the cath tab shows device artefacts on pressure traces.
 
 ### E. More nuanced hemodynamics
@@ -216,10 +221,10 @@ A tiered plan:
    gives systolic flow impediment and diastolic-dominant flow. Cost: MacCormack or DG at dt ≈ 0.1 ms on ~50 segments
    should run faster than real time in a worker; benchmark early.
 2. **Offline CFD to calibrate reduced models.** Run 3D simulations (SimVascular/svFSI, OpenFOAM or FEniCS) on stenosis
-   shapes, Impella outflow and ECMO return to fit the loss coefficients we use (`STENOSIS.Kt`, pump inflow losses), and
+   shapes, CoroPump outflow and ECMO return to fit the loss coefficients we use (`STENOSIS.Kt`, pump inflow losses), and
    POD reduced-order fields for visuals. Results ship as tables, not solvers.
 3. **In-browser 2D lattice Boltzmann on WebGPU (visual, optional).** Live flow fields for a stenosis jet, an LV filling
-   vortex in echo views, or the Impella jet, with boundary flows from the 0D/1D engine. For teaching visuals, not
+   vortex in echo views, or the CoroPump jet, with boundary flows from the 0D/1D engine. For teaching visuals, not
    quantitative output.
 
 ### G. The simulator as a full playground
@@ -241,7 +246,7 @@ so UI work can start in parallel with Phase A:
   comes from the rhythm;
 - its waveform is replayed beat by beat, re-solved every few seconds or when something changes.
 
-Once `LiveHeart` (A6) lands, the source switches to it and the adapter is deleted. (P16: done for adults. `LiveSource` reads the core-engine `Simulation`, which now builds the PatientSpec's structural heart, pericardium, ventilation (thorax), ECMO, Impella RP and Impella/IABP settings; the adapter stays only for neonates, patients the core cannot settle, the game and the MCP tools, see the P16 row of HEMODYNAMICS_TASKS.md for what blocks its deletion.)
+Once `LiveHeart` (A6) lands, the source switches to it and the adapter is deleted. (P16: done for adults. `LiveSource` reads the core-engine `Simulation`, which now builds the PatientSpec's structural heart, pericardium, ventilation (thorax), ECMO, CoroPump RP and CoroPump/IABP settings; the adapter stays only for neonates, patients the core cannot settle, the game and the MCP tools, see the P16 row of HEMODYNAMICS_TASKS.md for what blocks its deletion.)
 
 **Panels** (each one can be switched on or off, in a grid workspace on desktop and as tabs on phones):
 
@@ -260,7 +265,7 @@ Once `LiveHeart` (A6) lands, the source switches to it and the adapter is delete
 
 **Playground mode.** A sandbox that unlocks every control on one patient: coronary lesions, structural lesions, rhythm,
 drugs, fluids, devices, pericardium, patient kind. It has presets that combine them (e.g. "anterior STEMI + ischemic
-MR + Impella CP"), time controls (pause, slow motion, step one beat), saved snapshots to overlay and compare, CSV export
+MR + CoroPump CP"), time controls (pause, slow motion, step one beat), saved snapshots to overlay and compare, CSV export
 of traces, and a share link. The coronary tree is adult anatomy, so neonatal patients get the structural and
 hemodynamic panels without the coronary view.
 
@@ -274,10 +279,10 @@ pixels shown; hold 60 fps with all panels open on a mid-range laptop.
 | 1 | Core engine (A.1, A.3), structural tab on it, tests green | none | Biggest single step |
 | 2 | ACS sim on the engine, ECG-driven activation, autonomic → engine (A.4) | 1 | Old path behind a flag |
 | 3 | Fluids: stressed/unstressed volume, compartments, PLR (C) | 1 | Small once 1 exists |
-| 4 | Generic pump + Impella CP/5.5 with suction and console (D.1) | 1, 3 | First visible win over the static model |
+| 4 | Generic pump + CoroPump CP/5.5 with suction and console (D.1) | 1, 3 | First visible win over the static model |
 | 5 | Pericardium, septum, intrathoracic pressure, tamponade (B) | 1 | Gives PPV/SVV for 3 |
 | 6 | Regional segments + O₂ supply/demand loop (A.2, E) | 2 | Makes the shock spiral emerge |
-| 7 | IABP, VA-ECMO, ECPELLA, Impella RP (D.2–4) | 4, 6 | |
+| 7 | IABP, VA-ECMO, ECPELLA, CoroPump RP (D.2–4) | 4, 6 | |
 | 8 | Receptor-level drugs, dynamic valves, lung/O₂ in time (E) | 2, 3 | Retires the `SUPPORT` multipliers |
 | 9 | 1D aorta (F.1), then 1D coronaries | 1 | Benchmark first |
 | 10 | Offline CFD calibration; WebGPU LBM visuals (F.2–3) | 9 | Optional |
@@ -288,7 +293,7 @@ pixels shown; hold 60 fps with all panels open on a mid-range laptop.
 - **Anchors:** normal adult and neonate numbers already in `src/config/structural.ts`; add published ranges for each new
   output (tagged `[lit]`).
 - **Direction tests per feature**, written before the feature, as in the existing suite:
-  - Impella: higher MAP and CO, lower LVEDP and PVA, narrower pulse pressure; flow falls as afterload rises.
+  - CoroPump: higher MAP and CO, lower LVEDP and PVA, narrower pulse pressure; flow falls as afterload rises.
   - ECMO: LVEDP rises without a vent and falls with one.
   - IABP: diastolic augmentation, about 5–10% systolic unloading.
   - Crystalloid: about a quarter stays in the vessels at 30 min.
@@ -309,7 +314,7 @@ pixels shown; hold 60 fps with all panels open on a mid-range laptop.
 - **Explainability:** the "why" text (`advice.ts`, `explain.ts`) must read from engine quantities (PVA, filling pressure,
   pump flow), not from removed multipliers.
 - **Harvi parity claims** need a check against harvi.online itself (section 1).
-- **Decisions for the owner:** which devices ship first beyond Impella; whether the 1D aorta is part of v1 or a follow-up;
+- **Decisions for the owner:** which devices ship first beyond CoroPump; whether the 1D aorta is part of v1 or a follow-up;
   whether to keep the algebraic model as a "fast mode".
 
 ## References found while planning

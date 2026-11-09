@@ -13,7 +13,7 @@ export const LIVE_SOURCE = {
   ringSeconds: 60, maxBeats: 120,
   /** Device consoles are rebuilt at most this often (s of simulation time); a panel may ask every frame. [assumed] */
   deviceEveryS: 0.1,
-  /** Length (s) of the waveforms a console draws (Impella placement signal, IABP arterial trace). [assumed] */
+  /** Length (s) of the waveforms a console draws (CoroPump placement signal, IABP arterial trace). [assumed] */
   deviceTraceS: 6,
   /** Bed oxygenation placeholder: tissue O2 = base - slope x ischemia severity (until tasks E2/E3). [assumed] */
   bedOxygen: { base: 0.75, slope: 0.45 },

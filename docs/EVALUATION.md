@@ -10,7 +10,7 @@ Know, variable by variable and over time, whether the core engine does what a cl
 
 A spec is: **specified state × variable × time → expected change.** The user writes the expectations; the runner measures the engine and reports where they disagree.
 
-- **Variables:** 241, each with one canonical source, unit and panel (`scripts/eval/variables.ts`). The original monitor, hemodynamics, oxygen, coronary, ECG, rhythm, arrest, fluids, drugs, devices, autonomic and cath panels, plus PV-loop metrics, JVP, respiratory variation, pericardium, ECMO, Impella RP, and per-valve and shunt readings.
+- **Variables:** 241, each with one canonical source, unit and panel (`scripts/eval/variables.ts`). The original monitor, hemodynamics, oxygen, coronary, ECG, rhythm, arrest, fluids, drugs, devices, autonomic and cath panels, plus PV-loop metrics, JVP, respiratory variation, pericardium, ECMO, CoroPump RP, and per-valve and shunt readings.
 - **States:** `scripts/eval/states.ts`. Each starts from the same settled healthy adult, applies the insult with `Simulation.apply` (as the page does), then records every variable at checkpoints. Default checkpoints are 5, 20, 60 and 180 simulated seconds after the insult (= 10 min, 40 min, 2 h, 6 h clinical, at 2 clinical min per second). A state can set its own checkpoints and timed actions (e.g. PCI at 10 s).
 - **Expectation grammar:** `scripts/eval/grammar.ts`. A cell is one of `60..80` (absolute), `d+10..+30` (change from the same seed's baseline), `x1.2..x1.5` (ratio), `up`/`down`/`same`, `true`/`false`, `~regex`, or `p0.4..0.7` (share of seeds, for stochastic outcomes). Blank, `-` or `?` means no opinion. A cell passes when at least 80% of seeds satisfy it.
 - **Seeds:** every state runs on several seeds; the seed varies the baseline noise and every stochastic process.
@@ -26,7 +26,7 @@ npx tsx scripts/eval/run.ts report                        # scripts/eval/out/REP
 npx tsx scripts/eval/run.ts timescale                     # hemorrhage, bleed and LAD occlusion at 1x/3x/6x
 ```
 
-`observe` writes `scripts/eval/out/<state>.observed.csv` (mean and min..max per cell) and raw per-seed JSON. A state with `seeds` set (the four stochastic states) ignores `--seeds`. ECMO and Impella RP are inserted with `setPatient`, because `apply` only retunes a circuit that is already in the heart.
+`observe` writes `scripts/eval/out/<state>.observed.csv` (mean and min..max per cell) and raw per-seed JSON. A state with `seeds` set (the four stochastic states) ignores `--seeds`. ECMO and CoroPump RP are inserted with `setPatient`, because `apply` only retunes a circuit that is already in the heart.
 
 ## Plan
 
@@ -70,10 +70,10 @@ Measured side by side (`npx tsx scripts/eval/ef-audit.ts`, seed 3):
 | healthy | 0.62 | 0.62 | none |
 | LAD occlusion, 20 s | 0.38 | 0.36 | transient: different windows and smoothing |
 | LAD occlusion, 60 s | 0.30 | 0.30 | none at steady state |
-| LAD occlusion + Impella P6 | 0.30 | **0.13** | the pump empties the LV without the volume crossing the aortic valve, so the aortic-valve definition understates EF |
+| LAD occlusion + CoroPump P6 | 0.30 | **0.13** | the pump empties the LV without the volume crossing the aortic valve, so the aortic-valve definition understates EF |
 | atrial fibrillation | 0.58 | 0.59 | small |
 
-So the differences have three causes: (1) the two definitions diverge when a pump is running, which is a real definitional split; (2) the two use different windows and smoothing, so they differ by up to 0.10 in the first minute after a change; (3) the estimate includes premature beats and the Monitor excludes them (not yet exercised: the PVC test condition produced no PVCs). The harness registers both under separate names and `check` reports where they diverge beyond tolerance (`CROSS_CHECKS` in `variables.ts`; the Impella pair is skipped there because the gap is understood).
+So the differences have three causes: (1) the two definitions diverge when a pump is running, which is a real definitional split; (2) the two use different windows and smoothing, so they differ by up to 0.10 in the first minute after a change; (3) the estimate includes premature beats and the Monitor excludes them (not yet exercised: the PVC test condition produced no PVCs). The harness registers both under separate names and `check` reports where they diverge beyond tolerance (`CROSS_CHECKS` in `variables.ts`; the CoroPump pair is skipped there because the gap is understood).
 
 **Proposed reduction (needs a decision, not done):** have the ischemia panel, MCP state and echo read the same chamber-volume EF as the Monitor when the core is live, and keep a separately labelled "estimated EF including infarct" if wanted. This changes numbers users see and regression fixtures, so it is not done unasked.
 
@@ -95,9 +95,9 @@ So the differences have three causes: (1) the two definitions diverge when a pum
 | Coronary | 7 | dominance, left main pattern, nodal artery origin, conus ostium, LAD course, lesions, exertion |
 | Valves | 24 | per-valve `open` and `reg` (AV, MV, TV, PV), prostheses, `pda`, `asd`, `vsd`, `bt` sizes, chamber sizes, `lvEes`, `rvEes`, stiffness |
 | Pericardium | 6 | effusion volume and rate, stiffness, open, drain, septum |
-| Support | 36 | blood loss, drugs, fluids, hemorrhage rate, capillary leak, ventilation, Impella, IABP, ECMO, pacing |
+| Support | 36 | blood loss, drugs, fluids, hemorrhage rate, capillary leak, ventilation, CoroPump, IABP, ECMO, pacing |
 
-Nine of these have no page control (set from chat or a link only), not eight: `drugs.vasopressor`, `support.fluids`, `support.diltiazem`, `devices.impellaRp.level`, `devices.iabp.volumeMl` and the four `valves.*.prosthesis` fields. The sweep ran all 90 patient fields other than `seed`.
+Nine of these have no page control (set from chat or a link only), not eight: `drugs.vasopressor`, `support.fluids`, `support.diltiazem`, `devices.coroPumpRp.level`, `devices.iabp.volumeMl` and the four `valves.*.prosthesis` fields. The sweep ran all 90 patient fields other than `seed`.
 
 **Outputs by panel, and what the registry covers now.**
 
@@ -130,7 +130,7 @@ What still fails:
 
 - **Stressed volume reaches 0** in `bleed-100mlmin` (8/8 seeds by 180 s) and at the high hemorrhage rate. The patient is in arrest with MAP at numerical dust, including a tiny negative, and `dead` stays false through 6 h clinical. Cardiac output in established VF goes slightly negative (about −0.00003 L/min).
 - **Weiss tau is not a stable number.** On a healthy heart it is bimodal, about 35 ms or about 200 ms, depending on the beat (t60 of this run happened to be 34–38; t180 was 34–239). It is null on some pulsatile ischemic beats. On VA-ECMO without a vent it is either null or absurd (one seed 1636 ms, another about 100,000 ms) and LV stroke work is 0, so Ea is undefined, while the monitor still shows a narrow pulse from the circuit.
-- **`lvEfEstimate` leaves 0..1** when LV size is at its schema minimum: about 2.3–2.5, while the chamber-volume EF stays about 0.86. Same definitional split as the Impella case, now past a fraction.
+- **`lvEfEstimate` leaves 0..1** when LV size is at its schema minimum: about 2.3–2.5, while the chamber-volume EF stays about 0.86. Same definitional split as the CoroPump case, now past a fraction.
 - **A huge pericardial effusion** (schema maximum) drives LA volume to −23 ml at 5 s and leaves RV EF null.
 - **Minimum aortic opening** (`heart.valves.av.open` = 0): EF 0, mean gradient about 340 mmHg, Gorlin and Hakki areas null because there is no forward flow. Minimum mitral opening: mitral mean gradient about 95 mmHg, area null.
 - **RA a wave is null in sinus** on some seeds after a coronary occlusion (LAD seed 1 at 20 s, seed 2 at 60 s, and the same seeds in the anatomy variants), while RV systolic is present.
@@ -150,7 +150,7 @@ Stochastic, 24 seeds, Wilson 95% interval. No expectation cell was written.
 
 ROSC needs a perfusing rhythm held for 10 s (`roscSustainS`), so at 5 s after the shock the status is still `arrest` even when the rhythm is already sinus (22/24). Two seeds were still in VF.
 
-Valves, 8 seeds, against `docs/VALVES.md` and `tests/valvesSim.test.ts`. Severe aortic stenosis: mean gradient 49 mmHg, LV peak 175, aortic systolic 110. The gradient is in the LV pressure. Aortic stenosis plus mitral regurgitation: mean gradient 48 against 49 for the stenosis alone (the structural model, with no reflexes, said 43 against 48), mitral regurgitant fraction 0.51 against 0.47 for the chronic leak, regurgitant volume 59 ml. The fraction matches the note; the gradient drop on the live engine is about 1 mmHg, not 5. The test bars hold (mean gradient above 30, mitral regurgitant volume above 30, mechanical closing leak 5.5 ml, above 1). A 23 mm bioprosthesis reads 15 mmHg mean (the note's 11–18). A 26 mm TAVR reads 13 (the cited echo range is 8–13). Valve-in-valve reads 25 against the note's "about 15". Aortic stenosis plus LAD 80% (stenosis severity 0.85): LVEDP 8.6 to 16.8 and EF 0.60 to 0.37, a larger move than the earlier note of 8 to 13 and 0.62 to 0.45. ASD 15 mm, VSD 8 mm and PDA 4 mm shunt 2.5, 5.7 and 2.7 L/min, and `murmurOf` still says "No murmur." because it grades valves only. Impella CP with a weak RV flows about 1.9 L/min. VA-ECMO set to 4 L/min delivers about 2.6, with a return saturation. Impella RP at level 9 flows about 3.8 L/min; at level 0, with the device present, flow is about −1.3 L/min. Tamponade of 270 ml reads an effusion of 270 ml, pericardial pressure about 5 mmHg, and pulsus paradoxus about 23 mmHg.
+Valves, 8 seeds, against `docs/VALVES.md` and `tests/valvesSim.test.ts`. Severe aortic stenosis: mean gradient 49 mmHg, LV peak 175, aortic systolic 110. The gradient is in the LV pressure. Aortic stenosis plus mitral regurgitation: mean gradient 48 against 49 for the stenosis alone (the structural model, with no reflexes, said 43 against 48), mitral regurgitant fraction 0.51 against 0.47 for the chronic leak, regurgitant volume 59 ml. The fraction matches the note; the gradient drop on the live engine is about 1 mmHg, not 5. The test bars hold (mean gradient above 30, mitral regurgitant volume above 30, mechanical closing leak 5.5 ml, above 1). A 23 mm bioprosthesis reads 15 mmHg mean (the note's 11–18). A 26 mm TAVR reads 13 (the cited echo range is 8–13). Valve-in-valve reads 25 against the note's "about 15". Aortic stenosis plus LAD 80% (stenosis severity 0.85): LVEDP 8.6 to 16.8 and EF 0.60 to 0.37, a larger move than the earlier note of 8 to 13 and 0.62 to 0.45. ASD 15 mm, VSD 8 mm and PDA 4 mm shunt 2.5, 5.7 and 2.7 L/min, and `murmurOf` still says "No murmur." because it grades valves only. CoroPump CP with a weak RV flows about 1.9 L/min. VA-ECMO set to 4 L/min delivers about 2.6, with a return saturation. CoroPump RP at level 9 flows about 3.8 L/min; at level 0, with the device present, flow is about −1.3 L/min. Tamponade of 270 ml reads an effusion of 270 ml, pericardial pressure about 5 mmHg, and pulsus paradoxus about 23 mmHg.
 
 The input sweep (90 patient fields, seed 1, low/mid/high) is the table in the snapshot. A variable counts as moved past the `same` band, and readings that seed 1's healthy run moves by itself are left out. Every field moves something at a value that is not its resting default, with these exceptions:
 
@@ -181,7 +181,7 @@ A one-seed smoke on 1 Nov 2026 (seed 1, every probe state) threw nothing. The in
 - PCI ordered at 2 s leaves an infarct fraction of 0.13; at 30 s, 0.25. The order at 60 s is in VF on this seed, so that infarct number is not a clean timing comparison. CABG ordered at 5 s leaves infarct fraction 0.41 and a residual ischemic mass of 0.12, which is what a graft beyond a remaining native lesion should do.
 - Left-dominant RCA occlusion has ischemic mass 0.13 and stays in sinus. The right-dominant occlusion in the main run has mass 0.34 and goes on to complete heart block. Dominance is live for the RCA.
 - Library complete heart block with pacing at 70 stays at a heart rate of 40 and the rhythm label does not say paced. The same pace rate on an RCA occlusion that has grown its own block holds the heart rate at 70 and the label says paced.
-- Impella RP at level 0 flows −1.1 L/min at 5 s with a speed of 0. Level 9 flows about 3.9 L/min. That RP flow is not in `deviceFlow`, which stays 0.
+- CoroPump RP at level 0 flows −1.1 L/min at 5 s with a speed of 0. Level 9 flows about 3.9 L/min. That RP flow is not in `deviceFlow`, which stays 0.
 - Potassium 7.5 plus arrhythmia tendency 3 on a proximal LAD is in VF on this seed. Those two dials on a healthy heart were bitwise identical to healthy across 8 seeds. One seed is not a rate.
 - Leg raise during 30% blood loss lands at heart rate 104 and mean pressure 82, the same place as the 8-seed mean of `hemorrhage-30`. Baroreflex gain 0 during that hemorrhage is slower and much lower (heart rate 91, mean pressure 66) than gain 4 (heart rate 98, mean pressure 88).
 
@@ -198,7 +198,7 @@ Families, and the state already on disk to read them against:
 | Blood or crystalloid after hemorrhage, stopping a 100 ml/min bleed, capillary leak, leg raise during 30% loss, baroreflex gain 0 and 4 during 30% loss | Does volume come back, does the reflex own the tachycardia, and does leg raise stay a no-op? | `hemorrhage-30`, `hemorrhage-45`, `bleed-100mlmin` |
 | Raised PVR, an isolated weak RV, RV infarct, tamponade at 80 and 160 ml, a drain, an accumulating effusion, constriction | Does the right heart and the sac form a graded series rather than one extreme? | `rca-prox-occlusion`, `edge-tamponade-bleed` |
 | Severe AS plus hemorrhage, acute MR plus LAD occlusion, mitral stenosis in fast AF, aortic regurgitation with exertion, tetralogy, a 15 mm VSD | Do valve lesions still behave when the rest of the heart is sick? | `as-severe`, `mr-acute`, `hemorrhage-30` |
-| IABP, early inflation, Impella CP at P2 and P8, malposition, Impella 5.5, Impella RP at 0 and 9, ECMO, ECPELLA, ECMO turned on at 20 s | Does delivered flow match the setpoint, and does level 0 stay at zero? | `edge-ecmo-no-vent`, `edge-impella-rv-fail` |
+| IABP, early inflation, CoroPump CP at P2 and P8, malposition, CoroPump 5.5, CoroPump RP at 0 and 9, ECMO, ECPELLA, ECMO turned on at 20 s | Does delivered flow match the setpoint, and does level 0 stay at zero? | `edge-ecmo-no-vent`, `edge-coroPump-rv-fail` |
 | 30% hemorrhage and proximal LAD at 3× and 6×, checkpoints chosen so the clinical minute matches | The same clinical minute should be the same patient. Infarct already is. Heart rate and pressure were not. | `hemorrhage-30`, `lad-prox-occlusion` |
 
 ## Where a more accurate solver would come from
@@ -213,7 +213,7 @@ These are proposals. None of them is implemented, and none of them fills a spec 
 
 4. **Use the model’s own saturations in the Fick equation.** A healthy heart with no shunt reads Qp:Qs about 1.01 from flows and about 1.08 from Fick, and Fick cardiac output about 7% below flow cardiac output, on every seed. The pulmonary end-capillary content the solver already has should be what Fick divides by. Acceptance: Fick cardiac output within 2% of flow cardiac output, and Fick Qp:Qs within 0.02 of the flow ratio, on `healthy`.
 
-5. **Keep one ejection fraction on the panels, and a second number only where the definition really differs.** `lvEf` is chamber volume. `lvEfEstimate` is aortic-valve stroke volume, and it leaves 0..1 when LV size is at the schema minimum (about 2.3–2.5) and falls to about 0.13 under Impella while the chamber fraction stays about 0.30. Point the ischemia panel, MCP state and echo at the chamber fraction. Keep aortic-valve stroke volume under its own name. This is the change that touches `src/` and the fixtures, and it stays unstarted until you ask for it.
+5. **Keep one ejection fraction on the panels, and a second number only where the definition really differs.** `lvEf` is chamber volume. `lvEfEstimate` is aortic-valve stroke volume, and it leaves 0..1 when LV size is at the schema minimum (about 2.3–2.5) and falls to about 0.13 under CoroPump while the chamber fraction stays about 0.30. Point the ischemia panel, MCP state and echo at the chamber fraction. Keep aortic-valve stroke volume under its own name. This is the change that touches `src/` and the fixtures, and it stays unstarted until you ask for it.
 
 6. **Fit tau on a real falling limb, or leave it blank.** Healthy tau is bimodal, about 35 ms or about 200 ms. On VA-ECMO without a vent it is null or absurd while the monitor still shows a pulse and stroke work is 0. Require a falling limb, enough samples and a pressure drop above a floor. When the ventricle is not ejecting, report that, instead of a time constant.
 
@@ -223,7 +223,7 @@ These are proposals. None of them is implemented, and none of them fills a spec 
 
 9. **Warn on a bad number, and reseed when the seed is applied.** A NaN stenosis becomes 70% with no warning, because `num()` rejects NaN and the default is 0.7. `apply({ seed })` stores the seed and does not reseed the autonomic or arrest generators built at reset. A non-finite stenosis or seed should warn and refuse the substitution. An applied seed should rebuild those generators.
 
-10. **Make a setpoint a flow, and a level of 0 a stopped pump.** VA-ECMO set to 4 L/min delivers about 2.6. Impella RP present at level 0 flows about −1.3 L/min. `probe-lm-ecmo`, `probe-rca-rp-0` and `probe-rca-rp-9` are the measurements. If preload or an RPM limit is why the ECMO flow is short, show that next to the setpoint. Level 0 should be zero flow.
+10. **Make a setpoint a flow, and a level of 0 a stopped pump.** VA-ECMO set to 4 L/min delivers about 2.6. CoroPump RP present at level 0 flows about −1.3 L/min. `probe-lm-ecmo`, `probe-rca-rp-0` and `probe-rca-rp-9` are the measurements. If preload or an RPM limit is why the ECMO flow is short, show that next to the setpoint. Level 0 should be zero flow.
 
 11. **Publish valve numbers from the engine that is on the page.** The live AS+MR mean gradient falls about 1 mmHg against stenosis alone. `docs/VALVES.md` measured about 5 mmHg on the no-reflex structural model. Valve-in-valve reads 25 mmHg against the note’s about 15. Recompute the `inRing` orifice on the live core engine, and label the structural-page figure as no-reflex. The shunt reader should grade ASD, VSD and PDA from the L/min it already computes: 15, 8 and 4 mm currently shunt 2.5, 5.7 and 2.7 L/min and all three say “No murmur.”
 

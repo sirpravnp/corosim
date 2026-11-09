@@ -1,27 +1,28 @@
-import { Impella } from "../physics/core/devices/impella";
+import type { PurgeLine, PurgeSolution } from "../config/devices";
+import { CoroPump } from "../physics/core/devices/coroPump";
 import type { Ctx, Rates } from "../physics/core/types";
 
 /**
- * The Impella of D2 with an on/off gate, for the ACS simulation (task D3). The engine's element list is fixed when the heart is
+ * The CoroPump of D2 with an on/off gate, for the ACS simulation (task D3). The engine's element list is fixed when the heart is
  * built, so a pump that the team can switch on and off live is always present and gated: switched off, the flow state decays to
  * zero in `OFF_TAU` seconds (the volume it still carries is accounted, so blood is conserved) and nothing else changes. A stopped
- * Impella left in place would regurgitate through the rotor (H < the aortic-LV pressure difference); "off" here means "not inserted".
+ * CoroPump left in place would regurgitate through the rotor (H < the aortic-LV pressure difference); "off" here means "not inserted".
  */
-export class SwitchableImpella extends Impella {
+export class SwitchableCoroPump extends CoroPump {
   static readonly OFF_TAU = 0.02;
   enabled = true;
   flow(ctx: Ctx, out: Rates) {
     if (this.enabled) { super.flow(ctx, out); return; }
     const q = ctx.y[this.idx];
     out.flow(this.from, this.to, q);
-    out.rate(this.idx, -q / SwitchableImpella.OFF_TAU);
+    out.rate(this.idx, -q / SwitchableCoroPump.OFF_TAU);
   }
 }
 
 /**
- * Impella console as `Simulation.devices()` reports it (plain numbers, documented keys). Beat statistics come from the `ImpellaConsole`
+ * CoroPump console as `Simulation.devices()` reports it (plain numbers, documented keys). Beat statistics come from the `CoroPumpConsole`
  * (the last completed beat); `speedKrpm` and `level` are the present setting.
- *  - on: the pump is inserted and running (support.impella on and P-level above 0).
+ *  - on: the pump is inserted and running (support.coroPump on and P-level above 0).
  *  - model "2.5" | "CP" | "5.5", position "correct" | "aortic" | "deep", level 0..9 (P-level).
  *  - flowLpm: mean flow over the last beat (L/min); flowMinLpm, flowMaxLpm: its range within the beat.
  *  - motorCurrentMa: mean motor current over the last beat (mA); currentPulsatilityMa: max - min of it (mA).
@@ -30,17 +31,26 @@ export class SwitchableImpella extends Impella {
  *  - suctionLevel: highest suction level (0-1) in the beat; suctionFraction: fraction of the beat in suction; suctionAlarm: the console alarm.
  *  - inletMeanMmHg, inletMinMmHg, inletMaxMmHg, inletAmplitudeMmHg: the pressure at the cannula inflow over the beat. Correct: an LV waveform whose
  *    minimum is near the end-diastolic pressure; inflow in the aorta: an aortic waveform whose minimum stays at the diastolic pressure.
- *  - positionAlarm: "IMPELLA POSITION WRONG" (the pump runs but the pressure difference across it does not swing, as with an inflow in the aorta).
+ *  - positionAlarm: "COROPUMP POSITION WRONG" (the pump runs but the pressure difference across it does not swing, as with an inflow in the aorta).
  *  - alarms: the console messages now showing, plain text (suction, position).
  */
-export interface ImpellaReadout {
+export interface CoroPumpReadout {
   on: boolean; model: string; position: string; level: number; speedKrpm: number;
   flowLpm: number; flowMinLpm: number; flowMaxLpm: number;
   motorCurrentMa: number; currentPulsatilityMa: number;
   placementMmHg: number; placementAmplitudeMmHg: number;
   suctionLevel: number; suctionFraction: number; suctionAlarm: boolean;
   inletMeanMmHg: number; inletMinMmHg: number; inletMaxMmHg: number; inletAmplitudeMmHg: number;
-  positionAlarm: boolean; alarms: string[];
+  positionAlarm: boolean;
+  /** Purge line: solution and heparin are treatment settings; line state is disease unless cleared. */
+  purge: { solution: PurgeSolution; heparinUml: number; line: PurgeLine; flowMlHr: number; pressureMmHg: number };
+  /** Patient free hemoglobin (mg/dL) and urine appearance; not shown on a real pump console. */
+  hemolysis: { plasmaFreeHbMgDl: number; urineColor: "clear" | "tea" | "dark" };
+  /** 0..1 truth for tests; not on the console. */
+  thrombusBurden: number;
+  /** Last completed beat, resampled to 100 points each. */
+  waveform: { dtMs: number; inletMmHg: number[]; currentMa: number[] } | null;
+  alarms: string[];
 }
 
 /**
@@ -73,9 +83,9 @@ export interface EcmoReadout {
   suctionLevel: number; suctionAlarm: boolean; membraneDpMmHg: number; headMmHg: number;
 }
 
-/** Impella RP console (present only when the patient has it): P-level, speed, mean flow over the last beat (L/min), motor current (mA), placement signal (PA minus IVC pressure, mmHg) and the suction alarm. */
-export interface ImpellaRpReadout {
+/** CoroPump RP console (present only when the patient has it): P-level, speed, mean flow over the last beat (L/min), motor current (mA), placement signal (PA minus IVC pressure, mmHg) and the suction alarm. */
+export interface CoroPumpRpReadout {
   on: boolean; level: number; speedKrpm: number; flowLpm: number; motorCurrentMa: number; placementMmHg: number; suctionAlarm: boolean;
 }
 
-export interface DevicesReadout { impella: ImpellaReadout | null; iabp: IabpReadout | null; ecmo?: EcmoReadout; impellaRp?: ImpellaRpReadout }
+export interface DevicesReadout { coroPump: CoroPumpReadout | null; iabp: IabpReadout | null; ecmo?: EcmoReadout; coroPumpRp?: CoroPumpRpReadout }

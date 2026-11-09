@@ -30,8 +30,8 @@ import { LIVE_SOURCE } from "../config/liveSource";
 import { Iabp } from "../physics/core/devices/iabp";
 import { CoronaryCoupling, BeatSupply, supplyIndex } from "../physics/core/coronary";
 import { COUPLING } from "../config/coronary";
-import { ImpellaConsole } from "../physics/core/devices/impella";
-import { ImpellaRp } from "../physics/core/devices/impellaRp";
+import { CoroPumpConsole } from "../physics/core/devices/coroPump";
+import { CoroPumpRp } from "../physics/core/devices/coroPumpRp";
 import { Ecmo } from "../physics/core/devices/ecmo";
 import { CprCompression } from "../physics/core/devices/cpr";
 import type { Pericardium } from "../physics/core/pericardium";
@@ -39,9 +39,12 @@ import { Thorax } from "../physics/core/thorax";
 import type { FromModelOptions } from "../physics/core/fromModel";
 import { THORAX } from "../config/thorax";
 import { alternansAmplitude, PERICARDIUM } from "../config/pericardium";
-import { IABP } from "../config/devices";
-import { SwitchableImpella, DevicesReadout } from "./coreDevices";
-import { PatientSpec, DeviceSpec, HeartSpec, PericardiumSpec, FluidSpec, VentilationSpec, normalizePatient, effectiveDevices, DEFAULT_IMPELLA, DEFAULT_IABP } from "./patient";
+import { COROPUMP_HEMOLYSIS, COROPUMP_PURGE, IABP } from "../config/devices";
+import { purgeState } from "../physics/core/devices/purge";
+import { stepHemolysis, urineColor } from "../physics/core/devices/hemolysis";
+import { stepThrombus } from "../physics/core/devices/thrombus";
+import { SwitchableCoroPump, DevicesReadout } from "./coreDevices";
+import { PatientSpec, DeviceSpec, HeartSpec, PericardiumSpec, FluidSpec, VentilationSpec, normalizePatient, effectiveDevices, DEFAULT_COROPUMP, DEFAULT_IABP } from "./patient";
 import { VolumeExchange } from "../physics/core/volume";
 import { FluidCompartments, FluidReadout } from "../physics/core/fluids";
 import { FLUIDS } from "../config/fluids";
@@ -183,16 +186,20 @@ export class Simulation {
   /** Simulation clock minus stream time of the live heart (live time = `t` + delta); NaN until the first beat has aligned them (core engine). A source reading the live heart maps its stream times to the simulation clock with it. */
   get liveDelta(): number { return this.delta; }
   // ---- core engine state
-  private impella?: SwitchableImpella;
+  private coroPump?: SwitchableCoroPump;
   private iabp?: Iabp;
-  private impConsole?: ImpellaConsole;
-  private rp?: ImpellaRp;
-  private rpConsole?: ImpellaConsole;
+  private impConsole?: CoroPumpConsole;
+  private rp?: CoroPumpRp;
+  private rpConsole?: CoroPumpConsole;
   private ecmo?: Ecmo;
   /** Chest compressions on the ventricles (B4b); built with every core heart, idle (no pressure) unless CPR is running. */
   cprPump?: CprCompression;
-  /** Devices the patient has (core engine): settings of the real Impella and IABP, ECMO and Impella RP, from the spec (booleans mean the defaults). */
+  /** Devices the patient has (core engine): settings of the real CoroPump and IABP, ECMO and CoroPump RP, from the spec (booleans mean the defaults). */
   private devSpec: DeviceSpec = {};
+  /** Pump thrombus burden 0..1 (resets with pump exchange or removal). */
+  private coroPumpThrombus = 0;
+  /** Patient plasma free hemoglobin (mg/dL); persists when the pump is off. */
+  private plasmaFreeHbMgDl: number = COROPUMP_HEMOLYSIS.baselineMgDl;
   // ---- the PatientSpec fields the core engine builds (task P16), see `setPatient`
   private heartSpec: HeartSpec = {};
   private periSpec?: PericardiumSpec;
@@ -251,7 +258,11 @@ export class Simulation {
     this.n = scenario; this.warnings = warnings;
     this.support = { ...scenario.support }; this.patient = this.ownPatient(scenario.patient); this.grafts = [];
     this.perfusingRhythm = this.isPerfusingRhythm(this.patient.rhythm) ? this.patient.rhythm : "sinus";
-    if (this.engine === "core") { this.readPatient(input); this.fluidSpec = normalizePatient(input).spec.fluids ?? {}; }
+    if (this.engine === "core") {
+      this.readPatient(input);
+      this.fluidSpec = normalizePatient(input).spec.fluids ?? {};
+      this.applyCoroPumpInitial();
+    }
     this.t = 0; this.clinicalMinutes = 0; this.ischemicMinutes = 0; this.treated = untreated(); this.history = []; this.beatCount = 0;
     this.labLesions = null; this.labBed = {}; this.realtimeLab = false; this.minutesPerSecond = INFARCT.minutesPerSecond;
     for (const k of Object.keys(this.sev)) delete this.sev[k];
@@ -280,15 +291,15 @@ export class Simulation {
 
   /**
    * The PatientSpec fields the core engine reads (task P16), from a spec. Devices: `effectiveDevices` folds the legacy booleans into
-   * the defaults (Impella CP, P6, correct position; IABP 1:1, correct timing, 40 ml); a `devices.impella` / `devices.iabp` also
-   * switches that device on; `devices.ecmo` / `devices.impellaRp` are on by being present. Structural heart, pericardium and
+   * the defaults (CoroPump CP, P6, correct position; IABP 1:1, correct timing, 40 ml); a `devices.coroPump` / `devices.iabp` also
+   * switches that device on; `devices.ecmo` / `devices.coroPumpRp` are on by being present. Structural heart, pericardium and
    * ventilation are built into the heart (`initCore`).
    */
   private readPatient(input: PatientSpec) {
     const np = normalizePatient(input).spec;
     const d = effectiveDevices({ support: input.support, devices: np.devices });
-    this.devSpec = { impella: d.impella && { ...d.impella }, iabp: d.iabp && { ...d.iabp }, ecmo: d.ecmo && { ...d.ecmo }, impellaRp: d.impellaRp && { ...d.impellaRp } };
-    if (d.impella) this.support.impella = true;
+    this.devSpec = { coroPump: d.coroPump && { ...d.coroPump }, iabp: d.iabp && { ...d.iabp }, ecmo: d.ecmo && { ...d.ecmo }, coroPumpRp: d.coroPumpRp && { ...d.coroPumpRp } };
+    if (d.coroPump) this.support.coroPump = true;
     if (d.iabp) this.support.iabp = true;
     this.heartSpec = np.heart ? JSON.parse(JSON.stringify(np.heart)) : {};
     this.periSpec = np.pericardium ? { ...np.pericardium } : undefined;
@@ -297,12 +308,20 @@ export class Simulation {
     this.ventSpec = np.ventilation ? { ...np.ventilation } : undefined;
   }
 
+  /** Disease starting points for thrombus and pfHb, read once at reset (not on live patches). */
+  private applyCoroPumpInitial() {
+    const init = this.devSpec.coroPump?.initial;
+    this.coroPumpThrombus = init?.thrombusBurden ?? 0;
+    this.plasmaFreeHbMgDl = init?.plasmaFreeHbMgDl ?? COROPUMP_HEMOLYSIS.baselineMgDl;
+    this.coroPump?.setBurden(this.coroPumpThrombus);
+  }
+
   /**
    * Change the patient's PatientSpec fields while it runs (core engine only; a no-op with the legacy engine). What the heart is built
    * from is rebuilt and settled again (a short pause, about a third of a second, the state of the ACS loop carries over): the structural
-   * heart, the presence of a pericardial sac, of the thorax (any `ventilation`), of ECMO or an Impella RP, and
-   * the Impella's model and position. Everything else is applied between steps without a rebuild: pericardium effusion, stiffness and
-   * `open`; ventilation mode, PEEP and tidal volume; Impella P-level; IABP ratio, timing and volume; ECMO flow, sweep and FiO2; Impella RP
+   * heart, the presence of a pericardial sac, of the thorax (any `ventilation`), of ECMO or a CoroPump RP, and
+   * the CoroPump's model and position. Everything else is applied between steps without a rebuild: pericardium effusion, stiffness and
+   * `open`; ventilation mode, PEEP and tidal volume; CoroPump P-level; IABP ratio, timing and volume; ECMO flow, sweep and FiO2; CoroPump RP
    * level. Calling it with the spec already in force does nothing, so a page may call it on every edit (and should debounce slider drags).
    * The Scenario part of the spec (lesions, rhythm, drugs) is not read here: `apply` / `reset` take that.
    */
@@ -341,9 +360,9 @@ export class Simulation {
 
   /** Everything the heart is built from: when this changes, the heart is rebuilt. */
   private structureSig(sticky = false): string {
-    const d = this.devSpec, im = { ...DEFAULT_IMPELLA, ...d.impella };
+    const d = this.devSpec, im = { ...DEFAULT_COROPUMP, ...d.coroPump };
     // the sac and the thorax stay once built (a removed spec makes them neutral, see `pushPatient`), so only adding one rebuilds
-    return JSON.stringify([this.heartSpec, !!this.periSpec || (sticky && this.hasSac), !!this.ventSpec || (sticky && this.hasThorax), !!d.ecmo, !!d.impellaRp, im.model, im.position, this.septumSpec || (sticky && this.hasSeptum)]);
+    return JSON.stringify([this.heartSpec, !!this.periSpec || (sticky && this.hasSac), !!this.ventSpec || (sticky && this.hasThorax), !!d.ecmo, !!d.coroPumpRp, im.model, im.position, this.septumSpec || (sticky && this.hasSeptum)]);
   }
 
   /** Back to a resting heart with the same scenario: no ischemia, no scar, pressure at baseline. */
@@ -653,7 +672,7 @@ export class Simulation {
   //    nitroprusside, the beta-blocker and furosemide go through receptor drives (alpha-1, beta-1, beta-2, V1, PDE3, NO) to arteriolar
   //    resistance, venous tone, Ees, tau, sinus rate and the urine multiplier, with first-order onset and offset in clinical minutes; the
   //    `SUPPORT` multipliers of the old dials are not read on this path; fluids and blood loss go to the fluid compartments (C2: `FluidCompartments`, which decide how much of it stays in the
-  //    vessels, and the engine holds that volume through `VolumeExchange`; the spec's `fluids` section drives them); impella and IABP are PLACEHOLDERS (see PLACEHOLDER_WARNINGS);
+  //    vessels, and the engine holds that volume through `VolumeExchange`; the spec's `fluids` section drives them); coroPump and IABP are PLACEHOLDERS (see PLACEHOLDER_WARNINGS);
   //  - outputs: `circ` is filled from the smoothed beats (see coreCirc).
   // ======================================================================================================================
 
@@ -664,7 +683,7 @@ export class Simulation {
   private targetVolume(): number { return this.fluidModel!.bloodVolume - this.bv0; }
 
   /**
-   * Build the live heart for the patient (and settle it). The spec's structural heart, pericardium, ventilation, ECMO and Impella RP
+   * Build the live heart for the patient (and settle it). The spec's structural heart, pericardium, ventilation, ECMO and CoroPump RP
    * go into the build (`buildCore`); if the core cannot settle that patient (it throws, or the settled beat has no finite pressure) it
    * runs a plain adult instead and `coreNote` says why.
    */
@@ -680,7 +699,7 @@ export class Simulation {
     catch (e) {
       this.coreNote = `the core engine could not settle this patient (${e instanceof Error ? e.message : String(e)}); showing a plain adult`;
       this.heartSpec = {}; this.periSpec = undefined; this.ventSpec = undefined;
-      this.devSpec = { ...this.devSpec, ecmo: undefined, impellaRp: undefined };
+      this.devSpec = { ...this.devSpec, ecmo: undefined, coroPumpRp: undefined };
       this.building = null;
       yield* this.buildCoreSteps();
     }
@@ -739,12 +758,16 @@ export class Simulation {
     // the structural spec accepts [-1000, 5000] ml in all, the lesion's own volume included; the rest follows at the rate limit
     this.volApplied = Math.max(ACS_CORE.startVolumeMl[0] - hv, Math.min(ACS_CORE.startVolumeMl[1] - hv, this.targetVolume()));
     const veins = ["SVC", "IVC", "SPL"].map(NODE), vessels = ["SVC", "IVC", "SPL", "PA", "PV", "AO", "DAO"].map(NODE);
-    const di = { ...DEFAULT_IMPELLA, ...this.devSpec.impella }, lvN = NODE("LV"), aoN = NODE("AO");
-    this.impella = this.iabp = this.ecmo = this.rp = undefined;
-    const impellaEl = (m: Model) => (this.impella = new SwitchableImpella("impella", di.position === "aortic" ? aoN : lvN, aoN, { model: di.model, level: di.level, position: di.position, v0: m.chambers[lvN]!.v0 }));
+    const di = { ...DEFAULT_COROPUMP, ...this.devSpec.coroPump }, lvN = NODE("LV"), aoN = NODE("AO");
+    this.coroPump = this.iabp = this.ecmo = this.rp = undefined;
+    const coroPumpEl = (m: Model) => {
+      const p = new SwitchableCoroPump("coroPump", di.position === "aortic" ? aoN : lvN, aoN, { model: di.model, level: di.level, position: di.position, v0: m.chambers[lvN]!.v0 });
+      p.setBurden(this.coroPumpThrombus);
+      return (this.coroPump = p);
+    };
     const iabpEl = (m: Model) => (this.iabp = Iabp.forModel(m, { ...DEFAULT_IABP, ...this.devSpec.iabp, volumeMl: 0 })); // off during the warm-up
     const ecmoEl = (m: Model) => (this.ecmo = Ecmo.forModel(m, { ...this.devSpec.ecmo }));
-    const rpEl = (m: Model) => (this.rp = ImpellaRp.forModel(m, { ...this.devSpec.impellaRp }));
+    const rpEl = (m: Model) => (this.rp = CoroPumpRp.forModel(m, { ...this.devSpec.coroPumpRp }));
     this.cprPump = new CprCompression("cpr", [NODE("LV"), NODE("RV")]);
     this.exchange = new VolumeExchange("volumeExchange", veins, vessels, (n, v) => { const m = (this.building ?? this.live!).engine.nodes[n].model; return m instanceof Compliance ? m.stressed(v) : v; });
     const core: FromModelOptions = {}, pe = this.periSpec, ve = this.ventSpec;
@@ -753,9 +776,9 @@ export class Simulation {
     if (this.septumSpec) core.septum = true;
     this.appliedEffusion = pe?.effusionMl ?? 0; this.hasSac = !!pe; this.hasThorax = !!ve; this.hasSeptum = this.septumSpec;
     this.live = undefined;
-    const live = (this.building = new LiveHeart({ ...this.heartSpec, volumeMl: hv + this.volApplied }, { core, extra: [impellaEl, iabpEl, this.exchange, this.cprPump, ...(this.devSpec.ecmo ? [ecmoEl] : []), ...(this.devSpec.impellaRp ? [rpEl] : [])] }));
-    this.impConsole?.dispose(); this.impConsole = new ImpellaConsole(live.engine);
-    this.rpConsole?.dispose(); this.rpConsole = this.rp ? new ImpellaConsole(live.engine, "impellaRp") : undefined;
+    const live = (this.building = new LiveHeart({ ...this.heartSpec, volumeMl: hv + this.volApplied }, { core, extra: [coroPumpEl, iabpEl, this.exchange, this.cprPump, ...(this.devSpec.ecmo ? [ecmoEl] : []), ...(this.devSpec.coroPumpRp ? [rpEl] : [])] }));
+    this.impConsole?.dispose(); this.impConsole = new CoroPumpConsole(live.engine);
+    this.rpConsole?.dispose(); this.rpConsole = this.rp ? new CoroPumpConsole(live.engine, "coroPumpRp") : undefined;
     this.dia = { t: NaN, aoT: 0, aoSum: 0, dT: 0, dSum: 0, peak: -Infinity, sys: -Infinity, closed: false, opened: false, balloon: 0, fill: 0 };
     this.dx = { rho: NaN, aug: 0, peak: 0, mean: 0, sys: 0, balloon: 0 };
     const aoIdx = live.engine.node("AO"), lvIdx = live.engine.node("LV");
@@ -858,6 +881,41 @@ export class Simulation {
   }
 
   /** One completed beat into the E6 transport (content mixing; lactate waits for the clinical clock). */
+  /** Thrombus burden and purge alarms: once per completed beat, in clinical minutes. */
+  private stepCoroPumpBeat(lb: LiveBeat) {
+    const im = this.coroPump;
+    if (!im || !(lb.interval > 0) || this.warming) return;
+    const cp = { ...DEFAULT_COROPUMP, ...this.devSpec.coroPump };
+    const purge = cp.purge ?? {};
+    const dtClinical = lb.interval * this.speed * this.minutesPerSecond;
+    const beat = this.impConsole?.last;
+    const flowLpm = beat?.flow.mean ?? 0;
+    const running = im.enabled;
+    const hemInp = {
+      level: im.level,
+      speedKrpm: im.params.speed,
+      flowLpm,
+      suctionFraction: beat?.suctionFraction ?? 0,
+      position: im.position,
+      thrombus: this.coroPumpThrombus,
+      running,
+    };
+    this.plasmaFreeHbMgDl = stepHemolysis(this.plasmaFreeHbMgDl, dtClinical, hemInp);
+    if (!running) {
+      this.coroPumpThrombus = 0;
+      im.setBurden(0);
+      return;
+    }
+    this.coroPumpThrombus = stepThrombus(this.coroPumpThrombus, dtClinical, {
+      solution: purge.solution ?? "dextrose-heparin",
+      heparinUml: purge.heparinUml ?? COROPUMP_PURGE.defaultHeparinUml,
+      line: purge.line ?? "clear",
+      flowLpm,
+      running: true,
+    });
+    im.setBurden(this.coroPumpThrombus);
+  }
+
   private stepOxygenBeat(lb: LiveBeat) {
     const ox = this.oxygenModel, live = this.live;
     if (!ox || !live || !(lb.interval > 0)) return;
@@ -889,26 +947,28 @@ export class Simulation {
   }
 
   /**
-   * Switch and set the devices from the support toggles and the device settings, between steps. Impella: inserted and running when
-   * `support.impella` is on and the P-level is above 0; P-level from the spec (live: `setImpellaLevel`). IABP: the balloon is full-size
+   * Switch and set the devices from the support toggles and the device settings, between steps. CoroPump: inserted and running when
+   * `support.coroPump` is on and the P-level is above 0; P-level from the spec (live: `setCoroPumpLevel`). IABP: the balloon is full-size
    * (`volumeMl`) when `support.iabp` is on, else 0 (it empties); ratio and timing offsets from the spec (live: `setIabp`).
    */
   private pushDevices(warm = false) {
-    const im = this.impella, ia = this.iabp;
+    const im = this.coroPump, ia = this.iabp;
     if (!im || !ia) return;
-    const di = this.devSpec.impella ?? DEFAULT_IMPELLA, dI = { ...DEFAULT_IABP, ...this.devSpec.iabp }, level = di.level ?? DEFAULT_IMPELLA.level;
-    im.enabled = this.support.impella && level > 0;
+    const di = this.devSpec.coroPump ?? DEFAULT_COROPUMP, dI = { ...DEFAULT_IABP, ...this.devSpec.iabp }, level = di.level ?? DEFAULT_COROPUMP.level;
+    im.enabled = this.support.coroPump && level > 0;
     if (im.level !== Math.min(9, Math.max(0, Math.round(level)))) im.set({ level });
-    const ec = this.devSpec.ecmo, rp = this.devSpec.impellaRp;
+    const ec = this.devSpec.ecmo, rp = this.devSpec.coroPumpRp;
     if (this.ecmo && ec) this.ecmo.set({ flowLpm: ec.flowLpm ?? 4, sweepLpm: ec.sweepLpm ?? 3, fio2: ec.fio2 ?? 1 });
     if (this.rp && rp) this.rp.set({ level: rp.level ?? 6 });
     ia.set({ ratio: dI.ratio, inflateMs: dI.inflateMs, deflateMs: dI.deflateMs, volumeMl: this.support.iabp && !warm ? dI.volumeMl : 0 });
   }
 
-  /** Change the Impella's P-level (0..9; 0 is off) while it runs. The model and position are fixed at `reset`. */
-  setImpellaLevel(level: number) {
+  /** Change the CoroPump's P-level (0..9; 0 is off) while it runs. The model and position are fixed at `reset`. */
+  setCoroPumpLevel(level: number) {
     if (!Number.isFinite(level)) return;
-    this.devSpec = { ...this.devSpec, impella: { ...DEFAULT_IMPELLA, ...this.devSpec.impella, level: Math.min(9, Math.max(0, Math.round(level))) } };
+    const lv = Math.min(9, Math.max(0, Math.round(level)));
+    if (lv === 0) { this.coroPumpThrombus = 0; this.coroPump?.setBurden(0); }
+    this.devSpec = { ...this.devSpec, coroPump: { ...DEFAULT_COROPUMP, ...this.devSpec.coroPump, level: lv } };
     this.pushDevices();
   }
 
@@ -920,17 +980,31 @@ export class Simulation {
   private patchDevices(patch: PatientSpec) {
     const dv = normalizePatient({ devices: patch.devices }).spec.devices;
     if (!dv) return;
-    if (dv.impella) {
-      const cur = this.devSpec.impella ?? DEFAULT_IMPELLA;
-      this.devSpec = { ...this.devSpec, impella: { ...cur, ...dv.impella } };
-      this.support.impella = true;
-      if ((dv.impella.model && dv.impella.model !== cur.model) || (dv.impella.position && dv.impella.position !== cur.position))
-        this.warnings = [...this.warnings, "Impella model and position change at the next reset(); the P-level changed now."];
+    if (dv.coroPump) {
+      const cur = this.devSpec.coroPump ?? DEFAULT_COROPUMP;
+      let next = { ...cur, ...dv.coroPump };
+      if (next.exchange) {
+        this.coroPumpThrombus = 0;
+        this.coroPump?.setBurden(0);
+        next = { ...next, exchange: undefined, purge: { ...next.purge, line: "clear" } };
+      }
+      if (next.purge?.clearLine) {
+        next = { ...next, purge: { ...next.purge, line: "clear", clearLine: undefined } };
+      }
+      if (next.reposition) {
+        next = { ...next, position: "correct", reposition: undefined };
+        if (cur.position !== "correct") this.warnings = [...this.warnings, "CoroPump model and position change at the next reset(); the P-level changed now."];
+      }
+      if (next.level === 0) { this.coroPumpThrombus = 0; this.coroPump?.setBurden(0); }
+      this.devSpec = { ...this.devSpec, coroPump: next };
+      this.support.coroPump = true;
+      if ((dv.coroPump.model && dv.coroPump.model !== cur.model) || (dv.coroPump.position && dv.coroPump.position !== cur.position && !next.reposition))
+        this.warnings = [...this.warnings, "CoroPump model and position change at the next reset(); the P-level changed now."];
     }
     if (dv.iabp) { this.devSpec = { ...this.devSpec, iabp: { ...DEFAULT_IABP, ...this.devSpec.iabp, ...dv.iabp } }; this.support.iabp = true; }
-    if (dv.ecmo || dv.impellaRp) { // a patch changes the settings of a circuit that is there; adding one is a rebuild, which setPatient does
+    if (dv.ecmo || dv.coroPumpRp) { // a patch changes the settings of a circuit that is there; adding one is a rebuild, which setPatient does
       if (dv.ecmo && this.devSpec.ecmo) this.devSpec = { ...this.devSpec, ecmo: { ...this.devSpec.ecmo, ...dv.ecmo } };
-      if (dv.impellaRp && this.devSpec.impellaRp) this.devSpec = { ...this.devSpec, impellaRp: { ...this.devSpec.impellaRp, ...dv.impellaRp } };
+      if (dv.coroPumpRp && this.devSpec.coroPumpRp) this.devSpec = { ...this.devSpec, coroPumpRp: { ...this.devSpec.coroPumpRp, ...dv.coroPumpRp } };
     }
     this.pushDevices();
   }
@@ -999,7 +1073,7 @@ export class Simulation {
     const q = Math.max(-ACS_CORE.maxVolumeRate, Math.min(ACS_CORE.maxVolumeRate, (this.targetVolume() - this.volApplied) / dt)); // ml/s, so the circulation holds the (ramped) volume
     this.exchange!.set({ rate: q }); this.exchange!.capLoss = !this.warming; this.volApplied += q * dt;
     live.step(dt);
-    if (this.impella?.enabled || this.ecmo || this.sm.dev > 1e-3) this.sm.dev += (this.deviceFlowNow() - this.sm.dev) * (1 - Math.exp(-dt / ACS_CORE.deviceFlowTau));
+    if (this.coroPump?.enabled || this.ecmo || this.sm.dev > 1e-3) this.sm.dev += (this.deviceFlowNow() - this.sm.dev) * (1 - Math.exp(-dt / ACS_CORE.deviceFlowTau));
     if (this.liveSeen) this.circ = this.coreCirc(this.base);
   }
 
@@ -1030,6 +1104,7 @@ export class Simulation {
     this.diastolicBeat(lb, a(2));
     if (!lb.pvc && lb.strength !== 0) this.lastMvo2 = estimateMvo2MlMin(lb.map, lb.strokeVolume, 60 / Math.max(lb.interval, 1e-3));
     this.stepOxygenBeat(lb);
+    this.stepCoroPumpBeat(lb);
     const silent = lb.strength === 0; // a timing tick of VF or asystole (B2): time without a beat
     const rec: BeatRecord = {
       n: this.beatCount++, t: +(lb.t - this.delta).toFixed(3), interval: +lb.interval.toFixed(4), hr: silent ? 0 : 60 / lb.interval,
@@ -1078,27 +1153,50 @@ export class Simulation {
   }
 
   /**
-   * The device consoles in plain numbers (types and keys: `ImpellaReadout`, `IabpReadout` in sim/coreDevices.ts). null with the legacy
-   * engine. `impella` / `iabp` are always present on the core engine; `on` says whether they are running.
+   * The device consoles in plain numbers (types and keys: `CoroPumpReadout`, `IabpReadout` in sim/coreDevices.ts). null with the legacy
+   * engine. `coroPump` / `iabp` are always present on the core engine; `on` says whether they are running.
    */
   devices(): DevicesReadout | null {
-    const im = this.impella, ia = this.iabp, live = this.live;
+    const im = this.coroPump, ia = this.iabp, live = this.live;
     if (!live || !im || !ia) return null;
-    const c = this.impConsole?.last, t = live.engine.sample().taps, ti = t.impella, tb = t.iabp, x = this.dx, p = ia.params, on = im.enabled;
-    const te = t.ecmo, tr = t.impellaRp, cr = this.rpConsole?.last, rp = this.rp, ec = this.ecmo;
+    const c = this.impConsole?.last, t = live.engine.sample().taps, ti = t.coroPump, tb = t.iabp, x = this.dx, p = ia.params, on = im.enabled;
+    const te = t.ecmo, tr = t.coroPumpRp, cr = this.rpConsole?.last, rp = this.rp, ec = this.ecmo;
     return {
       ...(ec && te ? { ecmo: { on: true, drain: ec.drain, flowLpm: te.flow, targetLpm: te.targetLpm, rpm: te.rpm, sweepLpm: te.sweepLpm, fio2: te.fio2, suctionLevel: te.suctionLevel, suctionAlarm: te.suctionAlarm > 0, membraneDpMmHg: te.membraneDp, headMmHg: te.head } } : {}),
-      ...(rp && tr ? { impellaRp: { on: rp.level > 0, level: rp.level, speedKrpm: rp.params.speed, flowLpm: cr?.flow.mean ?? tr.flow, motorCurrentMa: cr?.current.mean ?? tr.current, placementMmHg: cr?.placement.mean ?? tr.placement, suctionAlarm: !!cr?.suctionAlarm || tr.suctionAlarm > 0 } } : {}),
-      impella: {
-        on, model: im.model, position: im.position, level: im.level, speedKrpm: on ? im.params.speed : 0,
-        flowLpm: on ? c?.flow.mean ?? ti.flow : 0, flowMinLpm: on ? c?.flow.min ?? ti.flow : 0, flowMaxLpm: on ? c?.flow.max ?? ti.flow : 0,
-        motorCurrentMa: on ? c?.current.mean ?? ti.current : 0, currentPulsatilityMa: on ? c?.pulsatility ?? 0 : 0,
-        placementMmHg: on ? c?.placement.mean ?? ti.placement : 0, placementAmplitudeMmHg: on ? c?.placement.amplitude ?? 0 : 0,
-        suctionLevel: on ? c?.suctionLevel ?? ti.suctionLevel : 0, suctionFraction: on ? c?.suctionFraction ?? 0 : 0, suctionAlarm: on && !!c?.suctionAlarm,
-        inletMeanMmHg: on ? c?.inlet.mean ?? ti.pIn : 0, inletMinMmHg: on ? c?.inlet.min ?? ti.pIn : 0, inletMaxMmHg: on ? c?.inlet.max ?? ti.pIn : 0, inletAmplitudeMmHg: on ? c?.inlet.amplitude ?? 0 : 0,
-        positionAlarm: on && !!c?.positionAlarm,
-        alarms: on ? [...(c?.positionAlarm ? ["IMPELLA POSITION WRONG: the inflow is in the aorta"] : []), ...(c?.suctionAlarm ? ["SUCTION: the inflow is collapsing onto the ventricular wall"] : [])] : [],
-      },
+      ...(rp && tr ? { coroPumpRp: { on: rp.level > 0, level: rp.level, speedKrpm: rp.params.speed, flowLpm: cr?.flow.mean ?? tr.flow, motorCurrentMa: cr?.current.mean ?? tr.current, placementMmHg: cr?.placement.mean ?? tr.placement, suctionAlarm: !!cr?.suctionAlarm || tr.suctionAlarm > 0 } } : {}),
+      coroPump: (() => {
+        const cp = { ...DEFAULT_COROPUMP, ...this.devSpec.coroPump };
+        const purgeSpec = cp.purge ?? {};
+        const purge = purgeState({
+          solution: purgeSpec.solution ?? "dextrose-heparin",
+          heparinUml: purgeSpec.heparinUml ?? COROPUMP_PURGE.defaultHeparinUml,
+          line: purgeSpec.line ?? "clear",
+          thrombus: this.coroPumpThrombus,
+          running: on,
+        });
+        const purgeAlarms = purge.alarms.map((a) => (a === "PURGE PRESSURE HIGH" ? "PURGE PRESSURE HIGH" : "PURGE FLOW LOW"));
+        const motorAlarms = on ? [...(c?.positionAlarm ? ["COROPUMP POSITION WRONG: the inflow is in the aorta"] : []), ...(c?.suctionAlarm ? ["SUCTION: the inflow is collapsing onto the ventricular wall"] : [])] : [];
+        return {
+          on, model: im.model, position: im.position, level: im.level, speedKrpm: on ? im.params.speed : 0,
+          flowLpm: on ? c?.flow.mean ?? ti.flow : 0, flowMinLpm: on ? c?.flow.min ?? ti.flow : 0, flowMaxLpm: on ? c?.flow.max ?? ti.flow : 0,
+          motorCurrentMa: on ? c?.current.mean ?? ti.current : 0, currentPulsatilityMa: on ? c?.pulsatility ?? 0 : 0,
+          placementMmHg: on ? c?.placement.mean ?? ti.placement : 0, placementAmplitudeMmHg: on ? c?.placement.amplitude ?? 0 : 0,
+          suctionLevel: on ? c?.suctionLevel ?? ti.suctionLevel : 0, suctionFraction: on ? c?.suctionFraction ?? 0 : 0, suctionAlarm: on && !!c?.suctionAlarm,
+          inletMeanMmHg: on ? c?.inlet.mean ?? ti.pIn : 0, inletMinMmHg: on ? c?.inlet.min ?? ti.pIn : 0, inletMaxMmHg: on ? c?.inlet.max ?? ti.pIn : 0, inletAmplitudeMmHg: on ? c?.inlet.amplitude ?? 0 : 0,
+          positionAlarm: on && !!c?.positionAlarm,
+          purge: {
+            solution: purgeSpec.solution ?? "dextrose-heparin",
+            heparinUml: purgeSpec.heparinUml ?? COROPUMP_PURGE.defaultHeparinUml,
+            line: purgeSpec.line ?? "clear",
+            flowMlHr: purge.flowMlHr,
+            pressureMmHg: purge.pressureMmHg,
+          },
+          hemolysis: { plasmaFreeHbMgDl: this.plasmaFreeHbMgDl, urineColor: urineColor(this.plasmaFreeHbMgDl) },
+          thrombusBurden: this.coroPumpThrombus,
+          waveform: on ? this.impConsole?.waveform ?? null : null,
+          alarms: [...motorAlarms, ...purgeAlarms],
+        };
+      })(),
       iabp: {
         on: this.support.iabp, ratio: p.ratio, inflateMs: p.inflateMs, deflateMs: p.deflateMs, volumeMl: { ...DEFAULT_IABP, ...this.devSpec.iabp }.volumeMl,
         balloonVolumeMl: tb.vb, fill: tb.fill, assisted: tb.assisted > 0,
@@ -1108,6 +1206,11 @@ export class Simulation {
     };
   }
 
+  /** Plasma free hemoglobin, mg/dL. Persists after pump removal; valid whether or not a pump is placed. */
+  plasmaFreeHb(): number {
+    return this.plasmaFreeHbMgDl;
+  }
+
   /**
    * `circ` from the live heart, given the legacy `circulation()` result `c` (which supplies only the ischemic fractions, the
    * rate the rhythm implies, the support's oxygen demand factor). From the smoothed beats (time constant `ACS_CORE.smoothTau`):
@@ -1115,7 +1218,7 @@ export class Simulation {
    *  - strokeVolume, ml: net volume through the aortic valve; cardiacOutput, L/min: its per-beat rate plus the device flow;
    *  - map, systolic, diastolic, mmHg: the smoothed mean, peak and start-of-beat aortic pressure;
    *  - svr, mmHg·min/L: MAP / CO as BASE_SVR is defined (no venous pressure subtracted);
-   *  - deviceFlow, L/min: the Impella's, smoothed over `deviceFlowTau` (it follows the cardiac cycle);
+   *  - deviceFlow, L/min: the CoroPump's, smoothed over `deviceFlowTau` (it follows the cardiac cycle);
    *  - congestion, 0..1: the larger of the smoothed PCWP (left atrial mean) ramp, 0 up to 12 mmHg, 1 at 25 (`pcwpOnset`, `pcwpFull`), and the lung
    *    water (C3: the excess over rest as a share of `FLUIDS.lung.congestionMlPerKg`), which keeps a flooded lung congested after the wedge pressure falls.
    *    The legacy `congestionGain` (litres of fluid × LV ischemia) lives on the legacy engine only;
@@ -1167,15 +1270,15 @@ export class Simulation {
    */
   private coreDemand(): number {
     const K = SUPPORT, s = this.support;
-    const base = this.pk.effects().demand * (1 - K.impellaDemand * +s.impella - K.iabpDemand * +s.iabp);
+    const base = this.pk.effects().demand * (1 - K.coroPumpDemand * +s.coroPump - K.iabpDemand * +s.iabp);
     return Math.max(0.5, base * mvo2DemandScale(Number.isFinite(this.lastMvo2) ? this.lastMvo2 : null));
   }
 
-  /** Flow the circulation gets from its pumps now, L/min: the Impella's (LV to aorta) and the ECMO circuit's (RA to descending aorta); the Impella RP is in series with the lungs and adds nothing. */
+  /** Flow the circulation gets from its pumps now, L/min: the CoroPump's (LV to aorta) and the ECMO circuit's (RA to descending aorta); the CoroPump RP is in series with the lungs and adds nothing. */
   private deviceFlowNow(): number {
     const taps = this.live!.engine.sample().taps;
-    // an Impella with its inflow in the aorta only recirculates aorta to aorta: it adds nothing to the output
-    return (this.impella?.position === "aortic" ? 0 : taps["impella"]?.flow ?? 0) + (taps["ecmo"]?.flow ?? 0);
+    // a CoroPump with its inflow in the aorta only recirculates aorta to aorta: it adds nothing to the output
+    return (this.coroPump?.position === "aortic" ? 0 : taps["coroPump"]?.flow ?? 0) + (taps["ecmo"]?.flow ?? 0);
   }
 
   /**

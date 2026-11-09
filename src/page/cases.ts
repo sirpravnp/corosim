@@ -5,8 +5,18 @@ import { CASES } from "../cases";
 import { compileCase } from "../cases/spec";
 import { builtinEntries, getPreview, playable } from "../library/api";
 import { CaseDef, CaseRunner, Debrief, Probe, Tick } from "../cases/engine";
-import { $, K, S, sim, T, inCases, on } from "./state";
+import { $, K, S, sim, T, inCases, on, ecg, rstate, circ, panelSource, pageVitals } from "./state";
+import { buildPatientNow, accrueLowFlow, resetLowFlow, lowFlow } from "./patientNow";
+import { setCaseLabs } from "../sim/labs";
+import { orderProbe, ordersBegin, ordersEnd, ordersStop, ordersStep, ordersUi, wireOrders, orders } from "./orders";
+import { rhythmLabel, setBedsideTemp } from "./readouts";
+import { bedsideOverride } from "../sim/bedside";
+import { AUTONOMIC } from "../physics/autonomic";
+import { withOrderLines } from "../cases/orderBook";
+import type { PatientNow } from "../cases/orders";
 import { arrestSync } from "./arrest";
+import { caseChrome } from "./caseChrome";
+import { setDockTab } from "./dock";
 import { pgAdopt, pgPatch } from "./patient";
 import { orderProcedure, reperfused } from "./manage";
 import { paintMyocardium } from "./heart3d";
@@ -30,7 +40,7 @@ let opening = false; // the case's opening moves (rhythm, CPR, drugs given) are 
 let revealed = false; // the lesion is on show
 
 /** What the runner may ask of the patient now. */
-function probe(): Probe {
+export function probe(): Probe {
   const st = sim.arrestState(), d = sim.devices(), drugs = st.drugs;
   return {
     map: sim.map, hr: sim.circ?.hr ?? 0,
@@ -41,13 +51,29 @@ function probe(): Probe {
     amioMg: drugs.filter((x) => x.drug === "amiodarone").reduce((a, x) => a + x.dose, 0),
     lidoDoses: drugs.filter((x) => x.drug === "lidocaine").length,
     cpr: st.cpr.on,
-    ecmo: (d?.ecmo?.flowLpm ?? 0) > 0.5, impella: !!d?.impella?.on, iabp: !!d?.iabp?.on,
+    ecmo: (d?.ecmo?.flowLpm ?? 0) > 0.5, coroPump: !!d?.coroPump?.on, iabp: !!d?.iabp?.on,
     pci: reperfused(), pciPending: T.pending?.kind === "pci",
     drugs: { ...(sim.drugState()?.level ?? {}) },
     ef: sim.circ?.ejectionFraction ?? 0.6, lvIschemia: sim.circ?.lvIschemia ?? 0, rvIschemia: sim.circ?.rvIschemia ?? 0, congestion: sim.circ?.congestion ?? 0, fluidsL: sim.support.fluids,
     dead: sim.dead,
+    ...orderProbe(),
   };
 }
+
+/** The patient as the order system reads it (a result is computed from this when it returns). */
+export function patientNow(): PatientNow {
+  const st = sim.arrestState(), v = pageVitals();
+  return buildPatientNow({
+    vitals: v, fallbackMap: sim.map, fallbackHr: sim.circ?.hr ?? 0,
+    spo2: panelSource?.saturations().spo2 ?? NaN, lactate: sim.oxygenState()?.lactate ?? NaN, urineMlPerMin: sim.fluids()?.urineRate ?? NaN,
+    lvIschemia: circ?.lvIschemia ?? 0, rvIschemia: circ?.rvIschemia ?? 0, congestion: circ?.congestion ?? 0,
+    arrest: sim.dead ? "dead" : st.status,
+    rhythmLabel: st.status === "arrest" ? ARREST_LABEL[st.rhythmClass] ?? st.rhythmClass : rhythmLabel(ecg.rhythm(), rstate),
+    respRateBase: sim.autonomic?.controls.respRate ?? AUTONOMIC.respRate, tempOverrideC: bedsideOverride.tempOverrideC,
+    co: circ?.cardiacOutput, lvEf: circ?.ejectionFraction, lowFlowMin: lowFlow.min, caseMin: (K.runner?.t ?? 0) / 60,
+  });
+}
+const ARREST_LABEL: Record<string, string> = { vf: "Ventricular fibrillation", pulselessVt: "Pulseless ventricular tachycardia", asystole: "Asystole", pea: "Pulseless electrical activity", perfusing: "Perfusing rhythm" };
 
 /** Carry out what the runner came back with. */
 function carry(t: Tick) {
@@ -81,7 +107,8 @@ function setReveal() {
 function end() {
   const r = K.runner;
   if (!r || K.phase === "over") return;
-  K.phase = "over"; debrief = r.debrief(); keep(r.def.id, debrief.score);
+  K.phase = "over"; debrief = withOrderLines(r.debrief(), orders.book); keep(r.def.id, debrief.score);
+  ordersStop();
   for (const id of LOCKED) ($(id) as HTMLButtonElement).disabled = false;
   document.body.classList.remove("case-run");
 }
@@ -98,7 +125,11 @@ export function caseStep(dt: number) {
     opening = false;
     return;
   }
-  carry(r.tick(probe(), dt));
+  accrueLowFlow(dt, sim.map);
+  const p = probe(), t = r.tick(p, dt);
+  carry(t);
+  if (K.phase === "run") ordersStep(r, p, t);
+  ordersUi();
 }
 
 function startCase(def: CaseDef) {
@@ -109,28 +140,56 @@ function startCase(def: CaseDef) {
   S.hide = S.hideIsch = true;
   document.body.classList.add("case-run");
   pgAdopt(def.start);
+  setBedsideTemp(def.tempC); setCaseLabs(def.labs); resetLowFlow(); ordersBegin(def);
   history.replaceState(null, "", location.pathname + location.search);
   casesUi();
 }
 function quit() {
+  ordersEnd(); // first: it restores the speed a skip saved, and the reset below must win
   for (const id of LOCKED) ($(id) as HTMLButtonElement).disabled = false;
   document.body.classList.remove("case-run");
   K.phase = "idle"; K.def = null; K.runner = null; debrief = null; opening = false;
   S.hide = S.hideIsch = false; revealed = false; S.speed = 1;
   pgAdopt({});
+  setBedsideTemp(undefined); setCaseLabs(undefined); resetLowFlow();
   buildVessels(); initParticles(); paintMyocardium();
   casesUi();
+}
+
+// ---- the case screen: what the page keeps (caseChrome) and where the alerts live
+const ALERTS = ["arrestRosc", "clockCritical", "arrestDead"];
+let chromeBare = false, ecgCaption = "";
+/** Strip the simulator's chrome while a case runs (and in its debrief) and put it back when the case is left. Does DOM work only when the answer changes. */
+function applyChrome() {
+  const c = caseChrome(inCases, K.phase), bare = !c.stage;
+  if (bare === chromeBare) return;
+  chromeBare = bare;
+  document.body.classList.toggle("case-bare", bare);
+  // the ROSC banner, the clock-critical line and the dead-patient dialog live in the bedside monitor's container, not the 3D stage
+  const home = $(bare ? "casemon" : "view");
+  for (const id of ALERTS) home.append($(id));
+  // the dock is the Treatments section: its one tab is dropped
+  document.querySelector<HTMLElement>("#dock .dock-tabs h2")!.textContent = c.treatments && bare ? "Treatments" : "Settings";
+  const strip = document.querySelector<HTMLElement>("#dock .dock-tabs")!; // one section, no tabs: no tablist role while bare
+  if (bare) { strip.removeAttribute("role"); strip.removeAttribute("aria-label"); } else { strip.setAttribute("role", "tablist"); strip.setAttribute("aria-label", "Settings"); }
+  $("dock").setAttribute("aria-label", bare ? "Treatments" : "Settings");
+  setDockTab(bare ? "support" : "patient");
+  // the ECG figure keeps a caption: only the paper speed and gain
+  const cap = $("ecg").closest("figure")?.querySelector("figcaption");
+  if (cap) { if (bare) { ecgCaption = cap.innerHTML; cap.innerHTML = "<b>Figure 2.</b> ECG at 25 mm/s, 10 mm/mV."; } else if (ecgCaption) cap.innerHTML = ecgCaption; }
 }
 
 // ---- the page
 let listSig = "", introId = "", promptKey = "", logSig = "", overSig = "";
 /** Keep the front door, the case panel and the prompt in step with the case. Cheap: the frame loop calls it with the other readouts. */
 export function casesUi() {
+  applyChrome();
   const door = inCases && K.phase === "idle", panel = inCases && K.phase !== "idle";
   $("cgate").hidden = !door; $("cases").hidden = !panel;
   document.body.classList.toggle("gated", door);
   if (door) doorUi();
   if (!panel) { $("cprompt").hidden = true; promptKey = ""; return; }
+  ordersUi();
   const r = K.runner!, def = r.def;
   $("c_name").textContent = def.title;
   $("c_clock").textContent = clock(r.t);
@@ -196,6 +255,7 @@ async function loadFromAddress() {
 /** The front door's cards, the prompt's options, and the buttons. */
 export function wireCases() {
   void loadFromAddress();
+  wireOrders();
   on("ci_back", () => { location.href = CASES_URL; });
   on("ci_begin", () => { const def = pool.find((c) => c.id === introId); listSig = ""; if (def) startCase(def); });
   $("cp_opts").addEventListener("click", (e) => {

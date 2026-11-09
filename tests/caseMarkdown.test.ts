@@ -3,11 +3,12 @@ import { caseToMarkdown, parseCaseMarkdown, parseDuration } from "../src/cases/m
 import type { CaseSpec } from "../src/cases/spec";
 
 const full = (): CaseSpec => ({
-  id: "full-case", title: "A full case", tier: "hard", blurb: "Everything at once.", complaint: "Cardiac arrest", devices: ["ECMO", "Impella"],
+  id: "full-case", title: "A full case", tier: "hard", blurb: "Everything at once.", complaint: "Cardiac arrest", devices: ["ECMO", "CoroPump"],
   card: { presents: "62-year-old man collapsed.", pmh: "Smoker.", info: ["ECG: ST elevation.", "Wife is a nurse."] },
   start: { lesions: [{ artery: "LAD", occluded: true, position: 0.1 }], seed: 3 },
   opening: { rhythm: "vf-coarse", cpr: true, drugs: [{ drug: "epinephrine", mg: 1 }] },
   points: { survive: 30, stable: 25, harm: 20 }, limitS: 900, skipHarms: ["diuretic"],
+  monitor: ["hr", "bp", "ecg", "heart3d", "jvp"], tempC: 38.6, labs: { na: 128, k: 5.8, cr: 2.1 },
   musts: [{ flag: "pciOrdered", label: "activate the cath lab" }],
   stable: [{ num: "map", op: ">=", value: 60 }, { arrest: "arrest", not: true }],
   harms: [{ tag: "low map", label: "pressure under 50", when: [{ num: "map", op: "<", value: 50 }] }],
@@ -55,5 +56,32 @@ describe("case markdown", () => {
   it("asks for what is missing", () => {
     const r = parseCaseMarkdown("- id: x\n");
     expect(r.errors.join("\n")).toMatch(/title/); expect(r.errors.join("\n")).toMatch(/Card/); expect(r.errors.join("\n")).toMatch(/Time points/);
+  });
+
+  it("round-trips coropump on the monitor and pfhb in lab values", () => {
+    const s = { ...full(), monitor: ["hr", "bp", "coropump"], labs: { ...(full().labs ?? {}), pfhb: 120 } };
+    const md = caseToMarkdown(s);
+    expect(md).toMatch(/- monitor: hr, bp, coropump/);
+    expect(md).toMatch(/- pfhb: 120/);
+    const r = parseCaseMarkdown(md);
+    expect(r.errors).toEqual([]);
+    expect(r.spec?.monitor).toEqual(["hr", "bp", "coropump"]);
+    expect(r.spec?.labs?.pfhb).toBe(120);
+    expect(r.spec?.devices).toEqual(expect.arrayContaining(["CoroPump"]));
+  });
+
+  it("writes and reads the monitor, the body temperature and the lab values", () => {
+    const md = caseToMarkdown(full());
+    expect(md).toMatch(/- monitor: hr, bp, ecg, heart3d, jvp/);
+    expect(md).toMatch(/- temperature: 38\.6/);
+    expect(md).toMatch(/## Lab values/);
+    const r = parseCaseMarkdown(md);
+    expect(r.spec?.monitor).toEqual(["hr", "bp", "ecg", "heart3d", "jvp"]);
+    expect(r.spec?.tempC).toBe(38.6);
+    expect(r.spec?.labs).toEqual({ na: 128, k: 5.8, cr: 2.1 });
+  });
+  it("reports an unreadable lab value or temperature with its line number", () => {
+    const md = caseToMarkdown(full()).replace("- temperature: 38.6", "- temperature: warm").replace("- na: 128", "- na: low");
+    expect(parseCaseMarkdown(md).errors.join("\n")).toMatch(/Line \d+: .*temperature[\s\S]*Line \d+: .*'na'/);
   });
 });

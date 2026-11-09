@@ -10,7 +10,7 @@ export const SCENARIO_REFERENCE = `Scenario JSON (all fields optional; omitted =
   "bloodLoss": -0.3 .. 0.6   (fraction of blood volume; 0.15 = class II hemorrhage),
   "drugs": { "betaBlocker": 0..1, "atropine": 0..1, "vasopressor": -1 (vasodilator) .. 1 (phenylephrine-like) },
   "patient": { "rhythm": "sinus|af|any EKG-library id (core engine): flutter-21, svt, junctional, mobitz2, chb, vt-mono, torsades, vf-coarse, asystole, paced... (corosim_ekg_list); vf-coarse, vt-mono and asystole start a cardiac arrest", "bbb": "none|rbbb|lbbb" },
-  "support": { "fluids": 0..3 (liters), "norepinephrine": 0..1, "dobutamine": 0..1, "nitroglycerin": 0..1, "pacing": false, "paceRate": 40..120, "iabp": false, "impella": false },
+  "support": { "fluids": 0..3 (liters), "norepinephrine": 0..1, "dobutamine": 0..1, "nitroglycerin": 0..1, "pacing": false, "paceRate": 40..120, "iabp": false, "coroPump": false },
   "autonomic": { "baroreflexGain": 0 (denervated) .. 1 (normal) .. 4, "respRate": 4..40, "respDepth": 0..2, "setPointShift": -30..60 mmHg, "noise": 0..3 },
   "arrhythmiaTendency": 0..3 (core engine: 0 = no VT/VF/AIVR, 1 = as the seed has it),
   "seed": integer,
@@ -20,8 +20,9 @@ export const SCENARIO_REFERENCE = `Scenario JSON (all fields optional; omitted =
   "septum": false   (true = ventricular interdependence: a failing right ventricle bows the septum into the left),
   "fluids": { "given": [ { "kind": "crystalloid|colloid|albumin|blood", "ml": 0..5000, "atMin": 0..1440, "overMin": 0..1440 } ], "hemorrhageMlMin": 0..500, "capillaryLeak": 0..1, "legRaise": false },
   "ventilation": { "mode": "spontaneous|positive", "peep": 0..25 (cmH2O), "tidalMlKg": 2..15 },
-  "devices": { "impella": { "model": "2.5|CP|5.5", "level": 0..9 (P-level), "position": "correct|aortic|deep" }, "impellaRp": { "level": 0..9 }, "iabp": { "ratio": 1|2|3, "inflateMs": -100..100, "deflateMs": -100..100, "volumeMl": 0..50 }, "ecmo": { "flowLpm": 0..7, "sweepLpm": 0..10, "fio2": 0.21..1 } }
-  (support.iabp / support.impella = true mean devices.iabp 1:1, correct timing, 40 ml / devices.impella CP, P6, correct position.)
+  "devices": { "coroPump": { "model": "2.5|CP|5.5", "level": 0..9 (P-level), "position": "correct|aortic|deep", "purge": { "solution": "dextrose-heparin|bicarbonate", "heparinUml": 0..50 (default 25), "line": "clear|kinked|blocked (disease)", "clearLine": true (one-shot treatment) }, "exchange": true (new pump; one-shot), "reposition": true (one-shot), "initial": { "thrombusBurden": 0..1, "plasmaFreeHbMgDl": 0..500 } (author-only day-on-pump start) }, "coroPumpRp": { "level": 0..9 }, "iabp": { "ratio": 1|2|3, "inflateMs": -100..100, "deflateMs": -100..100, "volumeMl": 0..50 }, "ecmo": { "flowLpm": 0..7, "sweepLpm": 0..10, "fio2": 0.21..1 } }
+  (Core engine devices() adds purge flow/pressure, plasma free hemoglobin and urine color, thrombusBurden for debugging, and console waveforms.)
+  (support.iabp / support.coroPump = true mean devices.iabp 1:1, correct timing, 40 ml / devices.coroPump CP, P6, correct position.)
 }
 
 Actions (tools, not fields): corosim_treat (pci|lysis|cabg), corosim_valve (replace, tavr, balloon, teer, repair; core engine), corosim_arrest (core engine; cardiac arrest/ACLS: cpr {on, rate, depthCm, quality}, shock {joules, sync}, drug {epinephrine|amiodarone|lidocaine, dose}, restart; state.arrest and state.dead report it). To teach an arrest, corosim_adjust patient.rhythm "vf-coarse" (or "vt-mono", "asystole"), then CPR, shock (unsynchronized for VF/pulseless VT; synchronized for a perfusing tachyarrhythmia) and drugs. A patient dies after enough minutes of no flow; restart starts the case again.

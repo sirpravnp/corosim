@@ -11,6 +11,8 @@ import { propsView } from "./scene";
 import { loadScenario, setPhys } from "./model";
 import { pushPatient } from "./workspace";
 import { mountDock } from "./dock";
+import { mayEdit, mayReplace } from "./learnerGate";
+import { editBetween } from "../cases/gate";
 
 /**
  * One PatientSpec drives the page. The Scenario part lives in `sim` and its existing controls; the rest is `pg`, edited by the
@@ -22,12 +24,12 @@ let pgUi: ReturnType<typeof createPlaygroundUi>;
 /** The playground state of the patient on screen: the spec of a link plus the support switches as they are now. */
 function pgFromLive(): PlaygroundState {
   const sup = sim.scenario().support ?? {};
-  return stateOfSpec({ ...(patientOpts.patient ?? {}), support: { impella: !!sup.impella, iabp: !!sup.iabp } });
+  return stateOfSpec({ ...(patientOpts.patient ?? {}), support: { coroPump: !!sup.coroPump, iabp: !!sup.iabp } });
 }
 /** Rebuild the spec from the live Scenario and the playground state and apply it everywhere. */
 function pgApply(refresh: boolean) {
   const built = buildPlaygroundSpec(sim.scenario(), pg), spec = built.spec;
-  T.support.impella = !!spec.support?.impella; T.support.iabp = !!spec.support?.iabp; // the legacy device model follows the switches
+  T.support.coroPump = !!spec.support?.coroPump; T.support.iabp = !!spec.support?.iabp; // the legacy device model follows the switches
   patientOpts.patient = spec; propsView.setPatient(spec);
   if (refresh) pushPatient();
   if (!inCases) try { window.history.replaceState(null, "", `${location.pathname}${location.search}#s=${encodePatient(spec)}`); } catch { /* sandboxed frame: the link field still shows it */ } // a case keeps its patient out of the address bar
@@ -55,7 +57,7 @@ export function pgAdopt(spec: PatientSpec, presetId: string | null = null) {
 /** Change the patient on screen mid-run (a case's complication or device): devices go through the playground state, which owns them and would put the old values back; the rest goes to the simulation. */
 export function pgPatch(patch: PatientSpec) {
   let st = pg;
-  for (const id of ["impella", "iabp", "ecmo", "impellaRp"] as const) if (patch.devices?.[id]) st = patchDevice(st, id, patch.devices[id] as never);
+  for (const id of ["coroPump", "iabp", "ecmo", "coroPumpRp"] as const) if (patch.devices?.[id]) st = patchDevice(st, id, patch.devices[id] as never);
   pg = st;
   const { devices: _devices, ...rest } = patch;
   if (Object.keys(rest).length) sim.apply(rest);
@@ -64,7 +66,8 @@ export function pgPatch(patch: PatientSpec) {
 }
 /** A #s= link opens that patient, on load and when a link is pasted into an open tab. A link with playground fields opens in playground mode. */
 export function openShared() {
-  const shared = !inCases && location.hash.match(/^#s=([\w-]+)/);
+  const shared = !inCases && // learner gate: a case never adopts a patient from the address bar (a link would be a way to hand it disease)
+     location.hash.match(/^#s=([\w-]+)/);
   if (!shared) return;
   try {
     const spec = decodePatient(shared[1]);
@@ -78,19 +81,21 @@ export function initPatient() {
   pgUi = createPlaygroundUi({
     getState: () => pg,
     setState(next) {
+      // in a running case the learner treats; a change to disease (a valve, a baseline volume) is refused and the controls spring back
+      if (!mayEdit(editBetween(buildPlaygroundSpec(sim.scenario(), pg).spec, buildPlaygroundSpec(sim.scenario(), next).spec))) { pgApply(false); return; }
       pg = next; pgPreset = null; pgSticky = [];
       pgApply(true);
     },
-    loadPreset(id) { const p = PRESET_BY_ID[id]; if (p) pgAdopt(p.spec, id); },
+    loadPreset(id) { const p = PRESET_BY_ID[id]; if (p && mayReplace()) pgAdopt(p.spec, id); else pgApply(false); },
     exit: () => pgShow(false),
     legacy: () => false,
     scenario: () => sim.scenario(),
     // the Advanced group's fields live in the Scenario: the Simulation takes the change, then the spec and the link follow
-    patch(p) { sim.apply(p); pgApply(false); },
-    reseed(seed) { pgAdopt({ ...buildPlaygroundSpec(sim.scenario(), pg).spec, seed }, null); },
+    patch(p) { if (!mayEdit(p)) { pgApply(false); return; } sim.apply(p); pgApply(false); },
+    reseed(seed) { if (!mayEdit({ seed })) { pgApply(false); return; } pgAdopt({ ...buildPlaygroundSpec(sim.scenario(), pg).spec, seed }, null); },
   });
   mountDock(pgUi.mounts);
-  // The Support tab's one switch per device edits `devices.*`; the legacy `support.iabp` / `support.impella` follow in pgApply.
+  // The Support tab's one switch per device edits `devices.*`; the legacy `support.iabp` / `support.coroPump` follow in pgApply.
   hooks.device = (id, isOn) => { if (!pgOn) pgShow(true); pg = withDevice(pg, id, isOn); pgPreset = null; pgSticky = []; pgApply(true); };
   // Reset treatment: the devices, the boluses and the beta blocker go; the insult (blood loss, hemorrhage) stays
   hooks.resetTreatment = () => {
@@ -101,7 +106,7 @@ export function initPatient() {
   // The existing controls (lesions, rhythm, drugs, support) change the Scenario inside the Simulation: pick that up for the link.
   setInterval(() => {
     if (!pgOn || inCases) return;
-    for (const id of ["impella", "iabp"] as const) if (!!T.support[id] !== !!pg.devices?.[id]) pg = withDevice(pg, id, !!T.support[id]); // the Management switches and the playground's are one
+    for (const id of ["coroPump", "iabp"] as const) if (!!T.support[id] !== !!pg.devices?.[id]) pg = withDevice(pg, id, !!T.support[id]); // the Management switches and the playground's are one
     if (JSON.stringify([sim.scenario(), pg]) !== pgSig) pgApply(false);
   }, 300);
   on("pg_on", () => pgShow(true));

@@ -1,6 +1,10 @@
 # Core engine evaluation snapshot
 
-Generated 2026-10-31 18:54 EDT from commit `4b7b4f7`. Core engine only (`engine: "core"`, empty `coreNote`). Checkpoints are simulated seconds after the insult; at 1x that is 2 clinical minutes per second. A cell is the mean and the min..max across seeds. This file is a snapshot of a run, not a specification.
+Generated 2026-10-31 18:54 EDT from commit `4b7b4f7` (standard states); CoroPump matrix addendum 2026-11-09 from commit `2dde25c`. Core engine only (`engine: "core"`, empty `coreNote`). Checkpoints are simulated seconds after the insult; at 1x that is 2 clinical minutes per second. A cell is the mean and the min..max across seeds. This file is a snapshot of a run, not a specification.
+
+### CoroPump purge, thrombus and hemolysis (matrix support, seed 1, 2026-11-09)
+
+Five new invariant-only states observed at 60 s: `mx-sup-coroPump-purge-blocked` (purge pressure at cap 1500 mmHg), `mx-sup-coroPump-purge-heparin0` (low thrombus at 60 s, 180 s checkpoint in harness), `mx-sup-coroPump-initial-thrombus`, `mx-sup-coroPump-initial-pfhb`, `mx-sup-coroPump-deep-p9-bleed` (pfHb above 60 mg/dL, suction level 1.0). Lines are in `docs/matrix/support.md`.
 
 ## Standard states
 
@@ -794,7 +798,7 @@ Invariants only. A crash is a failure of that input; warnings are what the norma
 - **edge-3vd** (LAD, LCx and RCA all occluded). 8 seeds, no throw. No warnings.
 - **edge-lm-rv-chb** (Left main occlusion, proximal RCA occlusion, complete heart block). 8 seeds, no throw. No warnings.
 - **edge-tamponade-bleed** (Tamponade (270 ml) plus 30% hemorrhage). 8 seeds, no throw. No warnings.
-- **edge-impella-rv-fail** (Impella CP P6 with a weak right ventricle). 8 seeds, no throw. No warnings.
+- **edge-coroPump-rv-fail** (CoroPump CP P6 with a weak right ventricle). 8 seeds, no throw. No warnings.
 - **edge-ecmo-no-vent** (VA-ECMO 4 L/min, poor LV, no vent). 8 seeds, no throw. No warnings.
 - **edge-all-drugs** (Every drug dial at 1). 8 seeds, no throw. No warnings.
 - **anat-dom-left** (Proximal LAD occlusion, Left-dominant). 8 seeds, no throw. No warnings.
@@ -996,8 +1000,8 @@ Each patient field at its low, middle and high value, one seed, compared with th
 | support.paceRate | high | 120 | hr, dbp, map, co, ci, sv, lvEf, rvEf, lvEfEstimate, hrRolling, svAortic, rhythm, ventRate, pulsePressure, paSys, paDia, pcwp, lvedp, rvedp, lvEdv, stressedVolume, cppPanel, sinusRate, lhc.peakInstant (+31) |
 | support.iabp | low | false | (none) |
 | support.iabp | high | true | hr, sbp, map, co, ci, hrRolling, pulsePressure, paSys, paDia, paMean, pcwp, lvedp, svr, lvEsv, coronaryDrivingPressure, lhc.peakInstant, rhc.rvSystolic, rhc.fickCo, rhc.tpg, rhc.papi, rhc.cpo, do2, o2Extraction, epiSupplyIndex (+18) |
-| support.impella | low | false | (none) |
-| support.impella | high | true | dbp, lvEf, lvEfEstimate, svAortic, pulsePressure, paDia, paMean, pcwp, lvedp, lvEdv, lvEsv, stressedVolume, cppPanel, coronaryDrivingPressure, lhc.peakInstant, lhc.avForwardMl, epiSupplyIndex, transmuralRatio, dpti, tti, viabilityRatio, diastolicFraction, fluid.lungCapillaryPressure, deviceFlow (+14) |
+| support.coroPump | low | false | (none) |
+| support.coroPump | high | true | dbp, lvEf, lvEfEstimate, svAortic, pulsePressure, paDia, paMean, pcwp, lvedp, lvEdv, lvEsv, stressedVolume, cppPanel, coronaryDrivingPressure, lhc.peakInstant, lhc.avForwardMl, epiSupplyIndex, transmuralRatio, dpti, tti, viabilityRatio, diastolicFraction, fluid.lungCapillaryPressure, deviceFlow (+14) |
 | heart.valves.av.open | low | 0 | hr, sbp, dbp, map, co, ci, sv, lvEf, rvEf, lvEfEstimate, hrRolling, svAortic, status, pulsePressure, paSys, paDia, paMean, pcwp, lvedp, rvedp, svr, pvr, lvEdv, lvEsv (+66) |
 | heart.valves.av.open | mid | 0.5 | lvedp, rvedp, lhc.peakInstant, lhc.aorticAreaGorlin, lhc.aorticAreaHakki, lhc.avForwardMl, lhc.aorticSeverity, rhc.raV, dpti, tti, fluid.capillaryPressure, fluid.urineRate, loop.ea, jvp.meanRa, valve.av.forwardMl, valve.av.openMs, valve.av.eoa, valve.mv.forwardMl, murmur |
 | heart.valves.av.open | high | 1 | sbp, dbp, map, paDia, paMean, pcwp, lvedp, rvedp, cppPanel, rhc.rvSystolic, rhc.papi, rhc.cpo, epiSupplyIndex, dpti, fluid.urineRate, fluid.lungCapillaryPressure, iabp.peakDiastolic, cardiacPower, valve.mv.forwardMl, valve.mv.peakGradient, pnn50 |
@@ -1123,18 +1127,18 @@ Each patient field at its low, middle and high value, one seed, compared with th
 | ventilation.tidalMlKg | low | 2 | sv, pcwp, lvedp, qpQs, rhc.papi, fluid.urineRate, fluid.lungCapillaryPressure, loop.ea, loop.dpdtMax, jvp.meanRa, ppv, valve.mv.forwardMl, valve.mv.peakGradient, valve.pv.forwardMl |
 | ventilation.tidalMlKg | mid | 8.5 | sv, pcwp, lvedp, qpQs, rhc.papi, fluid.urineRate, fluid.lungCapillaryPressure, loop.ea, loop.dpdtMax, jvp.meanRa, ppv, valve.mv.forwardMl, valve.mv.peakGradient, valve.pv.forwardMl |
 | ventilation.tidalMlKg | high | 15 | sv, pcwp, lvedp, qpQs, rhc.papi, fluid.urineRate, fluid.lungCapillaryPressure, loop.ea, loop.dpdtMax, jvp.meanRa, ppv, valve.mv.forwardMl, valve.mv.peakGradient, valve.pv.forwardMl |
-| devices.impella.model | low | "2.5" | dbp, sv, lvEfEstimate, svAortic, pulsePressure, paDia, lvedp, lvEsv, cppPanel, lhc.peakInstant, lhc.avForwardMl, rhc.cpo, dpti, tti, viabilityRatio, fluid.lungCapillaryPressure, deviceFlow, impella.flow, impella.motorCurrent, impella.placement, impella.suctionLevel, loop.dpdtMax, loop.mvo2, cardiacPower (+5) |
-| devices.impella.model | mid | "CP" | dbp, lvEf, lvEfEstimate, svAortic, pulsePressure, paDia, paMean, pcwp, lvedp, lvEdv, lvEsv, stressedVolume, cppPanel, coronaryDrivingPressure, lhc.peakInstant, lhc.avForwardMl, epiSupplyIndex, transmuralRatio, dpti, tti, viabilityRatio, diastolicFraction, fluid.lungCapillaryPressure, deviceFlow (+14) |
-| devices.impella.model | high | "5.5" | dbp, sv, lvEf, lvEfEstimate, hrRolling, svAortic, pulsePressure, paDia, pcwp, lvedp, qpQs, lvEsv, cppPanel, coronaryDrivingPressure, lhc.peakInstant, lhc.avForwardMl, rhc.rvSystolic, rhc.cpo, dpti, tti, viabilityRatio, diastolicFraction, fluid.urineRate, fluid.lungCapillaryPressure (+17) |
-| devices.impella.level | low | 0 | (none) |
-| devices.impella.level | mid | 4.5 | dbp, lvEf, lvEfEstimate, svAortic, pulsePressure, paDia, paMean, pcwp, lvedp, lvEdv, lvEsv, cppPanel, lhc.peakInstant, lhc.avForwardMl, dpti, tti, viabilityRatio, diastolicFraction, fluid.lungCapillaryPressure, deviceFlow, impella.flow, impella.motorCurrent, impella.placement, impella.suctionLevel (+7) |
-| devices.impella.level | high | 9 | sbp, dbp, sv, lvEf, lvEfEstimate, hrRolling, svAortic, pulsePressure, paSys, paDia, paMean, pcwp, lvedp, lvEdv, lvEsv, stressedVolume, cppPanel, coronaryDrivingPressure, lhc.peakInstant, lhc.avForwardMl, rhc.raV, transmuralRatio, dpti, tti (+22) |
-| devices.impella.position | low | "correct" | dbp, lvEf, lvEfEstimate, svAortic, pulsePressure, paDia, paMean, pcwp, lvedp, lvEdv, lvEsv, stressedVolume, cppPanel, coronaryDrivingPressure, lhc.peakInstant, lhc.avForwardMl, epiSupplyIndex, transmuralRatio, dpti, tti, viabilityRatio, diastolicFraction, fluid.lungCapillaryPressure, deviceFlow (+14) |
-| devices.impella.position | mid | "aortic" | sbp, dbp, map, paDia, paMean, pcwp, lvedp, rvedp, cppPanel, rhc.rvSystolic, rhc.papi, rhc.cpo, epiSupplyIndex, dpti, fluid.urineRate, fluid.lungCapillaryPressure, impella.flow, impella.motorCurrent, iabp.peakDiastolic, cardiacPower, valve.mv.forwardMl, valve.mv.peakGradient, pnn50 |
-| devices.impella.position | high | "deep" | dbp, lvEfEstimate, svAortic, cppPanel, lhc.peakInstant, lhc.avForwardMl, rhc.raV, rhc.cpo, dpti, viabilityRatio, deviceFlow, impella.flow, impella.motorCurrent, impella.placement, impella.suctionLevel, loop.dpdtMax, loop.mvo2, cardiacPower, jvp.meanRa, valve.av.forwardMl, valve.av.eoa, valve.mv.forwardMl, valve.pv.openMs, pnn50 (+1) |
-| devices.impellaRp.level | low | 0 | co, ci, sv, rvEf, svAortic, pulsePressure, paDia, paMean, pcwp, lvedp, rvedp, lvEdv, cppPanel, lhc.avForwardMl, rhc.raV, rhc.fickCo, rhc.tpg, rhc.papi, rhc.cpo, do2, o2Extraction, tti, viabilityRatio, fluid.urineRate (+18) |
-| devices.impellaRp.level | mid | 4.5 | hr, sbp, map, co, ci, sv, rvEf, hrRolling, svAortic, pulsePressure, paSys, paDia, paMean, pcwp, lvedp, rvedp, lvEdv, lvEsv, stressedVolume, cppPanel, lhc.peakInstant, lhc.avForwardMl, rhc.raV, rhc.rvSystolic (+34) |
-| devices.impellaRp.level | high | 9 | hr, sbp, map, co, ci, sv, lvEf, rvEf, hrRolling, svAortic, pulsePressure, paSys, paDia, paMean, pcwp, lvedp, rvedp, svr, lvEdv, lvEsv, cppPanel, lhc.peakInstant, lhc.mitralAreaGorlin, lhc.avForwardMl (+40) |
+| devices.coroPump.model | low | "2.5" | dbp, sv, lvEfEstimate, svAortic, pulsePressure, paDia, lvedp, lvEsv, cppPanel, lhc.peakInstant, lhc.avForwardMl, rhc.cpo, dpti, tti, viabilityRatio, fluid.lungCapillaryPressure, deviceFlow, coroPump.flow, coroPump.motorCurrent, coroPump.placement, coroPump.suctionLevel, loop.dpdtMax, loop.mvo2, cardiacPower (+5) |
+| devices.coroPump.model | mid | "CP" | dbp, lvEf, lvEfEstimate, svAortic, pulsePressure, paDia, paMean, pcwp, lvedp, lvEdv, lvEsv, stressedVolume, cppPanel, coronaryDrivingPressure, lhc.peakInstant, lhc.avForwardMl, epiSupplyIndex, transmuralRatio, dpti, tti, viabilityRatio, diastolicFraction, fluid.lungCapillaryPressure, deviceFlow (+14) |
+| devices.coroPump.model | high | "5.5" | dbp, sv, lvEf, lvEfEstimate, hrRolling, svAortic, pulsePressure, paDia, pcwp, lvedp, qpQs, lvEsv, cppPanel, coronaryDrivingPressure, lhc.peakInstant, lhc.avForwardMl, rhc.rvSystolic, rhc.cpo, dpti, tti, viabilityRatio, diastolicFraction, fluid.urineRate, fluid.lungCapillaryPressure (+17) |
+| devices.coroPump.level | low | 0 | (none) |
+| devices.coroPump.level | mid | 4.5 | dbp, lvEf, lvEfEstimate, svAortic, pulsePressure, paDia, paMean, pcwp, lvedp, lvEdv, lvEsv, cppPanel, lhc.peakInstant, lhc.avForwardMl, dpti, tti, viabilityRatio, diastolicFraction, fluid.lungCapillaryPressure, deviceFlow, coroPump.flow, coroPump.motorCurrent, coroPump.placement, coroPump.suctionLevel (+7) |
+| devices.coroPump.level | high | 9 | sbp, dbp, sv, lvEf, lvEfEstimate, hrRolling, svAortic, pulsePressure, paSys, paDia, paMean, pcwp, lvedp, lvEdv, lvEsv, stressedVolume, cppPanel, coronaryDrivingPressure, lhc.peakInstant, lhc.avForwardMl, rhc.raV, transmuralRatio, dpti, tti (+22) |
+| devices.coroPump.position | low | "correct" | dbp, lvEf, lvEfEstimate, svAortic, pulsePressure, paDia, paMean, pcwp, lvedp, lvEdv, lvEsv, stressedVolume, cppPanel, coronaryDrivingPressure, lhc.peakInstant, lhc.avForwardMl, epiSupplyIndex, transmuralRatio, dpti, tti, viabilityRatio, diastolicFraction, fluid.lungCapillaryPressure, deviceFlow (+14) |
+| devices.coroPump.position | mid | "aortic" | sbp, dbp, map, paDia, paMean, pcwp, lvedp, rvedp, cppPanel, rhc.rvSystolic, rhc.papi, rhc.cpo, epiSupplyIndex, dpti, fluid.urineRate, fluid.lungCapillaryPressure, coroPump.flow, coroPump.motorCurrent, iabp.peakDiastolic, cardiacPower, valve.mv.forwardMl, valve.mv.peakGradient, pnn50 |
+| devices.coroPump.position | high | "deep" | dbp, lvEfEstimate, svAortic, cppPanel, lhc.peakInstant, lhc.avForwardMl, rhc.raV, rhc.cpo, dpti, viabilityRatio, deviceFlow, coroPump.flow, coroPump.motorCurrent, coroPump.placement, coroPump.suctionLevel, loop.dpdtMax, loop.mvo2, cardiacPower, jvp.meanRa, valve.av.forwardMl, valve.av.eoa, valve.mv.forwardMl, valve.pv.openMs, pnn50 (+1) |
+| devices.coroPumpRp.level | low | 0 | co, ci, sv, rvEf, svAortic, pulsePressure, paDia, paMean, pcwp, lvedp, rvedp, lvEdv, cppPanel, lhc.avForwardMl, rhc.raV, rhc.fickCo, rhc.tpg, rhc.papi, rhc.cpo, do2, o2Extraction, tti, viabilityRatio, fluid.urineRate (+18) |
+| devices.coroPumpRp.level | mid | 4.5 | hr, sbp, map, co, ci, sv, rvEf, hrRolling, svAortic, pulsePressure, paSys, paDia, paMean, pcwp, lvedp, rvedp, lvEdv, lvEsv, stressedVolume, cppPanel, lhc.peakInstant, lhc.avForwardMl, rhc.raV, rhc.rvSystolic (+34) |
+| devices.coroPumpRp.level | high | 9 | hr, sbp, map, co, ci, sv, lvEf, rvEf, hrRolling, svAortic, pulsePressure, paSys, paDia, paMean, pcwp, lvedp, rvedp, svr, lvEdv, lvEsv, cppPanel, lhc.peakInstant, lhc.mitralAreaGorlin, lhc.avForwardMl (+40) |
 | devices.iabp.ratio | low | 1 | hr, sbp, map, co, ci, hrRolling, pulsePressure, paSys, paDia, paMean, pcwp, lvedp, svr, lvEsv, coronaryDrivingPressure, lhc.peakInstant, rhc.rvSystolic, rhc.fickCo, rhc.tpg, rhc.papi, rhc.cpo, do2, o2Extraction, epiSupplyIndex (+18) |
 | devices.iabp.ratio | mid | 2 | sbp, dbp, map, pulsePressure, stressedVolume, cppPanel, coronaryDrivingPressure, rhc.raV, rhc.cpo, epiSupplyIndex, transmuralRatio, dpti, tti, viabilityRatio, fluid.urineRate, iabp.coronaryAugmentation, iabp.peakDiastolic, loop.ea, loop.mvo2, cardiacPower, jvp.meanRa, ppv |
 | devices.iabp.ratio | high | 3 | sbp, map, pulsePressure, stressedVolume, coronaryDrivingPressure, rhc.raV, rhc.cpo, epiSupplyIndex, dpti, tti, viabilityRatio, diastolicFraction, fluid.urineRate, iabp.coronaryAugmentation, iabp.peakDiastolic, loop.dpdtMax, cardiacPower, jvp.meanRa, ppv, valve.av.openMs, valve.mv.peakGradient, pnn50 |
@@ -1168,7 +1172,7 @@ These patient fields have an empty `controls` list (set from chat or a link only
 - `heart.valves.mv.prosthesis`
 - `heart.valves.tv.prosthesis`
 - `heart.valves.pv.prosthesis`
-- `devices.impellaRp.level`
+- `devices.coroPumpRp.level`
 - `devices.iabp.volumeMl`
 
 Not swept:
@@ -1224,7 +1228,7 @@ Not swept:
 - support.pacing high=true
 - support.paceRate low=40
 - support.iabp low=false
-- support.impella low=false
+- support.coroPump low=false
 - pericardium.drainMl low=0
 - pericardium.drainMl mid=1000
 - pericardium.drainMl high=2000
@@ -1233,7 +1237,7 @@ Not swept:
 - fluids.capillaryLeak low=0
 - fluids.legRaise low=false
 - fluids.legRaise high=true
-- devices.impella.level low=0
+- devices.coroPump.level low=0
 - devices.iabp.volumeMl low=0
 
 ## Open questions

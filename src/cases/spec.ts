@@ -1,5 +1,7 @@
 import type { Cond, Harm, CaseDef, Checkpoint, Outcome, Probe } from "./engine";
 import { normalizePatient } from "../sim/patient";
+import { isDisplayId, isRetired, itemById } from "./orders";
+import { ANALYTES } from "../sim/labs";
 
 /**
  * A case as plain data, so it can be stored, edited in the builder and sent over the wire. It is a `CaseDef` whose conditions are written in a small
@@ -7,7 +9,7 @@ import { normalizePatient } from "../sim/patient";
  * turns a spec into the `CaseDef` the engine runs; `validateCase` says what is wrong with one before it is saved.
  */
 export const NUM_FIELDS = ["map", "hr", "ef", "lvIschemia", "rvIschemia", "congestion", "fluidsL", "shocks", "epiDoses", "amioMg", "lidoDoses"] as const;
-export const FLAG_FIELDS = ["cpr", "ecmo", "impella", "iabp", "pci", "pciPending", "dead"] as const;
+export const FLAG_FIELDS = ["cpr", "ecmo", "coroPump", "iabp", "pci", "pciPending", "dead"] as const;
 export const ARREST_STATES = ["none", "arrest", "rosc", "dead"] as const;
 export const OPS = ["<", "<=", ">", ">="] as const;
 export type NumField = (typeof NUM_FIELDS)[number];
@@ -164,6 +166,17 @@ export function validateCase(s: CaseSpec): string[] {
   }
   for (const [w, f] of usedFlags) if (!setFlags.has(f)) errs.push(`${w} depends on flag '${f}', which nothing sets.`);
   for (const m of s.musts ?? []) if (!setFlags.has(m.flag)) errs.push(`Required step '${m.flag}' is never set by any outcome.`);
+  for (const m of s.monitor ?? []) {
+    if (isRetired(m)) continue; // an old spec's retired id loads and resolves away: not an error
+    const it = itemById(m);
+    if (!it) errs.push(`The monitor lists '${m}', which is not an orderable item.`);
+    else need(isDisplayId(m), `The monitor lists '${m}', which is a result to order, not a display.`);
+  }
+  if (s.tempC !== undefined) need(Number.isFinite(s.tempC) && s.tempC >= 20 && s.tempC <= 45, "Body temperature must be between 20 and 45 C.");
+  for (const [k, x] of Object.entries(s.labs ?? {})) {
+    need((ANALYTES as readonly string[]).includes(k), `The labs name '${k}', which is not a lab value the simulator knows.`);
+    need(Number.isFinite(x), `The lab value for '${k}' must be a number.`);
+  }
   for (const x of s.stable ?? []) need(isCond(x), "A 'stable' condition is not valid.");
   for (const h of s.harms ?? []) { need(h.tag && h.label, "A harm needs a tag and a label."); for (const x of h.when ?? []) need(isCond(x), `Harm '${h.tag}': a condition is not valid.`); }
   return errs;

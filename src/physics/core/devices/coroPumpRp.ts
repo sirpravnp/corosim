@@ -1,41 +1,41 @@
-import { cannulaInertance, IMPELLA_RP } from "../../../config/devices";
+import { cannulaInertance, COROPUMP_RP } from "../../../config/devices";
 import { NODES } from "../../structuralGraph";
 import type { Model } from "../../structural";
 import type { Ctx, HeartEvent, NodeId, Rates } from "../types";
 import { inflowResistance, pumpHead, RotaryPump, type PumpParams } from "./pump";
-import { motorCurrent } from "./impella";
+import { motorCurrent } from "./coroPump";
 
-export interface ImpellaRpConfig {
+export interface CoroPumpRpConfig {
   /** P-level 0..9 (0 = off). Default 6. */
   level?: number;
   /** Unloaded volume V0 of the inflow node (the IVC's unstressed volume), ml: the suction and the floor are set relative to it. */
   v0: number;
 }
 
-/** Speed (krpm) of a P-level (clamped and rounded to 0..9) of the Impella RP. */
-export const rpLevelSpeed = (level: number): number => IMPELLA_RP.speeds[Math.min(9, Math.max(0, Math.round(level)))];
+/** Speed (krpm) of a P-level (clamped and rounded to 0..9) of the CoroPump RP. */
+export const rpLevelSpeed = (level: number): number => COROPUMP_RP.speeds[Math.min(9, Math.max(0, Math.round(level)))];
 
 /**
- * Impella RP: a `RotaryPump` (core/devices/pump.ts) from the IVC to the PA with its own numbers (`IMPELLA_RP` in config/devices.ts, all
- * [assumed]). Same pump law, suction law and soft floor as the left-sided `Impella` (R-D1: relative to the inflow node's V0, here the
+ * CoroPump RP: a `RotaryPump` (core/devices/pump.ts) from the IVC to the PA with its own numbers (`COROPUMP_RP` in config/devices.ts, all
+ * [assumed]). Same pump law, suction law and soft floor as the left-sided `CoroPump` (R-D1: relative to the inflow node's V0, here the
  * IVC's unstressed volume), so an emptied IVC trips suction and the flow cannot pull it below V0 + floor.
  *
- * Taps are those of `Impella` (`level`, `current`, `placement` = P_PA − P_IVC, `suctionAlarm`, `beat`, ...), so `ImpellaConsole(engine, "impellaRp")`
- * gives the same per-beat console. Wiring: `fromModel(m, { impellaRp: { level } })`, or in `LiveHeart` `extra: [(m) => ImpellaRp.forModel(m, cfg)]`.
+ * Taps are those of `CoroPump` (`level`, `current`, `placement` = P_PA − P_IVC, `suctionAlarm`, `beat`, ...), so `CoroPumpConsole(engine, "coroPumpRp")`
+ * gives the same per-beat console. Wiring: `fromModel(m, { coroPumpRp: { level } })`, or in `LiveHeart` `extra: [(m) => CoroPumpRp.forModel(m, cfg)]`.
  */
-export class ImpellaRp extends RotaryPump {
+export class CoroPumpRp extends RotaryPump {
   private lvl: number;
   private floorV: number;
   private beats = 0;
-  constructor(name: string, from: NodeId, to: NodeId, cfg: ImpellaRpConfig) {
-    const D = IMPELLA_RP, S = D.suction, level = cfg.level ?? 6;
+  constructor(name: string, from: NodeId, to: NodeId, cfg: CoroPumpRpConfig) {
+    const D = COROPUMP_RP, S = D.suction, level = cfg.level ?? 6;
     super(name, from, to, { speed: rpLevelSpeed(level), a: D.a, b: D.b, c: D.c, L: cannulaInertance(D.lengthCm, D.diameterMm), R0: D.R0, Rmax: S.Rmax, Pth: S.Pth, wP: S.wP, Vc: cfg.v0 + S.vcMarginMl, wV: S.wV, suctionAt: S.suctionAt });
     this.lvl = level; this.floorV = cfg.v0 + S.floorMl;
   }
   /** `fromModel`'s way in: nodes IVC -> PA, V0 = the IVC's unstressed volume. */
-  static forModel(m: Model, cfg: Omit<ImpellaRpConfig, "v0"> = {}, name = "impellaRp"): ImpellaRp {
+  static forModel(m: Model, cfg: Omit<CoroPumpRpConfig, "v0"> = {}, name = "coroPumpRp"): CoroPumpRp {
     const ivc = NODES.indexOf("IVC");
-    return new ImpellaRp(name, ivc, NODES.indexOf("PA"), { ...cfg, v0: m.vu[ivc] });
+    return new CoroPumpRp(name, ivc, NODES.indexOf("PA"), { ...cfg, v0: m.vu[ivc] });
   }
   get level(): number { return this.lvl; }
   /** `level` (P-level, sets the speed) and any pump parameter. */
@@ -52,7 +52,7 @@ export class ImpellaRp extends RotaryPump {
       out.rate(this.idx, -Q / L);
       return;
     }
-    const p = this.params, Q = ctx.y[this.idx], pIn = ctx.P[this.from], vIn = ctx.V[this.from], S = IMPELLA_RP.suction;
+    const p = this.params, Q = ctx.y[this.idx], pIn = ctx.P[this.from], vIn = ctx.V[this.from], S = COROPUMP_RP.suction;
     const rIn = Q > 0 ? inflowResistance(p, pIn, vIn) : p.R0;
     out.flow(this.from, this.to, Q);
     let rate = (pumpHead(p, p.speed, Q) - (ctx.P[this.to] - pIn) - rIn * Q) / p.L;

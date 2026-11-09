@@ -101,19 +101,23 @@ for (const [k, u] of [["blood", "ml"], ["plasma", "ml"], ["hematocrit", "fractio
 for (const k of ["norepinephrine", "epinephrine", "dobutamine", "milrinone", "vasopressin", "phenylephrine", "nitroglycerin", "nitroprusside", "betaBlocker", "furosemide", "diltiazem"]) add("Drugs", `drug.${k}`, "0-1", (c) => c.drugs?.level[k]);
 // ---- Devices (present only when a device is in)
 add("Devices", "deviceFlow", "L/min", (c) => c.st.support.deviceFlowLpm);
-add("Devices", "impella.flow", "L/min", (c) => c.dev?.impella?.flowLpm); add("Devices", "impella.motorCurrent", "mA", (c) => c.dev?.impella?.motorCurrentMa);
-add("Devices", "impella.placement", "mmHg", (c) => c.dev?.impella?.placementMmHg); add("Devices", "impella.suctionLevel", "0-1", (c) => c.dev?.impella?.suctionLevel);
+add("Devices", "coroPump.flow", "L/min", (c) => c.dev?.coroPump?.flowLpm); add("Devices", "coroPump.motorCurrent", "mA", (c) => c.dev?.coroPump?.motorCurrentMa);
+add("Devices", "coroPump.placement", "mmHg", (c) => c.dev?.coroPump?.placementMmHg); add("Devices", "coroPump.suctionLevel", "0-1", (c) => c.dev?.coroPump?.suctionLevel);
+add("Devices", "coroPump.purgePressure", "mmHg", (c) => c.dev?.coroPump?.purge.pressureMmHg);
+add("Devices", "coroPump.purgeFlow", "ml/hr", (c) => c.dev?.coroPump?.purge.flowMlHr);
+add("Devices", "coroPump.thrombusBurden", "0-1", (c) => c.dev?.coroPump?.thrombusBurden);
+add("Devices", "coroPump.pfHb", "mg/dL", (c) => c.dev?.coroPump?.hemolysis.plasmaFreeHbMgDl);
 add("Devices", "iabp.coronaryAugmentation", "mmHg", (c) => c.dev?.iabp?.coronaryAugmentationMmHg); add("Devices", "iabp.peakDiastolic", "mmHg", (c) => c.dev?.iabp?.peakDiastolicMmHg);
-// ECMO and Impella RP consoles (null until that circuit is in the patient). returnSat is the oxygenator's, from the live source.
+// ECMO and CoroPump RP consoles (null until that circuit is in the patient). returnSat is the oxygenator's, from the live source.
 add("Devices", "ecmo.flow", "L/min", (c) => c.dev?.ecmo?.flowLpm); add("Devices", "ecmo.rpm", "rpm", (c) => c.dev?.ecmo?.rpm);
 add("Devices", "ecmo.sweep", "L/min", (c) => c.dev?.ecmo?.sweepLpm); add("Devices", "ecmo.fio2", "fraction", (c) => c.dev?.ecmo?.fio2);
 add("Devices", "ecmo.returnSat", "fraction", (c) => c.src.devices().find((d) => d.id === "ecmo")?.readings.returnSat);
 add("Devices", "ecmo.suction", "0-1", (c) => c.dev?.ecmo?.suctionLevel); add("Devices", "ecmo.membraneDp", "mmHg", (c) => c.dev?.ecmo?.membraneDpMmHg);
 add("Devices", "ecmo.head", "mmHg", (c) => c.dev?.ecmo?.headMmHg);
-add("Devices", "impellaRp.flow", "L/min", (c) => c.dev?.impellaRp?.flowLpm); add("Devices", "impellaRp.level", "P", (c) => c.dev?.impellaRp?.level);
-add("Devices", "impellaRp.speed", "krpm", (c) => c.dev?.impellaRp?.speedKrpm); add("Devices", "impellaRp.current", "mA", (c) => c.dev?.impellaRp?.motorCurrentMa);
-add("Devices", "impellaRp.placement", "mmHg", (c) => c.dev?.impellaRp?.placementMmHg);
-add("Devices", "impellaRp.suction", "", (c) => (c.dev?.impellaRp ? !!c.dev.impellaRp.suctionAlarm : null), "bool");
+add("Devices", "coroPumpRp.flow", "L/min", (c) => c.dev?.coroPumpRp?.flowLpm); add("Devices", "coroPumpRp.level", "P", (c) => c.dev?.coroPumpRp?.level);
+add("Devices", "coroPumpRp.speed", "krpm", (c) => c.dev?.coroPumpRp?.speedKrpm); add("Devices", "coroPumpRp.current", "mA", (c) => c.dev?.coroPumpRp?.motorCurrentMa);
+add("Devices", "coroPumpRp.placement", "mmHg", (c) => c.dev?.coroPumpRp?.placementMmHg);
+add("Devices", "coroPumpRp.suction", "", (c) => (c.dev?.coroPumpRp ? !!c.dev.coroPumpRp.suctionAlarm : null), "bool");
 // Pericardial sac. Null when the patient has no sac (pericardium() is null).
 add("Pericardium", "peri.effusionMl", "ml", (c) => c.peri?.effusionMl); add("Pericardium", "peri.pressure", "mmHg", (c) => c.peri?.pressureMmHg);
 add("Pericardium", "peri.sacMl", "ml", (c) => c.peri?.sacVolumeMl);
