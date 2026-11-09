@@ -11,6 +11,8 @@ export interface PatientSource {
   arrest: PatientNow["arrest"]; rhythmLabel: string;
   respRateBase: number; tempOverrideC?: number;
   co?: number; lvEf?: number; lowFlowMin?: number; caseMin?: number; ageY?: number;
+  /** Plasma free hemoglobin now, mg/dL (`Simulation.plasmaFreeHb()`); the hemolysis lab and the urine-color item read it. */
+  pfHbMgDl?: number;
 }
 
 /** Minutes the case has spent with MAP below 65 mmHg. The page feeds it each frame; reset on start and quit. */
@@ -36,5 +38,6 @@ export function buildPatientNow(s: PatientSource): PatientNow {
     lvIschemia: fin(s.lvIschemia, 0), rvIschemia: fin(s.rvIschemia, 0), rhythmLabel: s.rhythmLabel,
     tempC: bodyTempC(inp), respRate: estimateRespRate(inp),
     co: fin(s.co, NaN), lvEf: fin(s.lvEf, NaN), lowFlowMin: fin(s.lowFlowMin, 0), caseMin: fin(s.caseMin, 0), ageY: fin(s.ageY, 65),
+    ...(s.pfHbMgDl !== undefined && Number.isFinite(s.pfHbMgDl) ? { pfHbMgDl: s.pfHbMgDl } : {}), // absent stays absent: the items then read a baseline and say it is an estimate
   };
 }

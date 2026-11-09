@@ -1,6 +1,7 @@
 // ---------------------------------------------------------------- the settings dock: one tabbed place for every control
 import { $ } from "./state";
 import type { MountId } from "../panels/playgroundControls";
+import { coroPumpHost } from "../panels/coroPump";
 
 const tabs = () => [...document.querySelectorAll<HTMLButtonElement>("#dock .dtab")];
 const visible = (b: HTMLElement) => b.getClientRects().length > 0;
@@ -22,7 +23,8 @@ export function mountDock(mounts: Record<MountId, HTMLElement>) {
   $("dpane-patient").append(mounts.patient); $("dpane-valves").append(mounts.valves); $("dpane-pericardium").append(mounts.pericardium);
   // the Support tab's sections have their own rows (sim/index.html); the playground's controls fill the ones the page does not own
   $("vol-mount").append(mounts.volume); $("vent-mount").append(mounts.ventilation);
-  $("dev-iabp").append(mounts.iabp); $("dev-coroPump").append(mounts.coroPump); $("dev-ecmo").append(mounts.ecmo);
+  $("dev-iabp").append(mounts.iabp); $("dev-ecmo").append(mounts.ecmo);
+  coroPumpHost.controls = mounts.coroPump; // the CoroPump's settings live in its console pane (src/panels/coroPump.ts), not in this tab
   const all = tabs();
   for (const b of all) {
     b.addEventListener("click", () => setDockTab(b.dataset.tab!));

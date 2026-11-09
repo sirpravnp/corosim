@@ -9,6 +9,7 @@
  */
 
 import type { Vitals } from "./vitals";
+import type { CoroPumpReadout } from "./coreDevices";
 
 /** Nodes every source provides. The core engine may add more (venous reservoirs); panels must ignore names they do not know. */
 export type HemoNode = "SVC" | "IVC" | "RA" | "RV" | "PA" | "PV" | "LA" | "LV" | "AO" | "DAO";
@@ -83,6 +84,8 @@ export interface DeviceConsole {
   /** Waveforms the console draws (CoroPump placement signal, IABP arterial trace). */
   traces?: Record<string, Series>;
   alarms: string[];
+  /** The CoroPump's whole console readout (purge, last beat's waveforms, labs); set on the "coroPump" console only. */
+  coroPump?: CoroPumpReadout;
 }
 
 export interface HemoSource {

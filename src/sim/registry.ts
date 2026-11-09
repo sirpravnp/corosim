@@ -148,9 +148,9 @@ add("devices.coroPump.position", "support", en(["correct", "aortic", "deep"]), [
 add("devices.coroPump.purge.solution", "support", en(["dextrose-heparin", "bicarbonate"]), ["pg:devices.coroPump.purge.solution"]);
 add("devices.coroPump.purge.heparinUml", "support", num(0, 50, "Purge heparin (U/ml)."), ["pg:devices.coroPump.purge.heparinUml"]);
 add("devices.coroPump.purge.line", "support", en(["clear", "kinked", "blocked"]), ["pg:devices.coroPump.purge.line"]);
-add("devices.coroPump.exchange", "support", bool("Exchange the pump (one-shot): thrombus burden resets."));
-add("devices.coroPump.purge.clearLine", "support", bool("Clear a kinked or blocked purge line (one-shot)."));
-add("devices.coroPump.reposition", "support", bool("Reposition the pump to a correct inlet position (one-shot)."));
+add("devices.coroPump.exchange", "support", bool("Exchange the pump (one-shot): thrombus burden resets."), ["pg:devices.coroPump.exchange"]);
+add("devices.coroPump.purge.clearLine", "support", bool("Clear a kinked or blocked purge line (one-shot)."), ["pg:devices.coroPump.purge.clearLine"]);
+add("devices.coroPump.reposition", "support", bool("Reposition the pump to a correct inlet position (one-shot)."), ["pg:devices.coroPump.reposition"]);
 add("devices.coroPumpRp.level", "support", num(0, 9));
 add("devices.iabp.ratio", "support", en([1, 2, 3]), ["pg:devices.iabp.ratio"]);
 add("devices.iabp.inflateMs", "support", num(-100, 100), ["pg:devices.iabp.inflateMs"]);
