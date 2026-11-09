@@ -56,17 +56,16 @@ Built: `lmShock` (LM occlusion shock), `ecpella` (VF with ECMO plus pump), prese
 
 New:
 
-1. Protected high-risk PCI: EF 25 percent, LM or last vessel; when to place, how to wean.
+1. Protected high-risk PCI: EF 25 percent, LM or last vessel; place before the balloon, watch LVEDP and PCWP (MAP is held by the baroreflex), wean after.
 2. STEMI shock, unload before reperfusion.
 3. Suction alarm in hypovolemia: bleed at high P-level; fluids or lower P-level.
 4. Malposition, pulled back: placement signal goes flat, position alarm.
 5. Malposition, too deep: wall contact, suction, hemolysis.
 6. Purge pressure rising: early thrombosis; heparin purge or solution change.
 7. Hemolysis: dark urine and rising pfHb; find the cause (speed vs flow, suction, position, thrombus).
-8. RV failure with a left-only pump; CoroPump RP is the answer.
-9. Weaning: step down P-level against echo and pressor needs.
-10. Fulminant myocarditis: bridge to decision.
-11. Hemodynamically unstable VT during ablation.
+8. Weaning: step down P-level against echo and pressor needs.
+9. Fulminant myocarditis: bridge to decision.
+10. Hemodynamically unstable VT during ablation.
 
 ## Phases and who builds them
 
@@ -85,3 +84,5 @@ Exact purge numbers and thresholds, hemolysis clearance time constant, mesh dime
 Follows PR 87 (per-case monitor, order and lab catalog, safe skip) and the unmerged `case-screen` learner gate. The console is a workspace panel a case can list or the learner can order. Free hemoglobin is an ordered lab with turnaround and urine color a bedside item. The learner may treat (level, model, purge solution and heparin, reposition, clear line, exchange) and may not create disease (position, purge line, initial thrombus or hemoglobin). Cases start at "day 3 on the pump" through an author-only `initial` field. Details and tasks: the implementation plan.
 
 Update (case-screen): cases show no 3D heart (`heart3d` is retired), so the 3D pump is a free-play view. In a case the console carries the teaching: a malposition shows as a flat placement signal and a position alarm.
+
+Update 2026-11-09: the RV-failure case with a left-only pump is removed (ten cases). CoroPump RP remains in the product; see the plan's Deviations.
