@@ -73,12 +73,12 @@ export const COROPUMP_HEMOLYSIS = {
   clearanceHalfLifeMin: 6 * 60,
   urineClearBelow: 40,
   urineTeaBelow: 100,
-  shearThreshold: 8,
-  shearGainPerMin: 0.35,
+  shearThreshold: 10,
+  shearGainPerMin: 0.0011,
   suctionThreshold: 0.2,
-  suctionGainPerMin: 2.4,
-  deepPositionGainPerMin: 0.12,
-  thrombusGainPerMin: 0.8,
+  suctionGainPerMin: 0.9,
+  deepPositionGainPerMin: 0.058,
+  thrombusGainPerMin: 1.4,
   thrombusShearThreshold: 0.6,
 } as const;
 

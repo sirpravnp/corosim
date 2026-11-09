@@ -39,6 +39,7 @@ import { THORAX } from "../config/thorax";
 import { alternansAmplitude, PERICARDIUM } from "../config/pericardium";
 import { COROPUMP_HEMOLYSIS, COROPUMP_PURGE, IABP } from "../config/devices";
 import { purgeState } from "../physics/core/devices/purge";
+import { stepHemolysis, urineColor } from "../physics/core/devices/hemolysis";
 import { stepThrombus } from "../physics/core/devices/thrombus";
 import { SwitchableCoroPump, DevicesReadout } from "./coreDevices";
 import { PatientSpec, DeviceSpec, HeartSpec, PericardiumSpec, FluidSpec, VentilationSpec, normalizePatient, effectiveDevices, DEFAULT_COROPUMP, DEFAULT_IABP } from "./patient";
@@ -864,6 +865,16 @@ export class Simulation {
     const beat = this.impConsole?.last;
     const flowLpm = beat?.flow.mean ?? 0;
     const running = im.enabled;
+    const hemInp = {
+      level: im.level,
+      speedKrpm: im.params.speed,
+      flowLpm,
+      suctionFraction: beat?.suctionFraction ?? 0,
+      position: im.position,
+      thrombus: this.coroPumpThrombus,
+      running,
+    };
+    this.plasmaFreeHbMgDl = stepHemolysis(this.plasmaFreeHbMgDl, dtClinical, hemInp);
     if (!running) {
       this.coroPumpThrombus = 0;
       im.setBurden(0);
@@ -1154,7 +1165,7 @@ export class Simulation {
             flowMlHr: purge.flowMlHr,
             pressureMmHg: purge.pressureMmHg,
           },
-          hemolysis: { plasmaFreeHbMgDl: this.plasmaFreeHbMgDl, urineColor: this.plasmaFreeHbMgDl < 40 ? "clear" : this.plasmaFreeHbMgDl < 100 ? "tea" : "dark" },
+          hemolysis: { plasmaFreeHbMgDl: this.plasmaFreeHbMgDl, urineColor: urineColor(this.plasmaFreeHbMgDl) },
           thrombusBurden: this.coroPumpThrombus,
           waveform: on ? this.impConsole?.waveform ?? null : null,
           alarms: [...motorAlarms, ...purgeAlarms],
