@@ -1,4 +1,4 @@
-import { cannulaInertance, COROPUMP, COROPUMP_CONSOLE, COROPUMP_POSITION, COROPUMP_SUCTION, type CoroPumpModelName, type CoroPumpPosition } from "../../../config/devices";
+import { cannulaInertance, COROPUMP, COROPUMP_CONSOLE, COROPUMP_POSITION, COROPUMP_PUMP, COROPUMP_SUCTION, type CoroPumpModelName, type CoroPumpPosition } from "../../../config/devices";
 import { NODES } from "../../structuralGraph";
 import type { Model } from "../../structural";
 import type { Ctx, Engine, HeartEvent, NodeId, Rates } from "../types";
@@ -80,7 +80,7 @@ export class CoroPump extends RotaryPump {
     const p = this.params, Q = ctx.y[this.idx], pIn = ctx.P[this.from], vIn = ctx.V[this.from];
     const rIn = Q > 0 ? inflowResistance(p, pIn, vIn) : p.R0;
     out.flow(this.from, this.to, Q);
-    const headScale = 1 - 0.3 * this.thrombusBurden;
+    const headScale = 1 - COROPUMP_PUMP.thrombusHeadLossPerBurden * this.thrombusBurden;
     let rate = (pumpHead(p, p.speed, Q) * headScale - (ctx.P[this.to] - pIn) - rIn * Q) / p.L;
     const S = COROPUMP_SUCTION, qLim = Math.max(vIn - this.floorV, 0) / S.floorTau, ex = Q - qLim;
     if (ex > 0) rate = -ex / S.limitTau; // over the limit: the limiter overrides the head, however large
@@ -89,8 +89,8 @@ export class CoroPump extends RotaryPump {
   }
   taps(ctx: Ctx) {
     const t = super.taps(ctx), p = this.params;
-    const curScale = 1 + 0.4 * this.thrombusBurden;
-    const head = t.head * (1 - 0.3 * this.thrombusBurden);
+    const curScale = 1 + COROPUMP_PUMP.thrombusCurrentGainPerBurden * this.thrombusBurden;
+    const head = t.head * (1 - COROPUMP_PUMP.thrombusHeadLossPerBurden * this.thrombusBurden);
     return {
       ...t, head, level: this.lvl, current: motorCurrent(p.speed, head, t.Q) * curScale, placement: t.dP,
       pIn: ctx.P[this.from], pOut: ctx.P[this.to], suctionAlarm: t.suction, beat: this.beats,

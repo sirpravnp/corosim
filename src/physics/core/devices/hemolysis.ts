@@ -24,22 +24,22 @@ export function urineColor(pf: number): "clear" | "tea" | "dark" {
  * Patient plasma free hemoglobin (mg/dL), once per beat. Production rises with shear and suction; clears toward baseline when causes stop.
  */
 export function stepHemolysis(pf: number, dtClinicalMin: number, inp: HemolysisInput): number {
-  if (dtClinicalMin <= 0) return clamp(pf, 0, 500);
-  pf = clamp(pf, 0, 500);
   const C = COROPUMP_HEMOLYSIS;
+  if (dtClinicalMin <= 0) return clamp(pf, 0, C.maxPfHbMgDl);
+  pf = clamp(pf, 0, C.maxPfHbMgDl);
   const clearK = Math.log(2) / C.clearanceHalfLifeMin;
 
   let prod = 0;
   if (inp.running) {
-    const flow = Math.max(inp.flowLpm, 0.05);
+    const flow = Math.max(inp.flowLpm, C.minFlowLpm);
     const shear = inp.speedKrpm / flow;
     if (shear > C.shearThreshold) prod += C.shearGainPerMin * (shear - C.shearThreshold);
     if (inp.suctionFraction > C.suctionThreshold) prod += C.suctionGainPerMin * (inp.suctionFraction - C.suctionThreshold);
-    if (inp.position === "deep") prod += C.deepPositionGainPerMin * (1 + inp.level / 9);
+    if (inp.position === "deep") prod += C.deepPositionGainPerMin * (1 + inp.level / C.deepLevelDivisor);
     if (inp.thrombus > C.thrombusShearThreshold) prod += C.thrombusGainPerMin * (inp.thrombus - C.thrombusShearThreshold);
   }
 
   const excess = Math.max(0, pf - C.baselineMgDl);
   pf += prod * dtClinicalMin - excess * clearK * dtClinicalMin;
-  return clamp(pf, 0, 500);
+  return clamp(pf, 0, C.maxPfHbMgDl);
 }

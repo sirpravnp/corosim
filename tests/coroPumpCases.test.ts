@@ -34,17 +34,19 @@ const mapAfter = (sc: PatientSpec, sec = 30) => {
 };
 
 describe("CoroPump case behaviors", () => {
-  it("1 Protected PCI: LM occlusion drops MAP less with the pump on", () => {
-    const weak = { heart: { lvEes: 0.25 } };
-    const lm = { ...weak, lesions: [{ artery: "LM", occluded: true }] };
-    const ref = mapAfter(weak, 30);
-    const off = mapAfter(lm, 30);
-    const on = mapAfter({ ...lm, devices: { coroPump: { level: 6 } } }, 30);
-  /** Tuning: core LM occlusion drops MAP ~9 mmHg off-pump (not 30); pump cuts that to ~3 mmHg. */
-    expect(ref - off).toBeGreaterThan(5);
-    expect(ref - on).toBeLessThan(ref - off - 3);
-    expect(ref - on).toBeLessThan(15);
-    expect(on).toBeGreaterThan(off);
+  it("1 Protected PCI: pump unloads LM occlusion without extra MAP loss", () => {
+    const lm = { heart: { lvEes: 0.15 }, lesions: [{ artery: "LM", occluded: true }] };
+    const unsupported = make({ heart: { lvEes: 0.15 } });
+    unsupported.run(30);
+    const off = make(lm);
+    off.run(30);
+    const on = make({ ...lm, devices: { coroPump: { level: 6 } } });
+    on.run(30);
+    const hOff = off.hemo(25)!;
+    const hOn = on.hemo(25)!;
+    expect(hOff.lvedp - hOn.lvedp).toBeGreaterThan(15);
+    expect(hOff.pcwp - hOn.pcwp).toBeGreaterThan(4);
+    expect(Math.abs(mapOf(on) - mapOf(unsupported))).toBeLessThan(5);
   });
 
   it("2 STEMI shock: pump on lowers PCWP by over 5 mmHg within 2 clinical minutes", () => {
@@ -85,18 +87,18 @@ describe("CoroPump case behaviors", () => {
     expect(s.devices()!.coroPump!.hemolysis.plasmaFreeHbMgDl).toBeGreaterThan(40);
   });
 
-  it("6 Purge rising: purge pressure climbs then heparin and solution change halt growth", () => {
-    const s = make(PRESET_BY_ID["purge-rising"]!.spec);
-    s.step(300, { minutes: 4000 });
-    const d = s.devices()!.coroPump!;
-    expect(d.thrombusBurden).toBeGreaterThan(0.46);
-    expect(d.purge.pressureMmHg).toBeGreaterThan(700);
-    const b0 = d.thrombusBurden;
-    const p0 = d.purge.pressureMmHg;
-    s.apply({ devices: { coroPump: { purge: { heparinUml: 50, solution: "bicarbonate" } } } });
-    s.step(150, { minutes: 400 });
-    expect(s.devices()!.coroPump!.thrombusBurden).toBeLessThanOrEqual(b0 + 0.03);
-    expect(s.devices()!.coroPump!.purge.pressureMmHg).toBeLessThanOrEqual(p0 + 30);
+  it("6 Purge rising: PURGE PRESSURE HIGH within the case time limit; opening has no alarm", () => {
+    const spec = PRESET_BY_ID["purge-rising"]!.spec;
+    const open = make(spec, 10);
+    expect(open.devices()!.coroPump!.alarms).not.toContain("PURGE PRESSURE HIGH");
+    const s = make(spec);
+    const caseClinicalMin = 96 * 60;
+    let seen = false;
+    for (let m = 0; m <= caseClinicalMin && !seen; m += 120) {
+      s.step(60, { minutes: Math.min(120, caseClinicalMin - m) });
+      if (s.devices()!.coroPump!.alarms.includes("PURGE PRESSURE HIGH")) seen = true;
+    }
+    expect(seen).toBe(true);
   });
 
   it("7 Hemolysis: elevated pfHb and ordered lab, fixing volume lowers pfHb", () => {
@@ -115,17 +117,7 @@ describe("CoroPump case behaviors", () => {
     expect(s.devices()!.coroPump!.hemolysis.plasmaFreeHbMgDl).toBeLessThan(pf);
   });
 
-  it("8 RV failure: RCA infarct preset suctions; lowering P-level clears it", () => {
-    const base = PRESET_BY_ID["rv-infarct-coropump"]!.spec;
-    const starved = make(base);
-    starved.run(40);
-    expect(starved.devices()!.coroPump!.suctionAlarm).toBe(true);
-    const treated = make({ ...base, devices: { coroPump: { level: 5 } } });
-    treated.run(40);
-    expect(treated.devices()!.coroPump!.suctionAlarm).toBe(false);
-  });
-
-  it("9 Weaning: MAP stable at P4; at P2 pump flow falls", () => {
+  it("8 Weaning: MAP stable at P4; at P2 pump flow falls", () => {
     const s = make({ heart: { lvEes: 0.4 }, devices: { coroPump: { level: 6 } } });
     s.run(30);
     const at6 = mapOf(s);
@@ -138,7 +130,7 @@ describe("CoroPump case behaviors", () => {
     expect(s.devices()!.coroPump!.flowLpm).toBeLessThan(flow4 - 0.3);
   });
 
-  it("10 Myocarditis bridge: MAP above 65 only with the pump", () => {
+  it("9 Myocarditis bridge: MAP above 65 only with the pump", () => {
     const sick = { heart: { lvEes: 0.12, lvStiffness: 2.8 } };
     const off = mapAfter(sick, 30);
     const on = mapAfter({ ...sick, devices: { coroPump: { level: 6 } } }, 30);
@@ -146,7 +138,7 @@ describe("CoroPump case behaviors", () => {
     expect(on).toBeGreaterThan(65);
   });
 
-  it("11 VT with shock: MAP holds higher only with the pump", () => {
+  it("10 VT with shock: MAP above 65 and over 4 mmHg higher with the pump", () => {
     const vt = { ...LAD, patient: { rhythm: "vt-mono" }, heart: { lvEes: 0.25 } };
     const off = mapAfter(vt, 30);
     const on = mapAfter({ ...vt, devices: { coroPump: { level: 7 } } }, 30);

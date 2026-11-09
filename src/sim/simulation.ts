@@ -1180,6 +1180,11 @@ export class Simulation {
     };
   }
 
+  /** Plasma free hemoglobin, mg/dL. Persists after pump removal; valid whether or not a pump is placed. */
+  plasmaFreeHb(): number {
+    return this.plasmaFreeHbMgDl;
+  }
+
   /**
    * `circ` from the live heart, given the legacy `circulation()` result `c` (which supplies only the ischemic fractions, the
    * rate the rhythm implies, the support's oxygen demand factor). From the smoothed beats (time constant `ACS_CORE.smoothTau`):

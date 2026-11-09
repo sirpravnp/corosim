@@ -47,6 +47,8 @@ export const COROPUMP_PURGE = {
   alarmPressureHigh: 1000,
   alarmFlowLow: 5,
   defaultHeparinUml: 25,
+  /** Purge resistance multiplier 1 + k·thrombus² on a clear line. [assumed] */
+  thrombusResistanceQuadratic: 3,
 } as const;
 
 /** Legacy stub exports used before simulation wires purgeState. */
@@ -80,6 +82,15 @@ export const COROPUMP_HEMOLYSIS = {
   deepPositionGainPerMin: 0.058,
   thrombusGainPerMin: 1.4,
   thrombusShearThreshold: 0.6,
+  minFlowLpm: 0.05,
+  maxPfHbMgDl: 500,
+  deepLevelDivisor: 9,
+} as const;
+
+/** Rotor head and console current vs thrombus burden. [assumed] */
+export const COROPUMP_PUMP = {
+  thrombusHeadLossPerBurden: 0.3,
+  thrombusCurrentGainPerBurden: 0.4,
 } as const;
 
 /** Stub free hemoglobin baseline (mg/dL). [assumed] */
