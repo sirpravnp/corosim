@@ -37,7 +37,7 @@ import { Thorax } from "../physics/core/thorax";
 import type { FromModelOptions } from "../physics/core/fromModel";
 import { THORAX } from "../config/thorax";
 import { alternansAmplitude, PERICARDIUM } from "../config/pericardium";
-import { IABP } from "../config/devices";
+import { COROPUMP_HEMOLYSIS_STUB, COROPUMP_PURGE_STUB, IABP } from "../config/devices";
 import { SwitchableCoroPump, DevicesReadout } from "./coreDevices";
 import { PatientSpec, DeviceSpec, HeartSpec, PericardiumSpec, FluidSpec, VentilationSpec, normalizePatient, effectiveDevices, DEFAULT_COROPUMP, DEFAULT_IABP } from "./patient";
 import { VolumeExchange } from "../physics/core/volume";
@@ -1063,16 +1063,32 @@ export class Simulation {
     return {
       ...(ec && te ? { ecmo: { on: true, drain: ec.drain, flowLpm: te.flow, targetLpm: te.targetLpm, rpm: te.rpm, sweepLpm: te.sweepLpm, fio2: te.fio2, suctionLevel: te.suctionLevel, suctionAlarm: te.suctionAlarm > 0, membraneDpMmHg: te.membraneDp, headMmHg: te.head } } : {}),
       ...(rp && tr ? { coroPumpRp: { on: rp.level > 0, level: rp.level, speedKrpm: rp.params.speed, flowLpm: cr?.flow.mean ?? tr.flow, motorCurrentMa: cr?.current.mean ?? tr.current, placementMmHg: cr?.placement.mean ?? tr.placement, suctionAlarm: !!cr?.suctionAlarm || tr.suctionAlarm > 0 } } : {}),
-      coroPump: {
-        on, model: im.model, position: im.position, level: im.level, speedKrpm: on ? im.params.speed : 0,
-        flowLpm: on ? c?.flow.mean ?? ti.flow : 0, flowMinLpm: on ? c?.flow.min ?? ti.flow : 0, flowMaxLpm: on ? c?.flow.max ?? ti.flow : 0,
-        motorCurrentMa: on ? c?.current.mean ?? ti.current : 0, currentPulsatilityMa: on ? c?.pulsatility ?? 0 : 0,
-        placementMmHg: on ? c?.placement.mean ?? ti.placement : 0, placementAmplitudeMmHg: on ? c?.placement.amplitude ?? 0 : 0,
-        suctionLevel: on ? c?.suctionLevel ?? ti.suctionLevel : 0, suctionFraction: on ? c?.suctionFraction ?? 0 : 0, suctionAlarm: on && !!c?.suctionAlarm,
-        inletMeanMmHg: on ? c?.inlet.mean ?? ti.pIn : 0, inletMinMmHg: on ? c?.inlet.min ?? ti.pIn : 0, inletMaxMmHg: on ? c?.inlet.max ?? ti.pIn : 0, inletAmplitudeMmHg: on ? c?.inlet.amplitude ?? 0 : 0,
-        positionAlarm: on && !!c?.positionAlarm,
-        alarms: on ? [...(c?.positionAlarm ? ["COROPUMP POSITION WRONG: the inflow is in the aorta"] : []), ...(c?.suctionAlarm ? ["SUCTION: the inflow is collapsing onto the ventricular wall"] : [])] : [],
-      },
+      coroPump: (() => {
+        const cp = this.devSpec.coroPump ?? {};
+        const purgeSpec = cp.purge ?? {};
+        const purgeAlarms: string[] = [];
+        const motorAlarms = on ? [...(c?.positionAlarm ? ["COROPUMP POSITION WRONG: the inflow is in the aorta"] : []), ...(c?.suctionAlarm ? ["SUCTION: the inflow is collapsing onto the ventricular wall"] : [])] : [];
+        return {
+          on, model: im.model, position: im.position, level: im.level, speedKrpm: on ? im.params.speed : 0,
+          flowLpm: on ? c?.flow.mean ?? ti.flow : 0, flowMinLpm: on ? c?.flow.min ?? ti.flow : 0, flowMaxLpm: on ? c?.flow.max ?? ti.flow : 0,
+          motorCurrentMa: on ? c?.current.mean ?? ti.current : 0, currentPulsatilityMa: on ? c?.pulsatility ?? 0 : 0,
+          placementMmHg: on ? c?.placement.mean ?? ti.placement : 0, placementAmplitudeMmHg: on ? c?.placement.amplitude ?? 0 : 0,
+          suctionLevel: on ? c?.suctionLevel ?? ti.suctionLevel : 0, suctionFraction: on ? c?.suctionFraction ?? 0 : 0, suctionAlarm: on && !!c?.suctionAlarm,
+          inletMeanMmHg: on ? c?.inlet.mean ?? ti.pIn : 0, inletMinMmHg: on ? c?.inlet.min ?? ti.pIn : 0, inletMaxMmHg: on ? c?.inlet.max ?? ti.pIn : 0, inletAmplitudeMmHg: on ? c?.inlet.amplitude ?? 0 : 0,
+          positionAlarm: on && !!c?.positionAlarm,
+          purge: {
+            solution: purgeSpec.solution ?? "dextrose-heparin",
+            heparinUml: purgeSpec.heparinUml ?? 25,
+            line: purgeSpec.line ?? "clear",
+            flowMlHr: COROPUMP_PURGE_STUB.flowMlHr,
+            pressureMmHg: COROPUMP_PURGE_STUB.pressureMmHg,
+          },
+          hemolysis: { plasmaFreeHbMgDl: COROPUMP_HEMOLYSIS_STUB.plasmaFreeHbMgDl, urineColor: "clear" as const },
+          thrombusBurden: 0,
+          waveform: on ? this.impConsole?.waveform ?? null : null,
+          alarms: [...motorAlarms, ...purgeAlarms],
+        };
+      })(),
       iabp: {
         on: this.support.iabp, ratio: p.ratio, inflateMs: p.inflateMs, deflateMs: p.deflateMs, volumeMl: { ...DEFAULT_IABP, ...this.devSpec.iabp }.volumeMl,
         balloonVolumeMl: tb.vb, fill: tb.fill, assisted: tb.assisted > 0,

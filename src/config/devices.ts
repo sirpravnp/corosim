@@ -32,6 +32,13 @@ export const cannulaInertance = (lengthCm: number, diameterMm: number): number =
 
 export type CoroPumpModelName = "2.5" | "CP" | "5.5";
 export type CoroPumpPosition = "correct" | "aortic" | "deep";
+export type PurgeSolution = "dextrose-heparin" | "bicarbonate";
+export type PurgeLine = "clear" | "kinked" | "blocked";
+
+/** Stub purge readout until C3 (`purgeState` replaces these). [assumed] */
+export const COROPUMP_PURGE_STUB = { flowMlHr: 15, pressureMmHg: 450 } as const;
+/** Stub free hemoglobin baseline (mg/dL). [assumed] */
+export const COROPUMP_HEMOLYSIS_STUB = { plasmaFreeHbMgDl: 2 } as const;
 
 export interface CoroPumpDef {
   /** Rotor speed (krpm) at P-level 0..9 (P0 = off). Linear from `speedP1` to `speedP9` for P1..P9. [assumed] */

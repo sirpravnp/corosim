@@ -114,9 +114,25 @@ export interface CoroPumpBeat {
  * Beat statistics of an `CoroPump` in an engine: samples its taps every `COROPUMP_CONSOLE.strideS` seconds and closes a beat when the device's
  * `beat` counter advances (it counts ventricular events). `last` is the most recent completed beat, `onBeat` calls back with each one.
  */
+const resample100 = (xs: number[]): number[] => {
+  if (!xs.length) return Array.from({ length: 100 }, () => 0);
+  const out: number[] = [];
+  for (let i = 0; i < 100; i++) {
+    const t = (i / 99) * (xs.length - 1);
+    const j = Math.floor(t);
+    const f = t - j;
+    out.push(xs[j]! * (1 - f) + (xs[j + 1] ?? xs[j]!) * f);
+  }
+  return out;
+};
+
 export class CoroPumpConsole {
   last: CoroPumpBeat | null = null;
+  /** Last beat inlet pressure and motor current, 100 points each (CoroPump contract). */
+  waveform: { dtMs: number; inletMmHg: number[]; currentMa: number[] } | null = null;
   private acc = { n: 0, q: [0, 0, -Infinity] as number[], i: [0, 0, -Infinity] as number[], d: [0, 0, -Infinity] as number[], p: [0, 0, -Infinity] as number[], s: 0, lv: 0 };
+  private inletTrace: number[] = [];
+  private currentTrace: number[] = [];
   private beat = NaN; private next = -Infinity;
   private readonly off: () => void;
   private listeners: ((b: CoroPumpBeat) => void)[] = [];
@@ -130,11 +146,17 @@ export class CoroPumpConsole {
       if (Number.isNaN(this.beat)) this.beat = t.beat;
       if (t.beat !== this.beat) { this.close(s.t, t.level); this.beat = t.beat; }
       const a = this.acc; a.n++;
+      this.inletTrace.push(t.pIn);
+      this.currentTrace.push(t.current);
       for (const [arr, x] of [[a.q, t.flow], [a.i, t.current], [a.d, t.placement], [a.p, t.pIn]] as const) { arr[0] += x; arr[1] = Math.min(arr[1], x); arr[2] = Math.max(arr[2], x); }
       a.s += t.suctionAlarm; a.lv = Math.max(a.lv, t.suctionLevel);
     });
   }
-  private reset() { this.acc = { n: 0, q: [0, Infinity, -Infinity], i: [0, Infinity, -Infinity], d: [0, Infinity, -Infinity], p: [0, Infinity, -Infinity], s: 0, lv: 0 }; }
+  private reset() {
+    this.acc = { n: 0, q: [0, Infinity, -Infinity], i: [0, Infinity, -Infinity], d: [0, Infinity, -Infinity], p: [0, Infinity, -Infinity], s: 0, lv: 0 };
+    this.inletTrace = [];
+    this.currentTrace = [];
+  }
   private close(t: number, level: number) {
     const a = this.acc;
     if (a.n >= 5) {
@@ -142,6 +164,8 @@ export class CoroPumpConsole {
       const d = stat(a.d), pin = stat(a.p), frac = a.s / a.n, flow = stat(a.q), C = COROPUMP_CONSOLE;
       this.last = { t, level, flow, current: stat(a.i), pulsatility: a.i[2] - a.i[1], placement: { ...d, amplitude: d.max - d.min },
         inlet: { ...pin, amplitude: pin.max - pin.min }, positionAlarm: level > 0 && flow.mean > C.positionMinFlowLpm && d.max - d.min < C.positionAmpMmHg, suctionFraction: frac, suctionLevel: a.lv, suctionAlarm: a.lv >= COROPUMP_CONSOLE.alarmLevel };
+      const durS = a.n * COROPUMP_CONSOLE.strideS;
+      this.waveform = { dtMs: (durS / 100) * 1000, inletMmHg: resample100(this.inletTrace), currentMa: resample100(this.currentTrace) };
       for (const l of this.listeners) l(this.last);
     }
     this.reset();
