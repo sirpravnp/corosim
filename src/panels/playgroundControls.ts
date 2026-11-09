@@ -8,7 +8,7 @@
 import { GROUP_INFO, addBolus, bolusTotalMl, patchDevice, patchSection, valvePresetModified, withBloodVolume, withValvePreset } from "../sim/playground";
 import type { FieldGroupInfo, PlaygroundState } from "../sim/playground";
 import { PATIENT_RANGES } from "../sim/patient";
-import type { FluidKind, ImpellaModel } from "../sim/patient";
+import type { FluidKind, CoroPumpModel } from "../sim/patient";
 import { PRESETS, PRESET_BY_ID } from "../sim/presets";
 import { LESIONS, LESION_BY_ID } from "../sim/structural";
 import type { LesionId } from "../sim/structural";
@@ -32,7 +32,7 @@ export interface PlaygroundHost {
   reseed?(seed: number): void;
 }
 export interface PlaygroundInfo { warnings: readonly string[]; link: string; presetId: string | null; scenario?: Scenario }
-export type MountId = "patient" | "valves" | "pericardium" | "volume" | "ventilation" | "iabp" | "impella" | "ecmo";
+export type MountId = "patient" | "valves" | "pericardium" | "volume" | "ventilation" | "iabp" | "coroPump" | "ecmo";
 export interface PlaygroundUi {
   /** The containers for the settings dock's tabs. */
   mounts: Record<MountId, HTMLElement>;
@@ -58,7 +58,7 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
   /** The field path (sim/registry.ts) of every control built here: the parity test checks each one has a field. */
   const fields: string[] = ["action:preset"];
   const flat = () => h("div", { className: "ctl-flat" }); // the Support sections' rows: cells of the section's own label | control | value grid
-  const mounts = { patient: h("div", { className: "pg" }), valves: h("div", { className: "pg" }), pericardium: h("div", { className: "pg" }), volume: flat(), ventilation: flat(), iabp: flat(), impella: flat(), ecmo: flat() } as Record<MountId, HTMLElement>;
+  const mounts = { patient: h("div", { className: "pg" }), valves: h("div", { className: "pg" }), pericardium: h("div", { className: "pg" }), volume: flat(), ventilation: flat(), iabp: flat(), coroPump: flat(), ecmo: flat() } as Record<MountId, HTMLElement>;
   /** How the building blocks lay out: stacked in a group, or as the cells of a Support row (label | control | value); `sub` indents the label. */
   let layout: "stack" | "row" | "sub" = "stack";
   let el = mounts.patient; // the container the groups below are added to
@@ -215,15 +215,15 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     slider(body, "ventilation.peep", "PEEP", R.peep[0], R.peep[1], 1, (s) => s.ventilation?.peep, 0, (v) => `${v} cmH₂O`, (s, v) => patchSection(s, "ventilation", { peep: v || undefined }));
     slider(body, "ventilation.tidalMlKg", "Tidal volume", R.tidalMlKg[0], R.tidalMlKg[1], 1, (s) => s.ventilation?.tidalMlKg, 8, (v) => `${v} ml/kg`, (s, v) => patchSection(s, "ventilation", { tidalMlKg: v === 8 ? undefined : v }));
   }
-  // ---- devices: the settings of each, shown only while it is on (its switch is the page's: m_impella, m_iabp, m_ecmo) -------
+  // ---- devices: the settings of each, shown only while it is on (its switch is the page's: m_coroPump, m_iabp, m_ecmo) -------
   layout = "sub";
   {
     /** A device's settings, shown only while it is switched on. */
     const settings = (body: HTMLElement, on: (s: PlaygroundState) => boolean) => { const d = h("div", { className: "pg-dev" }); body.append(d); syncs.push((s) => { d.hidden = !on(s); }); return d; };
-    const imp = settings(mounts.impella, (s) => !!s.devices?.impella);
-    choice<ImpellaModel>(imp, "devices.impella.model", "Model", [["2.5", "Impella 2.5"], ["CP", "Impella CP"], ["5.5", "Impella 5.5"]], (s) => s.devices?.impella?.model, "CP", (s, m) => patchDevice(s, "impella", { model: m }));
-    slider(imp, "devices.impella.level", "P-level", R.impellaLevel[0], R.impellaLevel[1], 1, (s) => s.devices?.impella?.level, 6, (v) => `P${v}`, (s, v) => patchDevice(s, "impella", { level: v }));
-    choice(imp, "devices.impella.position", "Position", [["correct", "Correct"], ["aortic", "Too far out"], ["deep", "Too deep"]] as const, (s) => s.devices?.impella?.position, "correct", (s, p) => patchDevice(s, "impella", { position: p }));
+    const imp = settings(mounts.coroPump, (s) => !!s.devices?.coroPump);
+    choice<CoroPumpModel>(imp, "devices.coroPump.model", "Model", [["2.5", "CoroPump 2.5"], ["CP", "CoroPump CP"], ["5.5", "CoroPump 5.5"]], (s) => s.devices?.coroPump?.model, "CP", (s, m) => patchDevice(s, "coroPump", { model: m }));
+    slider(imp, "devices.coroPump.level", "P-level", R.coroPumpLevel[0], R.coroPumpLevel[1], 1, (s) => s.devices?.coroPump?.level, 6, (v) => `P${v}`, (s, v) => patchDevice(s, "coroPump", { level: v }));
+    choice(imp, "devices.coroPump.position", "Position", [["correct", "Correct"], ["aortic", "Too far out"], ["deep", "Too deep"]] as const, (s) => s.devices?.coroPump?.position, "correct", (s, p) => patchDevice(s, "coroPump", { position: p }));
     const iabp = settings(mounts.iabp, (s) => !!s.devices?.iabp);
     choice(iabp, "devices.iabp.ratio", "Ratio", [[1, "1:1"], [2, "1:2"], [3, "1:3"]] as const, (s) => s.devices?.iabp?.ratio, 1, (s, r) => patchDevice(s, "iabp", { ratio: r }));
     const timing = (v: number) => (v === 0 ? "correct" : `${v > 0 ? "late" : "early"} ${Math.abs(v)} ms`);

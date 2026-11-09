@@ -178,7 +178,7 @@
 {"t":57,"map":56.9,"sbp":79.8,"dbp":45.4,"hr":42,"sv":48.2,"co":2.02,"circulation":"shock","rhythm":"complete heart block, junctional escape"},
 {"t":58,"map":56.7,"sbp":79.3,"dbp":45.3,"hr":42,"sv":47.5,"co":2,"circulation":"shock","rhythm":"complete heart block, junctional escape"},
 {"t":59,"map":56.6,"sbp":79.5,"dbp":45.2,"hr":42.1,"sv":48,"co":2.02,"circulation":"shock","rhythm":"complete heart block, junctional escape"},
-{"t":60,"map":56,"sbp":78.4,"dbp":44.7,"hr":42.2,"sv":47.2,"co":1.99,"circulation":"shock","rhythm":"complete heart block, junctional escape"}]},"lad-occlusion-all-support":{"scenario":{"lesions":[{"artery":"LAD","occluded":true,"position":0.2}],"support":{"fluids":1,"norepinephrine":0.5,"iabp":true,"impella":true}},"trace":[
+{"t":60,"map":56,"sbp":78.4,"dbp":44.7,"hr":42.2,"sv":47.2,"co":1.99,"circulation":"shock","rhythm":"complete heart block, junctional escape"}]},"lad-occlusion-all-support":{"scenario":{"lesions":[{"artery":"LAD","occluded":true,"position":0.2}],"support":{"fluids":1,"norepinephrine":0.5,"iabp":true,"coroPump":true}},"trace":[
 {"t":1,"map":94.2,"sbp":108.6,"dbp":87.1,"hr":52.6,"sv":30.1,"co":4.58,"circulation":"stable","rhythm":"sinus"},
 {"t":2,"map":95.8,"sbp":108.1,"dbp":89.7,"hr":62.9,"sv":25.7,"co":4.62,"circulation":"stable","rhythm":"sinus"},
 {"t":3,"map":97.4,"sbp":107.3,"dbp":92.5,"hr":78.2,"sv":20.6,"co":4.62,"circulation":"stable","rhythm":"sinus"},

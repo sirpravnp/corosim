@@ -7,8 +7,8 @@ describe("builder presets", () => {
     for (const p of [...START_PRESETS, ...CHANGE_PRESETS]) expect(normalizePatient(p.patch).warnings, p.label).toEqual([]);
   });
   it("merge into what is there", () => {
-    const a = mergePatch({ devices: { impella: { level: 6 } } }, { devices: { ecmo: { flowLpm: 4 } } });
-    expect(a).toEqual({ devices: { impella: { level: 6 }, ecmo: { flowLpm: 4 } } });
+    const a = mergePatch({ devices: { coroPump: { level: 6 } } }, { devices: { ecmo: { flowLpm: 4 } } });
+    expect(a).toEqual({ devices: { coroPump: { level: 6 }, ecmo: { flowLpm: 4 } } });
     expect(mergePatch({ lesions: [{ artery: "LAD" }] }, { lesions: [{ artery: "RCA" }] })).toEqual({ lesions: [{ artery: "RCA" }] });
   });
 });

@@ -204,29 +204,29 @@ function singles(): State[] {
   out.push(mx("iabp-vol-20", "IABP balloon 20 ml", { devices: { iabp: { ratio: 1, volumeMl: 20 } } }));
   out.push(mx("iabp-vol-40", "IABP balloon 40 ml", { devices: { iabp: { ratio: 1, volumeMl: 40 } } }));
 
-  // Impella CP on healthy via support dial (P6 correct)
-  out.push(mx("impella-cp-p6", "Impella CP level 6, correct position, healthy", { support: { impella: true } }));
+  // CoroPump CP on healthy via support dial (P6 correct)
+  out.push(mx("coroPump-cp-p6", "CoroPump CP level 6, correct position, healthy", { support: { coroPump: true } }));
 
   for (const [slug, model, title] of [
-    ["impella-2p5-p9", "2.5", "Impella 2.5 at P9, healthy"],
-    ["impella-cp-p9", "CP", "Impella CP at P9, healthy"],
-    ["impella-5p5-p9", "5.5", "Impella 5.5 at P9, healthy"],
+    ["coroPump-2p5-p9", "2.5", "CoroPump 2.5 at P9, healthy"],
+    ["coroPump-cp-p9", "CP", "CoroPump CP at P9, healthy"],
+    ["coroPump-5p5-p9", "5.5", "CoroPump 5.5 at P9, healthy"],
   ] as const) {
-    out.push(mx(slug, title, { devices: { impella: { model, level: 9, position: "correct" } } }));
+    out.push(mx(slug, title, { devices: { coroPump: { model, level: 9, position: "correct" } } }));
   }
 
-  out.push(mx("impella-pos-aortic", "Impella CP P6, aortic position, healthy", {
-    devices: { impella: { model: "CP", level: 6, position: "aortic" } },
+  out.push(mx("coroPump-pos-aortic", "CoroPump CP P6, aortic position, healthy", {
+    devices: { coroPump: { model: "CP", level: 6, position: "aortic" } },
   }));
-  out.push(mx("impella-pos-deep", "Impella CP P6, deep position, healthy", {
-    devices: { impella: { model: "CP", level: 6, position: "deep" } },
+  out.push(mx("coroPump-pos-deep", "CoroPump CP P6, deep position, healthy", {
+    devices: { coroPump: { model: "CP", level: 6, position: "deep" } },
   }));
-  out.push(mx("impella-p0-device", "Impella CP present at P0, healthy", {
-    devices: { impella: { model: "CP", level: 0, position: "correct" } },
+  out.push(mx("coroPump-p0-device", "CoroPump CP present at P0, healthy", {
+    devices: { coroPump: { model: "CP", level: 0, position: "correct" } },
   }));
 
-  out.push(mx("impella-rp-p0", "Impella RP present at level 0, healthy", { devices: { impellaRp: { level: 0 } } }));
-  out.push(mx("impella-rp-p9", "Impella RP level 9, healthy", { devices: { impellaRp: { level: 9 } } }));
+  out.push(mx("coroPump-rp-p0", "CoroPump RP present at level 0, healthy", { devices: { coroPumpRp: { level: 0 } } }));
+  out.push(mx("coroPump-rp-p9", "CoroPump RP level 9, healthy", { devices: { coroPumpRp: { level: 9 } } }));
 
   for (const [slug, flow, title] of [
     ["ecmo-2", 2, "VA-ECMO 2 L/min, healthy"],
@@ -239,10 +239,10 @@ function singles(): State[] {
   out.push(mx("ecmo-sweep-5", "VA-ECMO 4 L/min, sweep 5", { devices: { ecmo: { flowLpm: 4, sweepLpm: 5, fio2: 0.6 } } }));
   out.push(mx("ecmo-fio2-0p21", "VA-ECMO 4 L/min, FiO2 0.21", { devices: { ecmo: { flowLpm: 4, sweepLpm: 2, fio2: 0.21 } } }));
   out.push(mx("ecmo-fio2-1", "VA-ECMO 4 L/min, FiO2 1", { devices: { ecmo: { flowLpm: 4, sweepLpm: 2, fio2: 1 } } }));
-  out.push(mx("ecpella", "ECPELLA: ECMO 4 L/min plus Impella CP P6", {
+  out.push(mx("ecpella", "ECPELLA: ECMO 4 L/min plus CoroPump CP P6", {
     devices: {
       ecmo: { flowLpm: 4, sweepLpm: 2, fio2: 0.6 },
-      impella: { model: "CP", level: 6, position: "correct" },
+      coroPump: { model: "CP", level: 6, position: "correct" },
     },
   }));
 
@@ -297,14 +297,14 @@ function interactions(): State[] {
   }));
 
   // Section 3.6 — devices with coronary lesions
-  out.push(mx("lad-impella-correct", "Proximal LAD occlusion, Impella CP P6 correct", {
-    lesions: [ladOcc], devices: { impella: { model: "CP", level: 6, position: "correct" } },
+  out.push(mx("lad-coroPump-correct", "Proximal LAD occlusion, CoroPump CP P6 correct", {
+    lesions: [ladOcc], devices: { coroPump: { model: "CP", level: 6, position: "correct" } },
   }));
-  out.push(mx("lad-impella-aortic", "Proximal LAD occlusion, Impella CP aortic position", {
-    lesions: [ladOcc], devices: { impella: { model: "CP", level: 6, position: "aortic" } },
+  out.push(mx("lad-coropump-aortic", "Proximal LAD occlusion, CoroPump CP aortic position", {
+    lesions: [ladOcc], devices: { coroPump: { model: "CP", level: 6, position: "aortic" } },
   }));
-  out.push(mx("lad-impella-deep", "Proximal LAD occlusion, Impella CP deep position", {
-    lesions: [ladOcc], devices: { impella: { model: "CP", level: 6, position: "deep" } },
+  out.push(mx("lad-coropump-deep", "Proximal LAD occlusion, CoroPump CP deep position", {
+    lesions: [ladOcc], devices: { coroPump: { model: "CP", level: 6, position: "deep" } },
   }));
 
   out.push(mx("lad-iabp-timing0", "Proximal LAD occlusion, IABP 1:1 correct timing", {
@@ -325,8 +325,8 @@ function interactions(): State[] {
     bloodLoss: 0.45, devices: { ecmo: { flowLpm: 4, sweepLpm: 2, fio2: 0.6 } },
   }));
 
-  out.push(mx("impella-support-p0", "Impella support on with CP level 0", {
-    support: { impella: true }, devices: { impella: { model: "CP", level: 0, position: "correct" } },
+  out.push(mx("coroPump-support-p0", "CoroPump support on with CP level 0", {
+    support: { coroPump: true }, devices: { coroPump: { model: "CP", level: 0, position: "correct" } },
   }));
 
   return out;

@@ -68,13 +68,13 @@ describe("the right ventricle depends on preload", () => {
 
 describe("mechanical support", () => {
   it("a microaxial pump raises output and unloads the ventricle", () => {
-    const a = circulation(sites, lad.sev, ladR), b = circulation(sites, lad.sev, ladR, sup({ impella: true }));
+    const a = circulation(sites, lad.sev, ladR), b = circulation(sites, lad.sev, ladR, sup({ coroPump: true }));
     expect(b.cardiacOutput).toBeGreaterThan(a.cardiacOutput + 1);
     expect(b.deviceFlow).toBeGreaterThan(2);
     expect(b.demandFactor).toBeLessThan(0.8);
   });
   it("but it moves less when the right ventricle is failing", () => {
-    const l = circulation(sites, lad.sev, ladR, sup({ impella: true })), r = circulation(sites, rca.sev, rcaR, sup({ impella: true }));
+    const l = circulation(sites, lad.sev, ladR, sup({ coroPump: true })), r = circulation(sites, rca.sev, rcaR, sup({ coroPump: true }));
     expect(r.deviceFlow).toBeLessThan(l.deviceFlow);
   });
   it("a balloon pump augments coronary perfusion pressure without changing MAP much", () => {

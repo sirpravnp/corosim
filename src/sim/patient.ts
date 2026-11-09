@@ -1,3 +1,4 @@
+import { migrateLegacyKeys } from "./aliases";
 import { normalizeScenario } from "./scenario";
 import type { Normalized, Scenario } from "./scenario";
 import { clampStructuralSpec } from "../physics/structural";
@@ -21,7 +22,7 @@ export interface PatientSpec extends Scenario {
   septum?: boolean;
   fluids?: FluidSpec;
   ventilation?: VentilationSpec;
-  /** Mechanical support with settings. `support.iabp` / `support.impella` (booleans) stay valid and mean the defaults here. */
+  /** Mechanical support with settings. `support.iabp` / `support.coroPump` (booleans) stay valid and mean the defaults here. */
   devices?: DeviceSpec;
 }
 
@@ -63,10 +64,10 @@ export interface VentilationSpec {
   tidalMlKg?: number;
 }
 
-export type ImpellaModel = "2.5" | "CP" | "5.5";
+export type CoroPumpModel = "2.5" | "CP" | "5.5";
 export interface DeviceSpec {
-  impella?: { model?: ImpellaModel; level?: number /* P-level 0..9 */; position?: "correct" | "aortic" | "deep" };
-  impellaRp?: { level?: number };
+  coroPump?: { model?: CoroPumpModel; level?: number /* P-level 0..9 */; position?: "correct" | "aortic" | "deep" };
+  coroPumpRp?: { level?: number };
   iabp?: {
     ratio?: 1 | 2 | 3;
     /** Timing offsets from correct timing, ms: negative is early. */
@@ -86,13 +87,13 @@ export const PATIENT_RANGES = {
   effusionMl: [0, 2000], drainMl: [0, 2000], effusionRateMlMin: [0, 100], stiffness: [0.2, 10], // pericardium: ml; ml per clinical minute; multiple of normal
   fluidMl: [0, 5000], fluidAtMin: [0, 1440], fluidOverMin: [0, 1440], hemorrhageMlMin: [0, 500], capillaryLeak: [0, 1], // fluids (a day at most)
   peep: [0, 25], tidalMlKg: [2, 15], // ventilation: cmH2O; ml per kg ideal weight
-  impellaLevel: [0, 9], // P-level
+  coroPumpLevel: [0, 9], // P-level
   iabpOffsetMs: [-100, 100], iabpVolumeMl: [0, 50], // timing offset from correct, ms; balloon volume, ml
   ecmoFlowLpm: [0, 7], ecmoSweepLpm: [0, 10], fio2: [0.21, 1],
 } as const;
 
-/** Defaults the legacy booleans `support.iabp` / `support.impella` stand for: Impella CP at P-level 6 in the correct position; IABP 1:1 at correct timing, 40 ml. */
-export const DEFAULT_IMPELLA = { model: "CP", level: 6, position: "correct" } as const;
+/** Defaults the legacy booleans `support.iabp` / `support.coroPump` stand for: CoroPump CP at P-level 6 in the correct position; IABP 1:1 at correct timing, 40 ml. */
+export const DEFAULT_COROPUMP = { model: "CP", level: 6, position: "correct" } as const;
 export const DEFAULT_IABP = { ratio: 1, inflateMs: 0, deflateMs: 0, volumeMl: 40 } as const;
 
 export interface NormalizedPatient {
@@ -107,8 +108,10 @@ const isObj = (x: unknown): x is Record<string, unknown> => typeof x === "object
 
 /** Validate and clamp the fields a PatientSpec adds to a Scenario. Invalid values are dropped with a warning, never thrown. */
 export function normalizePatient(input: PatientSpec = {}): NormalizedPatient {
-  const n = normalizeScenario(input), warnings = [...n.warnings];
-  const spec: PatientSpec = { ...input };
+  const migrated = migrateLegacyKeys(input);
+  const base = migrated.spec as PatientSpec;
+  const n = normalizeScenario(base), warnings = [...n.warnings, ...migrated.warnings];
+  const spec: PatientSpec = { ...base };
   for (const k of ["heart", "pericardium", "septum", "fluids", "ventilation", "devices"] as const) delete spec[k];
   delete (spec as Record<string, unknown>).kind;
 
@@ -136,11 +139,11 @@ export function normalizePatient(input: PatientSpec = {}): NormalizedPatient {
   const R = PATIENT_RANGES;
 
   // Neonates left the Simulator (they stay on the Structural page): an old link or call that says so opens as the adult.
-  const kindIn = (input as Record<string, unknown>).kind;
+  const kindIn = (base as Record<string, unknown>).kind;
   if (kindIn !== undefined && kindIn !== "adult") warnings.push(kindIn === "neonate" ? "kind \"neonate\" is no longer simulated here (newborn lesions are on the Structural page); the patient is an adult" : "kind is not used; dropped");
 
   // heart: the structural engine's own clamping decides the ranges; anything it changes or unsets is reported
-  const heart = section(input.heart, "heart");
+  const heart = section(base.heart, "heart");
   if (heart) {
     const known = new Set<string>(HEART_KEYS);
     const kept: Record<string, unknown> = {};
@@ -158,7 +161,7 @@ export function normalizePatient(input: PatientSpec = {}): NormalizedPatient {
     const h = compact(out); if (h) spec.heart = h as HeartSpec;
   }
 
-  const peri = section(input.pericardium, "pericardium");
+  const peri = section(base.pericardium, "pericardium");
   if (peri) {
     const p = compact<PericardiumSpec>({
       effusionMl: num(peri, "effusionMl", "pericardium", R.effusionMl), effusionRateMlMin: num(peri, "effusionRateMlMin", "pericardium", R.effusionRateMlMin),
@@ -167,10 +170,10 @@ export function normalizePatient(input: PatientSpec = {}): NormalizedPatient {
     if (p) spec.pericardium = p;
   }
 
-  const septum = bool(input as Record<string, unknown>, "septum", "patient");
+  const septum = bool(base as Record<string, unknown>, "septum", "patient");
   if (septum !== undefined) spec.septum = septum;
 
-  const fl = section(input.fluids, "fluids");
+  const fl = section(base.fluids, "fluids");
   if (fl) {
     const given: FluidDose[] = [];
     if (fl.given !== undefined) {
@@ -193,19 +196,19 @@ export function normalizePatient(input: PatientSpec = {}): NormalizedPatient {
     if (f) spec.fluids = f;
   }
 
-  const vent = section(input.ventilation, "ventilation");
+  const vent = section(base.ventilation, "ventilation");
   if (vent) {
     const v = compact<VentilationSpec>({ mode: oneOf(vent, "mode", "ventilation", ["spontaneous", "positive"] as const), peep: num(vent, "peep", "ventilation", R.peep), tidalMlKg: num(vent, "tidalMlKg", "ventilation", R.tidalMlKg) });
     if (v) spec.ventilation = v;
   }
 
-  const dev = section(input.devices, "devices");
+  const dev = section(base.devices, "devices");
   if (dev) {
     const out: DeviceSpec = {};
-    const imp = section(dev.impella, "devices.impella");
-    if (imp) out.impella = compact({ model: oneOf(imp, "model", "devices.impella", ["2.5", "CP", "5.5"] as const), level: num(imp, "level", "devices.impella", R.impellaLevel), position: oneOf(imp, "position", "devices.impella", ["correct", "aortic", "deep"] as const) }) ?? {};
-    const rp = section(dev.impellaRp, "devices.impellaRp");
-    if (rp) out.impellaRp = compact({ level: num(rp, "level", "devices.impellaRp", R.impellaLevel) }) ?? {};
+    const imp = section(dev.coroPump, "devices.coroPump");
+    if (imp) out.coroPump = compact({ model: oneOf(imp, "model", "devices.coroPump", ["2.5", "CP", "5.5"] as const), level: num(imp, "level", "devices.coroPump", R.coroPumpLevel), position: oneOf(imp, "position", "devices.coroPump", ["correct", "aortic", "deep"] as const) }) ?? {};
+    const rp = section(dev.coroPumpRp, "devices.coroPumpRp");
+    if (rp) out.coroPumpRp = compact({ level: num(rp, "level", "devices.coroPumpRp", R.coroPumpLevel) }) ?? {};
     const ia = section(dev.iabp, "devices.iabp");
     if (ia) out.iabp = compact({ ratio: oneOf(ia, "ratio", "devices.iabp", [1, 2, 3] as const), inflateMs: num(ia, "inflateMs", "devices.iabp", R.iabpOffsetMs), deflateMs: num(ia, "deflateMs", "devices.iabp", R.iabpOffsetMs), volumeMl: num(ia, "volumeMl", "devices.iabp", R.iabpVolumeMl) }) ?? {};
     const ec = section(dev.ecmo, "devices.ecmo");
@@ -217,12 +220,12 @@ export function normalizePatient(input: PatientSpec = {}): NormalizedPatient {
 }
 
 /**
- * The devices a spec asks for, with the legacy booleans folded in: `support.iabp` / `support.impella` become DEFAULT_IABP /
- * DEFAULT_IMPELLA unless `devices` already sets that device. Returns a new object; the spec is not changed.
+ * The devices a spec asks for, with the legacy booleans folded in: `support.iabp` / `support.coroPump` become DEFAULT_IABP /
+ * DEFAULT_COROPUMP unless `devices` already sets that device. Returns a new object; the spec is not changed.
  */
 export function effectiveDevices(spec: PatientSpec): DeviceSpec {
   const d: DeviceSpec = { ...(spec.devices ?? {}) };
   if (spec.support?.iabp && !d.iabp) d.iabp = { ...DEFAULT_IABP };
-  if (spec.support?.impella && !d.impella) d.impella = { ...DEFAULT_IMPELLA };
+  if (spec.support?.coroPump && !d.coroPump) d.coroPump = { ...DEFAULT_COROPUMP };
   return d;
 }

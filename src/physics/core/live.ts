@@ -67,7 +67,7 @@ export interface LiveTrace { t: Float64Array; p: Record<string, Float32Array>; v
 export interface LiveOptions {
   /** Options of `fromModel` (defaults as in `simulate`). */
   core?: FromModelOptions;
-  /** Extra elements (devices) to add to the graph. An entry may be a function of the built `Model` (e.g. `(m) => Impella.forModel(m, cfg)`), for devices that read the chambers' own parameters. */
+  /** Extra elements (devices) to add to the graph. An entry may be a function of the built `Model` (e.g. `(m) => CoroPump.forModel(m, cfg)`), for devices that read the chambers' own parameters. */
   extra?: readonly (Element | ((model: Model) => Element))[];
 }
 

@@ -1,3 +1,4 @@
+import { migrateLegacyDeviceWords } from "../sim/aliases";
 import { ANALYTES } from "../sim/labs";
 import type { Option, Outcome, ShockOrder } from "./engine";
 import { CaseSpec, condText, condsText, parseConds, validateCase } from "./spec";
@@ -9,7 +10,7 @@ import { CaseSpec, condText, condsText, parseConds, validateCase } from "./spec"
  *
  *   # Title
  *   - id: anterior-stemi            - difficulty: easy | medium | hard      - complaint: Chest pain
- *   - devices: ECMO, Impella        - summary: one line                     - time limit: 15:00
+ *   - devices: ECMO, CoroPump        - summary: one line                     - time limit: 15:00
  *   - monitor: hr, bp, ecg, spo2   - temperature: 38.6
  *   - points: survive 30, stable 25, harm 20                                - skip harms: beta blocker, diuretic
  *   ## Card                (Presents:, History:, Info: and bullets)
@@ -121,6 +122,7 @@ const empty = (o: Outcome) => Object.keys(o).length === 0;
 /** `errors` are things the format could not read (no case comes back); `warnings` are what a readable case still needs before it can be saved. */
 export function parseCaseMarkdown(text: string): { spec?: CaseSpec; errors: string[]; warnings: string[] } {
   const errors: string[] = [];
+  const parseWarnings: string[] = [];
   const fail: Fail = (n, msg) => errors.push(n ? `Line ${n}: ${msg}.` : `${msg}.`);
   const lines: Line[] = text.replace(/\r\n?/g, "\n").split("\n").map((t, i) => ({ n: i + 1, text: t }));
 
@@ -148,7 +150,12 @@ export function parseCaseMarkdown(text: string): { spec?: CaseSpec; errors: stri
       case "id": spec.id = p.v; break;
       case "difficulty": spec.tier = p.v.toLowerCase() as never; break;
       case "complaint": spec.complaint = p.v; break;
-      case "devices": spec.devices = list(p.v); break;
+      case "devices": {
+        const m = migrateLegacyDeviceWords(list(p.v));
+        spec.devices = m.devices;
+        parseWarnings.push(...m.warnings);
+        break;
+      }
       case "summary": spec.blurb = p.v; break;
       case "time limit": { const d = parseDuration(p.v); if (d === undefined) fail(b.n, `cannot read the time limit '${p.v}' (try 15:00)`); else spec.limitS = d; break; }
       case "points": { const o: Record<string, number> = {}; for (const part of list(p.v)) { const m = part.match(/^(survive|stable|harm)\s+(\d+)$/); if (m) o[m[1]] = +m[2]; else fail(b.n, `cannot read points '${part}' (try 'survive 30')`); } spec.points = { ...spec.points, ...o }; break; }
@@ -277,7 +284,7 @@ export function parseCaseMarkdown(text: string): { spec?: CaseSpec; errors: stri
     closeCp();
   }
 
-  if (errors.length) return { errors, warnings: [] };
+  if (errors.length) return { errors, warnings: parseWarnings };
   // Read cleanly: the case opens in the builder either way; what the checks find is for the author to fix before saving.
-  return { spec: spec as CaseSpec, errors, warnings: validateCase(spec as CaseSpec) };
+  return { spec: spec as CaseSpec, errors, warnings: [...parseWarnings, ...validateCase(spec as CaseSpec)] };
 }

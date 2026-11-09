@@ -7,7 +7,7 @@ import { LiveSource } from "../../src/sim/liveSource";
 import { cathReport } from "../../src/sim/cath";
 
 const s = new Simulation({}, { engine: "core" });
-s.reset({ seed: 1, lesions: [{ artery: "LAD", stenosis: 0.8, position: 0.3 }], support: { impella: true } }, { settled: true, warmup: 30 });
+s.reset({ seed: 1, lesions: [{ artery: "LAD", stenosis: 0.8, position: 0.3 }], support: { coroPump: true } }, { settled: true, warmup: 30 });
 s.warmup(10); s.step(30);
 const src = new LiveSource(s);
 

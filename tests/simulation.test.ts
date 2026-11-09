@@ -144,9 +144,9 @@ describe("GitHub's management model inside the shared core", () => {
     expect(m.hr.mean!).toBeGreaterThan(88); expect(m.hr.mean!).toBeLessThan(92);
     expect(m.hrv!.sdnnMs!).toBeLessThan(5);
   });
-  it("an Impella's continuous flow keeps pressure up in cardiogenic shock", () => {
+  it("a CoroPump's continuous flow keeps pressure up in cardiogenic shock", () => {
     const sc = { lesions: [{ artery: "LM", occluded: true }] };
-    const without = settle(sc), withPump = settle({ ...sc, support: { impella: true } });
+    const without = settle(sc), withPump = settle({ ...sc, support: { coroPump: true } });
     without.run(30); withPump.run(30);
     expect(withPump.map).toBeGreaterThan(without.map + 5);
     expect(withPump.state().support.deviceFlowLpm).toBeGreaterThan(1);

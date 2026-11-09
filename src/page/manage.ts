@@ -7,7 +7,7 @@ import { lvInfarctSize, clinicalTime } from "../physics/infarct";
 import { order, applyProcedure } from "../physics/revasc";
 import { assess, Situation } from "../physics/advice";
 import { tree, A, sites, circ, $, S, sim, sev, T, nec, clearTreatment, scheduleLesion, on, range, ecg, rstate, pageVitals, PHYS, patientOpts, inCases } from "./state";
-import { DEFAULT_IABP, DEFAULT_IMPELLA } from "../sim/patient";
+import { DEFAULT_IABP, DEFAULT_COROPUMP } from "../sim/patient";
 import { buildGrafts } from "./vessels3d";
 import { mayEdit } from "./learnerGate";
 
@@ -57,7 +57,7 @@ export function situation(): Situation | null {
 }
 
 /** What this module cannot reach: the playground state lives in patient.ts, which installs these on the Simulator page (the game has no playground). */
-export const hooks: { device?: (id: "iabp" | "impella" | "ecmo", on: boolean) => void; resetTreatment?: () => void } = {};
+export const hooks: { device?: (id: "iabp" | "coroPump" | "ecmo", on: boolean) => void; resetTreatment?: () => void } = {};
 
 /** The Support tab's sections, in order: each is a <details> with a live one-line summary in its header. */
 const SECTION_OF: Record<string, string> = { support: "drugs", revasc: "treat", assess: "assess" }; // the old sub-tab names
@@ -89,8 +89,8 @@ function summaries() {
   setText("sum-volume", inCases ? join([!!fl?.legRaise && "leg raise", volumeGiven()]) : join([PHYS.bl > 0 && `blood loss ${PHYS.bl}%`, PHYS.bl < 0 && `overload ${-PHYS.bl}%`, !!fl?.hemorrhageMlMin && `bleeding ${fl.hemorrhageMlMin} ml/min`, !!fl?.capillaryLeak && `capillary leak ${pct(fl.capillaryLeak)}`, !!fl?.legRaise && "leg raise", volumeGiven()]));
   setText("sum-drugs", join([sp.norepi > 0 && `norepinephrine ${pct(sp.norepi)}`, sp.dobutamine > 0 && `dobutamine ${pct(sp.dobutamine)}`, PHYS.bb > 0 && `beta blocker ${PHYS.bb}%`, sp.nitro > 0 && "nitroglycerin", sp.atropine && "atropine", ...(sim.engine === "core" ? MORE_DRUGS.map(([, k, name]) => sp[k] > 0 && `${name} ${pct(sp[k])}`) : [])]));
   setText("sum-more-drugs", sim.engine === "core" ? join(MORE_DRUGS.map(([, k, name]) => sp[k] > 0 && `${name} ${pct(sp[k])}`)) : "");
-  const im = { ...DEFAULT_IMPELLA, ...dev?.impella }, ia = { ...DEFAULT_IABP, ...dev?.iabp };
-  setText("sum-devices", join([sp.iabp && `IABP 1:${ia.ratio}`, sp.impella && (spec ? `Impella ${im.model} P${im.level}` : "Impella"), !!dev?.ecmo && `ECMO ${(dev.ecmo.flowLpm ?? 3).toFixed(1)} L/min`, sp.pacing && `pacing ${sp.paceRate}`]));
+  const im = { ...DEFAULT_COROPUMP, ...dev?.coroPump }, ia = { ...DEFAULT_IABP, ...dev?.iabp };
+  setText("sum-devices", join([sp.iabp && `IABP 1:${ia.ratio}`, sp.coroPump && (spec ? `CoroPump ${im.model} P${im.level}` : "CoroPump"), !!dev?.ecmo && `ECMO ${(dev.ecmo.flowLpm ?? 3).toFixed(1)} L/min`, sp.pacing && `pacing ${sp.paceRate}`]));
   setText("sum-vent", vent && (vent.mode === "positive" || vent.peep) ? join([vent.mode === "positive" ? "positive pressure" : "spontaneous", !!vent.peep && `PEEP ${vent.peep}`, !!vent.tidalMlKg && `${vent.tidalMlKg} ml/kg`]) : "none");
   const done = [T.treated.stent && "stented", T.treated.lysed === true && "lysed", T.treated.lysed === false && "lysis failed", T.treated.grafts.length > 0 && "grafted"];
   setText("sum-treat", T.pending ? `${PROC_LABEL[T.pending.kind]} in ${clinicalTime(Math.max(0, T.pending.remaining))}` : done.some(Boolean) ? join(done) : "nothing on order");
@@ -106,7 +106,7 @@ export function manageUi() {
   const sp = T.support, onOff = (id: string, on: boolean) => { $(id).classList.toggle("on", on); $(id).textContent = on ? "On" : "Off"; };
   $("norv").textContent = sp.norepi ? Math.round(sp.norepi * 100) + "%" : "off";
   $("dobv").textContent = sp.dobutamine ? Math.round(sp.dobutamine * 100) + "%" : "off";
-  onOff("m_nitro", sp.nitro > 0); onOff("m_atropine", sp.atropine); onOff("m_pace", sp.pacing); onOff("m_iabp", sp.iabp); onOff("m_impella", sp.impella);
+  onOff("m_nitro", sp.nitro > 0); onOff("m_atropine", sp.atropine); onOff("m_pace", sp.pacing); onOff("m_iabp", sp.iabp); onOff("m_coroPump", sp.coroPump);
   onOff("m_ecmo", !!patientOpts.patient?.devices?.ecmo);
   const core = sim.engine === "core";
   for (const [id, k] of MORE_DRUGS) { $(id + "v").textContent = sp[k] ? Math.round(sp[k] * 100) + "%" : "off"; const r = $<HTMLInputElement>(id); r.disabled = !core; if (document.activeElement !== r) r.value = String(Math.round(sp[k] * 100)); }
@@ -160,12 +160,12 @@ export function wireManage() {
   on("m_nitro", toggle(() => { T.support.nitro = T.support.nitro ? 0 : 1; }));
   on("m_atropine", toggle(() => { T.support.atropine = !T.support.atropine; }));
   on("m_pace", toggle(() => { T.support.pacing = !T.support.pacing; }));
-  // One switch per device. The Simulator's switch edits `devices.*` (the legacy `support.iabp` / `support.impella` follow it); the game has only the legacy flags.
-  const device = (id: "iabp" | "impella" | "ecmo") => toggle(() => {
+  // One switch per device. The Simulator's switch edits `devices.*` (the legacy `support.iabp` / `support.coroPump` follow it); the game has only the legacy flags.
+  const device = (id: "iabp" | "coroPump" | "ecmo") => toggle(() => {
     if (hooks.device) hooks.device(id, !(id === "ecmo" ? patientOpts.patient?.devices?.ecmo : T.support[id]));
     else if (id !== "ecmo") T.support[id] = !T.support[id];
   });
-  on("m_iabp", device("iabp")); on("m_impella", device("impella")); on("m_ecmo", device("ecmo"));
+  on("m_iabp", device("iabp")); on("m_coroPump", device("coroPump")); on("m_ecmo", device("ecmo"));
   on("m_pci", toggle(() => orderProcedure("pci")));
   on("m_lysis", toggle(() => orderProcedure("lysis")));
   on("m_cabg", toggle(() => orderProcedure("cabg")));

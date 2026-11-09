@@ -94,13 +94,13 @@ describe("leg raise in the core simulation with hemorrhage", () => {
   });
 });
 
-describe("Impella RP level 0", () => {
+describe("CoroPump RP level 0", () => {
   it("does not run retrograde when the pump is present at level 0", () => {
     const s = new Simulation({}, { engine: "core" });
-    s.reset({ seed: 3, devices: { impellaRp: { level: 0 } } }, { settled: true });
+    s.reset({ seed: 3, devices: { coroPumpRp: { level: 0 } } }, { settled: true });
     s.warmup(25);
     for (let i = 0; i < 80; i++) s.step(0.02);
-    const flow = s.live!.engine.sample().taps.impellaRp?.flow ?? 0;
+    const flow = s.live!.engine.sample().taps.coroPumpRp?.flow ?? 0;
     expect(Math.abs(flow)).toBeLessThan(0.1);
   });
 });

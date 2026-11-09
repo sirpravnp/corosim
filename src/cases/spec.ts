@@ -9,7 +9,7 @@ import { ANALYTES } from "../sim/labs";
  * turns a spec into the `CaseDef` the engine runs; `validateCase` says what is wrong with one before it is saved.
  */
 export const NUM_FIELDS = ["map", "hr", "ef", "lvIschemia", "rvIschemia", "congestion", "fluidsL", "shocks", "epiDoses", "amioMg", "lidoDoses"] as const;
-export const FLAG_FIELDS = ["cpr", "ecmo", "impella", "iabp", "pci", "pciPending", "dead"] as const;
+export const FLAG_FIELDS = ["cpr", "ecmo", "coroPump", "iabp", "pci", "pciPending", "dead"] as const;
 export const ARREST_STATES = ["none", "arrest", "rosc", "dead"] as const;
 export const OPS = ["<", "<=", ">", ">="] as const;
 export type NumField = (typeof NUM_FIELDS)[number];

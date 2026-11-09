@@ -247,10 +247,10 @@ describe("support on the core engine", () => {
   });
 });
 
-describe("devices (D3: the real Impella and IABP; the full device tests are in simulationDevices.test.ts)", () => {
-  it("the Impella carries flow from the ventricle to the aorta, never below the unloaded volume, and is the real device", () => {
-    const base = measure(make(LAD)), s = make({ ...LAD, support: { impella: true } }), m = measure(s);
-    say("impella", m, "LAD", base);
+describe("devices (D3: the real CoroPump and IABP; the full device tests are in simulationDevices.test.ts)", () => {
+  it("the CoroPump carries flow from the ventricle to the aorta, never below the unloaded volume, and is the real device", () => {
+    const base = measure(make(LAD)), s = make({ ...LAD, support: { coroPump: true } }), m = measure(s);
+    say("coroPump", m, "LAD", base);
     expect(m.circ.deviceFlow).toBeGreaterThan(2.5); expect(m.circ.deviceFlow).toBeLessThanOrEqual(3.01);
     // was `> base.co + 0.2` with A7's constant-flow placeholder, which added its 3 L/min to the output whatever the ventricle did; the real
     // pump's flow competes with the native ejection (the venous return limits the total), so the total rises by less (3.99 against 3.91 here)
@@ -258,25 +258,25 @@ describe("devices (D3: the real Impella and IABP; the full device tests are in s
     expect(m.pcwp).toBeLessThan(base.pcwp - 3); // the left ventricle is unloaded
     expect(m.map).toBeGreaterThan(base.map);
     expect(s.warnings.some((w) => /placeholder/i.test(w))).toBe(false);
-    expect(s.live!.engine.sample().taps.impella).toBeDefined();
+    expect(s.live!.engine.sample().taps.coroPump).toBeDefined();
     const v0 = s.live!.model.chambers[7]!.v0;
     expect(Math.min(...s.live!.records.map((b) => b.esv.LV))).toBeGreaterThan(v0);
   });
-  // Review of D3 flagged total output as rising by only +0.08 L/min (clinically an Impella CP adds about 0.5-1 L/min in a STEMI with PCWP ~20). Part of that
+  // Review of D3 flagged total output as rising by only +0.08 L/min (clinically a CoroPump CP adds about 0.5-1 L/min in a STEMI with PCWP ~20). Part of that
   // was the monitor's heart rate: it averaged each beat's 60/interval, which reads high with premature beats and more so without the pump (more ectopy), hiding
   // some of the gain. With the rate as beats per minute and 90 s windows (30 s is within the noise of the ectopy), the gain is +0.4 to +0.5 L/min over seeds.
-  it("the Impella raises total cardiac output by more than 0.2 L/min in the anterior STEMI (averaged over 90 s)", () => {
+  it("the CoroPump raises total cardiac output by more than 0.2 L/min in the anterior STEMI (averaged over 90 s)", () => {
     const gains = [3, 4].map((seed) => {
-      const mk = (impella: boolean) => { const s = new Simulation({}, { engine: "core" }); s.reset({ seed, ...LAD, ...(impella ? { support: { impella: true } } : {}) }, { settled: true }); s.warmup(40); s.history = []; return measure(s, 90); };
+      const mk = (coroPump: boolean) => { const s = new Simulation({}, { engine: "core" }); s.reset({ seed, ...LAD, ...(coroPump ? { support: { coroPump: true } } : {}) }, { settled: true }); s.warmup(40); s.history = []; return measure(s, 90); };
       return mk(true).co - mk(false).co;
     });
-    say("impella CO gain by seed", gains);
+    say("coroPump CO gain by seed", gains);
     expect(mean(gains)).toBeGreaterThan(0.2);
   }, 120_000);
   it("with an empty left ventricle the flow falls instead of drawing it below its unloaded volume", () => {
-    const s = make({ bloodLoss: 0.4, support: { impella: true } }), m = measure(s);
+    const s = make({ bloodLoss: 0.4, support: { coroPump: true } }), m = measure(s);
     const v0 = s.live!.model.chambers[7]!.v0, late = s.live!.records.filter((b) => b.t > 10); // after the start-up removal of the blood beyond the spec's range
-    say("impella, hypovolemic", m.circ.deviceFlow, Math.min(...late.map((b) => b.esv.LV)), v0);
+    say("coroPump, hypovolemic", m.circ.deviceFlow, Math.min(...late.map((b) => b.esv.LV)), v0);
     expect(m.circ.deviceFlow).toBeLessThan(2.7);
     expect(Math.min(...late.map((b) => b.esv.LV))).toBeGreaterThan(v0); // the pump stops drawing at V0 + floor (the native ejection alone takes it a little lower)
   });

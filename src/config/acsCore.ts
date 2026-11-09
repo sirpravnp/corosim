@@ -19,7 +19,7 @@ export const ACS_CORE = {
    */
   startVolumeMl: [-1000, 5000] as [number, number], maxVolumeRate: 120,
   /** Drugs (norepinephrine, dobutamine, nitroglycerin and the rest) are receptor-level since E4: `config/drugs.ts`. The old `SUPPORT` dose sizes for them are read by the legacy engine only. */
-  /** Device flow shown in `circ.deviceFlow` is the Impella's flow smoothed over this time constant (s): it follows the cardiac cycle. */
+  /** Device flow shown in `circ.deviceFlow` is the CoroPump's flow smoothed over this time constant (s): it follows the cardiac cycle. */
   deviceFlowTau: 1.5,
   /** Fallback ratio of the mean aortic pressure with the valve closed to the mean aortic pressure, for a balloon pump that runs from the first beat. Normally learned in the warm-up and on unassisted beats (D3). [assumed] */
   diastolicRatio: 0.85,

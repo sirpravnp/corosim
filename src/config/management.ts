@@ -32,11 +32,11 @@ export const SUPPORT = {
   iabpStrokeVolume: 0.1, // SV × (1 + k·min(1, LV ischemic fraction / 0.25)): afterload reduction
   iabpCoronaryAug: 10, // mmHg of diastolic augmentation added to coronary perfusion pressure
   iabpDemand: 0.07,
-  // Impella-type microaxial pump
-  impellaFlow: 3.0, // L/min at no RV failure
-  impellaRvSuction: 0.85, // device flow × (1 − k·RV ischemic fraction): it cannot pump blood the RV does not deliver
-  impellaNativeSv: 0.35, // native SV × (1 − k): unloading
-  impellaDemand: 0.25,
+  // CoroPump-type microaxial pump
+  coroPumpFlow: 3.0, // L/min at no RV failure
+  coroPumpRvSuction: 0.85, // device flow × (1 − k·RV ischemic fraction): it cannot pump blood the RV does not deliver
+  coroPumpNativeSv: 0.35, // native SV × (1 − k): unloading
+  coroPumpDemand: 0.25,
   // Pacing
   paceMin: 40, paceMax: 120, paceDefault: 70,
 };

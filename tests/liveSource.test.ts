@@ -99,13 +99,13 @@ describe("the source of a normal adult", () => {
 });
 
 describe("beat-level signs on the live page", () => {
-  it("anterior STEMI: wedge pressure and LVEDP up, low ejection fraction, lower output; the Impella unloads it and has a console", () => {
-    const base = patient().n, s = patient(LAD), i = patient({ ...LAD, devices: { impella: { model: "CP", level: 6 } } });
-    say("STEMI", s.n, "STEMI+Impella", i.n);
+  it("anterior STEMI: wedge pressure and LVEDP up, low ejection fraction, lower output; the CoroPump unloads it and has a console", () => {
+    const base = patient().n, s = patient(LAD), i = patient({ ...LAD, devices: { coroPump: { model: "CP", level: 6 } } });
+    say("STEMI", s.n, "STEMI+CoroPump", i.n);
     expect(s.n.pcwp).toBeGreaterThan(15); expect(s.n.lvedp).toBeGreaterThan(15); expect(s.n.lvEf).toBeLessThan(0.4); expect(s.n.co).toBeLessThan(base.co - 0.8);
     expect(i.n.pcwp).toBeLessThan(s.n.pcwp - 3);
     const d = i.src.devices();
-    expect(d.map((x) => x.id)).toEqual(["impella"]);
+    expect(d.map((x) => x.id)).toEqual(["coroPump"]);
     const imp = d[0];
     expect(imp.readings.flowLpm).toBeGreaterThan(2); expect(imp.readings.flowLpm).toBeLessThan(3.6);
     expect(imp.readings.level).toBe(6); expect(imp.label).toMatch(/CP/);

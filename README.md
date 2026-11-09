@@ -28,7 +28,7 @@ npm run build      # static site in dist/: index.html, sim/index.html, cases/ind
 | Circulation | Cardiac output × vascular resistance; pressure feeds back on coronary perfusion | `src/physics/circulation.ts` |
 | Beat hemodynamics | Every ventricular beat gets its own filling, stroke volume and Windkessel pressure; the ECG and the pressure trace show the same beats | `src/physics/beatHemo.ts`, `beatStream.ts` |
 | Autonomic loop | Baroreceptors → fast vagal and slow sympathetic arms → rate, contractility, resistance; breathing (RSA) and Ornstein–Uhlenbeck noise make every beat different; CNS-ischemic and volume reflexes. Not displayed: it shows up only as the rate and pressure | `src/physics/autonomic.ts` |
-| Support | Fluids, norepinephrine, dobutamine, nitroglycerin, atropine, pacing, balloon pump, Impella: each changes the circulation, rhythm and myocardial oxygen demand | `src/physics/support.ts` |
+| Support | Fluids, norepinephrine, dobutamine, nitroglycerin, atropine, pacing, balloon pump, CoroPump: each changes the circulation, rhythm and myocardial oxygen demand | `src/physics/support.ts` |
 | Infarct | Muscle that stays ischemic dies at a rate rising steeply with severity (τ 150 clinical min at full ischemia); reperfusion stops it but does not undo it | `src/physics/infarct.ts` |
 | Revascularization | Primary PCI, fibrinolytic (55% success), CABG (a graft that feeds the vessel beyond the lesion at aortic pressure less its own loss); each takes clinical minutes to arrive | `src/physics/revasc.ts`, `network.ts` |
 | Advice | Reads the live state and lists what is wrong and what guidelines would do next, in order | `src/physics/advice.ts` |
@@ -50,7 +50,7 @@ display sections fold away with their state in the header.
   of a failing left one. Nitroglycerin collapses the pressure of a right-ventricular infarct. Atropine lifts vagal
   slowing and tone-mediated block but does nothing for an infarcted AV node. Pacing holds the rate (atrial for a slow
   sinus rhythm, ventricular with its left-bundle pattern in heart block). A balloon pump augments coronary perfusion
-  pressure by about 10 mmHg; an Impella adds up to 3 L/min and unloads the ventricle, but moves less when the right
+  pressure by about 10 mmHg; a CoroPump adds up to 3 L/min and unloads the ventricle, but moves less when the right
   ventricle fails. Anything that changes demand or perfusion pressure re-solves the coronary network.
 - **Revascularization.** Primary PCI (60 clinical min to the artery) stents the lesion. A fibrinolytic (40 min) opens an
   occlusion in about 55% of patients, leaving a 50% stenosis, and does nothing for a stenosis. CABG (4 h) sews a graft

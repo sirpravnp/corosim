@@ -13,7 +13,7 @@ describe("spec builder", () => {
     const { spec, warnings } = buildPlaygroundSpec({ seed: 3 }, {});
     expect(warnings).toEqual([]);
     expect(spec).not.toHaveProperty("kind"); expect(spec.heart).toBeUndefined(); expect(spec.devices).toBeUndefined();
-    expect(spec.support).toMatchObject({ impella: false, iabp: false });
+    expect(spec.support).toMatchObject({ coroPump: false, iabp: false });
     expect(spec.seed).toBe(3);
   });
   it("a lesion pick builds heart without patient and hr; the picker wins over a stored heart", () => {
@@ -28,7 +28,7 @@ describe("spec builder", () => {
     st = patchSection(st, "ventilation", { mode: "positive", peep: 8 });
     st = withBolus(st, "blood", 500);
     st = patchSection(st, "fluids", { hemorrhageMlMin: 40 });
-    st = patchDevice(st, "impella", { model: "5.5", level: 3, position: "deep" });
+    st = patchDevice(st, "coroPump", { model: "5.5", level: 3, position: "deep" });
     st = patchDevice(st, "iabp", { ratio: 2 });
     st = patchDevice(st, "ecmo", { flowLpm: 4.5, sweepLpm: 3, fio2: 0.8 });
     const { spec, warnings } = buildPlaygroundSpec({ lesions: [{ artery: "LAD", stenosis: 0.8 }] }, st);
@@ -36,18 +36,18 @@ describe("spec builder", () => {
     expect(spec.pericardium).toEqual({ effusionMl: 300, stiffness: 2, open: false });
     expect(spec.ventilation).toEqual({ mode: "positive", peep: 8 });
     expect(spec.fluids).toEqual({ given: [{ kind: "blood", ml: 500 }], hemorrhageMlMin: 40 });
-    expect(spec.devices?.impella).toMatchObject({ model: "5.5", level: 3, position: "deep" });
+    expect(spec.devices?.coroPump).toMatchObject({ model: "5.5", level: 3, position: "deep" });
     expect(spec.devices?.iabp).toMatchObject({ ratio: 2, volumeMl: 40 });
     expect(spec.devices?.ecmo).toEqual({ flowLpm: 4.5, sweepLpm: 3, fio2: 0.8 });
-    expect(spec.support).toMatchObject({ impella: true, iabp: true }); // the legacy model follows the switches
+    expect(spec.support).toMatchObject({ coroPump: true, iabp: true }); // the legacy model follows the switches
     expect(spec.lesions).toHaveLength(1);
   });
   it("switching a device off removes its settings and its legacy boolean", () => {
-    const on = withDevice({}, "impella", true);
-    expect(on.devices?.impella).toMatchObject({ model: "CP", level: 6 });
-    const off = withDevice(on, "impella", false);
+    const on = withDevice({}, "coroPump", true);
+    expect(on.devices?.coroPump).toMatchObject({ model: "CP", level: 6 });
+    const off = withDevice(on, "coroPump", false);
     expect(off.devices).toBeUndefined();
-    expect(buildPlaygroundSpec({ support: { impella: true } }, off).spec.support?.impella).toBe(false);
+    expect(buildPlaygroundSpec({ support: { coroPump: true } }, off).spec.support?.coroPump).toBe(false);
   });
   it("a bolus of 0 ml removes it and keeps later doses", () => {
     expect(withBolus(withBolus({}, "colloid", 250), "colloid", 0).fluids).toBeUndefined();
@@ -61,7 +61,7 @@ describe("spec builder", () => {
     expect(warnings.join(";")).toMatch(/peep clamped/); expect(warnings.join(";")).toMatch(/effusionMl clamped/);
   });
   it("is pure: the inputs are not changed", () => {
-    const sc = { lesions: [{ artery: "LAD", stenosis: 0.8 }], support: { impella: true } }, st = { devices: { iabp: { ratio: 2 as const } } };
+    const sc = { lesions: [{ artery: "LAD", stenosis: 0.8 }], support: { coroPump: true } }, st = { devices: { iabp: { ratio: 2 as const } } };
     const a = JSON.stringify([sc, st]);
     buildPlaygroundSpec(sc, st);
     expect(JSON.stringify([sc, st])).toBe(a);
@@ -74,7 +74,7 @@ describe("spec builder", () => {
     expect(hasPlaygroundFields({ lesions: [] })).toBe(false); expect(hasPlaygroundFields({ heart: {} })).toBe(true);
   });
   it("says which groups the engines read (P16, C2: the core engine reads every group)", () => {
-    for (const g of ["heart", "pericardium", "fluids", "ventilation", "impella", "iabp", "ecmo", "impellaRp"]) expect(GROUP_INFO[g].modelled).toBe("yes");
+    for (const g of ["heart", "pericardium", "fluids", "ventilation", "coroPump", "iabp", "ecmo", "coroPumpRp"]) expect(GROUP_INFO[g].modelled).toBe("yes");
     expect(GROUP_INFO).not.toHaveProperty("kind");
   });
 });
@@ -97,7 +97,7 @@ describe("presets", () => {
   it("has the required patients, with unique ids", () => {
     const ids = PRESETS.map((p) => p.id);
     expect(new Set(ids).size).toBe(ids.length);
-    for (const id of ["anterior-stemi", "inferior-stemi-rv", "stemi-mr", "shock-impella", "tamponade", "severe-as", "hemorrhage-fluids", "va-ecmo-poor-lv"]) expect(ids).toContain(id);
+    for (const id of ["anterior-stemi", "inferior-stemi-rv", "stemi-mr", "shock-coropump", "tamponade", "severe-as", "hemorrhage-fluids", "va-ecmo-poor-lv"]) expect(ids).toContain(id);
   });
   it("the ischemic MR preset sets heart.valves.mv.reg on top of the LAD occlusion", () => {
     const p = PRESETS.find((x) => x.id === "stemi-mr")!.spec;

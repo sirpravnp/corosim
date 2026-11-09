@@ -5,7 +5,7 @@ import { blankCase } from "../src/library/builder";
 import { exampleCase } from "../src/library/template";
 import { CaseSpec, compileCase, compileCond, condText, parseCond, parseConds, validateCase } from "../src/cases/spec";
 
-const P = (o: Partial<Probe> = {}): Probe => ({ map: 70, hr: 80, arrest: "none", rhythmClass: "perfusing", shocks: 0, epiDoses: 0, amioMg: 0, lidoDoses: 0, cpr: false, ecmo: false, impella: false, iabp: false, pci: false, pciPending: false, drugs: {}, ef: 0.6, lvIschemia: 0, rvIschemia: 0, congestion: 0, fluidsL: 0, dead: false, ...o });
+const P = (o: Partial<Probe> = {}): Probe => ({ map: 70, hr: 80, arrest: "none", rhythmClass: "perfusing", shocks: 0, epiDoses: 0, amioMg: 0, lidoDoses: 0, cpr: false, ecmo: false, coroPump: false, iabp: false, pci: false, pciPending: false, drugs: {}, ef: 0.6, lvIschemia: 0, rvIschemia: 0, congestion: 0, fluidsL: 0, dead: false, ...o });
 
 const spec = (): CaseSpec => ({
   id: "toy-case", title: "Toy", tier: "easy", blurb: "b", complaint: "Chest pain", devices: ["IABP"],

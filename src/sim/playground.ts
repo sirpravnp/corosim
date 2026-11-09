@@ -1,5 +1,5 @@
 import type { Scenario } from "./scenario";
-import { DEFAULT_IABP, DEFAULT_IMPELLA, effectiveDevices, normalizePatient } from "./patient";
+import { DEFAULT_IABP, DEFAULT_COROPUMP, effectiveDevices, normalizePatient } from "./patient";
 import type { DeviceSpec, FluidSpec, HeartSpec, PatientSpec, PericardiumSpec, VentilationSpec } from "./patient";
 import { LESION_BY_ID, defaults } from "./structural";
 import type { LesionId } from "./structural";
@@ -45,10 +45,10 @@ export const GROUP_INFO: Record<string, FieldGroupInfo> = {
   pericardium: { id: "pericardium", label: "Pericardium", modelled: "yes", note: "Core engine: effusion, accumulation rate (per clinical minute), stiffness (constriction) and an opened pericardium, a pericardiocentesis button, and the septum switch (ventricular interdependence: the septum bows toward the lower-pressure ventricle). The sac does not stretch over days, so a slow effusion is no better tolerated than a fast one." },
   fluids: { id: "fluids", label: "Fluids and hemorrhage", modelled: "yes", note: "Core engine (C2): boluses of crystalloid, colloid, albumin or blood (amount, start and duration) and the bleeding rate move water between plasma and interstitium by the Starling forces (capillary and oncotic pressure, lymph), set the blood volume the heart holds, dilute or concentrate Hb, and drive urine; the capillary leak raises filtration and protein escape. Passive leg raise is not modelled yet (C4)." },
   ventilation: { id: "ventilation", label: "Ventilation", modelled: "yes", note: "Core engine: spontaneous breathing or positive-pressure ventilation with PEEP and tidal volume put the pleural pressure on the chest vessels and the heart, and a smaller swing on the abdomen (pulsus paradoxus, pulse-pressure variation, PEEP reducing venous return). The lungs' own resistance does not change with inflation." },
-  impella: { id: "impella", label: "Impella", modelled: "yes", note: "Core engine: model (2.5, CP, 5.5), P-level and position (correct, in the aorta, too deep) set the flow, the unloading of the left ventricle, suction and the console readings. Changing the model or the position rebuilds the heart." },
+  coroPump: { id: "coroPump", label: "CoroPump", modelled: "yes", note: "Core engine: model (2.5, CP, 5.5), P-level and position (correct, in the aorta, too deep) set the flow, the unloading of the left ventricle, suction and the console readings. Changing the model or the position rebuilds the heart." },
   iabp: { id: "iabp", label: "Balloon pump", modelled: "yes", note: "Core engine: a real balloon in the descending aorta: ratio 1:1 to 1:3, inflation and deflation timing offsets and balloon volume shape the aortic trace, the diastolic augmentation and the unloading." },
   ecmo: { id: "ecmo", label: "ECMO", modelled: "yes", note: "Core engine: VA-ECMO drains the right atrium and returns oxygenated blood to the descending aorta at the set flow (pump speed is solved for it); sweep gas and FiO₂ set the return saturation, and differential hypoxemia follows from the lungs and the circuit perfusing different parts of the body. The left ventricle is not vented unless something else vents it." },
-  impellaRp: { id: "impellaRp", label: "Impella RP", modelled: "yes", note: "Core engine: inflow from the inferior vena cava, outflow into the pulmonary artery, by P-level." },
+  coroPumpRp: { id: "coroPumpRp", label: "CoroPump RP", modelled: "yes", note: "Core engine: inflow from the inferior vena cava, outflow into the pulmonary artery, by P-level." },
 };
 
 const isEmpty = (o: object | undefined) => !o || Object.keys(o).length === 0;
@@ -91,7 +91,7 @@ export interface BuiltPatient {
 
 /**
  * Join the Scenario (`scenario`: normally `sim.scenario()`) and the playground state into one normalised PatientSpec.
- *  - The device switches are the legacy booleans' only source: `support.impella` / `support.iabp` follow `devices.impella` / `devices.iabp`.
+ *  - The device switches are the legacy booleans' only source: `support.coroPump` / `support.iabp` follow `devices.coroPump` / `devices.iabp`.
  *  - Empty sections are left out, so a normal adult is `{}` plus its Scenario.
  * Pure: neither input is changed.
  */
@@ -103,20 +103,20 @@ export function buildPlaygroundSpec(scenario: Scenario, state: PlaygroundState):
   if (state.septum) raw.septum = true;
   const dev = clone(state.devices);
   if (!isEmpty(dev)) raw.devices = dev;
-  raw.support = { ...(raw.support ?? {}), impella: !!dev?.impella, iabp: !!dev?.iabp };
+  raw.support = { ...(raw.support ?? {}), coroPump: !!dev?.coroPump, iabp: !!dev?.iabp };
   const n = normalizePatient(raw);
   return { spec: n.spec, warnings: n.warnings };
 }
 
 /** Switch on or off one device with its defaults (the legacy booleans' meaning); off removes its settings. */
-export function withDevice(state: PlaygroundState, id: "impella" | "iabp" | "ecmo" | "impellaRp", on: boolean): PlaygroundState {
+export function withDevice(state: PlaygroundState, id: "coroPump" | "iabp" | "ecmo" | "coroPumpRp", on: boolean): PlaygroundState {
   const devices: DeviceSpec = { ...(state.devices ?? {}) };
   if (!on) delete devices[id];
   else if (!devices[id]) {
-    if (id === "impella") devices.impella = { ...DEFAULT_IMPELLA };
+    if (id === "coroPump") devices.coroPump = { ...DEFAULT_COROPUMP };
     else if (id === "iabp") devices.iabp = { ...DEFAULT_IABP };
     else if (id === "ecmo") devices.ecmo = { flowLpm: 3, sweepLpm: 2, fio2: 0.6 };
-    else devices.impellaRp = { level: 4 };
+    else devices.coroPumpRp = { level: 4 };
   }
   return { ...state, devices: isEmpty(devices) ? undefined : devices };
 }
@@ -129,7 +129,7 @@ export function patchSection<K extends "pericardium" | "fluids" | "ventilation">
 }
 
 /** Set some settings of one device (it is switched on if it was off). Pure. */
-export function patchDevice<K extends "impella" | "iabp" | "ecmo" | "impellaRp">(state: PlaygroundState, id: K, patch: Partial<NonNullable<DeviceSpec[K]>>): PlaygroundState {
+export function patchDevice<K extends "coroPump" | "iabp" | "ecmo" | "coroPumpRp">(state: PlaygroundState, id: K, patch: Partial<NonNullable<DeviceSpec[K]>>): PlaygroundState {
   const on = withDevice(state, id, true);
   return { ...on, devices: { ...on.devices, [id]: { ...(on.devices![id] ?? {}), ...patch } } };
 }

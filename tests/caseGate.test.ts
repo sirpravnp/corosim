@@ -37,7 +37,7 @@ describe("the learner-edit gate", () => {
       { support: { norepinephrine: 0.5, dobutamine: 0.3, fluids: 1, pacing: true, paceRate: 80 } },
       { fluids: { given: [{ kind: "blood" as const, ml: 500 }] } },
       { ventilation: { mode: "positive" as const, peep: 8 } },
-      { devices: { ecmo: { flowLpm: 4, fio2: 1 }, iabp: { ratio: 1 as const }, impella: { level: 6 } } },
+      { devices: { ecmo: { flowLpm: 4, fio2: 1 }, iabp: { ratio: 1 as const }, coroPump: { level: 6 } } },
       { pericardium: { drainMl: 100 } },
     ] as PatientSpec[]) expect(learnerMayApply(e)).toEqual({ ok: true });
     // Shocks, CPR and drugs by name are calls on the simulation (shock, startCpr, giveDrug), not patient edits: they never reach the gate.
@@ -83,5 +83,12 @@ describe("replacing the whole patient", () => {
   it("mayReplace refuses while the gate is on and allows outside a case", () => {
     expect(mayReplace(true)).toEqual({ ok: false, why: REPLACE_WHY });
     expect(mayReplace(false)).toEqual({ ok: true });
+  });
+});
+
+describe("CoroPump device keys", () => {
+  it("a learner may set coroPump.level and refuses coroPump.position", () => {
+    expect(learnerMayApply({ devices: { coroPump: { level: 6 } } } as PatientSpec)).toEqual({ ok: true });
+    expect(learnerMayApply({ devices: { coroPump: { position: "aortic" } } } as PatientSpec).ok).toBe(false);
   });
 });

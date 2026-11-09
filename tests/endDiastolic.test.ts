@@ -86,19 +86,19 @@ describe("a normal heart is unchanged by the policy", () => {
   }, 60_000);
 });
 
-describe("pressure-volume loops with premature beats (anterior STEMI, with and without an Impella)", () => {
-  const run = (impella: boolean) => {
+describe("pressure-volume loops with premature beats (anterior STEMI, with and without a CoroPump)", () => {
+  const run = (coroPump: boolean) => {
     const s = new Simulation({}, { engine: "core" });
     s.reset({ seed: 3, ...CASE_BY_ID.ladocc.scenario, ectopyTendency: 3 }, { settled: true }); s.warmup(25); // B3a: an ectopy-prone patient, so the minute holds premature beats
     const src = new LiveSource(s);
-    if (impella) s.apply({ devices: { impella: { model: "CP", level: 8, position: "correct" } }, support: { impella: true } });
+    if (coroPump) s.apply({ devices: { coroPump: { model: "CP", level: 8, position: "correct" } }, support: { coroPump: true } });
     s.step(100);
     return src.beats(60);
   };
   const gap = (b: ReturnType<typeof run>[number]) => loopGap(b.loops.LV.p, b.loops.LV.v);
-  for (const impella of [false, true]) {
-    it(`${impella ? "with" : "without"} an Impella: a beat before a premature beat is flagged; a beat between ordinary beats is a closed cycle`, () => {
-      const beats = run(impella);
+  for (const coroPump of [false, true]) {
+    it(`${coroPump ? "with" : "without"} a CoroPump: a beat before a premature beat is flagged; a beat between ordinary beats is a closed cycle`, () => {
+      const beats = run(coroPump);
       // a beat settles back to a closed cycle about three beats after a premature one
       const steady = beats.filter((b, i) => !b.pvc && !b.prematureNext && i >= 3 && !beats[i - 1].pvc && !beats[i - 2].pvc && !beats[i - 3].pvc);
       expect(steady.length).toBeGreaterThan(0);
@@ -115,7 +115,7 @@ describe("pressure-volume loops with premature beats (anterior STEMI, with and w
     expect(loopGap(p, v)).toBeLessThan(0.2); // 40 samples round a circle: the last is one step from the first
     expect(loopGap(p.slice(0, 20), v.slice(0, 20))).toBeGreaterThan(0.8); // half a circle
   });
-  it("the Impella shifts the loop left and the aortic valve passes only part of what leaves the ventricle", () => {
+  it("the CoroPump shifts the loop left and the aortic valve passes only part of what leaves the ventricle", () => {
     const base = run(false).filter((b) => !b.pvc && !b.prematureNext).slice(-1)[0], imp = run(true).filter((b) => !b.pvc && !b.prematureNext).slice(-1)[0];
     expect(imp.edv.LV).toBeLessThan(base.edv.LV - 10);
     const total = imp.edv.LV - imp.esv.LV, native = imp.valves.AV.forwardMl - imp.valves.AV.regurgMl;

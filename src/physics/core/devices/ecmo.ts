@@ -35,7 +35,7 @@ export function oxygenatorSat(sIn: number, sweepLpm: number, fio2: number): numb
  * R is the circuit resistance including the present suction resistance of the drainage node (like a console raising rpm against a
  * rising pre-pump resistance), so the speed rises into collapse until it reaches `speedMax`; past that, and through the floor below, the flow falls below target.
  *
- * Drainage (R-D1). Suction resistance and a soft floor as for the Impella, relative to the drainage node's V0: Q ≤ (Vf − (V0+floor))/floorTau.
+ * Drainage (R-D1). Suction resistance and a soft floor as for the CoroPump, relative to the drainage node's V0: Q ≤ (Vf − (V0+floor))/floorTau.
  * The volume used is Vf, the drainage node's volume low-pass filtered (third state, time constant `ECMO_SUCTION.volumeTau`): the RA empties to
  * its V0 at every atrial systole even with a normal circulation, so the instantaneous volume cannot tell a collapsing venous bed from a beating atrium.
  * With low venous volume the flow therefore falls below target and the `suctionAlarm` tap goes true (suction level ≥ `ECMO_SUCTION.alarmLevel`).
