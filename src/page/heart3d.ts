@@ -10,7 +10,10 @@ import type { Saturations } from "../sim/hemoSource";
 import { blushLevel } from "../anatomy/lesionCues";
 import { tree, sites, $, S, sev, nec, panelSource, A } from "./state";
 import { heartGroup } from "./scene";
+import { mountCoroPump } from "./coroPump3d";
 
+/** The CoroPump in the heart (free play only; hidden while the pump is off or a case runs). Fed from `devices().coroPump` in the frame loop. */
+export const coroPump3d = mountCoroPump(heartGroup);
 const heartGeo = new THREE.BufferGeometry();
 let hRef: V3[] = []; // heart-frame position of each vertex
 export let hPart: Uint8Array = new Uint8Array(0);

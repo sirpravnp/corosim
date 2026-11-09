@@ -3,7 +3,7 @@ import { INFARCT } from "../config/management";
 import { A, sites, S, sim, takeAnalysis, sev, T, K, ecg, playClock, rstate, takeRC } from "./state";
 import { caseMonitorFrame, caseMonitorReset, caseMonitorSettling } from "./caseMonitorView";
 import { renderer, scene, camera, controls } from "./scene";
-import { pumpMyocardium, o2Now, paintMyocardium } from "./heart3d";
+import { pumpMyocardium, o2Now, paintMyocardium, coroPump3d } from "./heart3d";
 import { built, blockedFlags, shapeVessels, stepParticles, updateBranchLod } from "./vessels3d";
 import { updateMarkers } from "./markers";
 import { manageStep } from "./manage";
@@ -48,7 +48,7 @@ export function frame(now: number) {
   if (K.phase !== "idle") caseMonitorFrame(dt, patientNow, fx, rstate!.rhythm); // a case's bedside monitor: the same snapshot the ordered panels read
   if (K.phase === "run") caseStep(dt * S.speed);
   if (S.flow) stepParticles(dt);
-  if ((paintClock += dt) > 0.1) { paintClock = 0; paintMyocardium(); }
+  if ((paintClock += dt) > 0.1) { paintClock = 0; paintMyocardium(); coroPump3d.update(sim.devices()?.coroPump ?? null); }
   if (S.mode === "o2" && (o2Clock += dt) > 0.5) { o2Clock = 0; const f = o2Now(), k = `${f.ready}|${f.arterial.toFixed(3)}`; if (k !== o2Key) { o2Key = k; shapeVessels(); } }
   if ((uiClock += dt) > 0.25) { uiClock = 0; liveUi(); arrestUi(); }
   controls.update(); updateBranchLod(); camera.updateMatrixWorld(); updateMarkers(dt); renderer.render(scene, camera);
