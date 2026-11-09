@@ -51,6 +51,8 @@ export class CoroPump extends RotaryPump {
   private lvl: number;
   private floorV: number;
   private beats = 0;
+  /** Thrombus burden 0..1; lowers head and raises reported motor current. */
+  thrombusBurden = 0;
   constructor(name: string, from: NodeId, to: NodeId, cfg: CoroPumpConfig) {
     const model = cfg.model ?? "CP", position = cfg.position ?? "correct", def = COROPUMP[model], S = COROPUMP_SUCTION, level = cfg.level ?? 6;
     const deep = position === "deep" ? COROPUMP_POSITION.deep : { vcExtraMl: 0, pthExtra: 0 };
@@ -66,6 +68,7 @@ export class CoroPump extends RotaryPump {
     return new CoroPump(name, cfg.position === "aortic" ? ao : lv, ao, { ...cfg, v0: m.chambers[lv]!.v0 });
   }
   get level(): number { return this.lvl; }
+  setBurden(b: number) { this.thrombusBurden = Math.min(1, Math.max(0, b)); }
   /** `level` (P-level, sets the speed) and any pump parameter; a `speed` given alone overrides the table until the next `level`. */
   set(patch: Partial<PumpParams> & { level?: number }) {
     const { level, ...rest } = patch;
@@ -77,7 +80,8 @@ export class CoroPump extends RotaryPump {
     const p = this.params, Q = ctx.y[this.idx], pIn = ctx.P[this.from], vIn = ctx.V[this.from];
     const rIn = Q > 0 ? inflowResistance(p, pIn, vIn) : p.R0;
     out.flow(this.from, this.to, Q);
-    let rate = (pumpHead(p, p.speed, Q) - (ctx.P[this.to] - pIn) - rIn * Q) / p.L;
+    const headScale = 1 - 0.3 * this.thrombusBurden;
+    let rate = (pumpHead(p, p.speed, Q) * headScale - (ctx.P[this.to] - pIn) - rIn * Q) / p.L;
     const S = COROPUMP_SUCTION, qLim = Math.max(vIn - this.floorV, 0) / S.floorTau, ex = Q - qLim;
     if (ex > 0) rate = -ex / S.limitTau; // over the limit: the limiter overrides the head, however large
     else if (ex > -S.limitBand) { const w = -ex / S.limitBand; rate = rate * w + (1 - w) * (-ex / S.limitTau); } // blended in over `limitBand` ml/s so the rate is continuous
@@ -85,7 +89,12 @@ export class CoroPump extends RotaryPump {
   }
   taps(ctx: Ctx) {
     const t = super.taps(ctx), p = this.params;
-    return { ...t, level: this.lvl, current: motorCurrent(p.speed, t.head, t.Q), placement: t.dP, pIn: ctx.P[this.from], pOut: ctx.P[this.to], suctionAlarm: t.suction, beat: this.beats };
+    const curScale = 1 + 0.4 * this.thrombusBurden;
+    const head = t.head * (1 - 0.3 * this.thrombusBurden);
+    return {
+      ...t, head, level: this.lvl, current: motorCurrent(p.speed, head, t.Q) * curScale, placement: t.dP,
+      pIn: ctx.P[this.from], pOut: ctx.P[this.to], suctionAlarm: t.suction, beat: this.beats,
+    };
   }
 }
 

@@ -51,8 +51,39 @@ export const COROPUMP_PURGE = {
 
 /** Legacy stub exports used before simulation wires purgeState. */
 export const COROPUMP_PURGE_STUB = { flowMlHr: COROPUMP_PURGE.flowBase, pressureMmHg: COROPUMP_PURGE.pressureBase } as const;
+
+/** Thrombus burden kinetics (C4). Times in clinical minutes. [assumed] */
+export const COROPUMP_THROMBUS = {
+  baseGrowthPerMin: 0.00022,
+  heparinRefUml: 25,
+  heparinProtection: 0.92,
+  bicarbonateGrowthScale: 0.55,
+  lowFlowLpm: 1.5,
+  lowFlowMult: 2,
+  blockedGrowthPerMin: 0.04,
+  kinkedGrowthPerMin: 0.008,
+  irreversibleBurden: 0.7,
+  decayHeparinUml: 20,
+  decayHalfLifeMin: 24 * 60,
+} as const;
+
+/** Hemolysis / free hemoglobin (C5). [assumed] */
+export const COROPUMP_HEMOLYSIS = {
+  baselineMgDl: 2,
+  clearanceHalfLifeMin: 6 * 60,
+  urineClearBelow: 40,
+  urineTeaBelow: 100,
+  shearThreshold: 8,
+  shearGainPerMin: 0.35,
+  suctionThreshold: 0.2,
+  suctionGainPerMin: 2.4,
+  deepPositionGainPerMin: 0.12,
+  thrombusGainPerMin: 0.8,
+  thrombusShearThreshold: 0.6,
+} as const;
+
 /** Stub free hemoglobin baseline (mg/dL). [assumed] */
-export const COROPUMP_HEMOLYSIS_STUB = { plasmaFreeHbMgDl: 2 } as const;
+export const COROPUMP_HEMOLYSIS_STUB = { plasmaFreeHbMgDl: COROPUMP_HEMOLYSIS.baselineMgDl } as const;
 
 export interface CoroPumpDef {
   /** Rotor speed (krpm) at P-level 0..9 (P0 = off). Linear from `speedP1` to `speedP9` for P1..P9. [assumed] */
