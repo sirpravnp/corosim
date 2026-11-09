@@ -53,6 +53,12 @@ describe("order catalog", () => {
     expect(itemById("urine")!.group).toBe("bedside");
     expect(new Set(CATALOG.map((i) => i.id)).size).toBe(CATALOG.length);
   });
+  it("coropump is a panel and hemolysis is a lab with teaching delay", () => {
+    expect(itemById("coropump")!.group).toBe("panel");
+    expect(itemById("hemolysis")!.delayS).toBe(1800);
+    expect(itemById("urine-color")!.group).toBe("bedside");
+    expect(itemById("urine-color")!.delayS).toBe(0);
+  });
 });
 
 describe("case monitor validation", () => {

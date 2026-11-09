@@ -58,6 +58,18 @@ describe("case markdown", () => {
     expect(r.errors.join("\n")).toMatch(/title/); expect(r.errors.join("\n")).toMatch(/Card/); expect(r.errors.join("\n")).toMatch(/Time points/);
   });
 
+  it("round-trips coropump on the monitor and pfhb in lab values", () => {
+    const s = { ...full(), monitor: ["hr", "bp", "coropump"], labs: { ...(full().labs ?? {}), pfhb: 120 } };
+    const md = caseToMarkdown(s);
+    expect(md).toMatch(/- monitor: hr, bp, coropump/);
+    expect(md).toMatch(/- pfhb: 120/);
+    const r = parseCaseMarkdown(md);
+    expect(r.errors).toEqual([]);
+    expect(r.spec?.monitor).toEqual(["hr", "bp", "coropump"]);
+    expect(r.spec?.labs?.pfhb).toBe(120);
+    expect(r.spec?.devices).toEqual(expect.arrayContaining(["CoroPump"]));
+  });
+
   it("writes and reads the monitor, the body temperature and the lab values", () => {
     const md = caseToMarkdown(full());
     expect(md).toMatch(/- monitor: hr, bp, ecg, heart3d, jvp/);

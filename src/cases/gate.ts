@@ -38,6 +38,9 @@ export const TREATMENT_KEYS: Readonly<Record<string, string>> = {
   "devices.coroPump.model": "the CoroPump model is chosen when the device is placed",
   "devices.coroPump.purge.solution": "the purge solution is a bedside setting",
   "devices.coroPump.purge.heparinUml": "heparin concentration in the purge is a bedside setting",
+  "devices.coroPump.purge.clearLine": "clearing a purge line is a bedside task",
+  "devices.coroPump.exchange": "exchanging a pump is a procedure",
+  "devices.coroPump.reposition": "repositioning is a procedure under echo",
   "devices.coroPumpRp": "the right-sided CoroPump is a device a team places",
   "devices.iabp": "balloon pump settings belong to the device the team placed",
   "devices.ecmo": "ECMO is a device a team places and sets",
@@ -63,6 +66,9 @@ const DISEASE: readonly (readonly [string, string])[] = [
   ["exertion", "You cannot put the patient under exertion."],
   ["septum", "You cannot change the patient's septum or chamber interaction."],
   ["seed", "You cannot start the patient over with different random beats."],
+  ["devices.coroPump.position", "You cannot malposition the pump; read placement on the console and reposition if needed."],
+  ["devices.coroPump.purge.line", "You cannot block the purge line; clear it or exchange the pump if purge pressure rises."],
+  ["devices.coroPump.initial", "You cannot set thrombus or hemolysis at the bedside; treat what you find on the console and in labs."],
 ];
 /** Why a running case refuses to swap in a whole new patient. */
 export const REPLACE_WHY = "A case patient can only be treated, not replaced.";
