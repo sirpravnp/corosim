@@ -48,9 +48,8 @@ describe("order book", () => {
 
   it("a panel with no reading returns a ready line", () => {
     const b = new OrderBook();
-    b.order("twelvelead", 0);
-    expect(b.tick(119, N())).toEqual([]);
-    expect(b.tick(120, N())[0].reading.text).toBe("result ready");
+    b.order("oxygen", 0);
+    expect(b.tick(0, N())[0].reading.text).toBe("result ready");
   });
 
   it("unknown ids return unknown and are not queued", () => {

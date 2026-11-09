@@ -63,7 +63,7 @@ export function mountPanels() {
 /**
  * Set the case's monitor for this session: the ids of the monitor items shown (cases/orders.ts). The bedside monitor (caseMonitorView) draws
  * the strip (`ecg`) and the tiles (hr, bp, spo2, rr, temp). The workspace below holds only what the learner orders: a panel item opens its own
- * panel, `twelvelead` opens the ECG figure, and the Simulator's Monitor panel (rhythm name, Stable/Shock) is never opened in a case.
+ * panel, and the Simulator's Monitor panel (rhythm name, Stable/Shock) is never opened in a case.
  * The viewer's saved layout is never written by this. Null restores it.
  */
 let caseIds: string[] | null = null;

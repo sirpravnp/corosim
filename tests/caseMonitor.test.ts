@@ -66,8 +66,8 @@ describe("casePanels", () => {
   it("the standard monitor opens no workspace panel at all", () => {
     expect(casePanels(STANDARD_MONITOR, of)).toEqual([]);
   });
-  it("a 12-lead order opens the ECG figure; other displays open their own panels; the Monitor panel never opens", () => {
-    expect(casePanels([...STANDARD_MONITOR, "twelvelead", "jvp"], of)).toEqual(["ecg", "jvp"]);
+  it("displays open their own panels; the Monitor panel never opens", () => {
+    expect(casePanels([...STANDARD_MONITOR, "loops", "jvp"], of)).toEqual(["loops", "jvp"]);
     expect(casePanels(["numbers", "monitor"], (id) => (id === "monitor" ? "monitor" : of(id)))).toEqual(["numbers"]);
   });
 });

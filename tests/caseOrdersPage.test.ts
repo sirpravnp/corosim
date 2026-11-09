@@ -50,7 +50,7 @@ describe("cases page: pure parts", () => {
 
 import { itemById } from "../src/cases/orders";
 describe("order panels", () => {
-  it("the 12-lead ECG opens the real ecg panel", () => {
-    expect(itemById("twelvelead")?.panel).toBe("ecg");
+  it("the 12-lead is on the monitor from the start, so it is no longer an order", () => {
+    expect(itemById("twelvelead")).toBeUndefined();
   });
 });

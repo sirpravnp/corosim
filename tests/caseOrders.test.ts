@@ -49,7 +49,6 @@ describe("order catalog", () => {
     expect(lactate!.read!(now()).estimate).toBeFalsy();
   });
   it("delays and ids", () => {
-    expect(itemById("twelvelead")!.delayS).toBe(120);
     expect(itemById("lactate")!.delayS).toBe(600);
     expect(itemById("urine")!.group).toBe("bedside");
     expect(new Set(CATALOG.map((i) => i.id)).size).toBe(CATALOG.length);
