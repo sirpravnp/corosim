@@ -130,7 +130,7 @@ export const jvpPanel: PanelDef = {
         height = document.createElement("div");
         height.style.cssText = "font:600 26px/1.1 var(--font-data, ui-monospace, monospace)";
         words = document.createElement("p");
-        words.style.cssText = "margin:6px 0 0;font-size:14px";
+        words.className = "jvp-words"; words.style.cssText = "margin:6px 0 0;font-size:14px";
         const sub = document.createElement("p");
         sub.className = "note";
         sub.textContent = "cm above the sternal angle, patient at 45°: mean RA × 1.36 − 5";

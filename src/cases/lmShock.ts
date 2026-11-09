@@ -10,11 +10,10 @@ export const LM_SHOCK: CaseDef = {
   complaint: "Chest pain",
   devices: ["Impella"],
   blurb: "Chest pain, then breathlessness, in a woman whose pressure is falling.",
-  monitor: ["hr", "bp", "ecg", "spo2", "rr", "temp", "heart3d", "loops", "numbers"],
   card: {
     presents: "72-year-old woman with three hours of chest pain, now breathless and clammy with mottled skin. Heart rate 112, BP 77/64, crackles to the mid-lung fields.",
     pmh: "Hypertension, type 2 diabetes, stage 3 kidney disease. Takes metoprolol, amlodipine and metformin. No allergies.",
-    info: ["The ECG shows ST elevation in aVR with widespread ST depression.", "A bedside echo shows a very poorly contracting left ventricle, ejection fraction about 15%."],
+    info: ["A bedside echo shows a very poorly contracting left ventricle, ejection fraction about 15%."],
   },
   start: { lesions: [{ artery: "LM", occluded: true }], devices: { impella: { model: "CP", level: 0 } }, seed: 3 },
   points: { survive: 30, stable: 25, harm: 20 },

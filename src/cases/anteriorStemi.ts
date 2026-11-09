@@ -8,11 +8,9 @@ export const ANTERIOR_STEMI: CaseDef = {
   complaint: "Chest pain",
   devices: [],
   blurb: "An anterior STEMI in a man who is still holding his pressure.",
-  monitor: ["hr", "bp", "ecg", "spo2", "rr", "temp", "heart3d"],
   card: {
     presents: "55-year-old man with 90 minutes of substernal pressure spreading to the jaw, sweating and nausea. Heart rate 102, BP 98/77, lungs clear.",
     pmh: "Current smoker, high cholesterol, father had a heart attack at 52. No regular medicines. No allergies.",
-    info: ["The ECG shows ST elevation in V1 to V4."],
   },
   start: { lesions: [{ artery: "LAD", occluded: true, position: 0.1 }], seed: 3 },
   points: { survive: 30, stable: 25, harm: 20 },

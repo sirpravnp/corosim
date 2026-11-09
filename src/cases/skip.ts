@@ -3,7 +3,7 @@ import { OXYGEN_PANEL } from "../config/oxygenPanel";
 
 /**
  * The longest the general "Skip ahead" (no pending order as its target) may run, in case seconds. "Skip to result" has no cap: it runs
- * to that result, protected by the auto-stop reasons of `skipStop` and by the unstable refusal of `canSkip`.
+ * to that result, protected by the auto-stop reasons of `skipStop` and by the refusal of `canSkip`.
  */
 export const SKIP_CAP_S = 60;
 /** Case seconds that pass per real second while skipping. */
@@ -24,10 +24,6 @@ export function skipSpeed(leftCaseS: number, frameS: number, clockScale: number)
 }
 
 const MAP_FLOOR = 65;
-const RHYTHM_LABEL: Record<string, string> = {
-  vf: "ventricular fibrillation", pulselessVt: "pulseless ventricular tachycardia", asystole: "asystole",
-  pea: "pulseless electrical activity", perfusing: "a perfusing rhythm",
-};
 
 /**
  * Whether a time skip may start. A skip is refused while the case's stable condition is false, because the patient is
@@ -35,7 +31,7 @@ const RHYTHM_LABEL: Record<string, string> = {
  */
 export function canSkip(p: Probe, stable: Cond): { ok: true } | { ok: false; why: string } {
   if (stable(p)) return { ok: true };
-  return { ok: false, why: "Time skip is unavailable while the patient is unstable." };
+  return { ok: false, why: "Time skip is unavailable right now." };
 }
 
 /**
@@ -49,8 +45,8 @@ export function skipStop(
 ): string | null {
   if (o.promptOpen) return "Stopped: a checkpoint prompt is open.";
   if (now.arrest === "arrest") return "Stopped: the patient is in arrest.";
-  if (o.harmActive) return "Stopped: a harm is active.";
-  if (now.rhythmClass !== prev.rhythmClass) return `Stopped: rhythm changed to ${RHYTHM_LABEL[now.rhythmClass] ?? now.rhythmClass}.`;
+  if (o.harmActive) return "Stopped: the patient changed.";
+  if (now.rhythmClass !== prev.rhythmClass) return "Stopped: the rhythm changed.";
   if (prev.map >= MAP_FLOOR && now.map < MAP_FLOOR) return `Stopped: pressure fell to ${Math.round(now.map)}.`;
   if (o.spo2 < OXYGEN_PANEL.spo2Low) return `Stopped: saturation fell to ${Math.round(o.spo2 * 100)}%.`;
   return null;

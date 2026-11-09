@@ -24,7 +24,7 @@ describe("time skip rules", () => {
     if (!r.ok) {
       expect(r.why.length).toBeGreaterThan(0);
       expect(r.why).toMatch(/^[A-Z]/);
-      expect(r.why).toMatch(/unstable/i);
+      expect(r.why).toBe("Time skip is unavailable right now.");
     }
   });
 
@@ -51,8 +51,7 @@ describe("time skip rules", () => {
 
     const rhythm = skipStop(base, probe({ rhythmClass: "vf" }), quiet);
     expect(rhythm).toMatch(/^Stopped: /);
-    expect(rhythm).toMatch(/rhythm/i);
-    expect(rhythm).toBe("Stopped: rhythm changed to ventricular fibrillation.");
+    expect(rhythm).toBe("Stopped: the rhythm changed.");
 
     const map = skipStop(base, probe({ map: 58 }), quiet);
     expect(map).toBe("Stopped: pressure fell to 58.");
@@ -63,7 +62,7 @@ describe("time skip rules", () => {
 
     const harm = skipStop(base, base, { ...quiet, harmActive: true });
     expect(harm).toMatch(/^Stopped: /);
-    expect(harm).toMatch(/harm/i);
+    expect(harm).toBe("Stopped: the patient changed.");
   });
 
   it("skipStop does not fire when map was already below 65 in prev", () => {

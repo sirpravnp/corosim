@@ -48,15 +48,9 @@ describe("cases page: pure parts", () => {
   });
 });
 
-import { stageVisible, itemById, resolveMonitor } from "../src/cases/orders";
-describe("3D heart stage", () => {
-  it("is visible iff the case monitor or the orders contain heart3d", () => {
-    expect(stageVisible(resolveMonitor({}))).toBe(false);
-    expect(stageVisible(resolveMonitor({ monitor: ["hr", "heart3d"] }))).toBe(true);
-    expect(stageVisible(resolveMonitor({}), new Set(["heart3d"]))).toBe(true);
-    expect(stageVisible(resolveMonitor({}), new Set(["lactate"]))).toBe(false);
-  });
-  it("the 12-lead ECG opens the real ecg panel", () => {
-    expect(itemById("twelvelead")?.panel).toBe("ecg");
+import { itemById } from "../src/cases/orders";
+describe("order panels", () => {
+  it("the 12-lead is on the monitor from the start, so it is no longer an order", () => {
+    expect(itemById("twelvelead")).toBeUndefined();
   });
 });

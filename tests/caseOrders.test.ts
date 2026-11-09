@@ -49,7 +49,6 @@ describe("order catalog", () => {
     expect(lactate!.read!(now()).estimate).toBeFalsy();
   });
   it("delays and ids", () => {
-    expect(itemById("twelvelead")!.delayS).toBe(120);
     expect(itemById("lactate")!.delayS).toBe(600);
     expect(itemById("urine")!.group).toBe("bedside");
     expect(new Set(CATALOG.map((i) => i.id)).size).toBe(CATALOG.length);
@@ -76,6 +75,23 @@ describe("case monitor validation", () => {
   });
 });
 
+describe("retired heart3d id", () => {
+  it("resolveMonitor drops the retired heart3d id", () => {
+    expect(resolveMonitor({ monitor: ["hr", "heart3d", "bp"] })).toEqual(["hr", "bp"]);
+  });
+  it("the catalog has no heart3d item", () => {
+    expect(itemById("heart3d")).toBeUndefined();
+    expect(CATALOG.some((i) => i.id === "heart3d")).toBe(false);
+  });
+  it("validateCase accepts an old spec that lists heart3d and still reports an unknown id", () => {
+    expect(validateCase({ ...spec(), monitor: ["hr", "heart3d", "jvp"] })).toEqual([]);
+    expect(validateCase({ ...spec(), monitor: ["hr", "heart3d", "foo"] })).toEqual(["The monitor lists 'foo', which is not an orderable item."]);
+  });
+  it("a monitor of only heart3d resolves to the standard six", () => {
+    expect(resolveMonitor({ monitor: ["heart3d"] })).toEqual([...STANDARD_MONITOR]);
+  });
+});
+
 describe("built-in cases", () => {
   const std = [...STANDARD_MONITOR];
   // The case's start spec needs the DOM-bound simulator to yield a PatientNow, so each case reads a representative patient instead:
@@ -88,23 +104,13 @@ describe("built-in cases", () => {
     "lm-shock": { hr: 112, sbp: 77, dbp: 64, map: 68, lactate: 5, congestion: 0.8, lvIschemia: 0.8, urineMlHr: 8, rhythmLabel: "Sinus tachycardia", co: 2.4, lvEf: 15 },
     ecpella: { hr: 0, sbp: 0, dbp: 0, map: 0, arrest: "arrest", rhythmLabel: "Ventricular fibrillation", respRate: 0, spo2: 0, lvIschemia: 0.8 },
   };
-  it("every built-in case resolves a monitor containing the standard six or an explicit author list", () => {
+  it("every built-in case resolves exactly the standard six, in order", () => {
     expect(CASES.length).toBe(6);
-    for (const c of CASES) {
-      const m = resolveMonitor(c);
-      expect(m.length, c.id).toBeGreaterThan(0);
-      if (c.monitor?.length) expect(m, c.id).toEqual(c.monitor);
-      else expect(m, c.id).toEqual(std);
-    }
+    for (const c of CASES) expect(resolveMonitor(c), c.id).toEqual(std);
   });
-  it("every id in a built-in case's monitor exists in the catalog", () => {
-    for (const c of CASES) for (const id of c.monitor ?? []) expect(itemById(id), `${c.id}: ${id}`).toBeDefined();
-  });
-  it("every case with an explicit monitor keeps the standard six", () => {
-    for (const c of CASES) if (c.monitor?.length) for (const id of std) expect(c.monitor, c.id).toContain(id);
-  });
-  it("cases whose lesion is revealed by PCI keep the 3D heart on the monitor", () => {
-    for (const id of ["anterior-stemi", "inferior-rv", "lm-shock", "ecpella"]) expect(resolveMonitor(caseById(id)!), id).toContain("heart3d");
+  it("every id on a built-in case's resolved monitor exists in the catalog", () => {
+    expect(CASES.length).toBe(6);
+    for (const c of CASES) for (const id of resolveMonitor(c)) expect(itemById(id), `${c.id}: ${id}`).toBeDefined();
   });
   it("every catalog item with a read returns finite non-NaN text on each built-in case's own start patient", () => {
     for (const c of CASES) {

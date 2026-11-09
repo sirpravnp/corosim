@@ -1,6 +1,7 @@
 import { ischemicBurden } from "../physics/ecgLink";
 import { INFARCT } from "../config/management";
 import { A, sites, S, sim, takeAnalysis, sev, T, K, ecg, playClock, rstate, takeRC } from "./state";
+import { caseMonitorFrame, caseMonitorReset, caseMonitorSettling } from "./caseMonitorView";
 import { renderer, scene, camera, controls } from "./scene";
 import { pumpMyocardium, o2Now, paintMyocardium } from "./heart3d";
 import { built, blockedFlags, shapeVessels, stepParticles, updateBranchLod } from "./vessels3d";
@@ -8,7 +9,7 @@ import { updateMarkers } from "./markers";
 import { manageStep } from "./manage";
 import { liveUi } from "./readouts";
 import { flush } from "./model";
-import { caseStep } from "./cases";
+import { caseStep, patientNow } from "./cases";
 import { skipFrame } from "./orders";
 import { settlingUi } from "./workspace";
 import { arrestSync, arrestUi } from "./arrest";
@@ -21,11 +22,12 @@ export function frame(now: number) {
   if (sim.settling) { // the core engine is being built: give it a slice of this frame, keep the 3D view alive, hold the clock
     wasSettling = true; settlingUi(true);
     sim.settleStep(10); pumpMyocardium(4);
+    if (K.phase !== "idle") caseMonitorSettling();
     if (now - settleDrawn > 500) { controls.update(); camera.updateMatrixWorld(); updateMarkers(0); renderer.render(scene, camera); settleDrawn = performance.now(); } // the view is drawn a few times a second meanwhile: a slow renderer must not set the pace of the settling
     requestAnimationFrame(frame);
     return;
   }
-  if (wasSettling) { wasSettling = false; settlingUi(false); ecg.reset(sim.t); liveUi(); } // settled: the strip starts from now
+  if (wasSettling) { wasSettling = false; settlingUi(false); ecg.reset(sim.t); caseMonitorReset(); liveUi(); } // settled: the strip starts from now
   // A case's prompt holds the clock; a case runs at the simulator's own time scale.
   if (K.phase === "run") skipFrame(realDt); // a time skip raises the case clock for this frame
   const held = K.runner?.paused ?? false;
@@ -43,6 +45,7 @@ export function frame(now: number) {
   const fx = sim.ecgInputs();
   if (!sim.dead) ecg.step(dt, fx.injury, fx.tBoost, rstate!.rhythm, fx.potassium); // death freezes the strip
   ecg.draw();
+  if (K.phase !== "idle") caseMonitorFrame(dt, patientNow, fx, rstate!.rhythm); // a case's bedside monitor: the same snapshot the ordered panels read
   if (K.phase === "run") caseStep(dt * S.speed);
   if (S.flow) stepParticles(dt);
   if ((paintClock += dt) > 0.1) { paintClock = 0; paintMyocardium(); }

@@ -1,6 +1,6 @@
 import type { Cond, Harm, CaseDef, Checkpoint, Outcome, Probe } from "./engine";
 import { normalizePatient } from "../sim/patient";
-import { isDisplayId, itemById } from "./orders";
+import { isDisplayId, isRetired, itemById } from "./orders";
 import { ANALYTES } from "../sim/labs";
 
 /**
@@ -167,6 +167,7 @@ export function validateCase(s: CaseSpec): string[] {
   for (const [w, f] of usedFlags) if (!setFlags.has(f)) errs.push(`${w} depends on flag '${f}', which nothing sets.`);
   for (const m of s.musts ?? []) if (!setFlags.has(m.flag)) errs.push(`Required step '${m.flag}' is never set by any outcome.`);
   for (const m of s.monitor ?? []) {
+    if (isRetired(m)) continue; // an old spec's retired id loads and resolves away: not an error
     const it = itemById(m);
     if (!it) errs.push(`The monitor lists '${m}', which is not an orderable item.`);
     else need(isDisplayId(m), `The monitor lists '${m}', which is a result to order, not a display.`);

@@ -6,9 +6,10 @@ import { PROCEDURE, SUPPORT, Procedure } from "../config/management";
 import { lvInfarctSize, clinicalTime } from "../physics/infarct";
 import { order, applyProcedure } from "../physics/revasc";
 import { assess, Situation } from "../physics/advice";
-import { tree, A, sites, circ, $, S, sim, sev, T, nec, clearTreatment, scheduleLesion, on, range, ecg, rstate, pageVitals, PHYS, patientOpts } from "./state";
+import { tree, A, sites, circ, $, S, sim, sev, T, nec, clearTreatment, scheduleLesion, on, range, ecg, rstate, pageVitals, PHYS, patientOpts, inCases } from "./state";
 import { DEFAULT_IABP, DEFAULT_IMPELLA } from "../sim/patient";
 import { buildGrafts } from "./vessels3d";
+import { mayEdit } from "./learnerGate";
 
 export const PROC_LABEL: Record<Procedure, string> = { pci: PROCEDURE.pci.label, lysis: PROCEDURE.lysis.label, cabg: PROCEDURE.cabg.label };
 const currentLesion = (): Lesion | null => (S.ds > 0 || S.occ ? { segId: S.lesionSeg, pos: S.pos, ds: S.occ ? 1 : S.ds, occluded: S.occ } : null);
@@ -85,7 +86,7 @@ function volumeGiven(): string {
 /** The line in the header of each section: what is on, read from the live state, so a change made from chat shows too. */
 function summaries() {
   const sp = T.support, spec = patientOpts.patient, dev = spec?.devices, fl = spec?.fluids, vent = spec?.ventilation;
-  setText("sum-volume", join([PHYS.bl > 0 && `blood loss ${PHYS.bl}%`, PHYS.bl < 0 && `overload ${-PHYS.bl}%`, !!fl?.hemorrhageMlMin && `bleeding ${fl.hemorrhageMlMin} ml/min`, !!fl?.capillaryLeak && `capillary leak ${pct(fl.capillaryLeak)}`, !!fl?.legRaise && "leg raise", volumeGiven()]));
+  setText("sum-volume", inCases ? join([!!fl?.legRaise && "leg raise", volumeGiven()]) : join([PHYS.bl > 0 && `blood loss ${PHYS.bl}%`, PHYS.bl < 0 && `overload ${-PHYS.bl}%`, !!fl?.hemorrhageMlMin && `bleeding ${fl.hemorrhageMlMin} ml/min`, !!fl?.capillaryLeak && `capillary leak ${pct(fl.capillaryLeak)}`, !!fl?.legRaise && "leg raise", volumeGiven()]));
   setText("sum-drugs", join([sp.norepi > 0 && `norepinephrine ${pct(sp.norepi)}`, sp.dobutamine > 0 && `dobutamine ${pct(sp.dobutamine)}`, PHYS.bb > 0 && `beta blocker ${PHYS.bb}%`, sp.nitro > 0 && "nitroglycerin", sp.atropine && "atropine", ...(sim.engine === "core" ? MORE_DRUGS.map(([, k, name]) => sp[k] > 0 && `${name} ${pct(sp[k])}`) : [])]));
   setText("sum-more-drugs", sim.engine === "core" ? join(MORE_DRUGS.map(([, k, name]) => sp[k] > 0 && `${name} ${pct(sp[k])}`)) : "");
   const im = { ...DEFAULT_IMPELLA, ...dev?.impella }, ia = { ...DEFAULT_IABP, ...dev?.iabp };
@@ -173,6 +174,7 @@ export function wireManage() {
   on("m_reset", () => {
     // back to the lesion as it was drawn: take the treatment away and let the heart start over
     const o = T.original;
+    if (o && !mayEdit({ lesions: [] })) return; // a running case: a stent or a lysis cannot be taken back
     clearTreatment(); manageSig = "";
     for (const k of Object.keys(sev)) delete sev[k];
     if (o) { S.lesionSeg = o.seg; S.pos = o.pos; S.ds = o.ds; S.occ = o.occ; $<HTMLSelectElement>("lseg").value = o.seg; $<HTMLInputElement>("pos").value = String(o.pos * 100); $<HTMLInputElement>("ds").value = String(o.ds * 100); }

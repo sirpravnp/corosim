@@ -15,6 +15,8 @@ import { AUTONOMIC } from "../physics/autonomic";
 import { withOrderLines } from "../cases/orderBook";
 import type { PatientNow } from "../cases/orders";
 import { arrestSync } from "./arrest";
+import { caseChrome } from "./caseChrome";
+import { setDockTab } from "./dock";
 import { pgAdopt, pgPatch } from "./patient";
 import { orderProcedure, reperfused } from "./manage";
 import { paintMyocardium } from "./heart3d";
@@ -154,10 +156,34 @@ function quit() {
   casesUi();
 }
 
+// ---- the case screen: what the page keeps (caseChrome) and where the alerts live
+const ALERTS = ["arrestRosc", "clockCritical", "arrestDead"];
+let chromeBare = false, ecgCaption = "";
+/** Strip the simulator's chrome while a case runs (and in its debrief) and put it back when the case is left. Does DOM work only when the answer changes. */
+function applyChrome() {
+  const c = caseChrome(inCases, K.phase), bare = !c.stage;
+  if (bare === chromeBare) return;
+  chromeBare = bare;
+  document.body.classList.toggle("case-bare", bare);
+  // the ROSC banner, the clock-critical line and the dead-patient dialog live in the bedside monitor's container, not the 3D stage
+  const home = $(bare ? "casemon" : "view");
+  for (const id of ALERTS) home.append($(id));
+  // the dock is the Treatments section: its one tab is dropped
+  document.querySelector<HTMLElement>("#dock .dock-tabs h2")!.textContent = c.treatments && bare ? "Treatments" : "Settings";
+  const strip = document.querySelector<HTMLElement>("#dock .dock-tabs")!; // one section, no tabs: no tablist role while bare
+  if (bare) { strip.removeAttribute("role"); strip.removeAttribute("aria-label"); } else { strip.setAttribute("role", "tablist"); strip.setAttribute("aria-label", "Settings"); }
+  $("dock").setAttribute("aria-label", bare ? "Treatments" : "Settings");
+  setDockTab(bare ? "support" : "patient");
+  // the ECG figure keeps a caption: only the paper speed and gain
+  const cap = $("ecg").closest("figure")?.querySelector("figcaption");
+  if (cap) { if (bare) { ecgCaption = cap.innerHTML; cap.innerHTML = "<b>Figure 2.</b> ECG at 25 mm/s, 10 mm/mV."; } else if (ecgCaption) cap.innerHTML = ecgCaption; }
+}
+
 // ---- the page
 let listSig = "", introId = "", promptKey = "", logSig = "", overSig = "";
 /** Keep the front door, the case panel and the prompt in step with the case. Cheap: the frame loop calls it with the other readouts. */
 export function casesUi() {
+  applyChrome();
   const door = inCases && K.phase === "idle", panel = inCases && K.phase !== "idle";
   $("cgate").hidden = !door; $("cases").hidden = !panel;
   document.body.classList.toggle("gated", door);

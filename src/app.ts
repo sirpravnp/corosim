@@ -13,6 +13,7 @@ import { wireControls, wirePicking } from "./page/controls";
 import { wireCases } from "./page/cases";
 import { shell, cathLinkUi, applyMode, initShell } from "./page/connect";
 import { mountPanels } from "./page/workspace";
+import { mayReplace } from "./page/learnerGate";
 import { pgShow, pgAdopt, openShared, initPatient, pgState } from "./page/patient";
 import { frame } from "./page/loop";
 import { wireArrest, arrestUi } from "./page/arrest";
@@ -34,7 +35,8 @@ $("pgentry").hidden = true;
 pgShow(true);
 mountPanels();
 void shell.ai.start();
+// window.corosim.sim is a raw developer handle and is out of scope for the learner gate; load and playground.adopt replace the patient and are refused in a running case.
 /** Handle for scripts and browser-driving assistants: corosim.sim, corosim.load(scenario), corosim.live. */
-(window as unknown as { corosim: object }).corosim = { sim, load: loadScenario, playground: { source: () => panelSource, state: () => pgState(), spec: () => patientOpts.patient, adopt: pgAdopt, show: pgShow }, clock: playClock, live: shell.ai.live, account: shell.ai.account, refresh: () => { controlsUi(); liveUi(); } };
+(window as unknown as { corosim: object }).corosim = { sim, load: (sc: Parameters<typeof loadScenario>[0]) => (mayReplace() ? loadScenario(sc) : []), playground: { source: () => panelSource, state: () => pgState(), spec: () => patientOpts.patient, adopt: (...a: Parameters<typeof pgAdopt>) => { if (mayReplace()) pgAdopt(...a); }, show: pgShow }, clock: playClock, live: shell.ai.live, account: shell.ai.account, refresh: () => { controlsUi(); liveUi(); } };
 void loadHeartMesh().then(installHeart); // the heart appears when its mesh has been built (the page is live before that)
 requestAnimationFrame(frame);

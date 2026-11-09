@@ -39,11 +39,10 @@ export const ECPELLA: CaseDef = {
   complaint: "Cardiac arrest",
   devices: ["ECMO", "Impella"],
   blurb: "A witnessed collapse in VF, a quick ROSC and a STEMI. Where does he go, and what keeps him alive?",
-  monitor: ["hr", "bp", "ecg", "spo2", "rr", "temp", "heart3d", "loops", "lhc"],
   card: {
-    presents: "62-year-old man who collapsed at home. His wife, a nurse, started CPR at once. EMS found VF and polymorphic VT, shocked him and gave amiodarone and lidocaine. He is back in the ED with CPR in progress. ROSC comes quickly, and the post-ROSC 12-lead shows an anterolateral STEMI.",
+    presents: "62-year-old man who collapsed at home. His wife, a nurse, started CPR at once. EMS found VF and polymorphic VT, shocked him and gave amiodarone and lidocaine. He is back in the ED with CPR in progress. ROSC comes quickly.",
     pmh: "Hypertension, hyperlipidemia. Southeast Asian man. No known coronary disease.",
-    info: ["The post-ROSC ECG shows anterolateral ST elevation: a proximal LAD occlusion.", "After ROSC his pressure holds, but his ventricle is stunned (ejection fraction about 0.3, high filling pressure) and ventricular ectopy is frequent."],
+    info: ["After ROSC his pressure holds, but his ventricle is stunned (ejection fraction about 0.3, high filling pressure) and ventricular ectopy is frequent."],
   },
   start: { lesions: [{ artery: "LAD", occluded: true, position: 0.1 }], seed: 7, devices: { ecmo: { flowLpm: 0, sweepLpm: 3, fio2: 1 }, impella: { model: "CP", level: 0 } } },
   opening: { rhythm: "vf-coarse", cpr: true, drugs: [{ drug: "epinephrine", mg: 1 }, { drug: "amiodarone", mg: 300 }, { drug: "lidocaine", mg: 100 }] },
