@@ -224,6 +224,9 @@ export function createPlaygroundUi(host: PlaygroundHost): PlaygroundUi {
     choice<CoroPumpModel>(imp, "devices.coroPump.model", "Model", [["2.5", "CoroPump 2.5"], ["CP", "CoroPump CP"], ["5.5", "CoroPump 5.5"]], (s) => s.devices?.coroPump?.model, "CP", (s, m) => patchDevice(s, "coroPump", { model: m }));
     slider(imp, "devices.coroPump.level", "P-level", R.coroPumpLevel[0], R.coroPumpLevel[1], 1, (s) => s.devices?.coroPump?.level, 6, (v) => `P${v}`, (s, v) => patchDevice(s, "coroPump", { level: v }));
     choice(imp, "devices.coroPump.position", "Position", [["correct", "Correct"], ["aortic", "Too far out"], ["deep", "Too deep"]] as const, (s) => s.devices?.coroPump?.position, "correct", (s, p) => patchDevice(s, "coroPump", { position: p }));
+    choice(imp, "devices.coroPump.purge.solution", "Purge solution", [["dextrose-heparin", "Dextrose-heparin"], ["bicarbonate", "Bicarbonate"]] as const, (s) => s.devices?.coroPump?.purge?.solution, "dextrose-heparin", (s, v) => patchDevice(s, "coroPump", { purge: { ...s.devices?.coroPump?.purge, solution: v } }));
+    slider(imp, "devices.coroPump.purge.heparinUml", "Purge heparin", 0, 50, 1, (s) => s.devices?.coroPump?.purge?.heparinUml, 25, (v) => `${v} U/ml`, (s, v) => patchDevice(s, "coroPump", { purge: { ...s.devices?.coroPump?.purge, heparinUml: v } }));
+    choice(imp, "devices.coroPump.purge.line", "Purge line", [["clear", "Clear"], ["kinked", "Kinked"], ["blocked", "Blocked"]] as const, (s) => s.devices?.coroPump?.purge?.line, "clear", (s, v) => patchDevice(s, "coroPump", { purge: { ...s.devices?.coroPump?.purge, line: v } }));
     const iabp = settings(mounts.iabp, (s) => !!s.devices?.iabp);
     choice(iabp, "devices.iabp.ratio", "Ratio", [[1, "1:1"], [2, "1:2"], [3, "1:3"]] as const, (s) => s.devices?.iabp?.ratio, 1, (s, r) => patchDevice(s, "iabp", { ratio: r }));
     const timing = (v: number) => (v === 0 ? "correct" : `${v > 0 ? "late" : "early"} ${Math.abs(v)} ms`);
