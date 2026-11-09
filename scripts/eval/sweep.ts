@@ -69,7 +69,7 @@ function levelsOf(schema: Record<string, unknown>): Level[] | null {
 export function sweepStates(): State[] {
   const out: State[] = [];
   const patient = FIELDS.filter((f) => f.target === "patient");
-  if (patient.length !== 91) throw new Error(`expected 91 patient fields, found ${patient.length}`);
+  if (patient.length !== 97) throw new Error(`expected 97 patient fields, found ${patient.length}`);
   for (const f of patient) {
     if (f.path === "seed") continue;
     const levels = OBJECTS[f.path] ?? levelsOf(f.schema);

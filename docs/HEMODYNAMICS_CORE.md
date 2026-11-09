@@ -153,6 +153,11 @@ Devices:
      hypovolemia or RV failure, and the oxygen-cost reduction (PVA falls).
    - Malposition scenario: inflow in the aorta, so the pump recirculates and does not unload. Placement-signal and motor
      current change accordingly.
+   - Purge line model (`COROPUMP_PURGE`, `[assumed]`): dextrose-heparin or bicarbonate solution, heparin 0–50 U/ml, line
+     clear / kinked / blocked; pressure and flow alarms when resistance rises (thrombus in the purge path included).
+   - Thrombus burden (`COROPUMP_THROMBUS`, `[assumed]`): grows with low heparin, low pump flow or a blocked line; exchange
+     resets it. Hemolysis (`COROPUMP_HEMOLYSIS`, `[assumed]`): patient plasma free hemoglobin with urine-color thresholds,
+     shear- and suction-driven production, six-hour clearance half-life in clinical time.
 2. **CoroPump RP** (IVC→PA) for RV failure; BiPella.
 3. **VA-ECMO** (RA/IVC drainage → femoral return into the descending-aorta node).
    - Oxygenator: return saturation from sweep and FiO₂, plus a resistance.

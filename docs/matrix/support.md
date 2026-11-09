@@ -17,7 +17,7 @@ NOT merged: stenosis curve, potassium ECG/hazard, solver guards, Fick EF.
 - mx-sup-k-7p5-arr1@60 — rhythm
 - mx-sup-k-7p5-arr1@180 — rhythm
 
-## States (157 states, 0 crashes)
+## States (162 states, 0 crashes)
 
 mx-sup-asd-5 @60s: hr=73.41 map=90.35 co=4.90 lvEf=0.61 lvEfEstimate=0.61 pcwp=6.94 lvedp=7.07 cvp=4.03 qpQs=1.19 spo2=0.98 stressedVolume=978.71 deviceFlow=0.00 coroPump.flow=0.00 coroPumpRp.flow=null ecmo.flow=null dead=false deathCause= rhythm=sinus drug.norepinephrine=0.00 drug.dobutamine=0.00 fickEFderived=0.564 iabpAug=0.00 | match intended; basis directional
 mx-sup-asd-15 @60s: hr=74.89 map=85.29 co=4.47 lvEf=0.59 lvEfEstimate=0.59 pcwp=5.86 lvedp=5.33 cvp=5.13 qpQs=1.55 spo2=0.97 stressedVolume=1044.78 deviceFlow=0.00 coroPump.flow=0.00 coroPumpRp.flow=null ecmo.flow=null dead=false deathCause= rhythm=sinus drug.norepinephrine=0.00 drug.dobutamine=0.00 fickEFderived=0.585 iabpAug=0.00 | match intended; basis directional
@@ -181,3 +181,8 @@ mx-sup-lm-ecmo-fio2-0p21 @60s: hr=88.19 map=80.34 co=4.04 lvEf=0.06 lvEfEstimate
 mx-sup-lm-ecmo-fio2-1 @60s: hr=88.19 map=80.34 co=4.04 lvEf=0.06 lvEfEstimate=0.06 pcwp=40.52 lvedp=44.22 cvp=0.92 qpQs=0.21 spo2=0.85 stressedVolume=1161.34 deviceFlow=3.50 coroPump.flow=0.00 coroPumpRp.flow=null ecmo.flow=3.84 dead=false deathCause= rhythm=sinus drug.norepinephrine=0.00 drug.dobutamine=0.00 fickEFderived=0.310 iabpAug=0.00 ecmo.returnSat=0.986 | match intended; basis directional
 mx-sup-ecmo4-bleed45 @60s: hr=132.36 map=64.04 co=2.18 lvEf=0.37 lvEfEstimate=0.38 pcwp=1.44 lvedp=0.83 cvp=0.16 qpQs=1.01 spo2=0.98 stressedVolume=273.63 deviceFlow=0.00 coroPump.flow=0.00 coroPumpRp.flow=null ecmo.flow=0.00 dead=false deathCause= rhythm=sinus drug.norepinephrine=0.00 drug.dobutamine=0.00 fickEFderived=0.345 iabpAug=0.00 ecmo.returnSat=0.958 | match intended; basis directional
 mx-sup-coroPump-support-p0 @60s: hr=71.17 map=87.85 co=5.13 lvEf=0.62 lvEfEstimate=0.62 pcwp=7.46 lvedp=7.83 cvp=3.23 qpQs=0.98 spo2=0.98 stressedVolume=903.49 deviceFlow=0.00 coroPump.flow=0.00 coroPumpRp.flow=null ecmo.flow=null dead=false deathCause= rhythm=sinus drug.norepinephrine=0.00 drug.dobutamine=0.00 fickEFderived=0.576 iabpAug=0.00 | match intended; basis directional
+mx-sup-coroPump-purge-blocked @60s: hr=71.45 map=89.27 coroPump.purgePressure=1500 coroPump.thrombusBurden=0.99 coroPump.pfHb=43.93 coroPump.suctionLevel=0.09 | match intended; basis directional
+mx-sup-coroPump-purge-heparin0 @60s: hr=68.53 map=89.02 coroPump.purgePressure=450.97 coroPump.thrombusBurden=0.027 coroPump.pfHb=4.74 coroPump.suctionLevel=0.11 | match intended; basis directional
+mx-sup-coroPump-initial-thrombus @60s: hr=68.65 map=89.52 coroPump.purgePressure=450.01 coroPump.thrombusBurden=0.002 coroPump.pfHb=4.74 coroPump.suctionLevel=0.10 | match intended; basis directional
+mx-sup-coroPump-initial-pfhb @60s: hr=68.65 map=89.52 coroPump.purgePressure=450.01 coroPump.thrombusBurden=0.002 coroPump.pfHb=4.74 coroPump.suctionLevel=0.10 | match intended; basis directional
+mx-sup-coroPump-deep-p9-bleed @60s: hr=97.84 map=82.24 coroPump.purgePressure=450.02 coroPump.thrombusBurden=0.004 coroPump.pfHb=62.95 coroPump.suctionLevel=1.00 | match intended; basis directional

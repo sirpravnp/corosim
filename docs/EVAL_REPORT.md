@@ -1,6 +1,10 @@
 # Core engine evaluation snapshot
 
-Generated 2026-10-31 18:54 EDT from commit `4b7b4f7`. Core engine only (`engine: "core"`, empty `coreNote`). Checkpoints are simulated seconds after the insult; at 1x that is 2 clinical minutes per second. A cell is the mean and the min..max across seeds. This file is a snapshot of a run, not a specification.
+Generated 2026-10-31 18:54 EDT from commit `4b7b4f7` (standard states); CoroPump matrix addendum 2026-11-09 from commit `2dde25c`. Core engine only (`engine: "core"`, empty `coreNote`). Checkpoints are simulated seconds after the insult; at 1x that is 2 clinical minutes per second. A cell is the mean and the min..max across seeds. This file is a snapshot of a run, not a specification.
+
+### CoroPump purge, thrombus and hemolysis (matrix support, seed 1, 2026-11-09)
+
+Five new invariant-only states observed at 60 s: `mx-sup-coroPump-purge-blocked` (purge pressure at cap 1500 mmHg), `mx-sup-coroPump-purge-heparin0` (low thrombus at 60 s, 180 s checkpoint in harness), `mx-sup-coroPump-initial-thrombus`, `mx-sup-coroPump-initial-pfhb`, `mx-sup-coroPump-deep-p9-bleed` (pfHb above 60 mg/dL, suction level 1.0). Lines are in `docs/matrix/support.md`.
 
 ## Standard states
 

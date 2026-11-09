@@ -76,6 +76,14 @@ If a later task needs something this table cannot express, change `types.ts` in 
 - **Placement signal** is `P_out - P_in` (aortic minus LV pressure) over the beat: about 0 in systole and the full aortic-LV difference in diastole when correctly placed; flat at 0 in the aorta.
 - **Console.** Element taps (instantaneous): `flow`, `current`, `placement`, `level`, `suction`/`suctionAlarm`, `suctionLevel`. `CoroPumpConsole(engine)` turns them into per-beat numbers (`last`: flow and current statistics, `pulsatility` of the current, placement mean/min/max/amplitude, `suctionFraction`, `suctionLevel`, `suctionAlarm` = highest suction level of the beat at or above 0.2).
 
+## CoroPump purge, thrombus and hemolysis (CoroPump plan C3–C5)
+
+Pure models in `devices/purge.ts`, `devices/thrombus.ts`, `devices/hemolysis.ts`. Constants in `config/devices.ts` (`COROPUMP_PURGE`, `COROPUMP_THROMBUS`, `COROPUMP_HEMOLYSIS`), all `[assumed]`.
+
+- **Purge.** `purgeState({ solution, heparinUml, line, thrombus, running })` returns flow (ml/hr), pressure (mmHg) and alarms (`PURGE PRESSURE HIGH` above 1000 mmHg, `PURGE FLOW LOW` below 5 ml/hr). Line multipliers: clear 1, kinked 2.5, blocked 10; solution multipliers: dextrose-heparin 1, bicarbonate 0.85; resistance also rises with thrombus². Pressure capped at 1500 mmHg; flow falls with a smoothstep above 900 mmHg. Heparin in the purge line is clamped 0–50 U/ml on ingest (default 25).
+- **Thrombus.** `stepThrombus(burden, dtClinicalMin, { solution, heparinUml, line, flowLpm, running })` once per beat. Growth falls with heparin, doubles below 1.5 L/min pump flow, and accelerates on kinked or blocked lines. Burden above 0.7 is irreversible except by pump exchange. Decay with high heparin below 0.5 has a half-life of about 24 clinical hours. Exchange or pump removal resets burden to 0.
+- **Hemolysis.** `stepHemolysis(pfHb, dtClinicalMin, { level, speed, flow, suctionFraction, position, thrombus, running })` once per beat on the patient's blood; it persists when the pump is off and clears with a half-life of about 6 clinical hours (baseline 2 mg/dL). `urineColor(pfHb)`: clear below 40, tea 40–100, dark above 100 mg/dL. Production rises with shear, suction, deep position and thrombus.
+
 ## VA-ECMO (D6)
 
 `devices/ecmo.ts`: `Ecmo` (element `ecmo`) is a `RotaryPump` from RA (or IVC, `drain: "IVC"`) to DAO with the oxygenator folded into the circuit resistance. Constants `ECMO_PUMP`, `ECMO_SUCTION`, `ECMO_OXYGENATOR` in `config/devices.ts` [assumed].
