@@ -20,7 +20,8 @@ export const SCENARIO_REFERENCE = `Scenario JSON (all fields optional; omitted =
   "septum": false   (true = ventricular interdependence: a failing right ventricle bows the septum into the left),
   "fluids": { "given": [ { "kind": "crystalloid|colloid|albumin|blood", "ml": 0..5000, "atMin": 0..1440, "overMin": 0..1440 } ], "hemorrhageMlMin": 0..500, "capillaryLeak": 0..1, "legRaise": false },
   "ventilation": { "mode": "spontaneous|positive", "peep": 0..25 (cmH2O), "tidalMlKg": 2..15 },
-  "devices": { "coroPump": { "model": "2.5|CP|5.5", "level": 0..9 (P-level), "position": "correct|aortic|deep" }, "coroPumpRp": { "level": 0..9 }, "iabp": { "ratio": 1|2|3, "inflateMs": -100..100, "deflateMs": -100..100, "volumeMl": 0..50 }, "ecmo": { "flowLpm": 0..7, "sweepLpm": 0..10, "fio2": 0.21..1 } }
+  "devices": { "coroPump": { "model": "2.5|CP|5.5", "level": 0..9 (P-level), "position": "correct|aortic|deep", "purge": { "solution": "dextrose-heparin|bicarbonate", "heparinUml": 0..50 (default 25), "line": "clear|kinked|blocked (disease)", "clearLine": true (one-shot treatment) }, "exchange": true (new pump; one-shot), "reposition": true (one-shot), "initial": { "thrombusBurden": 0..1, "plasmaFreeHbMgDl": 0..500 } (author-only day-on-pump start) }, "coroPumpRp": { "level": 0..9 }, "iabp": { "ratio": 1|2|3, "inflateMs": -100..100, "deflateMs": -100..100, "volumeMl": 0..50 }, "ecmo": { "flowLpm": 0..7, "sweepLpm": 0..10, "fio2": 0.21..1 } }
+  (Core engine devices() adds purge flow/pressure, plasma free hemoglobin and urine color, thrombusBurden for debugging, and console waveforms.)
   (support.iabp / support.coroPump = true mean devices.iabp 1:1, correct timing, 40 ml / devices.coroPump CP, P6, correct position.)
 }
 

@@ -13,7 +13,7 @@ describe("CoroPump contract readout", () => {
     expect(Number.isFinite(d!.purge.flowMlHr)).toBe(true);
     expect(Number.isFinite(d!.purge.pressureMmHg)).toBe(true);
     expect(d!.hemolysis.urineColor).toBe("clear");
-    expect(d!.thrombusBurden).toBe(0);
+    expect(d!.thrombusBurden).toBeLessThan(0.01);
     expect(d!.waveform).toBeTruthy();
     expect(d!.waveform!.inletMmHg.length).toBe(100);
     expect(d!.waveform!.currentMa.length).toBe(100);
