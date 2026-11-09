@@ -101,6 +101,23 @@ describe("CoroPump case behaviors", () => {
     expect(seen).toBe(true);
   });
 
+  it("6 Purge rising: heparin 50 plus a solution change halts growth once the alarm is up", () => {
+    const s = make(PRESET_BY_ID["purge-rising"]!.spec);
+    let seen = false;
+    for (let m = 0; m <= 96 * 60 && !seen; m += 120) {
+      s.step(60, { minutes: 120 });
+      seen = s.devices()!.coroPump!.alarms.includes("PURGE PRESSURE HIGH");
+    }
+    expect(seen).toBe(true);
+    const d = s.devices()!.coroPump!;
+    const b0 = d.thrombusBurden;
+    const p0 = d.purge.pressureMmHg;
+    s.apply({ devices: { coroPump: { purge: { heparinUml: 50, solution: "bicarbonate" } } } });
+    s.step(150, { minutes: 400 });
+    expect(s.devices()!.coroPump!.thrombusBurden).toBeLessThanOrEqual(b0 + 0.03);
+    expect(s.devices()!.coroPump!.purge.pressureMmHg).toBeLessThanOrEqual(p0 + 30);
+  });
+
   it("7 Hemolysis: elevated pfHb and ordered lab, fixing volume lowers pfHb", () => {
     const s = make(PRESET_BY_ID["coropump-hemolysis"]!.spec);
     s.run(40);
