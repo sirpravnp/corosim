@@ -71,6 +71,7 @@ export function patientNow(): PatientNow {
     rhythmLabel: st.status === "arrest" ? ARREST_LABEL[st.rhythmClass] ?? st.rhythmClass : rhythmLabel(ecg.rhythm(), rstate),
     respRateBase: sim.autonomic?.controls.respRate ?? AUTONOMIC.respRate, tempOverrideC: bedsideOverride.tempOverrideC,
     co: circ?.cardiacOutput, lvEf: circ?.ejectionFraction, lowFlowMin: lowFlow.min, caseMin: (K.runner?.t ?? 0) / 60,
+    pfHbMgDl: sim.plasmaFreeHb(),
   });
 }
 const ARREST_LABEL: Record<string, string> = { vf: "Ventricular fibrillation", pulselessVt: "Pulseless ventricular tachycardia", asystole: "Asystole", pea: "Pulseless electrical activity", perfusing: "Perfusing rhythm" };

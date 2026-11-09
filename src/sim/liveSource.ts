@@ -276,7 +276,7 @@ export class LiveSource implements HemoSource {
     if (d?.coroPump?.on) {
       const i = d.coroPump;
       out.push(lazy({
-        id: "coroPump", label: `CoroPump ${i.model} P-${i.level}`, alarms: i.alarms,
+        id: "coroPump", label: `CoroPump ${i.model} P-${i.level}`, alarms: i.alarms, coroPump: i,
         readings: { flowLpm: i.flowLpm, flowMinLpm: i.flowMinLpm, flowMaxLpm: i.flowMaxLpm, level: i.level, speedKrpm: i.speedKrpm, motorCurrentMa: i.motorCurrentMa, currentPulsatilityMa: i.currentPulsatilityMa, placementMmHg: i.placementMmHg, placementAmplitudeMmHg: i.placementAmplitudeMmHg, suctionLevel: i.suctionLevel, suctionFraction: i.suctionFraction, inletMeanMmHg: i.inletMeanMmHg, inletMinMmHg: i.inletMinMmHg, inletMaxMmHg: i.inletMaxMmHg, inletAmplitudeMmHg: i.inletAmplitudeMmHg },
       }, () => ({ placement: this.difference("AO", i.position === "aortic" ? "AO" : "LV") })));
     }

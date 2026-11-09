@@ -11,6 +11,7 @@ import { loopsPanel } from "../panels/loops";
 import { rhcPanel } from "../panels/rightHeartCath";
 import { leftHeartCathPanel } from "../panels/leftHeartCath";
 import { jvpPanel } from "../panels/jvp";
+import { coroPumpPanel } from "../panels/coroPump";
 import { ischemiaPanel } from "./ischemiaPanel";
 import { oxygenPanel } from "../panels/oxygen";
 import { LiveSource } from "../sim/liveSource";
@@ -53,7 +54,7 @@ export function mountPanels() {
   pushPatient(true); // a link that was opened before the workspace existed has its structure in the core engine already; this settles the source choice
   monitorHooks.draw = vitalsUi;
   const first = chooseSource(); setPanelSource(first);
-  workspace = mountWorkspace(ws, [ecgPanel, tracesPanel, loopsPanel, monitorPanel, numbersPanel, ischemiaPanel, oxygenPanel, rhcPanel, leftHeartCathPanel, jvpPanel], first, {
+  workspace = mountWorkspace(ws, [ecgPanel, tracesPanel, loopsPanel, monitorPanel, numbersPanel, ischemiaPanel, oxygenPanel, rhcPanel, leftHeartCathPanel, jvpPanel, coroPumpPanel], first, {
     clock: playClock, clinical: { scales: CLINICAL_SCALES, get: () => S.speed, set: (v) => { S.speed = v; controlsUi(); } }, // both clocks in the workspace bar
   });
   $("bedsfig").hidden = true; // its table now lives in the Ischemia panel (the game keeps the figure)

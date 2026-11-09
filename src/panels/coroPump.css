@@ -1,0 +1,42 @@
+/* The CoroPump console pane (src/panels/coroPump.ts). Unboxed inside the workspace card; sections divide by hairlines. */
+.cp { display: grid; gap: 0; min-width: 0; padding: 14px; }
+.cp [hidden] { display: none !important; }
+.cp-empty { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-bottom: 14px; }
+.cp-note { margin: 0; font: 400 13px/1.4 var(--font-ui); color: var(--muted); }
+.cp-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 10px; }
+.cp-state { font: 500 12px/1 var(--font-data); color: var(--muted); }
+.cp button { border-radius: 0; }
+
+/* Numbers: hairlines between cells, as the bedside monitor's tiles. */
+.cp-grid { display: flex; flex-wrap: wrap; gap: 1px; padding: 1px; background: var(--rule); }
+.cp-cell { flex: 1 1 140px; min-width: 0; display: grid; gap: 8px; padding: 10px 12px 12px; background: var(--bg); }
+.cp-label { font: 500 12px/1.2 var(--font-ui); color: var(--muted); }
+.cp-val { font: 700 20px/1 var(--font-readout); font-variant-numeric: tabular-nums; color: var(--ink); white-space: nowrap; }
+
+/* Alarms: text with a label, and a heavier rule; red only while an alarm is on. */
+.cp-alarms { padding: 12px 0; border-bottom: 1px solid var(--rule-light); }
+.cp-alarm { margin: 0; font: 500 13px/1.5 var(--font-data); color: var(--muted); }
+.cp-alarm.on { color: var(--bad); font-weight: 700; border-left: 3px solid var(--bad); padding-left: 8px; }
+.cp-alarm + .cp-alarm { margin-top: 4px; }
+
+.cp-fig { margin: 14px 0 0; padding: 0; background: none; border: 0; border-radius: 0; }
+.cp-cv { display: block; width: 100%; border: 1px solid var(--rule); }
+.cp-fig figcaption { margin: 0; padding: 6px 0 0; font: 400 12px/1.4 var(--font-data); color: var(--muted); max-width: none; }
+.cp-fig figcaption b { font-weight: 500; color: var(--ink); }
+
+/* The labs line is not part of the pump: it sits apart under a rule. */
+.cp-labs { margin: 14px 0 0; padding-top: 10px; border-top: 1px solid var(--rule); font: 400 13px/1.4 var(--font-data); color: var(--ink); }
+
+.cp-controls { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--rule); min-width: 0; display: grid; grid-template-columns: minmax(96px, auto) minmax(0, 1fr) auto; gap: 8px 12px; align-items: center; }
+.cp-controls .ctl-flat, .cp-controls .pg-dev:not([hidden]) { display: contents; }
+.cp-controls label { margin: 0; }
+.cp-controls label.ctl-sub { padding-left: 0; }
+.cp-controls select { width: 100%; }
+.cp-controls .val { white-space: nowrap; }
+.cp-controls .row { display: flex; gap: 8px; flex-wrap: wrap; grid-column: 1 / -1; margin: 0; }
+.cp-controls .row button { flex: 1 1 auto; }
+@media (max-width: 420px) {
+  .cp { padding: 10px; }
+  .cp-cell { flex-basis: calc(50% - 1px); padding: 8px 10px 10px; }
+  .cp-controls { grid-template-columns: minmax(76px, auto) minmax(0, 1fr) minmax(0, auto); gap: 8px; font-size: 12px; }
+}
