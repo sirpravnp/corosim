@@ -1,3 +1,4 @@
+import { COROPUMP_PURGE, type CoroPumpPosition, type CoroPumpModelName, type PurgeLine, type PurgeSolution } from "../config/devices";
 import { migrateLegacyKeys } from "./aliases";
 import { normalizeScenario } from "./scenario";
 import type { Normalized, Scenario } from "./scenario";
@@ -64,9 +65,21 @@ export interface VentilationSpec {
   tidalMlKg?: number;
 }
 
-export type CoroPumpModel = "2.5" | "CP" | "5.5";
+export type CoroPumpModel = CoroPumpModelName;
 export interface DeviceSpec {
-  coroPump?: { model?: CoroPumpModel; level?: number /* P-level 0..9 */; position?: "correct" | "aortic" | "deep" };
+  coroPump?: {
+    model?: CoroPumpModelName;
+    level?: number /* P0..P9 */;
+    position?: CoroPumpPosition;
+    purge?: {
+      solution?: PurgeSolution; /** 0..50 U/ml, default 25 */ heparinUml?: number;
+      line?: PurgeLine; /** default "clear"; disease control for cases */
+      clearLine?: boolean; /** one-shot treatment */
+    };
+    exchange?: boolean; /** one-shot: new pump */
+    reposition?: boolean; /** one-shot: position back to correct */
+    initial?: { thrombusBurden?: number /* 0..1 */; plasmaFreeHbMgDl?: number /* mg/dL */ };
+  };
   coroPumpRp?: { level?: number };
   iabp?: {
     ratio?: 1 | 2 | 3;
@@ -88,6 +101,9 @@ export const PATIENT_RANGES = {
   fluidMl: [0, 5000], fluidAtMin: [0, 1440], fluidOverMin: [0, 1440], hemorrhageMlMin: [0, 500], capillaryLeak: [0, 1], // fluids (a day at most)
   peep: [0, 25], tidalMlKg: [2, 15], // ventilation: cmH2O; ml per kg ideal weight
   coroPumpLevel: [0, 9], // P-level
+  purgeHeparinUml: [0, 50],
+  thrombusBurden: [0, 1],
+  plasmaFreeHbMgDl: [0, 500],
   iabpOffsetMs: [-100, 100], iabpVolumeMl: [0, 50], // timing offset from correct, ms; balloon volume, ml
   ecmoFlowLpm: [0, 7], ecmoSweepLpm: [0, 10], fio2: [0.21, 1],
 } as const;
@@ -206,7 +222,31 @@ export function normalizePatient(input: PatientSpec = {}): NormalizedPatient {
   if (dev) {
     const out: DeviceSpec = {};
     const imp = section(dev.coroPump, "devices.coroPump");
-    if (imp) out.coroPump = compact({ model: oneOf(imp, "model", "devices.coroPump", ["2.5", "CP", "5.5"] as const), level: num(imp, "level", "devices.coroPump", R.coroPumpLevel), position: oneOf(imp, "position", "devices.coroPump", ["correct", "aortic", "deep"] as const) }) ?? {};
+    if (imp) {
+      const purge = section(imp.purge, "devices.coroPump.purge");
+      const init = section(imp.initial, "devices.coroPump.initial");
+      out.coroPump = compact({
+        model: oneOf(imp, "model", "devices.coroPump", ["2.5", "CP", "5.5"] as const),
+        level: num(imp, "level", "devices.coroPump", R.coroPumpLevel),
+        position: oneOf(imp, "position", "devices.coroPump", ["correct", "aortic", "deep"] as const),
+        purge: purge
+          ? compact({
+              solution: oneOf(purge, "solution", "devices.coroPump.purge", ["dextrose-heparin", "bicarbonate"] as const),
+              heparinUml: num(purge, "heparinUml", "devices.coroPump.purge", R.purgeHeparinUml),
+              line: oneOf(purge, "line", "devices.coroPump.purge", ["clear", "kinked", "blocked"] as const),
+              clearLine: bool(purge, "clearLine", "devices.coroPump.purge"),
+            })
+          : undefined,
+        exchange: bool(imp, "exchange", "devices.coroPump"),
+        reposition: bool(imp, "reposition", "devices.coroPump"),
+        initial: init
+          ? compact({
+              thrombusBurden: num(init, "thrombusBurden", "devices.coroPump.initial", R.thrombusBurden),
+              plasmaFreeHbMgDl: num(init, "plasmaFreeHbMgDl", "devices.coroPump.initial", R.plasmaFreeHbMgDl),
+            })
+          : undefined,
+      }) ?? {};
+    }
     const rp = section(dev.coroPumpRp, "devices.coroPumpRp");
     if (rp) out.coroPumpRp = compact({ level: num(rp, "level", "devices.coroPumpRp", R.coroPumpLevel) }) ?? {};
     const ia = section(dev.iabp, "devices.iabp");

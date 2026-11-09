@@ -1,6 +1,7 @@
 // Laboratory estimates for the order system: one finite, plausible value per
 // analyte for any patient. Pure and DOM-free. Every baseline, coefficient and
 // range here is a teaching approximation, not a measurement. [assumed]
+import { COROPUMP_HEMOLYSIS } from "../config/devices";
 import type { BedsideInput } from "./bedside";
 
 export interface LabsInput extends BedsideInput {
@@ -20,7 +21,7 @@ export const ANALYTES = [
   "na", "k", "cl", "hco3", "bun", "cr", "egfr", "glu", "ca", "mg", "phos", "hgb", "wbc", "plt",
   "ast", "alt", "alp", "tbili", "alb", "trop", "bnp", "ntprobnp", "tsh", "ft4", "a1c",
   "inr", "aptt", "ddimer", "lipase", "pct", "tchol", "ldl", "hdl", "tg", "ph", "pco2", "po2", "be",
-  "ua", "tox",
+  "ua", "tox", "pfhb",
 ] as const;
 export type Analyte = (typeof ANALYTES)[number];
 
@@ -38,7 +39,8 @@ export const REF: Record<Analyte, { lo: number; hi: number; unit: string }> = {
   ddimer: { lo: 0, hi: 0.5, unit: "ug/mL FEU" }, lipase: { lo: 0, hi: 160, unit: "U/L" }, pct: { lo: 0, hi: 0.5, unit: "ng/mL" },
   tchol: { lo: 125, hi: 200, unit: "mg/dL" }, ldl: { lo: 0, hi: 100, unit: "mg/dL" }, hdl: { lo: 40, hi: 100, unit: "mg/dL" },
   tg: { lo: 0, hi: 150, unit: "mg/dL" }, ph: { lo: 7.35, hi: 7.45, unit: "" }, pco2: { lo: 35, hi: 45, unit: "mmHg" },
-  po2: { lo: 80, hi: 120, unit: "mmHg" }, be: { lo: -2, hi: 2, unit: "mmol/L" }, ua: { lo: 0, hi: 0, unit: "" }, tox: { lo: 0, hi: 0, unit: "" },
+  po2: { lo: 80, hi: 120, unit: "mmHg" },   be: { lo: -2, hi: 2, unit: "mmol/L" }, ua: { lo: 0, hi: 0, unit: "" }, tox: { lo: 0, hi: 0, unit: "" },
+  pfhb: { lo: 0, hi: 5, unit: "mg/dL" },
 };
 
 /** Display names and decimals, used by the order items. */
@@ -53,6 +55,7 @@ export const LABEL: Record<Analyte, { name: string; dec: number }> = {
   pct: { name: "Procalcitonin", dec: 2 }, tchol: { name: "Total cholesterol", dec: 0 }, ldl: { name: "LDL", dec: 0 }, hdl: { name: "HDL", dec: 0 },
   tg: { name: "Triglycerides", dec: 0 }, ph: { name: "pH", dec: 2 }, pco2: { name: "pCO2", dec: 0 }, po2: { name: "pO2", dec: 0 },
   be: { name: "Base excess", dec: 0 }, ua: { name: "Urinalysis", dec: 0 }, tox: { name: "Toxicology screen", dec: 0 },
+  pfhb: { name: "Plasma free hemoglobin", dec: 0 },
 };
 
 export function flag(a: Analyte, v: number): "H" | "L" | "" {
@@ -70,6 +73,7 @@ const LIMITS: Partial<Record<Analyte, [number, number]>> = {
   alp: [30, 1000], tbili: [0.1, 30], alb: [1, 5.5], trop: [0, 50000], bnp: [5, 5000], ntprobnp: [20, 35000], tsh: [0.01, 100],
   ft4: [0.1, 6], a1c: [3.5, 15], inr: [0.8, 10], aptt: [20, 150], ddimer: [0.05, 20], lipase: [10, 3000], pct: [0.02, 100],
   tchol: [60, 500], ldl: [20, 350], hdl: [15, 120], tg: [30, 1500], ph: [6.6, 7.8], pco2: [10, 120], po2: [20, 500], be: [-30, 15],
+  pfhb: [0, 500],
 };
 
 /**
@@ -140,6 +144,9 @@ export function estimateLabs(i: LabsInput, override?: Record<string, number>): R
   v.po2 = 26.8 * Math.pow(s / (1 - s), 1 / 2.7);
   v.ua = lf > 0.25 ? 1 : 0; // concentrated urine with casts after prolonged low flow. [assumed]
   v.tox = 0;
+  v.pfhb = typeof (i as LabsSource).pfHbMgDl === "number" && Number.isFinite((i as LabsSource).pfHbMgDl!)
+    ? (i as LabsSource).pfHbMgDl!
+    : COROPUMP_HEMOLYSIS.baselineMgDl;
 
   for (const a of ANALYTES) { const lim = LIMITS[a]; if (lim) v[a] = clamp(v[a], lim[0], lim[1]); }
   for (const [k, x] of Object.entries(override ?? {})) if ((ANALYTES as readonly string[]).includes(k) && Number.isFinite(x)) v[k as Analyte] = x;
@@ -151,7 +158,7 @@ export const labsOverride: { values?: Record<string, number> } = {};
 export function setCaseLabs(l: Record<string, number> | undefined): void { labsOverride.values = l; }
 
 /** The fields estimateLabs needs from any patient snapshot; missing ones fall back to baseline. */
-export type LabsSource = BedsideInput & Partial<Pick<LabsInput, "co" | "lvEf" | "lvIschemia" | "lowFlowMin" | "caseMin" | "ageY">>;
+export type LabsSource = BedsideInput & Partial<Pick<LabsInput, "co" | "lvEf" | "lvIschemia" | "lowFlowMin" | "caseMin" | "ageY">> & { pfHbMgDl?: number };
 export function toLabsInput(n: LabsSource): LabsInput {
   return { ...n, co: fin(n.co, NaN), lvEf: fin(n.lvEf, NaN), lvIschemia: fin(n.lvIschemia, 0), lowFlowMin: fin(n.lowFlowMin, 0), caseMin: fin(n.caseMin, 0), ageY: fin(n.ageY, 65) };
 }

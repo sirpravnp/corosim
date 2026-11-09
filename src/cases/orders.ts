@@ -1,6 +1,8 @@
 // The order catalog: everything a case monitor can show and everything the
 // learner can order. Pure and DOM-free; later tasks consume these names.
 import { BedsideInput } from "../sim/bedside";
+import { COROPUMP_HEMOLYSIS } from "../config/devices";
+import { urineColor } from "../physics/core/devices/hemolysis";
 import { Analyte, estimateLabs, labLine, labsOverride, toLabsInput } from "../sim/labs";
 
 export interface PatientNow extends BedsideInput {
@@ -9,6 +11,9 @@ export interface PatientNow extends BedsideInput {
   tempC: number; respRate: number;
   /** Optional: a snapshot without them reads as a baseline patient for the labs. */
   co?: number; lvEf?: number; lowFlowMin?: number; caseMin?: number; ageY?: number;
+  /** Plasma free hemoglobin (mg/dL) and urine appearance when the engine exposes them. */
+  pfHbMgDl?: number;
+  urineColor?: "clear" | "tea" | "dark";
 }
 export interface Reading { text: string; estimate?: boolean }
 export interface OrderItem {
@@ -56,6 +61,7 @@ export const CATALOG: readonly OrderItem[] = [
   panel("traces", "Waveform traces"),
   panel("ischemia", "Ischemia map"),
   panel("numbers", "Hemodynamic numbers"),
+  panel("coropump", "CoroPump console"),
   {
     id: "lactate", label: "Lactate", group: "lab", delayS: 600, // [assumed]
     read: (n) => (num(n.lactate) ? { text: `${round(n.lactate, 1)} mmol/L` } : NA),
@@ -77,9 +83,19 @@ export const CATALOG: readonly OrderItem[] = [
   lab("a1c", "Hemoglobin A1c", 3600, ["a1c"]),
   lab("ua", "Urinalysis", 900, ["ua"]),
   lab("tox", "Toxicology screen", 1800, ["tox"]),
+  lab("hemolysis", "Plasma free hemoglobin", 1800, ["pfhb"]),
   {
     id: "urine", label: "Urine output", group: "bedside", delayS: 0,
     read: (n) => (num(n.urineMlHr) ? { text: `${round(n.urineMlHr)} mL/h` } : NA),
+  },
+  {
+    id: "urine-color", label: "Urine color", group: "bedside", delayS: 0,
+    read: (n) => {
+      const pf = typeof n.pfHbMgDl === "number" && Number.isFinite(n.pfHbMgDl) ? n.pfHbMgDl : COROPUMP_HEMOLYSIS.baselineMgDl;
+      const c = n.urineColor ?? urineColor(pf);
+      const word = c === "dark" ? "Dark" : c === "tea" ? "Tea-colored" : "Clear";
+      return { text: word, estimate: n.pfHbMgDl === undefined && n.urineColor === undefined };
+    },
   },
 ];
 

@@ -4,7 +4,9 @@ Scored 2026-11-01 12:19 PM ET. Base `5e6281c` on `cursor/condition-matrix-run-1f
 
 320 states, seed 1, no crashes. Three rate rows use 24 seeds. One seed elsewhere is an anecdote. Chamber EF is `lvEf`. Aortic-valve EF is `lvEfEstimate`. There is no `lvEfFick` variable here; a Fick EF in a section file is `(rhc.fickCo × 1000 / hr) / lvEdv` and is labelled derived. On a healthy heart that derived value sits near 0.56 while chamber EF is 0.62, because Fick cardiac output is not yet identical to flow cardiac output. `cppPanel` and `coronaryDrivingPressure` stay separate.
 
-Section files, one line per state: `docs/matrix/lesions.md` (88), `docs/matrix/valves.md` (28), `docs/matrix/rhythm.md` (47), `docs/matrix/support.md` (157). A line below replaces that file's match or miss where the rescore says so.
+Section files, one line per state: `docs/matrix/lesions.md` (88), `docs/matrix/valves.md` (28), `docs/matrix/rhythm.md` (47), `docs/matrix/support.md` (162). A line below replaces that file's match or miss where the rescore says so.
+
+CoroPump purge, thrombus and hemolysis (2026-11-09, commit on `cursor/corepump-engine-c2-c8-5afc`): five new `mx-sup-coroPump-*` rows in `docs/matrix/support.md` (`purge-blocked`, `purge-heparin0`, `initial-thrombus`, `initial-pfhb`, `deep-p9-bleed`). Eval variables `coroPump.purgePressure`, `coroPump.purgeFlow`, `coroPump.thrombusBurden`, and `coroPump.pfHb` added in `scripts/eval/variables.ts`.
 
 ## Where the solver can change
 

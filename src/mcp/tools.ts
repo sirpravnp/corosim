@@ -162,7 +162,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "corosim_adjust", title: "Change the patient while it runs", readOnly: false,
-    description: `Apply a change to the running patient (give a drug, start a hemorrhage, occlude an artery) and optionally run on to watch the response. Fields you leave out are unchanged; drug and volume changes ramp in over ~10 s like a real bolus. Returns the response time course. Set patch.patient.rhythm to any library rhythm (corosim_ekg_list ids) to run it on the patient with its hemodynamics, including vf-coarse, vt-mono and asystole to start an arrest for teaching (then corosim_arrest). ${NOT_CLINICAL}`,
+    description: `Apply a change to the running patient (give a drug, start a hemorrhage, occlude an artery, adjust CoroPump purge heparin or solution, exchange or reposition the pump) and optionally run on to watch the response. Fields you leave out are unchanged; drug and volume changes ramp in over ~10 s like a real bolus. devices.coroPump.purge and exchange are live on the core engine; devices().coroPump reports purge pressure and flow, plasma free hemoglobin with urine color, and thrombusBurden. Returns the response time course. Set patch.patient.rhythm to any library rhythm (corosim_ekg_list ids) to run it on the patient with its hemodynamics, including vf-coarse, vt-mono and asystole to start an arrest for teaching (then corosim_arrest). ${NOT_CLINICAL}`,
     inputSchema: { type: "object", required: ["patch"], properties: { patch: patientSchema, runSeconds: { type: "number", minimum: 0, maximum: 600, description: "Simulated seconds to run after the change (default 60)." } } },
     run(ctx, a) {
       const patch = patientFromUnknown(a.patch);

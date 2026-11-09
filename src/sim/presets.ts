@@ -38,6 +38,23 @@ export const PRESETS: Preset[] = [
     spec: { lesions: [{ artery: "LAD", occluded: true, position: 0.15 }], support: { dobutamine: 0.3, coroPump: true }, devices: { coroPump: { model: "CP", level: 9, position: "deep" } } },
   },
   {
+    id: "purge-rising", label: "Rising purge pressure", blurb: "Cardiogenic shock on a CoroPump with dextrose purge and no heparin, thrombus burden already 0.45: purge pressure climbs until anticoagulation or exchange is needed.",
+    spec: {
+      lesions: [{ artery: "LAD", occluded: true, position: 0.15 }],
+      support: { dobutamine: 0.3, coroPump: true },
+      devices: { coroPump: { model: "CP", level: 6, purge: { solution: "dextrose-heparin", heparinUml: 0, line: "clear" }, initial: { thrombusBurden: 0.45 } } },
+    },
+  },
+  {
+    id: "coropump-hemolysis", label: "CoroPump hemolysis", blurb: "Hypovolemic shock with a CoroPump CP at P9 and plasma free hemoglobin already elevated: urine is tea-colored and shear worsens until volume and speed are corrected.",
+    spec: {
+      lesions: [{ artery: "LAD", occluded: true, position: 0.15 }],
+      bloodLoss: 0.25,
+      support: { coroPump: true },
+      devices: { coroPump: { model: "CP", level: 9, position: "correct", initial: { plasmaFreeHbMgDl: 60 } } },
+    },
+  },
+  {
     id: "rv-infarct-coropump", label: "RV infarct starving a left CoroPump", blurb: "Proximal RCA occlusion with a failed right ventricle in a preload-depleted patient, CoroPump CP at P9: the left ventricle gets too little blood, the flow falls and suction alarms sound. A fluid bolus, a CoroPump RP or a lower P-level restores the flow.",
     spec: { lesions: [{ artery: "RCA", occluded: true, position: 0.2 }], heart: { rvEes: 0.2, rvStiffness: 4 }, bloodLoss: 0.25, devices: { coroPump: { model: "CP", level: 9, position: "correct" } } },
   },

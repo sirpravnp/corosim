@@ -91,4 +91,29 @@ describe("CoroPump device keys", () => {
     expect(learnerMayApply({ devices: { coroPump: { level: 6 } } } as PatientSpec)).toEqual({ ok: true });
     expect(learnerMayApply({ devices: { coroPump: { position: "aortic" } } } as PatientSpec).ok).toBe(false);
   });
+
+  it("learner may clear the purge line, exchange, and reposition", () => {
+    expect(learnerMayApply({ devices: { coroPump: { purge: { clearLine: true } } } } as PatientSpec)).toEqual({ ok: true });
+    expect(learnerMayApply({ devices: { coroPump: { exchange: true } } } as PatientSpec)).toEqual({ ok: true });
+    expect(learnerMayApply({ devices: { coroPump: { reposition: true } } } as PatientSpec)).toEqual({ ok: true });
+  });
+
+  it("refuses position, purge line and initial with a one-sentence reason each", () => {
+    const pos = refused({ devices: { coroPump: { position: "deep" } } } as PatientSpec);
+    expect(pos).toMatch(/malposition/i);
+    expect(refused({ devices: { coroPump: { purge: { line: "blocked" } } } } as PatientSpec)).toMatch(/purge line/i);
+    expect(refused({ devices: { coroPump: { initial: { thrombusBurden: 0.4 } } } } as PatientSpec)).toMatch(/thrombus|hemolysis/i);
+  });
+
+  it("refuses a mixed edit that includes disease", () => {
+    refused({ devices: { coroPump: { level: 6, position: "aortic" } } } as PatientSpec);
+  });
+
+  it("corosim_adjust applies treatments and refuses disease while in a case", () => {
+    const sim = new Simulation(), ctx = { sim, appUrl: "x", inCase: true };
+    const tool = (n: string) => TOOLS.find((t) => t.name === n)!;
+    expect(() => tool("corosim_adjust").run(ctx, { patch: { devices: { coroPump: { position: "deep" } } }, runSeconds: 0 })).toThrow(/malposition/i);
+    expect(() => tool("corosim_adjust").run(ctx, { patch: { devices: { coroPump: { purge: { line: "blocked" } } } }, runSeconds: 0 })).toThrow(/purge/i);
+    expect(() => tool("corosim_adjust").run(ctx, { patch: { devices: { coroPump: { reposition: true, exchange: true } } }, runSeconds: 0 })).not.toThrow();
+  });
 });

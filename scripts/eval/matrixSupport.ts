@@ -329,6 +329,23 @@ function interactions(): State[] {
     support: { coroPump: true }, devices: { coroPump: { model: "CP", level: 0, position: "correct" } },
   }));
 
+  out.push(mx("coroPump-purge-blocked", "CoroPump CP P6, blocked purge line", {
+    devices: { coroPump: { model: "CP", level: 6, purge: { line: "blocked" } } },
+  }));
+  out.push(mx("coroPump-purge-heparin0", "CoroPump CP P6, purge heparin 0", {
+    devices: { coroPump: { model: "CP", level: 6, purge: { heparinUml: 0 } } },
+  }, { checkpoints: cp60_180 }));
+  out.push(mx("coroPump-initial-thrombus", "CoroPump CP P6, initial thrombus 0.45", {
+    devices: { coroPump: { model: "CP", level: 6, initial: { thrombusBurden: 0.45 } } },
+  }));
+  out.push(mx("coroPump-initial-pfhb", "CoroPump CP P6, initial plasma free Hb 60 mg/dL", {
+    devices: { coroPump: { model: "CP", level: 6, initial: { plasmaFreeHbMgDl: 60 } } },
+  }));
+  out.push(mx("coroPump-deep-p9-bleed", "CoroPump deep P9 with 25% blood loss", {
+    bloodLoss: 0.25,
+    devices: { coroPump: { model: "CP", level: 9, position: "deep" } },
+  }, { checkpoints: cp60_180 }));
+
   return out;
 }
 

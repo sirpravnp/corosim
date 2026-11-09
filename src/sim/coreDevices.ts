@@ -1,3 +1,4 @@
+import type { PurgeLine, PurgeSolution } from "../config/devices";
 import { CoroPump } from "../physics/core/devices/coroPump";
 import type { Ctx, Rates } from "../physics/core/types";
 
@@ -40,7 +41,16 @@ export interface CoroPumpReadout {
   placementMmHg: number; placementAmplitudeMmHg: number;
   suctionLevel: number; suctionFraction: number; suctionAlarm: boolean;
   inletMeanMmHg: number; inletMinMmHg: number; inletMaxMmHg: number; inletAmplitudeMmHg: number;
-  positionAlarm: boolean; alarms: string[];
+  positionAlarm: boolean;
+  /** Purge line: solution and heparin are treatment settings; line state is disease unless cleared. */
+  purge: { solution: PurgeSolution; heparinUml: number; line: PurgeLine; flowMlHr: number; pressureMmHg: number };
+  /** Patient free hemoglobin (mg/dL) and urine appearance; not shown on a real pump console. */
+  hemolysis: { plasmaFreeHbMgDl: number; urineColor: "clear" | "tea" | "dark" };
+  /** 0..1 truth for tests; not on the console. */
+  thrombusBurden: number;
+  /** Last completed beat, resampled to 100 points each. */
+  waveform: { dtMs: number; inletMmHg: number[]; currentMa: number[] } | null;
+  alarms: string[];
 }
 
 /**

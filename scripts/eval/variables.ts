@@ -103,6 +103,10 @@ for (const k of ["norepinephrine", "epinephrine", "dobutamine", "milrinone", "va
 add("Devices", "deviceFlow", "L/min", (c) => c.st.support.deviceFlowLpm);
 add("Devices", "coroPump.flow", "L/min", (c) => c.dev?.coroPump?.flowLpm); add("Devices", "coroPump.motorCurrent", "mA", (c) => c.dev?.coroPump?.motorCurrentMa);
 add("Devices", "coroPump.placement", "mmHg", (c) => c.dev?.coroPump?.placementMmHg); add("Devices", "coroPump.suctionLevel", "0-1", (c) => c.dev?.coroPump?.suctionLevel);
+add("Devices", "coroPump.purgePressure", "mmHg", (c) => c.dev?.coroPump?.purge.pressureMmHg);
+add("Devices", "coroPump.purgeFlow", "ml/hr", (c) => c.dev?.coroPump?.purge.flowMlHr);
+add("Devices", "coroPump.thrombusBurden", "0-1", (c) => c.dev?.coroPump?.thrombusBurden);
+add("Devices", "coroPump.pfHb", "mg/dL", (c) => c.dev?.coroPump?.hemolysis.plasmaFreeHbMgDl);
 add("Devices", "iabp.coronaryAugmentation", "mmHg", (c) => c.dev?.iabp?.coronaryAugmentationMmHg); add("Devices", "iabp.peakDiastolic", "mmHg", (c) => c.dev?.iabp?.peakDiastolicMmHg);
 // ECMO and CoroPump RP consoles (null until that circuit is in the patient). returnSat is the oxygenator's, from the live source.
 add("Devices", "ecmo.flow", "L/min", (c) => c.dev?.ecmo?.flowLpm); add("Devices", "ecmo.rpm", "rpm", (c) => c.dev?.ecmo?.rpm);

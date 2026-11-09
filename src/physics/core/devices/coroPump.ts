@@ -1,4 +1,4 @@
-import { cannulaInertance, COROPUMP, COROPUMP_CONSOLE, COROPUMP_POSITION, COROPUMP_SUCTION, type CoroPumpModelName, type CoroPumpPosition } from "../../../config/devices";
+import { cannulaInertance, COROPUMP, COROPUMP_CONSOLE, COROPUMP_POSITION, COROPUMP_PUMP, COROPUMP_SUCTION, type CoroPumpModelName, type CoroPumpPosition } from "../../../config/devices";
 import { NODES } from "../../structuralGraph";
 import type { Model } from "../../structural";
 import type { Ctx, Engine, HeartEvent, NodeId, Rates } from "../types";
@@ -51,6 +51,8 @@ export class CoroPump extends RotaryPump {
   private lvl: number;
   private floorV: number;
   private beats = 0;
+  /** Thrombus burden 0..1; lowers head and raises reported motor current. */
+  thrombusBurden = 0;
   constructor(name: string, from: NodeId, to: NodeId, cfg: CoroPumpConfig) {
     const model = cfg.model ?? "CP", position = cfg.position ?? "correct", def = COROPUMP[model], S = COROPUMP_SUCTION, level = cfg.level ?? 6;
     const deep = position === "deep" ? COROPUMP_POSITION.deep : { vcExtraMl: 0, pthExtra: 0 };
@@ -66,6 +68,7 @@ export class CoroPump extends RotaryPump {
     return new CoroPump(name, cfg.position === "aortic" ? ao : lv, ao, { ...cfg, v0: m.chambers[lv]!.v0 });
   }
   get level(): number { return this.lvl; }
+  setBurden(b: number) { this.thrombusBurden = Math.min(1, Math.max(0, b)); }
   /** `level` (P-level, sets the speed) and any pump parameter; a `speed` given alone overrides the table until the next `level`. */
   set(patch: Partial<PumpParams> & { level?: number }) {
     const { level, ...rest } = patch;
@@ -77,7 +80,8 @@ export class CoroPump extends RotaryPump {
     const p = this.params, Q = ctx.y[this.idx], pIn = ctx.P[this.from], vIn = ctx.V[this.from];
     const rIn = Q > 0 ? inflowResistance(p, pIn, vIn) : p.R0;
     out.flow(this.from, this.to, Q);
-    let rate = (pumpHead(p, p.speed, Q) - (ctx.P[this.to] - pIn) - rIn * Q) / p.L;
+    const headScale = 1 - COROPUMP_PUMP.thrombusHeadLossPerBurden * this.thrombusBurden;
+    let rate = (pumpHead(p, p.speed, Q) * headScale - (ctx.P[this.to] - pIn) - rIn * Q) / p.L;
     const S = COROPUMP_SUCTION, qLim = Math.max(vIn - this.floorV, 0) / S.floorTau, ex = Q - qLim;
     if (ex > 0) rate = -ex / S.limitTau; // over the limit: the limiter overrides the head, however large
     else if (ex > -S.limitBand) { const w = -ex / S.limitBand; rate = rate * w + (1 - w) * (-ex / S.limitTau); } // blended in over `limitBand` ml/s so the rate is continuous
@@ -85,7 +89,12 @@ export class CoroPump extends RotaryPump {
   }
   taps(ctx: Ctx) {
     const t = super.taps(ctx), p = this.params;
-    return { ...t, level: this.lvl, current: motorCurrent(p.speed, t.head, t.Q), placement: t.dP, pIn: ctx.P[this.from], pOut: ctx.P[this.to], suctionAlarm: t.suction, beat: this.beats };
+    const curScale = 1 + COROPUMP_PUMP.thrombusCurrentGainPerBurden * this.thrombusBurden;
+    const head = t.head * (1 - COROPUMP_PUMP.thrombusHeadLossPerBurden * this.thrombusBurden);
+    return {
+      ...t, head, level: this.lvl, current: motorCurrent(p.speed, head, t.Q) * curScale, placement: t.dP,
+      pIn: ctx.P[this.from], pOut: ctx.P[this.to], suctionAlarm: t.suction, beat: this.beats,
+    };
   }
 }
 
@@ -114,9 +123,25 @@ export interface CoroPumpBeat {
  * Beat statistics of an `CoroPump` in an engine: samples its taps every `COROPUMP_CONSOLE.strideS` seconds and closes a beat when the device's
  * `beat` counter advances (it counts ventricular events). `last` is the most recent completed beat, `onBeat` calls back with each one.
  */
+const resample100 = (xs: number[]): number[] => {
+  if (!xs.length) return Array.from({ length: 100 }, () => 0);
+  const out: number[] = [];
+  for (let i = 0; i < 100; i++) {
+    const t = (i / 99) * (xs.length - 1);
+    const j = Math.floor(t);
+    const f = t - j;
+    out.push(xs[j]! * (1 - f) + (xs[j + 1] ?? xs[j]!) * f);
+  }
+  return out;
+};
+
 export class CoroPumpConsole {
   last: CoroPumpBeat | null = null;
+  /** Last beat inlet pressure and motor current, 100 points each (CoroPump contract). */
+  waveform: { dtMs: number; inletMmHg: number[]; currentMa: number[] } | null = null;
   private acc = { n: 0, q: [0, 0, -Infinity] as number[], i: [0, 0, -Infinity] as number[], d: [0, 0, -Infinity] as number[], p: [0, 0, -Infinity] as number[], s: 0, lv: 0 };
+  private inletTrace: number[] = [];
+  private currentTrace: number[] = [];
   private beat = NaN; private next = -Infinity;
   private readonly off: () => void;
   private listeners: ((b: CoroPumpBeat) => void)[] = [];
@@ -130,11 +155,17 @@ export class CoroPumpConsole {
       if (Number.isNaN(this.beat)) this.beat = t.beat;
       if (t.beat !== this.beat) { this.close(s.t, t.level); this.beat = t.beat; }
       const a = this.acc; a.n++;
+      this.inletTrace.push(t.pIn);
+      this.currentTrace.push(t.current);
       for (const [arr, x] of [[a.q, t.flow], [a.i, t.current], [a.d, t.placement], [a.p, t.pIn]] as const) { arr[0] += x; arr[1] = Math.min(arr[1], x); arr[2] = Math.max(arr[2], x); }
       a.s += t.suctionAlarm; a.lv = Math.max(a.lv, t.suctionLevel);
     });
   }
-  private reset() { this.acc = { n: 0, q: [0, Infinity, -Infinity], i: [0, Infinity, -Infinity], d: [0, Infinity, -Infinity], p: [0, Infinity, -Infinity], s: 0, lv: 0 }; }
+  private reset() {
+    this.acc = { n: 0, q: [0, Infinity, -Infinity], i: [0, Infinity, -Infinity], d: [0, Infinity, -Infinity], p: [0, Infinity, -Infinity], s: 0, lv: 0 };
+    this.inletTrace = [];
+    this.currentTrace = [];
+  }
   private close(t: number, level: number) {
     const a = this.acc;
     if (a.n >= 5) {
@@ -142,6 +173,8 @@ export class CoroPumpConsole {
       const d = stat(a.d), pin = stat(a.p), frac = a.s / a.n, flow = stat(a.q), C = COROPUMP_CONSOLE;
       this.last = { t, level, flow, current: stat(a.i), pulsatility: a.i[2] - a.i[1], placement: { ...d, amplitude: d.max - d.min },
         inlet: { ...pin, amplitude: pin.max - pin.min }, positionAlarm: level > 0 && flow.mean > C.positionMinFlowLpm && d.max - d.min < C.positionAmpMmHg, suctionFraction: frac, suctionLevel: a.lv, suctionAlarm: a.lv >= COROPUMP_CONSOLE.alarmLevel };
+      const durS = a.n * COROPUMP_CONSOLE.strideS;
+      this.waveform = { dtMs: (durS / 100) * 1000, inletMmHg: resample100(this.inletTrace), currentMa: resample100(this.currentTrace) };
       for (const l of this.listeners) l(this.last);
     }
     this.reset();
