@@ -12,9 +12,20 @@
 
 ## Ownership and review (read first)
 
-**Cursor builds every task, UI included.** Claude (Sonnet 5.5) does not build; it reviews. After each task Cursor stops and reports its commit; a Sonnet 5.5 review reads the diff against the task text (superpowers:requesting-code-review) and Cursor does not start the next task while findings are open. When all tasks land, Sonnet 5.5 runs the thorough UI review in Task 12. This reverses the 2026-11-07 plan, where Claude built the UI.
+**Claude owns everything the user looks at; Cursor does everything else.** The split is by file, so the two sides never edit the same files.
 
-Branch: `cath-unified`, created in Task 0 from `claude/focused-hypatia-8c3bfd` (commit `475d2f8`), then merged with the latest `origin/main`. Work in its own worktree, not the main checkout.
+| Owner | Tasks | Branch | Files |
+|---|---|---|---|
+| Cursor | 0 (branch and merge), 1, 2, 3, 4, 5, 6, 8, 11 | `cath-unified` | `src/lab/**` (engine, lesions, hint, resus, peripheral), `src/config/**`, `src/physics/**`, `src/sim/**`, `src/mcp/**`, `src/cath/data/**` (baked data), `scripts/cath/peripheral/**`, `docs/**`, `README.md`, engine and data tests, `.cursor/rules/**` |
+| Claude | 7 (peripheral rendering), 9 (page shell and Set up), 10 (Diagnose, Treat, hint and undo UI, resuscitation strip, 12-lead band), 12 (UI review) | `cath-unified-ui`, forked from `cath-unified` after Task 0 | `src/cath/**` except `src/cath/data/**`, `cath/**` HTML, all CSS, `vite.config.ts`, `tests/cathUnified*.test.ts`, `tests/labFluoro.test.ts`, `tests/cathBody.test.ts` |
+
+**Rules for both sides**
+- Cursor does no UI work: no CSS, no HTML, no canvas drawing, no DOM, no edits under `src/cath/` (except `src/cath/data/`), no `vite.config.ts`. If a task seems to need one, Cursor stops and says so. Claude does no engine physics, simulation, data baking or MCP work.
+- Interfaces are the contract: the `Produces` blocks of Tasks 1 to 6 and 8, and `src/lab/types.ts` (may gain fields; never renamed or removed). Claude builds against those interfaces from the start (a stub where an engine task has not landed) and swaps in the real code when it merges into `cath-unified-ui`.
+- Order: Cursor runs 0, then 1 to 6, 8 and 11 (Task 2 after 1; 3 and 4 after 2; 6 after 5; each independent of the UI). Claude starts after Task 0 and can build Task 9 once Task 1 lands, Task 7 once 5 and 6 land, Task 10 once 3, 4 and 8 land. Claude merges `cath-unified` into `cath-unified-ui` as each engine task lands; at the end `cath-unified-ui` merges into `cath-unified`.
+- Review: Claude reviews every Cursor commit against its task text (superpowers:requesting-code-review) before Cursor starts the next task; Cursor does not start a task while findings are open. Claude's own UI tasks are reviewed by a fresh Sonnet 5.5 reviewer, and that reviewer runs the whole-UI review in Task 12. The reviewer is not the session that built the UI.
+
+Branch `cath-unified` is created in Task 0 from `claude/focused-hypatia-8c3bfd` (commit `475d2f8`), then merged with the latest `origin/main`. Work in its own worktree, not the main checkout.
 
 ## Global Constraints
 
@@ -69,7 +80,7 @@ Tests: `tests/labLesions.test.ts`, `tests/labRoute.test.ts`, `tests/labUndo.test
 - [ ] **Step 1:** `git fetch origin`; create the worktree `../corosim-cath-unified` on branch `cath-unified` from `claude/focused-hypatia-8c3bfd`; `npm ci`.
 - [ ] **Step 2:** Merge `origin/main`. Resolve conflicts keeping both sides (CoroPump rename, case-screen from main; lab and fluoro realism from this line). Also cherry-pick or merge `origin/cursor/angio-fluoro-backdrop-c2d0` only if it merges cleanly and the cine backdrop still renders; otherwise note it in the commit message and skip.
 - [ ] **Step 3:** Run `npx vitest run && npm run typecheck && npm run build`. Expected: green. If a test fails after the merge, fix the merge, not the test.
-- [ ] **Step 4:** Add `.cursor/rules/cath-unified.mdc` (globs `src/lab/**,src/cath/**,tests/lab*.test.ts,tests/cathUnified*.test.ts`) restating: read `CLAUDE.md` and `DESIGN.md`; test first; touch only the task's files; seeded randomness; American English; explicit `git add`; stop and report after each task.
+- [ ] **Step 4:** Add `.cursor/rules/cath-unified.mdc` (globs `src/lab/**,src/cath/**,tests/lab*.test.ts,tests/cathUnified*.test.ts`) restating: read `CLAUDE.md`; test first; touch only the task's files; no UI work (no CSS, HTML, canvas or DOM code, nothing under `src/cath/` except `src/cath/data/`, no `vite.config.ts`); seeded randomness; American English; explicit `git add`; stop and report after each task. Narrow the rule's globs to `src/lab/**,src/config/**,src/physics/**,src/sim/**,src/mcp/**,scripts/cath/peripheral/**,tests/lab*.test.ts`.
 - [ ] **Step 5:** Commit `merge: cath-unified from realism line and origin/main`.
 
 ## Task 1: Lesion builder model
@@ -154,7 +165,7 @@ Tests: `tests/labLesions.test.ts`, `tests/labRoute.test.ts`, `tests/labUndo.test
 
 ## Task 5: Peripheral anatomy data
 
-**Files:** Create `scripts/cath/peripheral/bake.ts`, `src/cath/data/peripheral.json`, `docs/CATH_PERIPHERAL_SOURCES.md`. Modify `README.md` credits. Test `tests/labPeripheral.test.ts` (data checks only).
+**Owner: Cursor (data and scripts only).** **Files:** Create `scripts/cath/peripheral/bake.ts`, `src/cath/data/peripheral.json`, `docs/CATH_PERIPHERAL_SOURCES.md`. Modify `README.md` credits. Test `tests/labPeripheral.test.ts` (data checks only).
 
 **Interfaces:**
 - Produces: `peripheral.json` shaped `{ segments: { id: string; parent: string | null; points: [number, number, number][]; radiusMm: number[] }[] }` in the patient frame, covering: aorta (arch to bifurcation), common and external and internal iliac (both sides), common femoral, profunda, superficial femoral, popliteal, anterior and posterior tibial, peroneal, dorsalis pedis (both legs), and upper limb: subclavian, axillary, brachial, radial, ulnar (both arms), plus carotid and vertebral origins.
@@ -238,7 +249,7 @@ I did not find a clean normal bilateral run-off DSA or a normal radial-to-arch a
 
 ## Task 7: Peripheral rendering and run-off views
 
-**Files:** Modify `src/cath/lab/fluoro.ts`, `src/cath/lab/camera.ts`, `src/cath/body.ts`. Test `tests/labFluoro.test.ts`, `tests/cathBody.test.ts` (extend).
+**Owner: Claude (branch `cath-unified-ui`).** **Files:** Modify `src/cath/lab/fluoro.ts`, `src/cath/lab/camera.ts`, `src/cath/body.ts`. Test `tests/labFluoro.test.ts`, `tests/cathBody.test.ts` (extend).
 
 **Interfaces:** Produces camera presets `"aortogram" | "iliac" | "runoff" | "arm"` and contrast injection sites for `Action inject where` extended to `"aorta-abd" | "iliac-R" | "iliac-L"`; vessels drawn as lumens with taper, tortuosity and calcified-wall cues, in the realistic backdrop style.
 
@@ -268,7 +279,7 @@ I did not find a clean normal bilateral run-off DSA or a normal radial-to-arch a
 
 ## Task 9: Unified page shell and Set up step
 
-**Files:** Create `src/cath/unified/{page.ts,stepbar.ts,setup.ts,unified.css}`; replace `cath/index.html`; modify `vite.config.ts`. Test `tests/cathUnifiedSetup.test.ts`.
+**Owner: Claude (branch `cath-unified-ui`).** **Files:** Create `src/cath/unified/{page.ts,stepbar.ts,setup.ts,unified.css}`; replace `cath/index.html`; modify `vite.config.ts`. Test `tests/cathUnifiedSetup.test.ts`.
 
 **Interfaces:**
 - Consumes: `OLD_PRESETS`, `sliderToPlaque`, `plaquesToScenario`, `segmentChoices` (Task 1).
@@ -281,6 +292,7 @@ I did not find a clean normal bilateral run-off DSA or a normal radial-to-arch a
   - `it("editing lesions after treatment asks first, and cancel keeps the stent")`.
   - `it("moving between steps never resets the engine")`.
   - `it("every figure and table on the page has a caption")`.
+  - `it("/cath/lab/ and /cath/lab/play/ redirect to /cath/")` (built output check).
 - [ ] **Step 2:** Run; expect FAIL.
 - [ ] **Step 3:** Build the page: a step bar (hairline, sentence case), the fluoro stage as the dominant region (reuse `src/cath/lab/fluoro.ts` and `camera.ts`), a Set up panel with preset list, artery select, three sliders (position, severity, length) per lesion, add/remove lesion, exertion toggle, and a "Treat this vessel" target. Unboxed side panels divided by hairlines.
 - [ ] **Step 4:** Run tests, typecheck, `npm run build`. Start the dev server and take a screenshot.
@@ -288,7 +300,7 @@ I did not find a clean normal bilateral run-off DSA or a normal radial-to-arch a
 
 ## Task 10: Diagnose and Treat steps, hint, undo, resuscitation, 12-lead
 
-**Files:** Create `src/cath/unified/{diagnose.ts,treat.ts,hintUi.ts,ecg12.ts,resus.ts}`. Modify `src/cath/unified/page.ts`, `unified.css`. Retire `src/cath/angio.ts` and `src/cath/page.ts` (delete only after the checks in Step 5 pass). Tests `tests/cathUnifiedDiagnose.test.ts`, `tests/cathUnifiedTreat.test.ts`.
+**Owner: Claude (branch `cath-unified-ui`).** **Files:** Create `src/cath/unified/{diagnose.ts,treat.ts,hintUi.ts,ecg12.ts,resus.ts}`. Modify `src/cath/unified/page.ts`, `unified.css`. Retire `src/cath/angio.ts` and `src/cath/page.ts` (delete only after the checks in Step 5 pass). Tests `tests/cathUnifiedDiagnose.test.ts`, `tests/cathUnifiedTreat.test.ts`.
 
 **Interfaces:**
 - Consumes: Tasks 1 to 8; `src/cath/pullback.ts`; `src/ekg/paper.ts` (12-lead paper) with `Simulation.ecgInputs()`; the existing lab panels.
@@ -307,19 +319,19 @@ I did not find a clean normal bilateral run-off DSA or a normal radial-to-arch a
 - [ ] **Step 5:** Verify nothing still imports `src/cath/angio.ts` or `src/cath/page.ts` (`grep -r`), delete them, run everything again.
 - [ ] **Step 6:** Commit `feat: diagnose, treat, hint, undo, resuscitation and 12-lead on the unified page`.
 
-## Task 11: Routes, MCP, docs
+## Task 11: MCP tools and docs
 
-**Files:** Modify `vite.config.ts`, `src/mcp/tools.ts`, `docs/CATH_LAB_INTEGRATION.md`, `README.md`. Test `tests/labMcp.test.ts` (extend).
+**Owner: Cursor.** **Files:** Modify `src/mcp/tools.ts`, `docs/CATH_LAB_INTEGRATION.md`, `README.md`. Test `tests/labMcp.test.ts` (extend).
 
-- [ ] **Step 1: Failing tests:** `it("/cath/lab/ and /cath/lab/play/ redirect to /cath/")` (built output check); `it("mcp hint and undo tools return the hint and the state")`.
+- [ ] **Step 1: Failing tests:** `it("mcp hint and undo tools return the hint and the state")`; `it("mcp resuscitation tools drive CPR, shock and pericardiocentesis through the engine")`.
 - [ ] **Step 2:** Run; expect FAIL.
-- [ ] **Step 3:** Redirect the old lab routes; add `lab_hint` and `lab_undo` (undo from Task 3) tools; update the docs and README credits for every new data source.
+- [ ] **Step 3:** Add `lab_hint` and the resuscitation tools (`lab_undo` landed in Task 3); update the docs and README credits for every new data source. Route redirects are Task 9 (Claude).
 - [ ] **Step 4:** Run `npx vitest run && npm run typecheck && npm run build`; expect green.
 - [ ] **Step 5:** Commit `feat: routes, MCP hint and undo, docs`.
 
 ## Task 12: Sonnet 5.5 UI review (review only; no building)
 
-Run by the reviewer (Sonnet 5.5), not Cursor. The reviewer starts the dev server, loads `/cath/`, and works through each item, reporting findings with a screenshot and file:line.
+Run by a fresh Sonnet 5.5 reviewer, not Cursor and not the session that built the UI. The reviewer starts the dev server, loads `/cath/`, and works through each item, reporting findings with a screenshot and file:line.
 
 - [ ] **Step 1: Design system.** Read `DESIGN.md` and `CLAUDE.md`; check every UI rule in Global Constraints against the page (radius, glass, tinted callouts, cards, tracked labels, fonts, accents, emoji, captions, ECG paper in both themes). Run the Impeccable design hook findings and treat them as real unless a false positive is named.
 - [ ] **Step 2: Flow.** Set up, Diagnose and Treat for each of the seven old presets and one custom lesion on each of LAD, LCx, RCA and a branch; confirm images are the realistic baseline everywhere (no leftover old renderer).
@@ -327,7 +339,7 @@ Run by the reviewer (Sonnet 5.5), not Cursor. The reviewer starts the dev server
 - [ ] **Step 4: Peripheral and access.** Walk the femoral and the radial route end to end in Follow mode and compare every camera preset with its reference image (the comparison page from Task 7; references in `docs/CATH_PERIPHERAL_SOURCES.md`) for branching, taper, bifurcation level, arch type, tortuosity and how the catheter lies in the lumen. Report where it looks wrong in plain terms ("iliacs too straight", "arch too flat"), with the reference file name.
 - [ ] **Step 5: Hemodynamics.** Let a perforation run to tamponade and death; restart; repeat with pericardiocentesis; CPR and shock in VF; compare against the main simulator.
 - [ ] **Step 6: Responsive and themes.** Phone width, tablet, light and dark.
-- [ ] **Step 7: Review list.** Check the `[assumed]` constants list for a clinician and report a prioritized finding list with severity. Cursor fixes in a follow-up commit; the reviewer re-checks.
+- [ ] **Step 7: Review list.** Check the `[assumed]` constants list for a clinician and report a prioritized finding list with severity. Claude fixes UI findings and Cursor fixes engine findings in follow-up commits; the reviewer re-checks.
 
 ---
 

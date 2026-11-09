@@ -25,7 +25,7 @@ This is a playground first, in the spirit of the hemodynamic playground: explore
 11. **Realistic peripheral anatomy.** Aorta, iliacs, femoral and leg run-off, and the upper-limb access path (subclavian to radial), built from open-source reference data and images, with licenses recorded. Aortogram, iliac, run-off and arm views on the realistic fluoro look.
     The access route is drawn end to end for both access sites: femoral (sheath, iliacs, aortic bifurcation, aorta, arch, root) and radial (radial, brachial, subclavian, brachiocephalic or left subclavian, arch, root). Reference images are real peripheral and aortic angiograms from Wikimedia Commons (licenses recorded in `docs/CATH_PERIPHERAL_SOURCES.md`); they guide the drawing and are not embedded.
 12. **Same hemodynamic model as the main simulator.** The patient can arrest, be shocked, receive CPR, pressors and fluids, tamponade and die, and recover, and pericardiocentesis drains an effusion. No second hemodynamic model.
-13. **Review.** Cursor builds; Sonnet 5.5 reviews each task and runs a thorough UI review at the end (plan Task 12).
+13. **Ownership and review.** Claude owns all UI (page, rendering, controls, CSS); Cursor does everything else (engine, data, simulation, MCP, docs). Claude reviews Cursor's commits, and a fresh Sonnet 5.5 reviewer runs a thorough UI review at the end (plan Task 12).
 
 ## Non-goals
 
