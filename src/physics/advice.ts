@@ -57,7 +57,7 @@ export function assess(s: Situation): Assessment {
   if (sup.norepi > 0 && s.lvIschemia > 0.3 && lowOutput(s)) warnings.push({ tag: "a pressor on a failing ventricle", text: "The pressor raises MAP but adds afterload to a failing ventricle; output may not follow." });
   if (sup.dobutamine > 0 && s.hasLesion && !s.reperfused) warnings.push({ tag: "dobutamine with the artery still closed", text: "Dobutamine raises oxygen demand in muscle that is still ischemic. Open the artery." });
   if (sup.fluids > 1 && s.congestion > 0.3) warnings.push({ tag: "volume into congested lungs", text: "More volume is backing up into the lungs. Stop fluids." });
-  if (sup.impella && s.rvIschemia > 0.4) warnings.push({ tag: "a left-sided pump in right-ventricular failure", text: "A left-sided pump cannot move blood the failing right ventricle does not deliver." });
+  if (sup.coroPump && s.rvIschemia > 0.4) warnings.push({ tag: "a left-sided pump in right-ventricular failure", text: "A left-sided pump cannot move blood the failing right ventricle does not deliver." });
 
   // Steps, in order.
   if (restIschemia) steps.push({ text: "Treat as NSTE-ACS: aspirin, anticoagulation, nitrates; angiography within 24 h", why: "Ischemia at rest from a flow-limiting lesion is unstable. Without ST elevation it is not a primary-PCI emergency, but high-risk features (ongoing pain, instability, diffuse ST depression with aVR elevation) move angiography to within 2 h." });
@@ -71,7 +71,7 @@ export function assess(s: Situation): Assessment {
   if (shock(s) && !s.reperfused) steps.push({ text: "Revascularize the culprit; do not delay for stabilization", why: "In shock complicating MI early revascularization is the one intervention that improves survival (SHOCK)." });
   if (shock(s) && sup.norepi === 0) steps.push({ text: "Start norepinephrine to hold MAP above 65", why: "A pressure that perfuses the coronaries and brain comes first; norepinephrine is the usual first pressor." });
   else if (shock(s) && lowOutput(s) && sup.dobutamine === 0 && s.map >= CIRC.shockMap) steps.push({ text: "Consider dobutamine for the low output", why: "Once MAP is adequate, an inotrope raises output. It costs oxygen and provokes ectopy." });
-  if (shock(s) && lowOutput(s) && s.lvIschemia > 0.3 && !sup.impella && !sup.iabp) steps.push({ text: "If shock persists, mechanical support", why: "A microaxial pump unloads the ventricle and raises output; a balloon pump adds modest coronary augmentation. Trials of the balloon pump in infarct shock did not improve survival; devices bleed and injure vessels." });
+  if (shock(s) && lowOutput(s) && s.lvIschemia > 0.3 && !sup.coroPump && !sup.iabp) steps.push({ text: "If shock persists, mechanical support", why: "A microaxial pump unloads the ventricle and raises output; a balloon pump adds modest coronary augmentation. Trials of the balloon pump in infarct shock did not improve survival; devices bleed and injure vessels." });
   if (rvDown && sup.fluids < 1) steps.push({ text: "Give IV fluid", why: "A right ventricle that is infarcted needs filling pressure to push blood through the lungs. Avoid nitrates and diuretics." });
   if (block && (s.avDegree === 3 || s.hr < 50) && s.map < CIRC.hypotensionMap && !sup.pacing) {
     steps.push(!sup.atropine && s.vagal > 0.3 && s.avDegree < 3
@@ -84,7 +84,7 @@ export function assess(s: Situation): Assessment {
       ? { text: "Revascularize: CABG favored for a left-main lesion", why: "Left main stenosis threatens the whole left ventricle; surgery is the usual choice when anatomy is complex, PCI when it is suitable. Here it is one lesion." }
       : { text: "Revascularize: PCI for a single, flow-limiting lesion", why: "FFR 0.80 or lower with symptoms or ischemia justifies a stent; medical therapy is the alternative in stable disease. Bypass for left-main or multivessel disease." });
   }
-  if (s.reperfused && s.map >= CIRC.hypotensionMap && (sup.norepi > 0 || sup.dobutamine > 0 || sup.impella || sup.iabp)) steps.push({ text: "Wean the support as pressure recovers", why: "Support buys time for the artery; once flow is back and stunned muscle recovers, take it off in reverse order." });
+  if (s.reperfused && s.map >= CIRC.hypotensionMap && (sup.norepi > 0 || sup.dobutamine > 0 || sup.coroPump || sup.iabp)) steps.push({ text: "Wean the support as pressure recovers", why: "Support buys time for the artery; once flow is back and stunned muscle recovers, take it off in reverse order." });
   if (s.reperfused && s.hasLesion && s.grafted && s.occluded) steps.push({ text: "The native artery is still blocked; the graft is carrying the territory", why: "A bypass supplies the muscle beyond the block. The native lesion stays." });
   if (!steps.length && !issues.some((i) => i.tone !== "ok")) steps.push({ text: "Nothing to do: the patient is stable", why: "No flow-limiting lesion, no hemodynamic compromise." });
   return { issues, warnings, steps };

@@ -5,7 +5,7 @@ import type { Probe, Cond } from "../src/cases/engine";
 const probe = (o: Partial<Probe> = {}): Probe => ({
   map: 90, hr: 75, arrest: "none", rhythmClass: "perfusing",
   shocks: 0, epiDoses: 0, amioMg: 0, lidoDoses: 0, cpr: false,
-  ecmo: false, impella: false, iabp: false, pci: false, pciPending: false,
+  ecmo: false, coroPump: false, iabp: false, pci: false, pciPending: false,
   drugs: {}, ef: 0.55, lvIschemia: 0, rvIschemia: 0, congestion: 0, fluidsL: 0,
   dead: false, ...o,
 });

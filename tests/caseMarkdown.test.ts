@@ -3,7 +3,7 @@ import { caseToMarkdown, parseCaseMarkdown, parseDuration } from "../src/cases/m
 import type { CaseSpec } from "../src/cases/spec";
 
 const full = (): CaseSpec => ({
-  id: "full-case", title: "A full case", tier: "hard", blurb: "Everything at once.", complaint: "Cardiac arrest", devices: ["ECMO", "Impella"],
+  id: "full-case", title: "A full case", tier: "hard", blurb: "Everything at once.", complaint: "Cardiac arrest", devices: ["ECMO", "CoroPump"],
   card: { presents: "62-year-old man collapsed.", pmh: "Smoker.", info: ["ECG: ST elevation.", "Wife is a nurse."] },
   start: { lesions: [{ artery: "LAD", occluded: true, position: 0.1 }], seed: 3 },
   opening: { rhythm: "vf-coarse", cpr: true, drugs: [{ drug: "epinephrine", mg: 1 }] },

@@ -22,7 +22,7 @@ export const GENERIC_PUMP = {
   suctionAt: 0.5, // fraction of Rmax at which the `suction` tap goes true [assumed]
 };
 
-// ---- Impella (task D2) ------------------------------------------------------------------------------------------------------
+// ---- CoroPump (task D2) ------------------------------------------------------------------------------------------------------
 // Every number below is [assumed] unless it carries [lit]. None is manufacturer data: the maximum speeds and maximum flows follow
 // the order of magnitude of what the manufacturer's public material states (about 2.5, 3.5-4 and 5.5 L/min; rotor speeds of a few
 // tens of thousands rpm), which is NOT verified here. The HQ coefficients are designed, not measured (see `hqDesign` below).
@@ -30,10 +30,10 @@ export const GENERIC_PUMP = {
 /** L = ρ·ℓ/A of a cannula of length `lengthCm` and inner diameter `diameterMm`, in mmHg·s²/ml (ρ = 1.06 g/ml [lit]; 1 mmHg = 1333 dyn/cm²). ℓ 13 cm, d 4 mm gives 0.082. */
 export const cannulaInertance = (lengthCm: number, diameterMm: number): number => (1.06 * lengthCm) / (Math.PI * (diameterMm / 20) ** 2) / 1333;
 
-export type ImpellaModelName = "2.5" | "CP" | "5.5";
-export type ImpellaPosition = "correct" | "aortic" | "deep";
+export type CoroPumpModelName = "2.5" | "CP" | "5.5";
+export type CoroPumpPosition = "correct" | "aortic" | "deep";
 
-export interface ImpellaDef {
+export interface CoroPumpDef {
   /** Rotor speed (krpm) at P-level 0..9 (P0 = off). Linear from `speedP1` to `speedP9` for P1..P9. [assumed] */
   speeds: readonly number[];
   /** Pressure-head coefficients, H = a·ω² − b·ω·Q − c·Q·|Q| (ω krpm, Q ml/s, H mmHg). Designed so the maximum flow (P9, ΔP 60 mmHg) is in the published class. [assumed] */
@@ -53,24 +53,24 @@ const ramp = (lo: number, hi: number): number[] => [0, ...Array.from({ length: 9
  * H0 between the slip term b·ω·Q and the loss term c·Q² at Qf; a = H0/ω², b = f·H0/(ω·Qf), c = (1 − f)·H0/Qf². H0 and Qf were then
  * solved so that Q(ΔP = 60 mmHg, P9) hits the class flow. 2.5: ω 51 krpm, H0 140 mmHg, Qf 62 ml/s; CP: 46, 150, 90; 5.5: 33, 120, 161. [assumed]
  */
-export const IMPELLA: Record<ImpellaModelName, ImpellaDef> = {
+export const COROPUMP: Record<CoroPumpModelName, CoroPumpDef> = {
   "2.5": { speeds: ramp(25, 51), a: 0.0538, b: 0.01775, c: 0.02195, lengthCm: 12, diameterMm: 3.5, R0: 0.15, maxFlowLpm: 2.5 },
   CP: { speeds: ramp(22, 46), a: 0.0709, b: 0.01455, c: 0.01119, lengthCm: 13, diameterMm: 4.5, R0: 0.1, maxFlowLpm: 3.7 },
   "5.5": { speeds: ramp(16, 33), a: 0.1102, b: 0.009054, c: 0.00279, lengthCm: 10, diameterMm: 6, R0: 0.05, maxFlowLpm: 5.5 },
 };
 
 /**
- * Suction and floor law shared by the Impella models, set relative to the LV's own unloaded volume V0 (the R-D1 decision). All [assumed].
+ * Suction and floor law shared by the CoroPump models, set relative to the LV's own unloaded volume V0 (the R-D1 decision). All [assumed].
  *  - `vcMarginMl`  collapse volume Vc = V0 + margin: suction is half developed there (wV wide); the pressure term uses `Pth`, `wP`.
  *                  15 ml (D3; D2 had 30): a normal LV at P6 ends systole at about V0 + 25 ml, so 30 alarmed it. With 15 no model (2.5, CP, 5.5) alarms
  *                  in a normal heart at P4, P6 or P9, while a 15 % bleed at P6 and a 40 % bleed at P8 still do (tests/simulationDevices.test.ts).
  *  - `floorMl`     hard floor: the flow is softly limited so the LV volume stays above V0 + floor.
  *  - `floorTau`    time constant (s) of the volume approach to the floor: Q_limit = (V − floor)/floorTau; `limitTau` how fast Q follows it, `limitBand` (ml/s) the width over which the limiter is blended in.
  */
-export const IMPELLA_SUCTION = { vcMarginMl: 15, wV: 3, Pth: 0, wP: 1, Rmax: 40, suctionAt: 0.5, floorMl: 2, floorTau: 0.04, limitTau: 0.005, limitBand: 2 };
+export const COROPUMP_SUCTION = { vcMarginMl: 15, wV: 3, Pth: 0, wP: 1, Rmax: 40, suctionAt: 0.5, floorMl: 2, floorTau: 0.04, limitTau: 0.005, limitBand: 2 };
 
 /** Position effects. `aortic`: inflow and outflow both in the aorta (no LV connection). `deep`: the inflow sits against the wall / papillary apparatus: suction develops at a higher volume and pressure. [assumed] */
-export const IMPELLA_POSITION = { deep: { vcExtraMl: 15, pthExtra: 8 } };
+export const COROPUMP_POSITION = { deep: { vcExtraMl: 15, pthExtra: 8 } };
 
 /**
  * Console formulas. Motor current (mA) = loss + hydraulic torque term:
@@ -81,7 +81,7 @@ export const IMPELLA_POSITION = { deep: { vcExtraMl: 15, pthExtra: 8 } };
  * Position alarm (D4): raised when the mean flow exceeds `positionMinFlowLpm` and the beat's range of the placement signal (aortic minus LV pressure)
  * is below `positionAmpMmHg`; a correctly placed pump sees 60-100 mmHg swing, an inflow in the aorta sees almost none.
  */
-export const IMPELLA_CONSOLE = { i0: 150, i2: 0.12, eta: 0.2, kt: 0.0035, alarmLevel: 0.2, strideS: 0.004, positionAmpMmHg: 12, positionMinFlowLpm: 0.5 };
+export const COROPUMP_CONSOLE = { i0: 150, i2: 0.12, eta: 0.2, kt: 0.0035, alarmLevel: 0.2, strideS: 0.004, positionAmpMmHg: 12, positionMinFlowLpm: 0.5 };
 
 // ---- Intra-aortic balloon pump (task D5) ----------------------------------------------------------------------------------------
 /**
@@ -99,7 +99,7 @@ export const IABP = { volumeMl: 40, tauInflateS: 0.04, tauDeflateS: 0.05, edgeS:
 // ---- VA-ECMO (task D6) -------------------------------------------------------------------------------------------------------------
 /**
  * Centrifugal pump and circuit of the VA-ECMO model (core/devices/ecmo.ts). All [assumed] teaching values, no console data.
- * HQ design (same recipe as `IMPELLA`): shut-off head 450 mmHg and free flow 130 ml/s (7.8 L/min) at the top speed 5 krpm, split f = 0.4:
+ * HQ design (same recipe as `COROPUMP`): shut-off head 450 mmHg and free flow 130 ml/s (7.8 L/min) at the top speed 5 krpm, split f = 0.4:
  * a = H0/ω², b = f·H0/(ω·Qf), c = (1 − f)·H0/Qf². About 3.6 krpm gives 4 L/min against 70 mmHg plus the circuit loss.
  * `L` is the inertance of about 2 m of 3/8 inch tubing (ρℓ/A). The circuit resistance R0 is cannulae plus oxygenator in series
  * (0.15 + 0.30 mmHg·s/ml: about 30 mmHg at 4 L/min); `oxygenatorR` is the oxygenator part, reported as the membrane pressure drop.
@@ -109,7 +109,7 @@ export const ECMO_PUMP = { speedMax: 5, a: 18, b: 0.277, c: 0.016, L: 0.22, cann
 
 /**
  * Venous drainage law, set relative to the drainage node's unloaded volume (R-D1): suction half developed at Vc = V0 + `vcMarginMl`,
- * Q is softly limited so the volume stays above V0 + `floorMl` (Q ≤ (V − floor)/`floorTau`, blended in over `limitBand` ml/s as for the Impella).
+ * Q is softly limited so the volume stays above V0 + `floorMl` (Q ≤ (V − floor)/`floorTau`, blended in over `limitBand` ml/s as for the CoroPump).
  * The volume is the node's volume low-pass filtered with time constant `volumeTau` (s): an atrium empties to V0 at every systole. `alarmLevel`: suction level (0-1) at which the console alarm goes. [assumed]
  */
 export const ECMO_SUCTION = { volumeTau: 0.6, vcMarginMl: 5, wV: 2, Pth: -6, wP: 1.5, Rmax: 60, suctionAt: 0.5, floorMl: 2, floorTau: 0.06, limitTau: 0.01, limitBand: 3, alarmLevel: 0.2 };
@@ -121,17 +121,17 @@ export const ECMO_SUCTION = { volumeTau: 0.6, vcMarginMl: 5, wV: 2, Pth: -6, wP:
  */
 export const ECMO_OXYGENATOR = { sweepTau: 0.6, satAir: 0.96, satO2: 1.0 };
 
-// ---- Impella RP and venting (task D7) ---------------------------------------------------------------------------------------------
+// ---- CoroPump RP and venting (task D7) ---------------------------------------------------------------------------------------------
 /**
- * Impella RP: a right-sided rotary pump, inflow in the inferior vena cava, outflow in the pulmonary artery. All [assumed]; the class
+ * CoroPump RP: a right-sided rotary pump, inflow in the inferior vena cava, outflow in the pulmonary artery. All [assumed]; the class
  * flow (about 4 L/min at the top level) follows the order of magnitude of the manufacturer's public material, NOT verified here.
- * Same HQ recipe as `IMPELLA` (split f = 0.4): shut-off head H0 = 70 mmHg at the top speed 33 krpm, free flow Qf = 91 ml/s, so that
- * Q(P9, ΔP = 20 mmHg) is about 4 L/min (the right side works against a much smaller pressure difference than the Impella CP,
+ * Same HQ recipe as `COROPUMP` (split f = 0.4): shut-off head H0 = 70 mmHg at the top speed 33 krpm, free flow Qf = 91 ml/s, so that
+ * Q(P9, ΔP = 20 mmHg) is about 4 L/min (the right side works against a much smaller pressure difference than the CoroPump CP,
  * hence the lower head). `speeds`: P-level 1..9 linear from 15 to 33 krpm (P0 = off). Cannula 15 cm x 6 mm.
  * `suction`: the inflow is the IVC, so the law is relative to its unloaded volume V0 = Vu (R-D1): suction half developed at
  * Vc = V0 + `vcMarginMl` (the IVC holds about 130 ml of stressed volume normally), pressure term at `Pth` mmHg, floor `floorMl` above V0.
  */
-export const IMPELLA_RP = {
+export const COROPUMP_RP = {
   speeds: [0, 15, 17.25, 19.5, 21.75, 24, 26.25, 28.5, 30.75, 33] as readonly number[],
   a: 0.06428, b: 0.009324, c: 0.005072, lengthCm: 15, diameterMm: 6, R0: 0.08, maxFlowLpm: 4, designDp: 20,
   suction: { vcMarginMl: 25, wV: 6, Pth: -0.5, wP: 0.7, Rmax: 40, suctionAt: 0.5, floorMl: 3, floorTau: 0.05, limitTau: 0.005, limitBand: 2 },

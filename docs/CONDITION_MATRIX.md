@@ -173,17 +173,17 @@ Potassium 4.2 is quiet. Potassium 7.5 with no ischemia has a VT/VF hazard above 
 
 ### 1.9 Devices
 
-`apply` retunes a device that is already in the heart. ECMO and Impella RP are inserted by `setPatient` when `devices` is present. The eval harness already does that. Impella CP is on only when `support.impella` is true and level > 0. Impella RP and ECMO are on by being present. `deviceFlow` does not include Impella RP flow.
+`apply` retunes a device that is already in the heart. ECMO and CoroPump RP are inserted by `setPatient` when `devices` is present. The eval harness already does that. CoroPump CP is on only when `support.coroPump` is true and level > 0. CoroPump RP and ECMO are on by being present. `deviceFlow` does not include CoroPump RP flow.
 
 | Device | Levels |
 | --- | --- |
 | iabp | off; 1:1, 1:2, 1:3; inflate −40 ms and +40 ms; volume 20 and 40 ml |
-| impella | off; CP level 6 correct; models 2.5, CP, 5.5 at level 9; position `aortic` and `deep`; level 0 |
-| impellaRp | absent; level 0; level 9 |
+| coroPump | off; CP level 6 correct; models 2.5, CP, 5.5 at level 9; position `aortic` and `deep`; level 0 |
+| coroPumpRp | absent; level 0; level 9 |
 | ecmo | absent; 2, 4, and 6 L/min; sweep 0 and 5; FiO2 0.21 and 1 |
-| ecmo + impella | ECPELLA: ECMO 4 L/min and Impella CP level 6 |
+| ecmo + coroPump | ECPELLA: ECMO 4 L/min and CoroPump CP level 6 |
 
-Level 0 Impella RP must not run retrograde (`engine`, guards).
+Level 0 CoroPump RP must not run retrograde (`engine`, guards).
 
 ### 1.10 Ventilation
 
@@ -306,9 +306,9 @@ One state per level in sections 1.5–1.10. Predictions:
 | Beta blocker 0.8 | HR down. Directional. |
 | Potassium 7.5, tendency 1, no lesion | Coronary T taller than at 4.2, hazard above 0, not the library sine wave. Potassium 4.2 stays quiet over six clinical hours. Engine, and the potassium tests. |
 | Potassium 2.0 | Flatter T than 4.2, hazard above 0. Directional. |
-| Impella CP level 6, healthy | Forward device flow, native EF lower than chamber EF would suggest once the pump carries stroke volume. The two EF definitions may differ by about 0.1. Known split: about 0.30 versus 0.13 in one Impella read. |
-| Impella RP level 0 | Flow near 0, not about −1 L/min. Engine. |
-| Impella RP level 9, healthy | Forward flow about 3–4 L/min, and that flow is not inside `deviceFlow`. |
+| CoroPump CP level 6, healthy | Forward device flow, native EF lower than chamber EF would suggest once the pump carries stroke volume. The two EF definitions may differ by about 0.1. Known split: about 0.30 versus 0.13 in one CoroPump read. |
+| CoroPump RP level 0 | Flow near 0, not about −1 L/min. Engine. |
+| CoroPump RP level 9, healthy | Forward flow about 3–4 L/min, and that flow is not inside `deviceFlow`. |
 | ECMO 4 L/min, healthy | Circuit flow near the target, native pulse pressure narrow. Directional. |
 | PEEP 15, spontaneous versus positive | Positive pressure with PEEP lowers venous return. MAP and CO at or below spontaneous. Directional. |
 | Baroreflex gain 0 versus 4, no other insult | Little difference at rest. The difference appears once volume is lost (section 3). |
@@ -344,10 +344,10 @@ Only combinations where one knob should change the other's picture. Skip the ful
 | LAD occlusion plus dobutamine 0.5 | EF and CO above the untreated occlusion, more ectopy. Engine. |
 | RCA occlusion plus nitroglycerin 0.5 | Preload loss hurts the ischemic right ventricle: CO and MAP fall more than the same dose on a healthy heart. Engine: `nitroPreloadRv`. |
 | LAD occlusion plus IABP 1:1 | Coronary driving pressure or diastolic augmentation up, a modest CO gain. Engine. |
-| LM occlusion plus Impella CP level 9 | Device flow forward, lower LVEDP than unsupported LM, chamber EF and aortic-valve EF allowed to disagree. |
-| RCA occlusion plus Impella RP level 9 | Forward RP flow about 3–4 L/min while the right ventricle is ischemic, HR still follows the RCA rhythm (often block). `deviceFlow` stays 0. |
+| LM occlusion plus CoroPump CP level 9 | Device flow forward, lower LVEDP than unsupported LM, chamber EF and aortic-valve EF allowed to disagree. |
+| RCA occlusion plus CoroPump RP level 9 | Forward RP flow about 3–4 L/min while the right ventricle is ischemic, HR still follows the RCA rhythm (often block). `deviceFlow` stays 0. |
 | LM occlusion plus ECMO 4 L/min, no vent | Circuit flow near target, native ejection small, left-sided pressures may rise. Weiss tau may be null. Known-now. |
-| ECMO 4 plus Impella CP | Higher total device flow than ECMO alone, lower LVEDP than ECMO without a vent. Directional. |
+| ECMO 4 plus CoroPump CP | Higher total device flow than ECMO alone, lower LVEDP than ECMO without a vent. Directional. |
 | LAD occlusion, potassium 7.5, arrhythmiaTendency 3 | More VT/VF than the same lesion at potassium 4.2 and tendency 1. One seed is not a rate. Directional. |
 | Potassium 7.5, tendency 1, no lesion, versus the same plus a proximal LAD | The lesion's ischemic hazard stacks on the electrolyte floor. Directional. |
 
@@ -401,18 +401,18 @@ Only combinations where one knob should change the other's picture. Skip the ful
 
 | Id story | Intended |
 | --- | --- |
-| Impella position `aortic` versus `correct`, on a proximal LAD occlusion | Aortic position alarms or flows less. Placement is not "correct". Directional. |
-| Impella position `deep` | Suction or a worse unloading pattern than `correct`. Directional. |
+| CoroPump position `aortic` versus `correct`, on a proximal LAD occlusion | Aortic position alarms or flows less. Placement is not "correct". Directional. |
+| CoroPump position `deep` | Suction or a worse unloading pattern than `correct`. Directional. |
 | IABP inflate +40 ms versus 0, on a proximal LAD occlusion | Late inflation augments less. Directional. |
 | ECMO FiO2 0.21 versus 1, on an LM occlusion with hypoxemia | Return saturation and arterial saturation higher at FiO2 1. Directional. |
 | ECMO 4 L/min plus bloodLoss 0.45 | Flow falls or suction appears because venous volume is gone. Directional. |
-| Impella level 0 with `support.impella` true | No forward flow. Distinct from "device absent". |
+| CoroPump level 0 with `support.coroPump` true | No forward flow. Distinct from "device absent". |
 
 ---
 
 ## 4. What to record
 
-At every checkpoint, for every state, seed 1: HR, MAP, CO, chamber EF, aortic-valve EF, Fick EF when the row has a shunt or a low output, PCWP, LVEDP, CVP, rhythm label, ischemic mass, infarct fraction, V2, aVL, III, aVF, Qp:Qs, SpO2, device flow, Impella RP flow, ECMO flow, dead, death cause, and the warnings array.
+At every checkpoint, for every state, seed 1: HR, MAP, CO, chamber EF, aortic-valve EF, Fick EF when the row has a shunt or a low output, PCWP, LVEDP, CVP, rhythm label, ischemic mass, infarct fraction, V2, aVL, III, aVF, Qp:Qs, SpO2, device flow, CoroPump RP flow, ECMO flow, dead, death cause, and the warnings array.
 
 Also the invariant pass. A null that the invariant list already allows (Gorlin under the gradient floor, tau with no falling limb, Fick EF with no rate) is not a new finding. A crash is.
 

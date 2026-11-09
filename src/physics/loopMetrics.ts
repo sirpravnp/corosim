@@ -10,7 +10,7 @@
  *
  * End-systolic point: the sample of maximum P/(V − V0), the instantaneous elastance, i.e. the upper-left corner of the loop (the
  * "maximum P/V elastance" point, not the instant of aortic valve closure). With an ejecting ventricle the two coincide within a sample
- * or two; with an Impella unloading the LV there may be no valve closure at all and this point is still defined.
+ * or two; with a CoroPump unloading the LV there may be no valve closure at all and this point is still defined.
  */
 import { ENERGETICS } from "../config/energetics";
 import { cleanLoop, loopArea, type Pt } from "./loopMath";

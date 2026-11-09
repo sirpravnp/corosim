@@ -1,5 +1,5 @@
 // One headless core-engine run. LiveSource is created immediately after reset, and the insult is applied
-// with Simulation.apply (what the page does). ECMO and Impella RP are inserted with setPatient, because
+// with Simulation.apply (what the page does). ECMO and CoroPump RP are inserted with setPatient, because
 // apply() only retunes a circuit that is already in the heart; the page inserts them the same way.
 import { Simulation } from "../../src/sim/simulation";
 import { LiveSource } from "../../src/sim/liveSource";

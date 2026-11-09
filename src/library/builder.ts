@@ -140,7 +140,7 @@ export function openBuilder(host: HTMLElement, opt: BuilderOptions) {
         <div class="tp-tools"><button type="button" data-act="tpup" data-ci="${ci}">Move up</button><button type="button" data-act="tpdown" data-ci="${ci}">Move down</button><button type="button" data-act="tpdup" data-ci="${ci}">Duplicate</button><button type="button" data-act="tpdel" data-ci="${ci}">Remove</button></div>
         <h4>When it happens</h4>
         <div class="f3">${field("Name", `${base}.id`, "text", "", "A short label for this point.")}${field("At time (m:ss)", `${base}.atS`, "dur", 'placeholder="0:05"')}${field("Repeats every (seconds)", `${base}.repeatAfterS`, "int", 'placeholder="once"')}</div>
-        ${field("Only when (all must hold)", `${base}.when`, "conds", 'placeholder="map < 62; not pci"', "Measures: map, hr, ef, lvIschemia, rvIschemia, congestion, fluidsL, shocks, epiDoses, amioMg, lidoDoses. Also pci, pciPending, cpr, ecmo, impella, iabp, dead, rhythm = vf, arrest = rosc, drug betaBlocker &gt; 0.1. Join alternatives with “or”.")}
+        ${field("Only when (all must hold)", `${base}.when`, "conds", 'placeholder="map < 62; not pci"', "Measures: map, hr, ef, lvIschemia, rvIschemia, congestion, fluidsL, shocks, epiDoses, amioMg, lidoDoses. Also pci, pciPending, cpr, ecmo, coroPump, iabp, dead, rhythm = vf, arrest = rosc, drug betaBlocker &gt; 0.1. Join alternatives with “or”.")}
         <div class="f3">${field("…held for (seconds)", `${base}.forS`, "int")}${field("Requires flags", `${base}.requires`, "list")}${field("Skipped once flagged", `${base}.forbids`, "list")}</div>
         <label class="f chk"><input type="checkbox" data-p="${base}.branch" data-t="bool" ${c.branch ? "checked" : ""}><span>Only after a wrong turn (not counted in the best possible score)</span></label>
         <h4>What happens</h4>
@@ -158,7 +158,7 @@ export function openBuilder(host: HTMLElement, opt: BuilderOptions) {
     return `
     <section class="bs"><h2>Details</h2>
       <div class="f3">${field("Title", "title", "text")}${field("Id", "id", "text", saved ? "disabled" : "", "The address of the case. Fixed once saved.")}${field("Difficulty", "tier", "sel", "easy=Easy|medium=Medium|hard=Hard")}</div>
-      <div class="f3">${field("Chief complaint", "complaint", "text", 'placeholder="Chest pain"', "Cases are grouped by this on the Cases page.")}${field("Devices", "devices", "list", 'placeholder="ECMO, Impella"', "Comma separated.")}${field("Time limit (m:ss)", "limitS", "dur")}</div>
+      <div class="f3">${field("Chief complaint", "complaint", "text", 'placeholder="Chest pain"', "Cases are grouped by this on the Cases page.")}${field("Devices", "devices", "list", 'placeholder="ECMO, CoroPump"', "Comma separated.")}${field("Time limit (m:ss)", "limitS", "dur")}</div>
       ${field("One-line summary", "blurb", "text", "", "Shown in the case list.")}
     </section>
     <section class="bs"><h2>Patient card</h2>

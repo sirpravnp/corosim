@@ -34,9 +34,9 @@ describe("the patient in words", () => {
   it("support devices, pericardium, bleeding and electrolytes", () => {
     const spec: PatientSpec = {
       bloodLoss: 0.25, electrolytes: { potassium: 6.4, magnesium: 0.5 }, pericardium: { effusionMl: 400, effusionRateMlMin: 20 },
-      support: { norepinephrine: 0.4, pacing: true, paceRate: 80 }, devices: { impella: { model: "CP", level: 6 }, ecmo: { flowLpm: 3.5 } }, ventilation: { mode: "positive", peep: 8 },
+      support: { norepinephrine: 0.4, pacing: true, paceRate: 80 }, devices: { coroPump: { model: "CP", level: 6 }, ecmo: { flowLpm: 3.5 } }, ventilation: { mode: "positive", peep: 8 },
     };
-    expect(describeSpec(spec)).toBe("with 25% blood loss (ATLS class II), hyperkalemia (K 6.4 mmol/l), hypomagnesemia (Mg 0.5 mmol/l), norepinephrine (40% of a full dose), pacing at 80/min, an Impella CP at P6, ECMO at 3.5 l/min, positive-pressure ventilation (PEEP 8) and a 400 ml pericardial effusion filling at 20 ml/min");
+    expect(describeSpec(spec)).toBe("with 25% blood loss (ATLS class II), hyperkalemia (K 6.4 mmol/l), hypomagnesemia (Mg 0.5 mmol/l), norepinephrine (40% of a full dose), pacing at 80/min, a CoroPump CP at P6, ECMO at 3.5 l/min, positive-pressure ventilation (PEEP 8) and a 400 ml pericardial effusion filling at 20 ml/min");
   });
   it("a library rhythm as the baseline", () => {
     expect(describeSpec({ patient: { rhythm: "vt-mono" } })).toBe("with a baseline rhythm of monomorphic ventricular tachycardia");

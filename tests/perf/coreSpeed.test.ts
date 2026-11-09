@@ -5,13 +5,25 @@
 import { describe, it, expect } from "vitest";
 import { Simulation } from "../../src/sim/simulation";
 
+const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); const n = s.length; return n % 2 ? s[(n - 1) / 2]! : (s[n / 2 - 1]! + s[n / 2]!) / 2; };
+
+/** Median of three cold-then-warm runs; avoids a single slow CI sample just under the budget (see scripts/bench-engine.ts). */
+const coreSpeedX = (): number => {
+  const s = new Simulation({}, { engine: "core" });
+  s.reset({ seed: 3 }, { settled: true });
+  s.warmup(5);
+  s.history = [];
+  const t0 = performance.now();
+  s.step(60);
+  const wall = (performance.now() - t0) / 1000;
+  return 60 / wall;
+};
+
 describe("speed", () => {
   it("runs at least 20x real time with the whole ACS model on the core engine", () => {
-    const s = new Simulation({}, { engine: "core" });
-    s.reset({ seed: 3 }, { settled: true });
-    s.warmup(5); s.history = [];
-    const t0 = performance.now(); s.step(60); const wall = (performance.now() - t0) / 1000;
-    if (process.env.CORE_VERBOSE) console.log("60 s of core mode took", wall, "s =", 60 / wall, "x real time");
-    expect(60 / wall).toBeGreaterThan(20);
-  }, 60_000);
+    const xs = [coreSpeedX(), coreSpeedX(), coreSpeedX()];
+    const x = median(xs);
+    if (process.env.CORE_VERBOSE) console.log("60 s core speed (median of 3):", x, "x real time", xs);
+    expect(x).toBeGreaterThan(20);
+  }, 120_000);
 });

@@ -107,7 +107,7 @@ export function explain(sim: Simulation): Explanation {
   if (sup.nitroglycerin) mech.push(`Nitroglycerin lowers preload${v.rvIschemia > 0.3 ? "; with right-ventricular ischemia this preload loss is large and dangerous" : ""}.`);
   if (sup.fluids) mech.push(`${sup.fluids.toFixed(1)} L of fluid given${v.pulmonaryCongestion > 0.2 ? `; the failing left ventricle is backing it into the lungs (congestion ${Math.round(v.pulmonaryCongestion * 100)}%)` : ", restoring filling"}.`);
   if (sup.iabp) mech.push("Intra-aortic balloon pump: diastolic augmentation raises coronary perfusion pressure and slightly unloads the ventricle.");
-  if (sup.impella) mech.push(`Microaxial pump moves ${sup.deviceFlowLpm} L/min continuously${v.rvIschemia > 0.4 ? ", limited because the failing right ventricle cannot deliver blood to it" : ""}; arterial pressure no longer falls fully between beats.`);
+  if (sup.coroPump) mech.push(`Microaxial pump moves ${sup.deviceFlowLpm} L/min continuously${v.rvIschemia > 0.4 ? ", limited because the failing right ventricle cannot deliver blood to it" : ""}; arterial pressure no longer falls fully between beats.`);
   if (sup.pacing) mech.push(`Pacing at ${sup.paceRate} bpm holds the rate; while paced the heart rate no longer varies beat to beat.`);
   if (sup.atropine && !n.drugs.atropine) mech.push("Atropine removes vagal tone: faster rate, relief of tone-mediated AV block, and loss of respiratory sinus arrhythmia.");
   if (n.bloodLoss > 0.02) mech.push(`Blood volume is ${Math.round(n.bloodLoss * 100)}% below normal, so filling and stroke volume fall (stroke volume ${sv} ml vs ~70 ml normally).`);

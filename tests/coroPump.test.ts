@@ -1,11 +1,11 @@
-// D2: Impella 2.5 / CP / 5.5 on the full adult model (core/devices/impella.ts). Set CORE_VERBOSE=1 to print the tables.
+// D2: CoroPump 2.5 / CP / 5.5 on the full adult model (core/devices/coroPump.ts). Set CORE_VERBOSE=1 to print the tables.
 import { describe, it, expect } from "vitest";
 import { buildModel, volumeOffsetFor, type StructuralSpec } from "../src/physics/structural";
 import { createEngine } from "../src/physics/core/engine";
 import { fromModel, type FromModelOptions } from "../src/physics/core/fromModel";
 import { BeatRecorder } from "../src/physics/core/recorder";
-import { Impella, ImpellaConsole, levelSpeed, motorCurrent } from "../src/physics/core/devices/impella";
-import { cannulaInertance, IMPELLA, IMPELLA_SUCTION } from "../src/config/devices";
+import { CoroPump, CoroPumpConsole, levelSpeed, motorCurrent } from "../src/physics/core/devices/coroPump";
+import { cannulaInertance, COROPUMP, COROPUMP_SUCTION } from "../src/config/devices";
 import { loopMetrics as e1LoopMetrics } from "../src/physics/loopMetrics";
 import { LiveHeart } from "../src/physics/core/live";
 import { Compliance } from "../src/physics/core/chamber";
@@ -15,7 +15,7 @@ import { SOLVER } from "../src/config/structural";
 
 const HR = 72;
 const log = (...a: unknown[]) => { if (process.env.CORE_VERBOSE) console.log(...a); };
-type Imp = NonNullable<FromModelOptions["impella"]>;
+type Imp = NonNullable<FromModelOptions["coroPump"]>;
 const LV = NODES.indexOf("LV");
 
 /** Cardiogenic-shock baseline: LV Ees cut and the LV stiffened, as the ischemia mapping of src/config/ischemia.ts does. */
@@ -28,15 +28,15 @@ function loopMetrics(P: number[], V: number[], v0: number) {
 }
 
 interface RunOpts { dt?: number; hr?: number }
-/** Steady state of the adult model with (or without) an Impella, summarised over the last beat. */
+/** Steady state of the adult model with (or without) a CoroPump, summarised over the last beat. */
 function run(spec: StructuralSpec, imp: Imp | null, o: RunOpts = {}) {
   const m = buildModel(spec, volumeOffsetFor(spec));
-  const g = fromModel(m, imp ? { impella: imp } : {});
+  const g = fromModel(m, imp ? { coroPump: imp } : {});
   const eng = createEngine(g.nodes, g.elements, g.options);
   const hr = o.hr ?? HR, T = 60 / hr, dt = o.dt ?? SOLVER.dt;
-  const el = imp ? eng.element<Impella>("impella") : null;
+  const el = imp ? eng.element<CoroPump>("coroPump") : null;
   const rec = new BeatRecorder(eng, T, ["MV", "AV"]);
-  const con = el ? new ImpellaConsole(eng) : null;
+  const con = el ? new CoroPumpConsole(eng) : null;
   // the LV loop of the last complete beat, and the lowest LV volume of the whole run
   let P: number[] = [], V: number[] = [], last: { P: number[]; V: number[] } = { P: [], V: [] }, idx = 0, vMin = Infinity, anyNaN = false;
   const off = eng.onSample((s) => {
@@ -54,7 +54,7 @@ function run(spec: StructuralSpec, imp: Imp | null, o: RunOpts = {}) {
     eng, el, con, b, r, v0, vMin, anyNaN, loop, sv, avFwd: b.valves.AV.forwardMl,
     MAP: b.p.AO.mean, PP: b.p.AO.max - b.p.AO.min, LVEDP: b.p.LV.end, EDV: b.v.LV.end, ESV: b.v.LV.min,
     /** Device flow, L/min (net volume through the pump over the last beat). */
-    flow: fv.fwd.impella !== undefined ? ((fv.fwd.impella - fv.bwd.impella) * hr) / 1000 : 0,
+    flow: fv.fwd.coroPump !== undefined ? ((fv.fwd.coroPump - fv.bwd.coroPump) * hr) / 1000 : 0,
     blood: Array.from(eng.sample().V).reduce((a, x) => a + x, 0), start: m.start.reduce((a, x) => a + x, 0),
   };
 }
@@ -69,10 +69,10 @@ describe("device definitions", () => {
   const big = 1e6;
   /** Settled flow (L/min) of a model at P-level between fixed pressures, `dP` across. */
   const fixedFlow = (model: "2.5" | "CP" | "5.5", level: number, dP: number) => {
-    const pump = new Impella("impella", 0, 1, { model, level, v0: 10 });
+    const pump = new CoroPump("coroPump", 0, 1, { model, level, v0: 10 });
     const eng = createEngine([{ name: "in", model: new Compliance("in", big), group: "none", start: 40 * big }, { name: "out", model: new Compliance("out", big), group: "none", start: (40 + dP) * big }], [pump]);
     for (let i = 0; i < 2000; i++) eng.step(0.0005);
-    return eng.sample().taps.impella.flow;
+    return eng.sample().taps.coroPump.flow;
   };
   it("P-levels map to increasing speeds, P0 is off, the table is per model", () => {
     for (const m of ["2.5", "CP", "5.5"] as const) {
@@ -92,21 +92,21 @@ describe("device definitions", () => {
   });
   it("cannula inertance L = ρℓ/A: 13 cm and 4 mm gives about 0.08 mmHg·s²/ml; each model carries its own", () => {
     expect(cannulaInertance(13, 4)).toBeGreaterThan(0.075); expect(cannulaInertance(13, 4)).toBeLessThan(0.09);
-    for (const m of ["2.5", "CP", "5.5"] as const) expect(new Impella("i", 0, 1, { model: m, v0: 10 }).params.L).toBeCloseTo(cannulaInertance(IMPELLA[m].lengthCm, IMPELLA[m].diameterMm), 9);
+    for (const m of ["2.5", "CP", "5.5"] as const) expect(new CoroPump("i", 0, 1, { model: m, v0: 10 }).params.L).toBeCloseTo(cannulaInertance(COROPUMP[m].lengthCm, COROPUMP[m].diameterMm), 9);
   });
   it("motor current rises with hydraulic load at one speed and with speed at none; zero when off", () => {
-    const k = IMPELLA.CP, w = 40, H = (q: number) => pumpHead(k, w, q);
+    const k = COROPUMP.CP, w = 40, H = (q: number) => pumpHead(k, w, q);
     expect(motorCurrent(w, H(30), 30)).toBeGreaterThan(motorCurrent(w, H(5), 5));
     expect(motorCurrent(50, 0, 0)).toBeGreaterThan(motorCurrent(30, 0, 0));
     expect(motorCurrent(0, 100, 50)).toBe(0);
   });
   it("set({ level }) moves the speed live", () => {
-    const p = new Impella("i", 0, 1, { model: "CP", level: 3, v0: 10 });
+    const p = new CoroPump("i", 0, 1, { model: "CP", level: 3, v0: 10 });
     p.set({ level: 8 }); expect(p.params.speed).toBe(levelSpeed("CP", 8)); expect(p.level).toBe(8);
   });
 });
 
-describe("cardiogenic shock with an Impella CP", () => {
+describe("cardiogenic shock with a CoroPump CP", () => {
   const hi = cp(8);
   it("baseline is a shock state and the engine converged", () => {
     row("shock", none); row("shock CP P8", hi);
@@ -161,7 +161,7 @@ describe("console", () => {
   });
   it("current follows the pressure difference over the beat (correlation with the placement signal)", () => {
     const eng = cp(8).eng, s: { dp: number; i: number }[] = [];
-    for (let n = 0; n < 1500; n++) { eng.step(0.0005); if (n % 5 === 0) { const t = eng.sample().taps.impella; s.push({ dp: t.placement, i: t.current }); } }
+    for (let n = 0; n < 1500; n++) { eng.step(0.0005); if (n % 5 === 0) { const t = eng.sample().taps.coroPump; s.push({ dp: t.placement, i: t.current }); } }
     const m = (f: (x: { dp: number; i: number }) => number) => s.reduce((a, x) => a + f(x), 0) / s.length;
     const mdp = m((x) => x.dp), mi = m((x) => x.i);
     let sxy = 0, sxx = 0, syy = 0; for (const x of s) { sxy += (x.dp - mdp) * (x.i - mi); sxx += (x.dp - mdp) ** 2; syy += (x.i - mi) ** 2; }
@@ -181,17 +181,17 @@ describe("hypovolemia: suction", () => {
   });
   it("the pump never draws the LV below V0 + floor (the heart's own ejection excepted): no NaN, even when drained hard", () => {
     for (const volumeMl of [-600, -900, -1200]) {
-      const spec = { ...SHOCK, volumeMl }, r = cp(9, spec), bare = run(spec, null), floor = r.v0 + IMPELLA_SUCTION.floorMl;
+      const spec = { ...SHOCK, volumeMl }, r = cp(9, spec), bare = run(spec, null), floor = r.v0 + COROPUMP_SUCTION.floorMl;
       log(`volume ${volumeMl}: LV min ${r.vMin.toFixed(2)} ml with the pump, ${bare.vMin.toFixed(2)} without (V0 ${r.v0.toFixed(2)}, floor ${floor.toFixed(2)}), flow ${r.flow.toFixed(2)}`);
       expect(r.anyNaN).toBe(false); expect(Number.isFinite(r.MAP)).toBe(true);
       expect(r.vMin).toBeGreaterThan(Math.min(bare.vMin, floor) - 0.3);
     }
-    expect(cp(9, { ...SHOCK, volumeMl: -900 }).vMin).toBeGreaterThan(IMPELLA_SUCTION.floorMl + 9.6); // above V0 + floor, where the bare LV is far above
+    expect(cp(9, { ...SHOCK, volumeMl: -900 }).vMin).toBeGreaterThan(COROPUMP_SUCTION.floorMl + 9.6); // above V0 + floor, where the bare LV is far above
   });
   it("a pump forced far past its table cannot draw the LV below V0", () => {
-    const m = buildModel(SHOCK, volumeOffsetFor(SHOCK)), g = fromModel(m, { impella: { model: "CP", level: 9 } });
+    const m = buildModel(SHOCK, volumeOffsetFor(SHOCK)), g = fromModel(m, { coroPump: { model: "CP", level: 9 } });
     const eng = createEngine(g.nodes, g.elements, g.options), v0 = m.chambers[LV]!.v0;
-    eng.element<Impella>("impella").set({ speed: 80 });
+    eng.element<CoroPump>("coroPump").set({ speed: 80 });
     let lo = Infinity; for (let n = 0; n < 24000; n++) { eng.step(0.0005); lo = Math.min(lo, eng.sample().V[LV]); }
     log("forced drain: LV min", lo.toFixed(2), "V0", v0.toFixed(2));
     expect(Number.isFinite(lo)).toBe(true); expect(lo).toBeGreaterThan(v0);
@@ -237,10 +237,10 @@ describe("numerics", () => {
 
 describe("live use", () => {
   it("is a LiveHeart extra element and P-level changes live through set", () => {
-    const h = new LiveHeart(SHOCK, { extra: [(m) => Impella.forModel(m, { model: "CP", level: 2 })] });
+    const h = new LiveHeart(SHOCK, { extra: [(m) => CoroPump.forModel(m, { model: "CP", level: 2 })] });
     h.warm(72);
-    const imp = h.engine.element<Impella>("impella");
-    const flowAt = () => { for (let i = 0; i < 4000; i++) h.step(0.0005); let q = 0; for (let i = 0; i < 1600; i++) { h.step(0.0005); q += h.engine.sample().taps.impella.flow; } return q / 1600; };
+    const imp = h.engine.element<CoroPump>("coroPump");
+    const flowAt = () => { for (let i = 0; i < 4000; i++) h.step(0.0005); let q = 0; for (let i = 0; i < 1600; i++) { h.step(0.0005); q += h.engine.sample().taps.coroPump.flow; } return q / 1600; };
     const lo = flowAt(); imp.set({ level: 8 }); const hi = flowAt();
     log("live P2 / P8 flow:", lo.toFixed(2), hi.toFixed(2));
     expect(hi).toBeGreaterThan(lo + 1);
@@ -249,12 +249,12 @@ describe("live use", () => {
 });
 
 describe("performance", () => {
-  it("the core with an Impella (fromModel + periodic) runs at least 20x real time", () => {
+  it("the core with a CoroPump (fromModel + periodic) runs at least 20x real time", () => {
     const m = buildModel(SHOCK, volumeOffsetFor(SHOCK));
-    const go = () => { const g = fromModel(m, { impella: { model: "CP", level: 8 } }); return createEngine(g.nodes, g.elements, g.options).periodic(m.hr).beats; };
+    const go = () => { const g = fromModel(m, { coroPump: { model: "CP", level: 8 } }); return createEngine(g.nodes, g.elements, g.options).periodic(m.hr).beats; };
     go();
     const t0 = performance.now(), beats = go(), wall = (performance.now() - t0) / 1000, x = (beats * 60) / m.hr / wall;
-    console.log(`core + Impella CP P8 (shock): ${beats} beats in ${wall.toFixed(2)} s wall = ${x.toFixed(0)}x real time`);
+    console.log(`core + CoroPump CP P8 (shock): ${beats} beats in ${wall.toFixed(2)} s wall = ${x.toFixed(0)}x real time`);
     expect(x).toBeGreaterThanOrEqual(20);
   }, 120_000);
 });

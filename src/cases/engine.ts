@@ -20,7 +20,7 @@ export interface Probe {
   rhythmClass: string; // vf, pulselessVt, asystole, pea, perfusing
   shocks: number; epiDoses: number; amioMg: number; lidoDoses: number;
   cpr: boolean;
-  ecmo: boolean; impella: boolean; iabp: boolean;
+  ecmo: boolean; coroPump: boolean; iabp: boolean;
   pci: boolean; pciPending: boolean; // a stent is in / a PCI is on its way
   /** Infusion levels now, 0..1 of a full dose, by drug name (betaBlocker, nitroglycerin, ...). */
   drugs: Record<string, number>;
@@ -77,7 +77,7 @@ export interface Harm { tag: string; label: string; when: Cond }
 export interface CaseDef {
   id: string; title: string; tier: "easy" | "medium" | "hard"; blurb: string;
   card: CaseCard;
-  /** For the landing page: the chief complaint the case opens with, and the devices it brings in ("ECMO", "Impella", "IABP", "Pacing"). */
+  /** For the landing page: the chief complaint the case opens with, and the devices it brings in ("ECMO", "CoroPump", "IABP", "Pacing"). */
   complaint?: string; devices?: string[];
   start: PatientSpec;
   /** What the team has already done when the case opens. */

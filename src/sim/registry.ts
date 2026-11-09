@@ -95,7 +95,7 @@ add("support.diltiazem", "support", num(0, 1, "Core engine only: slows the AV no
 add("support.pacing", "support", bool(), ["m_pace"]);
 add("support.paceRate", "support", num(40, 120), ["pacerate"]);
 add("support.iabp", "support", bool("Intra-aortic balloon pump (the legacy switch; devices.iabp is the same pump with settings, and the page's one switch edits both)."), ["m_iabp"]);
-add("support.impella", "support", bool("Microaxial left-ventricular pump (the legacy switch; devices.impella is the same pump with settings, and the page's one switch edits both)."), ["m_impella"]);
+add("support.coroPump", "support", bool("Microaxial left-ventricular pump (the legacy switch; devices.coroPump is the same pump with settings, and the page's one switch edits both)."), ["m_coroPump"]);
 
 // ---- structural heart (Valves tab; the baseline fields pvri, svrScale, satLung, rvContractility, tof and volumeMl are on the Patient tab) -----------------------------------------------------------------------------------
 const VALVES = [["av", "aortic", 19, 34], ["mv", "mitral", 25, 33], ["tv", "tricuspid", 27, 36], ["pv", "pulmonary", 19, 29]] as const;
@@ -142,10 +142,10 @@ add("fluids.legRaise", "support", bool("Passive leg raise in progress: shifts bl
 add("ventilation.mode", "support", en(["spontaneous", "positive"]), ["pg:ventilation.mode"]);
 add("ventilation.peep", "support", num(0, 25, "cmH2O"), ["pg:ventilation.peep"]);
 add("ventilation.tidalMlKg", "support", num(2, 15), ["pg:ventilation.tidalMlKg"]);
-add("devices.impella.model", "support", en(["2.5", "CP", "5.5"]), ["pg:devices.impella.model"]);
-add("devices.impella.level", "support", num(0, 9, "P-level"), ["pg:devices.impella.level"]);
-add("devices.impella.position", "support", en(["correct", "aortic", "deep"]), ["pg:devices.impella.position"]);
-add("devices.impellaRp.level", "support", num(0, 9));
+add("devices.coroPump.model", "support", en(["2.5", "CP", "5.5"]), ["pg:devices.coroPump.model"]);
+add("devices.coroPump.level", "support", num(0, 9, "P-level"), ["pg:devices.coroPump.level"]);
+add("devices.coroPump.position", "support", en(["correct", "aortic", "deep"]), ["pg:devices.coroPump.position"]);
+add("devices.coroPumpRp.level", "support", num(0, 9));
 add("devices.iabp.ratio", "support", en([1, 2, 3]), ["pg:devices.iabp.ratio"]);
 add("devices.iabp.inflateMs", "support", num(-100, 100), ["pg:devices.iabp.inflateMs"]);
 add("devices.iabp.deflateMs", "support", num(-100, 100), ["pg:devices.iabp.deflateMs"]);
@@ -189,7 +189,7 @@ const GROUPS: Record<string, string> = {
   anatomy: "Coronary anatomy variant.",
   patient: "What the patient brought with them.",
   support: "Hemodynamic support (as in the app's Support tab). Atropine is drugs.atropine.",
-  devices: "Mechanical support with settings. support.iabp / support.impella (true) mean the defaults: IABP 1:1 at correct timing, 40 ml; Impella CP at P6, correct position.",
+  devices: "Mechanical support with settings. support.iabp / support.coroPump (true) mean the defaults: IABP 1:1 at correct timing, 40 ml; CoroPump CP at P6, correct position.",
   heart: "Structural heart as on the Valves tab: valves {av|mv|tv|pv: {open 0..1, reg cm2, prosthesis}}, pda|asd|vsd|bt {diameterMm}, tof, pvri, svrScale, satLung, volumeMl (baseline blood volume, on the Patient tab with pvri, svrScale, satLung, rvContractility and tof), chamber sizes, elastance and stiffness. Use corosim_valve to replace, dilate, clip or repair a valve.",
   "heart.valves": "Per valve: native opening and regurgitant orifice, or a prosthesis. Several valves can be abnormal at once.",
 };

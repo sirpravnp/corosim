@@ -1,4 +1,4 @@
-// D4: Impella malposition (inflow in the aorta, inflow too deep against the wall) and RV failure starving a left-sided pump, in the
+// D4: CoroPump malposition (inflow in the aorta, inflow too deep against the wall) and RV failure starving a left-sided pump, in the
 // core-engine simulation. Assertions read the console (`sim.devices()`) and the haemodynamic traces, not internal flags.
 // Set CORE_VERBOSE=1 to print the numbers.
 import { describe, it, expect } from "vitest";
@@ -10,14 +10,14 @@ import { PRESET_BY_ID } from "../src/sim/presets";
 const say = (...a: unknown[]) => { if (process.env.CORE_VERBOSE) console.log(...a); };
 const LAD = CASE_BY_ID.ladocc.scenario;
 type Pos = "correct" | "aortic" | "deep";
-const imp = (level: number, position: Pos = "correct") => ({ devices: { impella: { model: "CP" as const, level, position } } });
+const imp = (level: number, position: Pos = "correct") => ({ devices: { coroPump: { model: "CP" as const, level, position } } });
 
 function run(sc: PatientSpec, sec = 30) {
   const s = new Simulation({}, { engine: "core" });
   s.reset({ seed: 3, ...sc }, { settled: true });
   s.warmup(40); s.history = []; s.run(40);
   const r = s.rolling(sec), h = s.hemo(sec)!, d = s.devices()!;
-  return { s, map: r.map, sbp: r.sbp, co: r.cardiacOutput, pcwp: h.pcwp, lvedp: h.lvedp, cvp: h.cvp, dev: s.circ.deviceFlow, im: d.impella!, rp: d.impellaRp };
+  return { s, map: r.map, sbp: r.sbp, co: r.cardiacOutput, pcwp: h.pcwp, lvedp: h.lvedp, cvp: h.cvp, dev: s.circ.deviceFlow, im: d.coroPump!, rp: d.coroPumpRp };
 }
 const line = (n: string, x: ReturnType<typeof run>) => say(n.padEnd(22), `MAP ${x.map.toFixed(1)} CO ${x.co.toFixed(2)} PCWP ${x.pcwp.toFixed(1)} LVEDP ${x.lvedp.toFixed(1)} CVP ${x.cvp.toFixed(1)} | flow ${x.im.flowLpm.toFixed(2)} (min ${x.im.flowMinLpm.toFixed(2)}) current ${x.im.motorCurrentMa.toFixed(0)} (pulsatility ${x.im.currentPulsatilityMa.toFixed(0)}) placement amp ${x.im.placementAmplitudeMmHg.toFixed(1)} inlet ${x.im.inletMinMmHg.toFixed(0)}-${x.im.inletMaxMmHg.toFixed(0)} suction ${x.im.suctionLevel.toFixed(2)} alarms ${JSON.stringify(x.im.alarms)}`);
 
@@ -65,7 +65,7 @@ describe("inflow too deep", () => {
   });
 });
 
-describe("RV infarct starving a left-sided Impella", () => {
+describe("RV infarct starving a left-sided CoroPump", () => {
   const RCA = { lesions: [{ artery: "RCA", occluded: true, position: 0.2 }] }, RCAdist = { lesions: [{ artery: "RCA", occluded: true, position: 0.95 }] };
   // ectopyTendency 0 (B3a): an RCA occlusion in complete heart block now has PVCs too, and one premature beat at P9 sets the suction
   // alarm in the reference patient as well; this block compares RV involvement, so ectopy is held out of all of it (as the old rule did
@@ -74,9 +74,9 @@ describe("RV infarct starving a left-sided Impella", () => {
   const RV = { heart: { rvEes: 0.2, rvStiffness: 4 }, ectopyTendency: 0, arrhythmiaTendency: 0 };
   const rvf = run({ ...RCA, ...RV, bloodLoss: 0.25, ...imp(9) }), ref = run({ ...RCAdist, bloodLoss: 0.25, ...imp(9), ectopyTendency: 0, arrhythmiaTendency: 0 });
   const fl = run({ ...RCA, ...RV, bloodLoss: 0.25, ...imp(9), support: { fluids: 1 } });
-  const rp = run({ ...RCA, ...RV, bloodLoss: 0.25, devices: { impella: { level: 9 }, impellaRp: { level: 5 } } });
+  const rp = run({ ...RCA, ...RV, bloodLoss: 0.25, devices: { coroPump: { level: 9 }, coroPumpRp: { level: 5 } } });
   const low = run({ ...RCA, ...RV, bloodLoss: 0.25, ...imp(5) });
-  line("RV infarct P9", rvf); line("no RV involvement P9", ref); line("RV + 1 L fluid", fl); line("RV + Impella RP", rp); line("RV infarct P5", low);
+  line("RV infarct P9", rvf); line("no RV involvement P9", ref); line("RV + 1 L fluid", fl); line("RV + CoroPump RP", rp); line("RV infarct P5", low);
   it("the flow falls against the same patient without RV involvement, with a suction alarm", () => {
     // E3: regional RV α + dead volume (with the explicit rvEes cut) still starves the left pump; the mean-flow gap is a bit tighter than the pre-E3 0.4 L/min bar.
     expect(rvf.im.flowLpm).toBeLessThan(ref.im.flowLpm - 0.2);
@@ -91,7 +91,7 @@ describe("RV infarct starving a left-sided Impella", () => {
   it.fails("a fluid bolus restores the flow and clears the alarm", () => {
     expect(fl.im.flowLpm).toBeGreaterThan(rvf.im.flowLpm + 0.3); expect(fl.im.suctionAlarm).toBe(false); expect(fl.map).toBeGreaterThan(rvf.map + 2);
   });
-  it.fails("an Impella RP restores the flow and clears the alarm, and does not raise the venous pressure", () => {
+  it.fails("a CoroPump RP restores the flow and clears the alarm, and does not raise the venous pressure", () => {
     expect(rp.im.flowLpm).toBeGreaterThan(rvf.im.flowLpm + 0.2); expect(rp.im.suctionAlarm).toBe(false); expect(rp.cvp).toBeLessThan(rvf.cvp); // only just: the RA of this preload-depleted patient is nearly empty
   });
   it("turning the P-level down also relieves the suction (the usual first move)", () => {
@@ -101,13 +101,13 @@ describe("RV infarct starving a left-sided Impella", () => {
 
 describe("presets", () => {
   it("name the three scenarios with the settings they teach", () => {
-    expect(PRESET_BY_ID["impella-aortic"]!.spec.devices?.impella?.position).toBe("aortic");
-    expect(PRESET_BY_ID["impella-deep"]!.spec.devices?.impella?.position).toBe("deep");
-    const rv = PRESET_BY_ID["rv-infarct-impella"]!.spec;
-    expect(rv.lesions?.[0]).toMatchObject({ artery: "RCA", occluded: true }); expect(rv.devices?.impella?.position).toBe("correct");
+    expect(PRESET_BY_ID["coropump-aortic"]!.spec.devices?.coroPump?.position).toBe("aortic");
+    expect(PRESET_BY_ID["coropump-deep"]!.spec.devices?.coroPump?.position).toBe("deep");
+    const rv = PRESET_BY_ID["rv-infarct-coropump"]!.spec;
+    expect(rv.lesions?.[0]).toMatchObject({ artery: "RCA", occluded: true }); expect(rv.devices?.coroPump?.position).toBe("correct");
   });
   it("play out as the tests above (aortic: alarm 'position wrong'; deep and RV: suction alarm)", () => {
-    const a = run(PRESET_BY_ID["impella-aortic"]!.spec), d = run(PRESET_BY_ID["impella-deep"]!.spec), r = run(PRESET_BY_ID["rv-infarct-impella"]!.spec);
+    const a = run(PRESET_BY_ID["coropump-aortic"]!.spec), d = run(PRESET_BY_ID["coropump-deep"]!.spec), r = run(PRESET_BY_ID["rv-infarct-coropump"]!.spec);
     expect(a.im.positionAlarm).toBe(true); expect(d.im.suctionAlarm).toBe(true); expect(r.im.suctionAlarm).toBe(true);
   });
 });

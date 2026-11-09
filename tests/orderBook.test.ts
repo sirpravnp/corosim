@@ -9,7 +9,7 @@ const N = (o: Partial<PatientNow> = {}): PatientNow => ({
   hr: 80, sbp: 110, dbp: 70, urineMlHr: 60, lvIschemia: 0, rvIschemia: 0,
   rhythmLabel: "sinus rhythm", tempC: 37, respRate: 16, ...o,
 });
-const P = (o: Partial<Probe> = {}): Probe => ({ map: 70, hr: 80, arrest: "none", rhythmClass: "perfusing", shocks: 0, epiDoses: 0, amioMg: 0, lidoDoses: 0, cpr: false, ecmo: false, impella: false, iabp: false, pci: false, pciPending: false, drugs: {}, ef: 0.6, lvIschemia: 0, rvIschemia: 0, congestion: 0, fluidsL: 0, dead: false, ...o });
+const P = (o: Partial<Probe> = {}): Probe => ({ map: 70, hr: 80, arrest: "none", rhythmClass: "perfusing", shocks: 0, epiDoses: 0, amioMg: 0, lidoDoses: 0, cpr: false, ecmo: false, coroPump: false, iabp: false, pci: false, pciPending: false, drugs: {}, ef: 0.6, lvIschemia: 0, rvIschemia: 0, congestion: 0, fluidsL: 0, dead: false, ...o });
 
 describe("order book", () => {
   it("an item with delay 600 is pending until t reaches orderedAt+600", () => {

@@ -67,7 +67,7 @@ export const loopsPanel: PanelDef = {
       };
       for (const c of chs) add(chs.length > 1 ? `${c} live` : "Live", live, c, false);
       // With a pump in the left ventricle, the loop's SV and EF count what the pump removed as well as what the aortic valve passed.
-      const imp = chs.includes("LV") ? src.devices().find((d) => d.id === "impella") : undefined, flow = imp?.readings.flowLpm;
+      const imp = chs.includes("LV") ? src.devices().find((d) => d.id === "coroPump") : undefined, flow = imp?.readings.flowLpm;
       if (flow !== undefined && flow > 0.2) {
         const tr = document.createElement("tr"), td = document.createElement("td"), perBeat = (flow * 1000 / 60) * live.rr;
         td.colSpan = 4; td.style.color = "var(--muted)"; td.style.fontSize = "12px";

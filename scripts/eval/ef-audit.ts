@@ -5,7 +5,7 @@
 //   estimate  Simulation.state().ventricle.ejectionFraction = circ.ejectionFraction = sm.ef: AORTIC-valve stroke volume / LV EDV of EVERY beat
 //             (premature ones included), exponentially smoothed (ACS_CORE.smoothTau). Shown by the ischemia panel, MCP state, explain, cath echo.
 //   hemo      from Simulation.hemo(): (lvEdv - lvEsv) / lvEdv, means over the window's beats.
-//   +device   estimate with the pump's flow per beat added back: a pump (Impella) empties the LV without that volume passing the aortic valve.
+//   +device   estimate with the pump's flow per beat added back: a pump (CoroPump) empties the LV without that volume passing the aortic valve.
 import { Simulation } from "../../src/sim/simulation";
 import { LiveSource } from "../../src/sim/liveSource";
 import type { PatientSpec } from "../../src/sim/patient";
@@ -15,7 +15,7 @@ const cases: { name: string; spec: PatientSpec; run: number }[] = [
   { name: "healthy", spec: {}, run: 20 },
   { name: "LAD occlusion, 20 s after", spec: { lesions: [lad] }, run: 20 },
   { name: "LAD occlusion, 60 s after", spec: { lesions: [lad] }, run: 60 },
-  { name: "LAD occlusion + Impella P6, 60 s", spec: { lesions: [lad], support: { impella: true } }, run: 60 },
+  { name: "LAD occlusion + CoroPump P6, 60 s", spec: { lesions: [lad], support: { coroPump: true } }, run: 60 },
   { name: "healthy, frequent PVCs (K 6.5, tendency 3)", spec: { electrolytes: { potassium: 6.5 }, ectopyTendency: 3 }, run: 60 },
   { name: "atrial fibrillation", spec: { patient: { rhythm: "af" } }, run: 40 },
 ];

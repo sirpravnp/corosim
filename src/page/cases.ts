@@ -51,7 +51,7 @@ export function probe(): Probe {
     amioMg: drugs.filter((x) => x.drug === "amiodarone").reduce((a, x) => a + x.dose, 0),
     lidoDoses: drugs.filter((x) => x.drug === "lidocaine").length,
     cpr: st.cpr.on,
-    ecmo: (d?.ecmo?.flowLpm ?? 0) > 0.5, impella: !!d?.impella?.on, iabp: !!d?.iabp?.on,
+    ecmo: (d?.ecmo?.flowLpm ?? 0) > 0.5, coroPump: !!d?.coroPump?.on, iabp: !!d?.iabp?.on,
     pci: reperfused(), pciPending: T.pending?.kind === "pci",
     drugs: { ...(sim.drugState()?.level ?? {}) },
     ef: sim.circ?.ejectionFraction ?? 0.6, lvIschemia: sim.circ?.lvIschemia ?? 0, rvIschemia: sim.circ?.rvIschemia ?? 0, congestion: sim.circ?.congestion ?? 0, fluidsL: sim.support.fluids,

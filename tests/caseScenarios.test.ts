@@ -3,15 +3,15 @@ import { CaseRunner, CaseDef, Probe, Tick } from "../src/cases/engine";
 import { CASES } from "../src/cases";
 import { Simulation } from "../src/sim/simulation";
 
-const P = (o: Partial<Probe> = {}): Probe => ({ map: 70, hr: 45, arrest: "none", rhythmClass: "perfusing", shocks: 0, epiDoses: 0, amioMg: 0, lidoDoses: 0, cpr: false, ecmo: false, impella: false, iabp: false, pci: false, pciPending: false, drugs: {}, ef: 0.4, lvIschemia: 0, rvIschemia: 0, congestion: 0, fluidsL: 0, dead: false, ...o });
+const P = (o: Partial<Probe> = {}): Probe => ({ map: 70, hr: 45, arrest: "none", rhythmClass: "perfusing", shocks: 0, epiDoses: 0, amioMg: 0, lidoDoses: 0, cpr: false, ecmo: false, coroPump: false, iabp: false, pci: false, pciPending: false, drugs: {}, ef: 0.4, lvIschemia: 0, rvIschemia: 0, congestion: 0, fluidsL: 0, dead: false, ...o });
 
 /** Play a case against a patient who is just reactive enough: a PCI order lands 12 s later, pacing and a device show in the probe, a rate-control drug slows AF, a shock converts. */
 function play(def: CaseDef, pick: (opts: { points?: number }[]) => number) {
-  const r = new CaseRunner(def); let orderedAt = -1, paced = false, impella = false, rateDrug = false, dilt = 0, sinus = false;
+  const r = new CaseRunner(def); let orderedAt = -1, paced = false, coroPump = false, rateDrug = false, dilt = 0, sinus = false;
   const af = def.start.patient?.rhythm?.startsWith("af") ?? false;
   const note = (t: Tick) => {
     for (const p of t.patches) {
-      if (p.support?.pacing) paced = true; if (p.devices?.impella) impella = true;
+      if (p.support?.pacing) paced = true; if (p.devices?.coroPump) coroPump = true;
       if ((p.support?.diltiazem ?? 0) > 0 || (p.drugs?.betaBlocker ?? 0) > 0) rateDrug = true;
       if (p.support?.diltiazem !== undefined) dilt = p.support.diltiazem;
     }
@@ -21,7 +21,7 @@ function play(def: CaseDef, pick: (opts: { points?: number }[]) => number) {
   for (let i = 0; i < 2000 && !r.over; i++) {
     const pci = orderedAt >= 0 && r.t - orderedAt >= 12;
     const hr = af ? (sinus ? 80 : rateDrug ? 100 : 150) : paced ? 70 : 45;
-    const probe = P({ hr, map: dilt > 0.3 ? 60 : 75, impella, pci, pciPending: orderedAt >= 0 && !pci, ecmo: false });
+    const probe = P({ hr, map: dilt > 0.3 ? 60 : 75, coroPump, pci, pciPending: orderedAt >= 0 && !pci, ecmo: false });
     note(r.tick(probe, 1));
     if (r.open) note(r.answer(pick(r.open.prompt.options)));
   }

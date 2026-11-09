@@ -24,7 +24,7 @@ export const ARREST_SIM = {
    * only a circulation that has really failed is called PEA. A pulse pressure (systolic - diastolic) under `ppBelow` is no pulse either
    * (back at `ppAbove`): a heart that no longer ejects leaves a static circulation whose pressure can sit at any level (a tamponade
    * at a fast clock showed MAP ~ the pericardial pressure, 40-140 mmHg, with a 1 mmHg pulse). That rule is skipped while a device
-   * carries more than `deviceLpm` L/min (VA-ECMO and a full Impella flatten the pulse of a perfused patient). [assumed; direction: AHA 2020 ACLS, pseudo-PEA literature]
+   * carries more than `deviceLpm` L/min (VA-ECMO and a full CoroPump flatten the pulse of a perfused patient). [assumed; direction: AHA 2020 ACLS, pseudo-PEA literature]
    */
   pulsePressure: { mapBelow: 25, sbpBelow: 45, mapAbove: 30, sbpAbove: 55, holdS: 3, ppBelow: 5, ppAbove: 10, deviceLpm: 0.5 },
   /**

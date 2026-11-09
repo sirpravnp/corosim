@@ -25,7 +25,7 @@ Find out, variable by variable and over time, whether the **core engine** (`Simu
 - `scripts/eval/ef-audit.ts`: shows the three EF definitions side by side.
 - Solver: there is one integrator, the core engine (`src/physics/core/`). The structural model (`physics/structural.ts`: chambers, vessels, valves, shunts) is what it is built from, and `analyze()`/`simulate()` run it with no reflexes. The ACS `Simulation` runs the same engine plus the coronary, ischemia, rhythm and autonomic layers.
 - Engine selection: `new Simulation()` defaults to core (page, MCP, EKG, viewer). Legacy remains callable via `engine: "legacy"` for comparison and ACS regression fixtures. The core still calls the legacy `circulation()` for ischemic fractions, rhythm rate and demand factor.
-- Known definitional split (do not "fix", just keep it labelled): `lvEf` (chamber volumes, Monitor) vs `lvEfEstimate` (aortic-valve stroke volume, smoothed; ischemia panel, MCP, cath echo). They differ with an Impella running (0.30 vs 0.13) and for up to ~0.10 in the first minute after a change.
+- Known definitional split (do not "fix", just keep it labelled): `lvEf` (chamber volumes, Monitor) vs `lvEfEstimate` (aortic-valve stroke volume, smoothed; ischemia panel, MCP, cath echo). They differ with an CoroPump running (0.30 vs 0.13) and for up to ~0.10 in the first minute after a change.
 - Duplicated quantities registered under separate names (do not merge): `lvEf` vs `lvEfEstimate`; `cppPanel` (aortic diastolic minus LVEDP, about 57) vs `coronaryDrivingPressure` (about 90); `qpQs` (flows) vs `rhc.qpQsFick` (oxygen content: reads 1.08 in a healthy heart, a Fick-path bias); `co` vs `rhc.fickCo` (-7%).
 - A valve gradient shows in `lhc.*` (LV minus aorta), not in aortic pressure: register and check those for every valve state.
 - Empty by design: `lactate` (not modelled), `lysisSucceeded` until treated, cath fields on an occluded vessel.
@@ -53,7 +53,7 @@ Done when: `check` prints an invariants section; zero violations on `healthy`, o
 ### 4. Edge states
 Add to `states.ts`, with invariants-only checking (no expectation file needed):
 - Inputs: `stenosis` 0.99, 1.5, -0.2, NaN; `bloodLoss` 0.8 and -1.0; `seed` 0, -1, 2**32+5, NaN; `electrolytes.potassium` 2.0 and 7.5; `arrhythmiaTendency` 0 and 3; `ectopyTendency` 3. Expect: no throw, warnings reported, invariants hold.
-- Combinations: three vessels occluded; LM occlusion + RV infarct (RCA) + complete block; tamponade + hemorrhage; Impella with RV failure; ECMO without venting; every drug at 1.0 together.
+- Combinations: three vessels occluded; LM occlusion + RV infarct (RCA) + complete block; tamponade + hemorrhage; CoroPump with RV failure; ECMO without venting; every drug at 1.0 together.
 - Anatomy: proximal LAD occlusion across all 9 variants (dominance, LM pattern, LAD course, nodal artery origin).
 Done when: every edge state runs; failures are listed with the input that caused them.
 
@@ -69,7 +69,7 @@ Done when: each rate has an interval in the report.
 Add variables (same pattern, one canonical source each; document any that cannot be read headless):
 - PV-loop metrics from `src/physics/loopMetrics.ts` using `LiveSource.beats().loops.LV`: stroke work, Ea, Ees, dP/dt max/min, tau, MVO2, cardiac power output.
 - JVP from `src/physics/jvp.ts` (`analyzeJvp`), pulsus paradoxus and PPV from `src/physics/respiratory.ts`.
-- Pericardial pressure and effusion (`sim.pericardium()`), ECMO console readings, Impella RP.
+- Pericardial pressure and effusion (`sim.pericardium()`), ECMO console readings, CoroPump RP.
 Done when: `variables.ts` registers them and `observe` fills them without errors for a state that has them.
 
 ### 7b. Valve, shunt and prosthesis coverage (required)
@@ -84,7 +84,7 @@ Done when: each state runs on 8 seeds and `observe` fills the new variables.
 - Skip `display.*` and `seed`. Pair fields that need each other (a lesion needs an artery).
 - Invariants (task 2) apply to all of them; expectations are optional.
 - Report per field which variables moved (more than 5% or 0.01 from baseline) so the owner sees what each control actually does. A control that moves nothing, or moves a variable the owner did not expect, is a finding.
-- The 8 fields with no page control (`drugs.vasopressor`, `support.fluids`, `support.diltiazem`, `devices.impellaRp.level`, `devices.iabp.volumeMl`, four `valves.*.prosthesis`) are listed separately.
+- The 8 fields with no page control (`drugs.vasopressor`, `support.fluids`, `support.diltiazem`, `devices.coroPumpRp.level`, `devices.iabp.volumeMl`, four `valves.*.prosthesis`) are listed separately.
 Done when: a table of field x variables-moved exists for all 91 patient fields.
 
 ### 8. Owner hand-off: spec templates

@@ -26,20 +26,20 @@ export const PRESETS: Preset[] = [
     spec: { lesions: [{ artery: "LAD", occluded: true, position: 0.2 }], heart: { valves: { mv: { reg: 0.3 } } } },
   },
   {
-    id: "shock-impella", label: "Cardiogenic shock with Impella CP", blurb: "Large anterior infarct on dobutamine with an Impella CP at P6: the wedge pressure falls and the aortic pulse narrows.",
-    spec: { lesions: [{ artery: "LAD", occluded: true, position: 0.15 }], support: { dobutamine: 0.3, impella: true }, devices: { impella: { model: "CP", level: 6, position: "correct" } } },
+    id: "shock-coropump", label: "Cardiogenic shock with CoroPump CP", blurb: "Large anterior infarct on dobutamine with a CoroPump CP at P6: the wedge pressure falls and the aortic pulse narrows.",
+    spec: { lesions: [{ artery: "LAD", occluded: true, position: 0.15 }], support: { dobutamine: 0.3, coroPump: true }, devices: { coroPump: { model: "CP", level: 6, position: "correct" } } },
   },
   {
-    id: "impella-aortic", label: "Impella inflow in the aorta", blurb: "Anterior infarct, Impella CP at P8 pulled back so the inlet sits in the aorta: the pump spins and recirculates aorta to aorta, nothing is unloaded (wedge pressure stays high), the placement signal turns into an aortic pulse and the console says position wrong.",
-    spec: { lesions: [{ artery: "LAD", occluded: true, position: 0.15 }], support: { dobutamine: 0.3, impella: true }, devices: { impella: { model: "CP", level: 8, position: "aortic" } } },
+    id: "coropump-aortic", label: "CoroPump inflow in the aorta", blurb: "Anterior infarct, CoroPump CP at P8 pulled back so the inlet sits in the aorta: the pump spins and recirculates aorta to aorta, nothing is unloaded (wedge pressure stays high), the placement signal turns into an aortic pulse and the console says position wrong.",
+    spec: { lesions: [{ artery: "LAD", occluded: true, position: 0.15 }], support: { dobutamine: 0.3, coroPump: true }, devices: { coroPump: { model: "CP", level: 8, position: "aortic" } } },
   },
   {
-    id: "impella-deep", label: "Impella inflow too deep", blurb: "Anterior infarct, Impella CP at P9 pushed in too far: the inlet meets the ventricular wall and papillary apparatus, so the flow collapses in each beat and suction alarms sound. Reposition or turn the P-level down.",
-    spec: { lesions: [{ artery: "LAD", occluded: true, position: 0.15 }], support: { dobutamine: 0.3, impella: true }, devices: { impella: { model: "CP", level: 9, position: "deep" } } },
+    id: "coropump-deep", label: "CoroPump inflow too deep", blurb: "Anterior infarct, CoroPump CP at P9 pushed in too far: the inlet meets the ventricular wall and papillary apparatus, so the flow collapses in each beat and suction alarms sound. Reposition or turn the P-level down.",
+    spec: { lesions: [{ artery: "LAD", occluded: true, position: 0.15 }], support: { dobutamine: 0.3, coroPump: true }, devices: { coroPump: { model: "CP", level: 9, position: "deep" } } },
   },
   {
-    id: "rv-infarct-impella", label: "RV infarct starving a left Impella", blurb: "Proximal RCA occlusion with a failed right ventricle in a preload-depleted patient, Impella CP at P9: the left ventricle gets too little blood, the flow falls and suction alarms sound. A fluid bolus, an Impella RP or a lower P-level restores the flow.",
-    spec: { lesions: [{ artery: "RCA", occluded: true, position: 0.2 }], heart: { rvEes: 0.2, rvStiffness: 4 }, bloodLoss: 0.25, devices: { impella: { model: "CP", level: 9, position: "correct" } } },
+    id: "rv-infarct-coropump", label: "RV infarct starving a left CoroPump", blurb: "Proximal RCA occlusion with a failed right ventricle in a preload-depleted patient, CoroPump CP at P9: the left ventricle gets too little blood, the flow falls and suction alarms sound. A fluid bolus, a CoroPump RP or a lower P-level restores the flow.",
+    spec: { lesions: [{ artery: "RCA", occluded: true, position: 0.2 }], heart: { rvEes: 0.2, rvStiffness: 4 }, bloodLoss: 0.25, devices: { coroPump: { model: "CP", level: 9, position: "correct" } } },
   },
   {
     id: "tamponade", label: "Cardiac tamponade", blurb: "A 270 ml effusion in a normal sac, breathing spontaneously: falling pressure and output, a raised venous pressure and a fast pulse (Beck's triad), the four diastolic pressures drawn together to the pressure of the sac, a blunted y descent, a pulsus paradoxus over 10 mmHg and, above 250 ml, electrical alternans (the EKG page opens its alternans preset). Pericardiocentesis (remove 50-100 ml) relieves it.",

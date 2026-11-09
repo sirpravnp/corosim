@@ -134,10 +134,10 @@ export function features(spec: PatientSpec): Features {
   if (getPath(s, "support.pacing") === true) put("pacing", `pacing at ${Math.round(num(getPath(s, "support.paceRate")) ?? 70)}/min`, "a ventricular rate that no longer depends on the sinus node");
 
   // devices (a boolean in `support` means the defaults)
-  const iabp = getPath(s, "devices.iabp"), imp = getPath(s, "devices.impella"), ecmo = num(getPath(s, "devices.ecmo.flowLpm"));
+  const iabp = getPath(s, "devices.iabp"), imp = getPath(s, "devices.coroPump"), ecmo = num(getPath(s, "devices.ecmo.flowLpm"));
   if (isObj(iabp) || getPath(s, "support.iabp") === true) put("iabp", `an intra-aortic balloon pump (1:${num(getPath(s, "devices.iabp.ratio")) ?? 1})`, "diastolic augmentation and systolic unloading");
-  if (isObj(imp) || getPath(s, "support.impella") === true) put("impella", `an Impella ${getPath(s, "devices.impella.model") ?? "CP"} at P${num(getPath(s, "devices.impella.level")) ?? 6}`, "unloads the left ventricle and pumps forward");
-  if (isObj(getPath(s, "devices.impellaRp")) && (num(getPath(s, "devices.impellaRp.level")) ?? 0) > 0) put("impellaRp", `an Impella RP at P${getPath(s, "devices.impellaRp.level")}`, "supports the right ventricle");
+  if (isObj(imp) || getPath(s, "support.coroPump") === true) put("coroPump", `a CoroPump ${getPath(s, "devices.coroPump.model") ?? "CP"} at P${num(getPath(s, "devices.coroPump.level")) ?? 6}`, "unloads the left ventricle and pumps forward");
+  if (isObj(getPath(s, "devices.coroPumpRp")) && (num(getPath(s, "devices.coroPumpRp.level")) ?? 0) > 0) put("coroPumpRp", `a CoroPump RP at P${getPath(s, "devices.coroPumpRp.level")}`, "supports the right ventricle");
   if (ecmo && ecmo > 0) put("ecmo", `ECMO at ${r1(ecmo)} l/min`, "it carries part of the output but raises the afterload on the left ventricle");
   if (getPath(s, "ventilation.mode") === "positive") put("ventilation", `positive-pressure ventilation (PEEP ${num(getPath(s, "ventilation.peep")) ?? 5})`, "intrathoracic pressure lowers venous return");
 
@@ -225,7 +225,7 @@ const OWNS: Record<string, string[]> = {
   lesion: ["lesions"], anatomy: ["anatomy."], exertion: ["exertion"], rhythm: ["patient.rhythm"], bbb: ["patient.bbb"], bloodLoss: ["bloodLoss"],
   hemorrhage: ["fluids.hemorrhageMlMin"], potassium: ["electrolytes.potassium"], magnesium: ["electrolytes.magnesium"], betaBlocker: ["drugs.betaBlocker"],
   atropine: ["drugs.atropine", "support.atropine"], vasopressor: ["drugs.vasopressor"], pacing: ["support.pacing", "support.paceRate"],
-  iabp: ["support.iabp", "devices.iabp."], impella: ["support.impella", "devices.impella."], impellaRp: ["devices.impellaRp."], ecmo: ["devices.ecmo."],
+  iabp: ["support.iabp", "devices.iabp."], coroPump: ["support.coroPump", "devices.coroPump."], coroPumpRp: ["devices.coroPumpRp."], ecmo: ["devices.ecmo."],
   ventilation: ["ventilation.mode", "ventilation.peep"], effusion: ["pericardium.effusionMl", "pericardium.effusionRateMlMin"], septum: ["septum"],
   pvri: ["heart.pvri"], svr: ["heart.svrScale"],
 };

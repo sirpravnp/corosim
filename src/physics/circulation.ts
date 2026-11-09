@@ -86,9 +86,9 @@ export function circulation(sites: BedSite[], sev: Record<string, number>, rhyth
   const preload = 1 - Math.min(0.9, (K.nitroPreload + K.nitroPreloadRv * rvF) * support.nitro);
   const afterload = 1 - K.norepiAfterloadLoss * support.norepi * lvF;
   const balloon = 1 + (support.iabp ? K.iabpStrokeVolume * Math.min(1, lvF / 0.25) : 0);
-  const unload = support.impella ? 1 - K.impellaNativeSv : 1;
+  const unload = support.coroPump ? 1 - K.coroPumpNativeSv : 1;
   const sv = CIRC.baseStrokeVolume * filling * (1 - lvLoss) * (1 - rvLoss) * preload * afterload * balloon * unload * (1 - K.congestionSvLoss * congestion);
-  const deviceFlow = support.impella ? K.impellaFlow * (1 - K.impellaRvSuction * rvF) : 0;
+  const deviceFlow = support.coroPump ? K.coroPumpFlow * (1 - K.coroPumpRvSuction * rvF) : 0;
   const co = (hr * sv) / 1000 + deviceFlow;
   const svr = BASE_SVR * (1 + CIRC.sympatheticSvr * rhythm.sympathetic) * (1 - CIRC.vagalSvr * rhythm.vagal)
     * (1 + K.norepiSvr * support.norepi) * (1 - K.dobSvr * support.dobutamine) * (1 - K.nitroSvr * support.nitro);

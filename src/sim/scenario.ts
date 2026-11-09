@@ -68,7 +68,7 @@ export interface SupportSpec {
   /** Receptor-level drugs of the core engine (0..1 of a full dose; the legacy engine ignores them). */
   epinephrine?: number; milrinone?: number; vasopressin?: number; nitroprusside?: number; furosemide?: number; diltiazem?: number;
   pacing?: boolean; paceRate?: number; // bpm, 40..120
-  iabp?: boolean; impella?: boolean;
+  iabp?: boolean; coroPump?: boolean;
 }
 
 export const DRUG_RANGES = { betaBlocker: [0, 1], atropine: [0, 1], vasopressor: [-1, 1] } as const;
@@ -186,7 +186,7 @@ export function normalizeScenario(input: Scenario = {}, base?: Normalized["scena
     if (sp.pacing !== undefined) support.pacing = !!sp.pacing;
     if (sp.paceRate !== undefined) { const r = num(sp.paceRate) ? clamp(Math.round(sp.paceRate), SUPPORT.paceMin, SUPPORT.paceMax) : support.paceRate; if (r !== sp.paceRate) warnings.push(`support.paceRate set to ${r}`); support.paceRate = r; }
     if (sp.iabp !== undefined) support.iabp = !!sp.iabp;
-    if (sp.impella !== undefined) support.impella = !!sp.impella;
+    if (sp.coroPump !== undefined) support.coroPump = !!sp.coroPump;
   }
 
   const bl = input.bloodLoss ?? base?.bloodLoss ?? 0;
@@ -237,7 +237,7 @@ export function toScenario(n: Normalized["scenario"]): Scenario {
 
 /** Scenario form of a Support (the model's own names are short). */
 export function supportSpec(s: Support): SupportSpec {
-  const out: SupportSpec = { fluids: s.fluids, norepinephrine: s.norepi, dobutamine: s.dobutamine, nitroglycerin: s.nitro, pacing: s.pacing, paceRate: s.paceRate, iabp: s.iabp, impella: s.impella };
+  const out: SupportSpec = { fluids: s.fluids, norepinephrine: s.norepi, dobutamine: s.dobutamine, nitroglycerin: s.nitro, pacing: s.pacing, paceRate: s.paceRate, iabp: s.iabp, coroPump: s.coroPump };
   for (const [k, v] of [["epinephrine", s.epi], ["milrinone", s.milrinone], ["vasopressin", s.vasopressin], ["nitroprusside", s.nitroprusside], ["furosemide", s.furosemide], ["diltiazem", s.diltiazem]] as const) if (v > 0) out[k] = v; // only when given: the plain spec stays as it was
   return out;
 }

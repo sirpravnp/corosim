@@ -32,8 +32,8 @@ describe("Support tab layout", () => {
   it("keeps every id the game and the other pages read", () => {
     for (const id of ["m_pci", "m_lysis", "m_cabg", "m_cancel", "m_hint", "m_reset", "mstatus", "issues", "warns", "steps", "nor", "dob", "m_nitro", "m_atropine", "m_pace", "pacerate", "bl", "blv", "bb", "bbv", "norv", "dobv", "pacev", "openCath", "xlinks", "arrest"]) expect(has(id), id).toBe(true);
   });
-  it("has one switch per device (m_iabp, m_impella, m_ecmo), each owned by a field", () => {
-    for (const id of ["m_iabp", "m_impella", "m_ecmo"]) {
+  it("has one switch per device (m_iabp, m_coroPump, m_ecmo), each owned by a field", () => {
+    for (const id of ["m_iabp", "m_coroPump", "m_ecmo"]) {
       expect(html.match(new RegExp(`\\bid="${id}"`, "g")), id).toHaveLength(1);
       expect(FIELDS.some((f) => f.controls.includes(id)), id).toBe(true);
     }
@@ -82,19 +82,19 @@ describe("the IV bolus, the baseline volume and the device switches", () => {
     expect(lesion.heart?.valves?.av).toBeDefined();
     expect(buildPlaygroundSpec({}, a).spec.heart?.volumeMl).toBe(500);
   });
-  it("the legacy support.iabp / support.impella and devices.* stay in step, and both field names are accepted", () => {
+  it("the legacy support.iabp / support.coroPump and devices.* stay in step, and both field names are accepted", () => {
     // the one switch edits devices.*; the legacy booleans follow
     let st = withDevice({}, "iabp", true);
-    st = withDevice(st, "impella", true);
+    st = withDevice(st, "coroPump", true);
     const built = buildPlaygroundSpec({}, st).spec;
-    expect(built.support).toMatchObject({ iabp: true, impella: true });
+    expect(built.support).toMatchObject({ iabp: true, coroPump: true });
     expect(built.devices?.iabp).toBeDefined();
     expect(buildPlaygroundSpec({}, withDevice(st, "iabp", false)).spec.support?.iabp).toBe(false);
     // a spec that only carries the legacy booleans (chat, an old link) turns the one switch on with the defaults
-    const back = stateOfSpec({ support: { iabp: true, impella: true } } as never);
+    const back = stateOfSpec({ support: { iabp: true, coroPump: true } } as never);
     expect(back.devices?.iabp).toMatchObject({ ratio: 1 });
-    expect(back.devices?.impella).toMatchObject({ model: "CP", level: 6 });
+    expect(back.devices?.coroPump).toMatchObject({ model: "CP", level: 6 });
     // and devices.* alone is accepted without a warning
-    expect(normalizePatient({ devices: { iabp: { ratio: 2 }, impella: { level: 4 }, ecmo: { flowLpm: 3 } } }).warnings).toEqual([]);
+    expect(normalizePatient({ devices: { iabp: { ratio: 2 }, coroPump: { level: 4 }, ecmo: { flowLpm: 3 } } }).warnings).toEqual([]);
   });
 });

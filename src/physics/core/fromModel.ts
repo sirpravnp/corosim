@@ -8,9 +8,9 @@ import { Pericardium, type PericardiumParams } from "./pericardium";
 import { Septum, type SeptumParams } from "./septum";
 import { Thorax, type ThoraxParams } from "./thorax";
 import { InertialValve, inertance, OneWayValve, Orifice, Resistor } from "./valves";
-import { Impella, type ImpellaConfig } from "./devices/impella";
+import { CoroPump, type CoroPumpConfig } from "./devices/coroPump";
 import { Iabp, type IabpParams } from "./devices/iabp";
-import { ImpellaRp, type ImpellaRpConfig } from "./devices/impellaRp";
+import { CoroPumpRp, type CoroPumpRpConfig } from "./devices/coroPumpRp";
 import { Ecmo, type EcmoConfig } from "./devices/ecmo";
 import type { Element, Engine, ExternalGroup, NodeDef } from "./types";
 
@@ -36,12 +36,12 @@ export interface FromModelOptions {
   pericardium?: Partial<PericardiumParams> & { effusionMl?: number };
   /** Add the septum (core/septum.ts): `true` for the default parameters or a partial parameter set. Absent/false: no septum, no change. */
   septum?: boolean | Partial<SeptumParams>;
-  /** Add an Impella (core/devices/impella.ts; element name "impella"): LV to AO (or AO to AO for position "aortic"). Absent: no device, no change. */
-  impella?: Omit<ImpellaConfig, "v0">;
+  /** Add a CoroPump (core/devices/coroPump.ts; element name "coroPump"): LV to AO (or AO to AO for position "aortic"). Absent: no device, no change. */
+  coroPump?: Omit<CoroPumpConfig, "v0">;
   /** Add a VA-ECMO circuit (core/devices/ecmo.ts; element name "ecmo"): RA (or IVC) to DAO. Absent: no device, no change. */
   ecmo?: Omit<EcmoConfig, "v0">;
-  /** Add an Impella RP (core/devices/impellaRp.ts; element name "impellaRp"): IVC to PA. Absent: no device, no change. With `impella` this is BiPella. */
-  impellaRp?: Omit<ImpellaRpConfig, "v0">;
+  /** Add a CoroPump RP (core/devices/coroPumpRp.ts; element name "coroPumpRp"): IVC to PA. Absent: no device, no change. With `coroPump` this is BiPella. */
+  coroPumpRp?: Omit<CoroPumpRpConfig, "v0">;
   /** Add an intra-aortic balloon pump (core/devices/iabp.ts; element name "iabp") in the descending aorta: `true` for 1:1, correct timing, 40 ml, or a partial parameter set. Absent/false: no balloon, no change. */
   iabp?: boolean | Partial<IabpParams>;
   /** Add the thorax (core/thorax.ts): pleural pressure on the "thoracic" and "pericardial" nodes, abdominal pressure on the "abdominal" ones. Absent: no thorax, no change. Not part of the volume calibration (`resolveCore`): the blood volume is calibrated at end-expiration. */
@@ -80,9 +80,9 @@ export function fromModel(m: Model, opts: FromModelOptions = {}): { nodes: NodeD
     const lv = NODES.indexOf("LV"), rv = NODES.indexOf("RV");
     elements.push(new Septum(nodes[lv].model as ElastanceChamber, nodes[rv].model as ElastanceChamber, lv, rv, opts.septum === true ? {} : opts.septum));
   }
-  if (opts.impella) elements.push(Impella.forModel(m, opts.impella));
+  if (opts.coroPump) elements.push(CoroPump.forModel(m, opts.coroPump));
   if (opts.ecmo) elements.push(Ecmo.forModel(m, opts.ecmo));
-  if (opts.impellaRp) elements.push(ImpellaRp.forModel(m, opts.impellaRp));
+  if (opts.coroPumpRp) elements.push(CoroPumpRp.forModel(m, opts.coroPumpRp));
   if (opts.iabp) elements.push(Iabp.forModel(m, opts.iabp === true ? {} : opts.iabp));
   if (opts.thorax) {
     const ids = (gs: ExternalGroup[]) => nodes.flatMap((n, i) => (gs.includes(n.group) ? [i] : []));

@@ -10,10 +10,10 @@ const FRACTIONS = ["lvEf", "rvEf", "lvEfEstimate", "lvEfFick", "lvIschemia", "rv
 const POSITIVE = ["lvEdv", "lvEsv", "laVolume", "stressedVolume", "unstressedVolume", "fluid.blood", "fluid.plasma"];
 /** Whole groups that are null when that device or sac is not in the patient. A null inside a group that is otherwise present is a violation. */
 const ABSENT_GROUPS: string[][] = [
-  ["impella.flow", "impella.motorCurrent", "impella.placement", "impella.suctionLevel"],
+  ["coroPump.flow", "coroPump.motorCurrent", "coroPump.placement", "coroPump.suctionLevel"],
   ["iabp.coronaryAugmentation", "iabp.peakDiastolic"],
   ["ecmo.flow", "ecmo.rpm", "ecmo.sweep", "ecmo.fio2", "ecmo.returnSat", "ecmo.suction", "ecmo.membraneDp", "ecmo.head"],
-  ["impellaRp.flow", "impellaRp.level", "impellaRp.speed", "impellaRp.current", "impellaRp.placement", "impellaRp.suction"],
+  ["coroPumpRp.flow", "coroPumpRp.level", "coroPumpRp.speed", "coroPumpRp.current", "coroPumpRp.placement", "coroPumpRp.suction"],
   ["peri.effusionMl", "peri.pressure", "peri.sacMl"],
 ];
 const CONSERVATION_ML = 1; // fluid.conservation is the water-balance error, ml; "near 0" (zero up to rounding)
