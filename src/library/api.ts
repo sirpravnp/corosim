@@ -1,4 +1,4 @@
-import { CASES } from "../cases";
+import { ALL_CASES } from "../cases";
 import type { CaseDef } from "../cases/engine";
 import { CaseSpec, compileCase } from "../cases/spec";
 import { mcpServerUrl } from "../live";
@@ -24,7 +24,7 @@ export const fromSpec = (s: CaseSpec): Entry => {
   return { ...fromDef(def), source: "authored", published: !!s.published, spec: s };
 };
 
-export const builtinEntries = (): Entry[] => CASES.map(fromDef);
+export const builtinEntries = (): Entry[] => ALL_CASES.map(fromDef);
 
 /** The passcode this tab holds (kept for the tab only, never in the address). */
 export const passcode = () => keep.get(sessionStorage, PASS_KEY) ?? "";

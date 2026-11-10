@@ -22,6 +22,7 @@ export type CondSpec =
   | { rhythm: string; not?: boolean }
   | { arrest: (typeof ARREST_STATES)[number]; not?: boolean }
   | { drug: string; op: Op; value: number }
+  | { back: string; not?: boolean } // the learner ordered this lab or bedside item and its result is back
   | { any: CondSpec[] };
 
 type When<T> = Omit<T, "when"> & { when?: CondSpec[] };
@@ -40,6 +41,7 @@ export function compileCond(c: CondSpec): Cond {
   if ("is" in c) return (p) => p[c.is] !== !!c.not;
   if ("rhythm" in c) return (p) => (p.rhythmClass === c.rhythm) !== !!c.not;
   if ("arrest" in c) return (p) => (p.arrest === c.arrest) !== !!c.not;
+  if ("back" in c) return (p) => !!(p.ordered?.has(c.back) && !p.pending?.includes(c.back)) !== !!c.not;
   return (p) => cmp(p.drugs[c.drug] ?? 0, c.op, c.value);
 }
 export const compileAll = (cs: CondSpec[] | undefined): Cond | undefined => {
@@ -68,6 +70,7 @@ export function condText(c: CondSpec): string {
   if ("is" in c) return `${c.not ? "not " : ""}${c.is}`;
   if ("rhythm" in c) return `rhythm ${c.not ? "!=" : "="} ${c.rhythm}`;
   if ("arrest" in c) return `arrest ${c.not ? "!=" : "="} ${c.arrest}`;
+  if ("back" in c) return `${c.not ? "not " : ""}back ${c.back}`;
   return `drug ${c.drug} ${c.op} ${c.value}`;
 }
 export const condsText = (cs: CondSpec[] | undefined) => (cs ?? []).map(condText).join("; ");
@@ -90,6 +93,8 @@ export function parseCond(raw: string): CondSpec | string {
     if (m[1] === "arrest" && !(ARREST_STATES as readonly string[]).includes(m[3])) return `unknown arrest state '${m[3]}' (use ${ARREST_STATES.join(", ")})`;
     return m[1] === "rhythm" ? { rhythm: m[3], ...(m[2] === "!=" ? { not: true } : {}) } : { arrest: m[3] as (typeof ARREST_STATES)[number], ...(m[2] === "!=" ? { not: true } : {}) };
   }
+  m = s.match(/^(not\s+)?back\s+([a-z0-9-]+)$/);
+  if (m) return { back: m[2], ...(m[1] ? { not: true } : {}) };
   m = s.match(/^(not\s+)?(\w+)$/);
   if (m && (FLAG_FIELDS as readonly string[]).includes(m[2])) return { is: m[2] as FlagField, ...(m[1] ? { not: true } : {}) };
   return `cannot read '${s}'`;
@@ -112,6 +117,7 @@ const isCond = (c: unknown): boolean => {
   if ("is" in o) return (FLAG_FIELDS as readonly unknown[]).includes(o.is);
   if ("rhythm" in o) return typeof o.rhythm === "string" && !!o.rhythm;
   if ("arrest" in o) return (ARREST_STATES as readonly unknown[]).includes(o.arrest);
+  if ("back" in o) return typeof o.back === "string" && !!itemById(o.back) && !isDisplayId(o.back);
   if ("drug" in o) return typeof o.drug === "string" && (OPS as readonly unknown[]).includes(o.op) && Number.isFinite(o.value);
   return false;
 };

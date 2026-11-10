@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------- cases: the front door, the case panel, the prompts (the engine is src/cases)
 // A case is the simulator page with a scripted patient: the page builds a Probe from the simulation each frame, the runner (src/cases/engine.ts)
 // decides what fires, and this module carries it out: a patch to the patient, a line of news, an order, a prompt that holds the clock.
-import { CASES } from "../cases";
+import { ALL_CASES } from "../cases";
 import { compileCase } from "../cases/spec";
 import { builtinEntries, getPreview, playable } from "../library/api";
 import { CaseDef, CaseRunner, Debrief, Probe, Tick } from "../cases/engine";
@@ -31,7 +31,7 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 const clock = (s: number) => { const t = Math.max(0, Math.round(s)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
 const TIER_LABEL = { easy: "Easy", medium: "Medium", hard: "Hard" } as const;
 /** Every case this page can run: the built-in ones, then (once fetched) a published one or a draft being tested. */
-let pool: CaseDef[] = [...CASES];
+let pool: CaseDef[] = [...ALL_CASES];
 let missing = false; // the address names a case that could not be found
 const CASES_URL = "../cases/";
 
