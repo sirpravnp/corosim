@@ -138,3 +138,18 @@ Phases 1 and 2 are independent and can go in parallel in separate worktrees; pha
 ## Definition of done for the first release (phases 0 to 3)
 
 `/cath/` opens with a patient, shows the angiogram with contrast, the pullback and FFR, and the TEE views with labels; `corosim_cath_show` renders the same in Claude; `npm test` and `npm run build` pass; credits are on the page; the notes say which parts are schematic and not yet clinically reviewed.
+
+## Unified cath lab MCP tools (engine track)
+
+The procedure engine on `cath-unified` exposes these tools (in addition to the diagnostic cath helpers above):
+
+| Tool | Role |
+|---|---|
+| `corosim_lab_start` | Load a lab case and seed |
+| `corosim_lab_act` | Apply procedure actions |
+| `corosim_lab_state` / `corosim_lab_score` | Read state and score |
+| `corosim_lab_hint` | Graded text plus pure `nextHint` step |
+| `corosim_lab_undo` | Snapshot-backed undo |
+| `corosim_lab_resus` | CPR, shock, pressor, fluid, pericardiocentesis, restart |
+
+Peripheral access anatomy is baked in `src/cath/data/peripheral.json` with licenses in `docs/CATH_PERIPHERAL_SOURCES.md`.

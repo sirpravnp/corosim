@@ -27,6 +27,7 @@ import type { ArrestDrug } from "../sim/arrest";
 import { LabEngine } from "../lab/engine";
 import { LAB_CASES, caseById } from "../cath/lab/cases";
 import { scoreProcedure } from "../lab/score";
+import { nextHint } from "../lab/hint";
 import type { Action } from "../lab/types";
 
 export interface ToolContext {
@@ -549,15 +550,22 @@ export const TOOLS: ToolDef[] = [
     name: "corosim_lab_hint",
     title: "Graded cath-lab hint",
     readOnly: true,
-    description: `Level 1 is conceptual only; level 3 names specific devices from the recommended plan. ${NOT_CLINICAL}`,
+    description: `Level 1 is conceptual only; level 3 names specific devices from the recommended plan. Also returns the pure nextHint planner step for the first plaque. ${NOT_CLINICAL}`,
     inputSchema: { type: "object", properties: { level: { type: "number", enum: [1, 2, 3] } }, required: ["level"] },
     run(_ctx, a) {
       if (!labSession) throw new Error("No active lab case.");
       const c = caseById(labSession.caseId)!;
       const level = a.level as 1 | 2 | 3;
-      if (level === 1) return { hint: "Establish access, anticoagulate, then engage the coronary ostium with an appropriate guide before wiring." };
-      if (level === 2) return { hint: `Use a ${c.recommended.guide.startsWith("guide-j") ? "judkins-style" : "supportive"} guide and cross the lesion with a workhorse wire before PCI.` };
-      return { hint: `Suggested devices: guide ${c.recommended.guide}, wire ${c.recommended.wire}, balloon ${c.recommended.balloon ?? "per lesion"}, stent ${c.recommended.stent ?? "per vessel"}.` };
+      const plaque = labSession.engine.plaques()[0];
+      const next = plaque
+        ? nextHint(labSession.engine, { segId: plaque.segId, centerMm: plaque.centerMm })
+        : { kind: "none" as const, why: "No plaque target is loaded." };
+      const graded = level === 1
+        ? "Establish access, anticoagulate, then engage the coronary ostium with an appropriate guide before wiring."
+        : level === 2
+          ? `Use a ${c.recommended.guide.startsWith("guide-j") ? "judkins-style" : "supportive"} guide and cross the lesion with a workhorse wire before PCI.`
+          : `Suggested devices: guide ${c.recommended.guide}, wire ${c.recommended.wire}, balloon ${c.recommended.balloon ?? "per lesion"}, stent ${c.recommended.stent ?? "per vessel"}.`;
+      return { hint: graded, next };
     },
   },
   {
@@ -582,6 +590,39 @@ export const TOOLS: ToolDef[] = [
           contrastMl: st.contrastMl, fluoroSeconds: st.fluoroSeconds,
         },
         map: ctx.sim.state().rolling10s.map,
+      };
+    },
+  },
+  {
+    name: "corosim_lab_resus",
+    title: "Cath-lab resuscitation action",
+    readOnly: false,
+    description: `CPR, shock, pressor, fluid, pericardiocentesis or restart on the active lab case (same Simulation models as the main page). ${NOT_CLINICAL}`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "object",
+          description: "One of {t:'cpr',on}, {t:'shock',joules,sync?}, {t:'pressor',id,dose}, {t:'fluid',ml}, {t:'pericardiocentesis',ml}, {t:'restart'}.",
+        },
+      },
+      required: ["action"],
+    },
+    run(ctx, a) {
+      if (!labSession) throw new Error("No active lab case.");
+      const action = a.action as Action;
+      const allowed = new Set(["cpr", "shock", "pressor", "fluid", "pericardiocentesis", "restart"]);
+      if (!action || !allowed.has(action.t)) throw new Error("action.t must be a resuscitation action.");
+      const events = labSession.engine.apply(action);
+      const st = labSession.engine.state();
+      return {
+        narrative: `Lab resuscitation: ${action.t}.`,
+        events,
+        undoCount: labSession.engine.undoCount,
+        effusionMl: labSession.engine.effusionMl?.() ?? 0,
+        dead: ctx.sim.dead,
+        map: ctx.sim.state().rolling10s.map,
+        state: { access: st.access, act: st.act, elapsedS: st.elapsedS },
       };
     },
   },

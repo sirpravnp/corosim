@@ -91,6 +91,7 @@ describe("parity: every tool that changes the patient returns a narrative", () =
     corosim_lab_start: { caseId: "stable-lad", seed: 3 },
     corosim_lab_act: { actions: [{ t: "access", site: "femoral-R" }] },
     corosim_lab_undo: {},
+    corosim_lab_resus: { action: { t: "fluid", ml: 250 } },
   };
   it("the list of patient-changing tools is the list this test calls", () => {
     expect(TOOLS.filter((t) => !t.readOnly).map((t) => t.name).sort()).toEqual(Object.keys(CALLS).sort());
@@ -100,9 +101,9 @@ describe("parity: every tool that changes the patient returns a narrative", () =
     if (name !== "corosim_set_scenario" && name !== "corosim_lab_start") {
       run(sim, "corosim_set_scenario", { engine: "core", scenario: lad, warmupSeconds: 5 });
     }
-    if (name === "corosim_lab_act" || name === "corosim_lab_undo") {
+    if (name === "corosim_lab_act" || name === "corosim_lab_undo" || name === "corosim_lab_resus") {
       run(sim, "corosim_lab_start", CALLS.corosim_lab_start);
-      if (name === "corosim_lab_undo") run(sim, "corosim_lab_act", CALLS.corosim_lab_act);
+      if (name === "corosim_lab_undo" || name === "corosim_lab_resus") run(sim, "corosim_lab_act", CALLS.corosim_lab_act);
     }
     const r = run(sim, name, CALLS[name]);
     expect(typeof r.narrative).toBe("string");
