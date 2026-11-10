@@ -17,6 +17,13 @@ const neighbors = (g: VGraph, id: string): string[] => {
   if (id === "AORTA_ABD") { out.push("ILIAC_L", "ILIAC_R"); }
   if (id === "INNOM") out.push("AORTA_ASC", "AORTA_THOR"); // the innominate opens into the ascending aorta at the start of the arch
   if (id === "AORTA_THOR") out.push("INNOM");
+  // Baked peripheral ids (CFA, CIA, …) when present on the routable graph.
+  if (id.startsWith("CIA_") || id.startsWith("EIA_")) out.push("AORTA_ABD");
+  if (id === "AORTA_ABD") {
+    for (const sid of Object.keys(g.byId)) {
+      if (sid.startsWith("CIA_")) out.push(sid);
+    }
+  }
   return out;
 };
 

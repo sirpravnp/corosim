@@ -108,6 +108,33 @@ describe("access graph", () => {
     const t120 = transmission(g, r, 120, 0.7);
     expect(t120).toBeLessThanOrEqual(t40);
   });
+
+  it("route from femoral-L passes the left iliac and aortic bifurcation", () => {
+    const g = graph();
+    const r = routeTo(g, "femoral-L", "LM");
+    expect(r).toContain("FEM_L");
+    expect(r).toContain("ILIAC_L");
+    expect(r).toContain("AORTA_ABD");
+    expect(r).toContain("ARCH");
+  });
+
+  it("radial route passes subclavian and the arch", () => {
+    const g = graph();
+    const r = routeTo(g, "radial-R", "LM");
+    expect(r[0]).toBe("RADIAL_R");
+    expect(r).toContain("SUBCLAV_R");
+    expect(r.some((id) => id === "ARCH" || id === "INNOM" || id === "AORTA_ASC")).toBe(true);
+  });
+
+  it("iliac tortuosity increases route curvature", () => {
+    const straight = graph({ iliacTortuosity: 0.05 });
+    const tort = graph({ iliacTortuosity: 0.9 });
+    const r0 = routeTo(straight, "femoral-R", "AORTA_ASC");
+    const r1 = routeTo(tort, "femoral-R", "AORTA_ASC");
+    const c0 = curvatureAlong(straight, r0, 0, routeLength(straight, r0));
+    const c1 = curvatureAlong(tort, r1, 0, routeLength(tort, r1));
+    expect(c1).toBeGreaterThan(c0);
+  });
 });
 
 function routeLength(g: ReturnType<typeof graph>, route: string[]) {

@@ -1,5 +1,6 @@
 import { buildTree, type Tree } from "../anatomy/tree";
 import { Curve, type V3 } from "../anatomy/curve";
+import { loadPeripheral } from "./peripheral";
 import type { AccessSite, AccessVariant, VGraph, VSeg } from "./types";
 
 /**
@@ -75,28 +76,65 @@ const iliacCtrl = (side: 1 | -1, tort: number): V3[] => {
   return side === 1 ? pts : pts.map(mirror);
 };
 
-/** Right femoral to the ascending aorta (sinus level); the left side is mirrored. */
+/** Prefer baked peripheral samples when present; fall back to procedural controls. */
+const periSamples = (id: string): V3[] | null => {
+  try {
+    const s = loadPeripheral().find((x) => x.id === id);
+    return s && s.samples.length >= 2 ? s.samples.map((p) => [...p] as V3) : null;
+  } catch {
+    return null;
+  }
+};
+
+const wiggle = (pts: V3[], amp: number, side: 1 | -1): V3[] =>
+  pts.map((p, i) => {
+    if (i === 0 || i === pts.length - 1) return p;
+    const s = i % 2 ? 1 : -1;
+    return [p[0] + s * amp * 0.5 * side, p[1], p[2] + s * amp] as V3;
+  });
+
+/** Right femoral to the ascending aorta (sinus level); the left side is mirrored. Uses baked peripheral centerlines when available. */
 function buildFemoralChain(v: AccessVariant, sinus: V3): FemChain {
   const { puncture, inguinal, bifurcation, hiatus, midlineX } = BODY;
   const iliacCalc = v.calcifiedIliac ? 0.72 : 0.12;
   const iliacTort = 0.12 + v.iliacTortuosity * 0.55;
   const H = archHeightMm(v.arch), yS = sinus[1];
+  const amp = v.iliacTortuosity * 16;
 
-  const femR = segFromCurve("FEM_R", "Right femoral", null, 0, [puncture, lerp(puncture, inguinal, 0.5), inguinal], [8.2, 9.4], 0.06, 0);
-  const femL = segFromCurve("FEM_L", "Left femoral", null, 0, [mirror(puncture), lerp(mirror(puncture), mirror(inguinal), 0.5), mirror(inguinal)], [8.2, 9.4], 0.06, 0);
-  const iliacR = segFromCurve("ILIAC_R", "Right iliac", "FEM_R", 1, [...iliacCtrl(1, iliacTort), bifurcation], [8, 11], iliacTort, iliacCalc, endOf(femR));
-  const iliacL = segFromCurve("ILIAC_L", "Left iliac", "FEM_L", 1, [...iliacCtrl(-1, iliacTort), bifurcation], [8, 11], iliacTort, iliacCalc, endOf(femL));
+  const cfaR = periSamples("CFA_R");
+  const eiaR = periSamples("EIA_R");
+  const ciaR = periSamples("CIA_R");
 
-  // abdominal aorta: a gentle lordotic bow, narrowing toward the bifurcation
+  // Bake stores CFA inguinal→puncture; the access route climbs puncture→inguinal.
+  const femR = cfaR
+    ? segFromCurve("FEM_R", "Right femoral", null, 0, cfaR.slice().reverse(), [8.2, 9.4], 0.06, 0)
+    : segFromCurve("FEM_R", "Right femoral", null, 0, [puncture, lerp(puncture, inguinal, 0.5), inguinal], [8.2, 9.4], 0.06, 0);
+  const cfaL = periSamples("CFA_L");
+  const femL = cfaL
+    ? segFromCurve("FEM_L", "Left femoral", null, 0, cfaL.slice().reverse(), [8.2, 9.4], 0.06, 0)
+    : segFromCurve("FEM_L", "Left femoral", null, 0, [mirror(puncture), lerp(mirror(puncture), mirror(inguinal), 0.5), mirror(inguinal)], [8.2, 9.4], 0.06, 0);
+
+  // Iliac: prefer baked EIA/CIA direction (puncture side → bifurcation), with tortuosity wiggle.
+  const iliacCtrlR = eiaR && ciaR
+    ? wiggle([eiaR[eiaR.length - 1]!, ...iliacCtrl(1, iliacTort), bifurcation], amp, 1)
+    : [...iliacCtrl(1, iliacTort), bifurcation];
+  const eiaL = periSamples("EIA_L");
+  const iliacCtrlL = eiaL
+    ? wiggle([eiaL[eiaL.length - 1]!, ...iliacCtrl(-1, iliacTort), bifurcation], amp, -1)
+    : [...iliacCtrl(-1, iliacTort), bifurcation];
+  void ciaR;
+
+  const iliacR = segFromCurve("ILIAC_R", "Right iliac", "FEM_R", 1, iliacCtrlR, [8, 11], iliacTort, iliacCalc, endOf(femR));
+  const iliacL = segFromCurve("ILIAC_L", "Left iliac", "FEM_L", 1, iliacCtrlL, [8, 11], iliacTort, iliacCalc, endOf(femL));
+
+  // Abdominal and thoracic aorta stay on the procedural landmarks so route length stays clinical.
   const abd = segFromCurve("AORTA_ABD", "Abdominal aorta", "ILIAC_R", 1,
     [[midlineX + 1, -205, -44], [midlineX + 4, -150, -50], hiatus], [16, 21], 0.06, 0, endOf(iliacR));
 
-  // thoracic descending aorta: left of the spine, posterior; it leans left behind the heart and returns to the arch
   const thorEnd: V3 = [midlineX + 21, yS + H - 34, -52];
   const thor = segFromCurve("AORTA_THOR", "Thoracic aorta", "AORTA_ABD", 1,
     [[midlineX + 12, -50, -52], [midlineX + 17, 0, -54], [midlineX + 21, 40, -54], thorEnd], [23, 26], 0.08, 0, endOf(abd));
 
-  // the arch: over the top from the descending aorta, anterior to right; its type sets the height and the tightness
   const A = archStart(v, sinus);
   const lift = v.arch === "I" ? 0 : v.arch === "II" ? 0.5 : 1;
   const archPts: V3[] = [
@@ -109,7 +147,6 @@ function buildFemoralChain(v: AccessVariant, sinus: V3): FemChain {
   const archTort = v.arch === "I" ? 0.18 : v.arch === "II" ? 0.38 : 0.72;
   const arch = segFromCurve("ARCH", "Aortic arch", "AORTA_THOR", 1, [...archPts, A], [26, 29], archTort, 0.06, endOf(thor));
 
-  // the ascending aorta and the root; the root width is the sinus diameter
   const asc = segFromCurve("AORTA_ASC", "Ascending aorta", "ARCH", 1,
     [lerp(A, sinus, 0.4), lerp(A, sinus, 0.75), sinus], [31, Math.max(32, v.aorticRootMm)], 0.05, 0, endOf(arch));
   return { femR, iliacR, abd, thor, arch, asc, femL, iliacL };
@@ -125,6 +162,7 @@ function buildRadialChain(v: AccessVariant, arch: VSeg, sinus: V3): { radialR: V
   const joint: V3 = [-48, yJ, 6];
   const mouth = endOf(arch);
 
+  // Arm route keeps procedural lengths (clinical wrist→root); baked arm segments stay in branches for runoff/arm views.
   const radialR = segFromCurve("RADIAL_R", "Right radial", null, 0,
     [wrist, loop, lerp(wrist, elbow, 0.55), elbow], [2.4, 3], v.radialLoop ? 0.88 : 0.22, 0);
   const brach = segFromCurve("BRACH_R", "Right brachial", "RADIAL_R", 1,
@@ -183,6 +221,9 @@ export function buildAccess(v: AccessVariant, coronaryRoot: V3[]): VGraph {
     rad.radialR, rad.brach, rad.subcl, rad.innom,
   ];
   const byId = Object.fromEntries(segs.map((s) => [s.id, s]));
+  // Run-off and arm extras from the bake, drawn as branches (not on the guide/wire route).
+  const runoff = loadPeripheral().filter((s) =>
+    /^(SFA|POP|ATA|PTA|PERONEAL|DP|PFA|IIA|ULNAR|CCA|VERT)_/.test(s.id));
   const asc = fem.asc;
   const lmDist = dist(endOf(asc), lm);
   const rcaDist = dist(endOf(asc), rca);
@@ -190,7 +231,7 @@ export function buildAccess(v: AccessVariant, coronaryRoot: V3[]): VGraph {
   const ostiumRcaMm = Math.max(0, asc.length - rcaDist * 0.4);
   return {
     segs, byId,
-    branches: buildBranches(v, fem, rad, sinus),
+    branches: [...(buildBranches(v, fem, rad, sinus) ?? []), ...runoff],
     ostium: {
       LM: { segId: "AORTA_ASC", mm: ostiumLmMm },
       RCA: { segId: "AORTA_ASC", mm: ostiumRcaMm },
