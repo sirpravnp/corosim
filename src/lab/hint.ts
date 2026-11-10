@@ -1,7 +1,6 @@
 import { byId } from "../config/labDevices";
 import { LAB } from "../config/lab";
 import { planSizing } from "./balloonStent";
-import { branchChoice } from "./wire";
 import type { Guidewire, LabEngineLike, Plaque, VGraph } from "./types";
 
 export type Hint = {
@@ -87,22 +86,23 @@ export function nextHint(engine: LabEngineLike, goal: { segId: string; centerMm:
     ?? plaques.find((p) => Math.abs(p.centerMm - goal.centerMm) < 30)
     ?? plaques[0];
   const root = coronaryRoot(g, goal.segId);
+  const tgt = { segId: goal.segId, mm: goal.centerMm };
 
   if (!st.access) {
-    return { kind: "select", why: "Gain right femoral access (femoral-R).", target: goal };
+    return { kind: "select", why: "Gain right femoral access (femoral-R).", target: tgt };
   }
   if (!st.sheathFr) {
-    return { kind: "select", why: "Place a 6 French sheath (sheath-6).", target: goal };
+    return { kind: "select", why: "Place a 6 French sheath (sheath-6).", target: tgt };
   }
   if (st.act < 200) {
-    return { kind: "select", why: "Give heparin 5000 units (heparin).", target: goal };
+    return { kind: "select", why: "Give heparin 5000 units (heparin).", target: tgt };
   }
   if (!st.targetSeg) {
-    return { kind: "select", why: `Set the treatment target to ${goal.segId} (target-${goal.segId}).`, target: goal };
+    return { kind: "select", why: `Set the treatment target to ${goal.segId} (target-${goal.segId}).`, target: tgt };
   }
   if (!st.guide) {
     const id = guideFor(root);
-    return { kind: "select", why: `Select the ${root === "RCA" ? "JR4" : "JL4"} guide (${id}).`, target: goal };
+    return { kind: "select", why: `Select the ${root === "RCA" ? "JR4" : "JL4"} guide (${id}).`, target: tgt };
   }
   if (!st.guide.engaged) {
     return {
@@ -125,10 +125,10 @@ export function nextHint(engine: LabEngineLike, goal: { segId: string; centerMm:
       return {
         kind: "select",
         why: `Occlusion ahead: load a stiff CTO wire (${id}) before any advance into the cap.`,
-        target: goal,
+        target: tgt,
       };
     }
-    return { kind: "select", why: `Load a workhorse wire (${id}).`, target: goal };
+    return { kind: "select", why: `Load a workhorse wire (${id}).`, target: tgt };
   }
 
   const tip = st.wire;
@@ -155,7 +155,7 @@ export function nextHint(engine: LabEngineLike, goal: { segId: string; centerMm:
     return {
       kind: "select",
       why: `Reload the wire so its route reaches ${goal.segId} (${tip.id}).`,
-      target: goal,
+      target: tgt,
     };
   }
 
@@ -204,7 +204,7 @@ export function nextHint(engine: LabEngineLike, goal: { segId: string; centerMm:
       why: nextOnRoute
         ? `Advance along the route into ${nextOnRoute}.`
         : `Advance toward ${goal.segId}.`,
-      target: goal,
+      target: tgt,
     };
   }
 
@@ -220,7 +220,7 @@ export function nextHint(engine: LabEngineLike, goal: { segId: string; centerMm:
       return {
         kind: "select",
         why: `Do not push a soft wire into this near-total occlusion; exchange for a stiff CTO wire (wire-stiff-cto).`,
-        target: goal,
+        target: tgt,
       };
     }
     const proximal = goalPlaque.centerMm - goalPlaque.lengthMm / 2;
@@ -229,7 +229,7 @@ export function nextHint(engine: LabEngineLike, goal: { segId: string; centerMm:
         kind: "advance",
         mm: Math.min(8, proximal - tip.tipMm),
         why: `Advance to the proximal edge of the ${goal.segId} lesion.`,
-        target: goal,
+        target: tgt,
       };
     }
     // One controlled push to the treatment site to limit random perforation rolls.
@@ -240,7 +240,7 @@ export function nextHint(engine: LabEngineLike, goal: { segId: string; centerMm:
       kind: "advance",
       mm: Math.max(2, goal.centerMm + 1 - tip.tipMm),
       why: riskNote,
-      target: goal,
+      target: tgt,
     };
   }
 
@@ -249,13 +249,13 @@ export function nextHint(engine: LabEngineLike, goal: { segId: string; centerMm:
       kind: "advance",
       mm: Math.min(5, goal.centerMm - tip.tipMm + 1),
       why: `Advance the wire to the treatment site at ${Math.round(goal.centerMm)} mm.`,
-      target: goal,
+      target: tgt,
     };
   }
 
   // Never move devices while a balloon is inflated.
   if (st.balloon && st.balloon.inflatedAtm > 0) {
-    return { kind: "deflate", why: "Deflate the balloon before the next step.", target: goal };
+    return { kind: "deflate", why: "Deflate the balloon before the next step.", target: tgt };
   }
 
   // PCI: predilate → stent → postdilate if needed.
@@ -264,39 +264,39 @@ export function nextHint(engine: LabEngineLike, goal: { segId: string; centerMm:
     if (ap < 0.85) {
       if (!st.balloon || !st.balloon.id.includes("nc")) {
         const id = nearestBalloonId(goalPlaque.referenceMm, 12).replace("semi", "nc");
-        return { kind: "select", why: `Select a noncompliant balloon for postdilation (${id}).`, target: goal };
+        return { kind: "select", why: `Select a noncompliant balloon for postdilation (${id}).`, target: tgt };
       }
       if (st.balloon.inflatedAtm <= 0) {
-        return { kind: "inflate", atm: 16, why: "Postdilate to improve stent apposition.", target: goal };
+        return { kind: "inflate", atm: 16, why: "Postdilate to improve stent apposition.", target: tgt };
       }
-      return { kind: "deflate", why: "Deflate after postdilation.", target: goal };
+      return { kind: "deflate", why: "Deflate after postdilation.", target: tgt };
     }
-    return { kind: "none", why: "The lesion is stented; confirm final result with injection and FFR if needed.", target: goal };
+    return { kind: "none", why: "The lesion is stented; confirm final result with injection and FFR if needed.", target: tgt };
   }
 
   const didPredilate = st.log.some((a) => a.t === "inflate");
   if (goalPlaque && !didPredilate) {
     if (!st.balloon) {
       const id = nearestBalloonId(goalPlaque.referenceMm * 0.85, Math.max(12, goalPlaque.lengthMm));
-      return { kind: "select", why: `Select a predilation balloon (${id}).`, target: goal };
+      return { kind: "select", why: `Select a predilation balloon (${id}).`, target: tgt };
     }
     if (st.balloon.inflatedAtm > 0) {
-      return { kind: "deflate", why: "Deflate the balloon before stenting.", target: goal };
+      return { kind: "deflate", why: "Deflate the balloon before stenting.", target: tgt };
     }
-    return { kind: "inflate", atm: 10, why: "Inflate the balloon to predilate the lesion.", target: goal };
+    return { kind: "inflate", atm: 10, why: "Inflate the balloon to predilate the lesion.", target: tgt };
   }
 
   if (st.balloon && st.balloon.inflatedAtm > 0) {
-    return { kind: "deflate", why: "Deflate before delivering the stent.", target: goal };
+    return { kind: "deflate", why: "Deflate before delivering the stent.", target: tgt };
   }
   if (!st.stent || (goalPlaque && goalPlaque.stents.length === 0 && st.stent.deployed)) {
     const size = planSizing(goalPlaque?.referenceMm ?? plaque?.referenceMm ?? 3, goalPlaque?.lengthMm ?? plaque?.lengthMm ?? 16);
     const id = nearestStentId(size.stentMm, size.lengthMm);
-    return { kind: "select", why: `Select a DES sized to the vessel (${id}).`, target: goal };
+    return { kind: "select", why: `Select a DES sized to the vessel (${id}).`, target: tgt };
   }
   if (!st.stent.deployed) {
-    return { kind: "deploy", atm: 14, why: "Deploy the stent across the lesion.", target: goal };
+    return { kind: "deploy", atm: 14, why: "Deploy the stent across the lesion.", target: tgt };
   }
 
-  return { kind: "none", why: "No further procedural step is required for this goal.", target: goal };
+  return { kind: "none", why: "No further procedural step is required for this goal.", target: tgt };
 }
