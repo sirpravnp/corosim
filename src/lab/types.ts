@@ -42,6 +42,9 @@ export interface Plaque {
   stents: DeployedStent[];
 }
 
+/** Set-up slider for a coronary lesion: segment, center and length in mm, diameter stenosis 0..1. */
+export interface LesionSlider { segId: string; centerMm: number; lengthMm: number; ds: number }
+
 // ------------------------------------------------------------------------------------------------ devices
 
 export interface DeviceBase { id: string; name: string }
