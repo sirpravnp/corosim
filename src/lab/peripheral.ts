@@ -20,9 +20,9 @@ const arcLen = (pts: V3[]) => {
 
 /** Load baked peripheral centerlines as VSeg rows (patient frame, mm). */
 export function loadPeripheral(): VSeg[] {
-  const raw = (peripheral as { segments: Raw[] }).segments;
+  const raw = (peripheral as unknown as { segments: Raw[] }).segments;
   return raw.map((s) => {
-    const samples = s.points.map((p) => [...p] as V3);
+    const samples = s.points.map((p) => [p[0], p[1], p[2]] as V3);
     const diameterMm = s.radiusMm.map((r) => r * 2);
     return {
       id: s.id,

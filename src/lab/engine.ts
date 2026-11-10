@@ -14,6 +14,9 @@ import { advanceWire } from "./wire";
 import { wireModel } from "../sim/cath";
 import { inflateBalloon, deployStentAt } from "./balloonStent";
 import { applyToSim } from "./coupling";
+import {
+  applyCpr, applyFluid, applyPericardiocentesis, applyPressor, applyRestart, applyShock,
+} from "./resus";
 import type { Balloon, Guidewire, Stent } from "./types";
 import type { Lesion } from "../physics/network";
 import type { Simulation } from "../sim/simulation";
@@ -680,12 +683,53 @@ export class LabEngine implements LabEngineLike {
         this.rollComplications(a, out);
         break;
       }
+      case "cpr": {
+        const ev = applyCpr(this.sim, a.on).map((e) => ({ ...e, at: s.elapsedS }));
+        out.push(...ev);
+        break;
+      }
+      case "shock": {
+        const ev = applyShock(this.sim, a.joules, a.sync).map((e) => ({ ...e, at: s.elapsedS }));
+        out.push(...ev);
+        break;
+      }
+      case "pressor": {
+        const ev = applyPressor(this.sim, a.id, a.dose).map((e) => ({ ...e, at: s.elapsedS }));
+        out.push(...ev);
+        break;
+      }
+      case "fluid": {
+        const ev = applyFluid(this.sim, a.ml).map((e) => ({ ...e, at: s.elapsedS }));
+        out.push(...ev);
+        break;
+      }
+      case "pericardiocentesis": {
+        const { drained, events } = applyPericardiocentesis(this.sim, a.ml, this.effusion, () => {
+          this.effusion = Math.max(0, this.effusion - Math.min(a.ml, this.effusion));
+          this.tamponadeRate = 0;
+          this.perforationSealed = true;
+        });
+        out.push(...events.map((e) => ({ ...e, at: s.elapsedS })));
+        if (drained > 0) {
+          this.sim.apply({ pericardium: { effusionMl: this.effusion, effusionRateMlMin: 0 } });
+        }
+        break;
+      }
+      case "restart": {
+        const ev = applyRestart(this.sim).map((e) => ({ ...e, at: s.elapsedS }));
+        out.push(...ev);
+        // Clear lab-side effusion/arrest bookkeeping; keep devices and log as a fresh clinical restart.
+        this.effusion = 0; this.tamponadeRate = 0; this.perforationSealed = false; this.vfAt = -1e9;
+        this.sim.setRealtime(!!s.access);
+        break;
+      }
       default:
         break;
     }
 
     s.log = [...s.log, a];
-    if (a.t !== "carm" && a.t !== "shape" && a.t !== "torque" && a.t !== "inflate" && a.t !== "deploy") {
+    if (a.t !== "carm" && a.t !== "shape" && a.t !== "torque" && a.t !== "inflate" && a.t !== "deploy"
+      && a.t !== "cpr" && a.t !== "shock" && a.t !== "pressor" && a.t !== "fluid" && a.t !== "pericardiocentesis" && a.t !== "restart") {
       this.rollComplications(a, out);
     }
     if (a.t !== "carm" && a.t !== "shape" && a.t !== "torque") this.syncSim();

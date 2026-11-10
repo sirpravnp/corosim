@@ -138,6 +138,12 @@ export class StubLabEngine implements LabEngineLike {
       }
       case "carm": s.carm = { rot: a.rot, tilt: a.tilt }; break;
       case "close": out.push(this.ev("close", `Access closed (${a.method}).`)); break;
+      case "cpr": out.push(this.ev("cpr", a.on ? "CPR on." : "CPR off.")); break;
+      case "shock": out.push(this.ev("shock", `Shock ${a.joules} J.`)); break;
+      case "pressor": out.push(this.ev("pressor", `Gave ${a.id}.`)); break;
+      case "fluid": out.push(this.ev("fluid", `Gave ${a.ml} mL fluid.`)); break;
+      case "pericardiocentesis": out.push(this.ev("pericardiocentesis", `Drained ${a.ml} mL.`)); break;
+      case "restart": out.push(this.ev("restart", "Patient restarted.")); break;
     }
     log();
     return out;

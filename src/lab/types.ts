@@ -73,7 +73,13 @@ export type Action =
   | { t: "deflate" }
   | { t: "deploy"; atm: number; seconds: number }
   | { t: "carm"; rot: number; tilt: number }
-  | { t: "close"; method: "manual" | "closure-device" };
+  | { t: "close"; method: "manual" | "closure-device" }
+  | { t: "cpr"; on: boolean }
+  | { t: "shock"; joules: number; sync?: boolean }
+  | { t: "pressor"; id: "norepi" | "epi" | "phenylephrine"; dose: number }
+  | { t: "fluid"; ml: number }
+  | { t: "pericardiocentesis"; ml: number }
+  | { t: "restart" };
 
 export type LabEventSeverity = "info" | "caution" | "bad";
 export interface LabEvent { at: number; kind: string; text: string; severity: LabEventSeverity; data?: Record<string, unknown> }
