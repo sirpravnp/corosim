@@ -25,7 +25,7 @@ describe("lab camera data", () => {
     const st: LabState = {
       access: "femoral-R", sheathFr: 6, sheath: { site: "femoral-R", french: 6, lengthMm: 12 },
       act: 250, guide: { id: "guide-jl4", engaged: null, quality: 0.5, tipSeg: "ARCH", tipMm: 40 },
-      wire: null, balloon: null, stent: null, carm: { rot: 0, tilt: 0 },
+      wire: null, balloon: null, stent: null, targetSeg: null, carm: { rot: 0, tilt: 0 },
       contrastMl: 0, fluoroSeconds: 0, doseMGy: 0, elapsedS: 0, log: [],
     };
     const f = deviceFocus(st, g);

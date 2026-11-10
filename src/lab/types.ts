@@ -63,6 +63,7 @@ export type Action =
   | { t: "sheath"; french: 5 | 6 | 7 }
   | { t: "drug"; id: "heparin" | "nitro" | "adenosine" | "protamine" | "atropine"; dose: number }
   | { t: "select"; slot: "guide" | "wire" | "balloon" | "stent"; id: string }
+  | { t: "target"; segId: string } // vessel the operator intends to treat
   | { t: "advance"; mm: number } // moves the active (most distal selected) device; negative withdraws
   | { t: "autoAdvance"; to: "ostium" | "LM" | "RCA" }
   | { t: "torque"; deg: number }
@@ -87,6 +88,8 @@ export interface LabState {
   /** `inflatedAtm` 0 means deflated. The vessel is occluded while it is above 0. */
   balloon: { id: string; segId: string; centerMm: number; inflatedAtm: number } | null;
   stent: { id: string; segId: string; centerMm: number; deployed: boolean } | null;
+  /** Vessel the operator intends to treat; the wire route ends here. */
+  targetSeg: string | null;
   carm: { rot: number; tilt: number };
   contrastMl: number; fluoroSeconds: number; doseMGy: number; elapsedS: number;
   log: Action[];

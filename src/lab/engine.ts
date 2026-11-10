@@ -24,8 +24,21 @@ import type {
 
 const blank = (): LabState => ({
   access: null, sheathFr: null, sheath: null, act: 0, guide: null, wire: null, balloon: null, stent: null,
+  targetSeg: null,
   carm: { rot: 30, tilt: 20 }, contrastMl: 0, fluoroSeconds: 0, doseMGy: 0, elapsedS: 0, log: [],
 });
+
+/** Walk the coronary tree to the LM or RCA ostium that feeds `segId`. */
+const coronaryRoot = (g: VGraph, segId: string): "LM" | "RCA" => {
+  let id: string | null = segId;
+  const seen = new Set<string>();
+  while (id && g.byId[id] && !seen.has(id)) {
+    if (id === "LM" || id === "RCA") return id;
+    seen.add(id);
+    id = g.byId[id].parent;
+  }
+  return "LM";
+};
 
 const guideSweetMm: Record<GuideCatheter["curve"], number> = {
   "JL3.5": 30, "JL4": 35, "JL5": 40, "JR4": 36,
@@ -96,6 +109,7 @@ export class LabEngine implements LabEngineLike {
     this.route = [];
     this.active = null;
     this.plaqueList = this.opts.plaques.map((p) => ({ ...p, stents: [...p.stents] }));
+    this.st.targetSeg = this.plaqueList[0]?.segId ?? null;
     this.occlusions = [];
     this.extraLiveLesions = [];
     this.bedResistance = {};
@@ -109,6 +123,11 @@ export class LabEngine implements LabEngineLike {
     this.rand = mulberry32(this.opts.seed);
     this.sim.setRealtime(false);
     this.sim.setLive(null);
+  }
+
+  /** Vessel the wire should treat; defaults to the first plaque. */
+  private treatTarget(): string {
+    return this.st.targetSeg ?? this.plaqueList[0]?.segId ?? "LAD";
   }
 
   /** Let `seconds` of the procedure pass with no action: the patient keeps bleeding, ischemic and breathing. The page calls this every frame once access is gained. */
@@ -137,7 +156,7 @@ export class LabEngine implements LabEngineLike {
 
   private territorySeg(): string {
     if (this.tipSeg && this.sim.tree.byId[this.tipSeg]) return this.tipSeg;
-    return this.plaqueList[0]?.segId ?? "LAD";
+    return this.treatTarget();
   }
 
   private applyComplicationResult(eff: Effect | null, out: LabEvent[], label?: Complication) {
@@ -272,18 +291,34 @@ export class LabEngine implements LabEngineLike {
   private syncGuideEngagement(guide: GuideCatheter) {
     if (!this.st.guide) return;
     const asc = this.g.byId.AORTA_ASC;
-    const atOstium = this.tipSeg === "LM" || (this.tipSeg === "AORTA_ASC" && this.tipMm >= asc.length * 0.85);
+    const atOstium = this.tipSeg === "LM" || this.tipSeg === "RCA"
+      || (this.tipSeg === "AORTA_ASC" && this.tipMm >= asc.length * 0.85);
     if (!atOstium) {
       this.st.guide = { ...this.st.guide, engaged: null, quality: 0 };
       return;
     }
     const target: "LM" | "RCA" = targetsLm.has(guide.curve) ? "LM" : "RCA";
+    // A right coronary guide must sit in the RCA (or at its ostium), not the LM.
+    if (target === "RCA" && this.tipSeg === "LM") {
+      this.st.guide = { ...this.st.guide, engaged: null, quality: 0 };
+      return;
+    }
+    if (target === "LM" && this.tipSeg === "RCA") {
+      this.st.guide = { ...this.st.guide, engaged: null, quality: 0 };
+      return;
+    }
     const q = this.guideQuality(guide.curve, target);
     if (target === "LM" && !targetsLm.has(guide.curve)) {
       this.st.guide = { ...this.st.guide, engaged: null, quality: q };
       return;
     }
-    this.st.guide = { ...this.st.guide, engaged: q >= 0.45 ? target : null, quality: q };
+    const engaged = q >= 0.45 ? target : null;
+    // Park the guide at the ostium, not deep in the vessel (deep seating is a separate advance).
+    if (engaged && (this.tipSeg === "LM" || this.tipSeg === "RCA")) {
+      const ostial = Math.min(4, this.g.byId[this.tipSeg].length * 0.2);
+      if (this.tipMm > ostial) this.tipMm = ostial;
+    }
+    this.st.guide = { ...this.st.guide, engaged, quality: q, tipSeg: this.tipSeg, tipMm: this.tipMm };
   }
 
   private moveActive(mm: number, out: LabEvent[]) {
@@ -367,12 +402,27 @@ export class LabEngine implements LabEngineLike {
           out.push(this.ev("drug", `Gave ${a.id}.`));
         }
         break;
+      case "target": {
+        const root = coronaryRoot(this.g, a.segId);
+        if (s.guide?.engaged && s.guide.engaged !== root) {
+          out.push(this.ev("bad-target", `The engaged guide is in the ${s.guide.engaged}; it cannot reach ${a.segId}.`, "caution"));
+          break;
+        }
+        if (!this.g.byId[a.segId]) {
+          out.push(this.ev("bad-target", `Unknown vessel ${a.segId}.`, "caution"));
+          break;
+        }
+        s.targetSeg = a.segId;
+        out.push(this.ev("target", `Treating ${a.segId}.`));
+        break;
+      }
       case "select":
         if (a.slot === "guide") {
           const g = byId[a.id] as GuideCatheter | undefined;
           if (!g || g.kind !== "guide") return [this.ev("no-device", "Unknown guide.", "bad")];
           this.active = "guide";
-          this.route = routeTo(this.g, this.site, "LM");
+          const root = coronaryRoot(this.g, this.treatTarget());
+          this.route = routeTo(this.g, this.site, root);
           this.tipSeg = this.route[0];
           this.tipMm = 0;
           s.guide = { id: a.id, engaged: null, quality: 0, tipSeg: this.tipSeg, tipMm: 0 };
@@ -380,13 +430,13 @@ export class LabEngine implements LabEngineLike {
         } else if (a.slot === "wire") {
           if (!s.guide?.engaged) return [this.ev("no-guide", "Engage the guide before the wire.", "bad")];
           this.active = "wire";
-          this.route = routeTo(this.g, this.site, "LAD");
+          this.route = routeTo(this.g, this.site, this.treatTarget());
           const gtip = s.guide;
           this.tipSeg = gtip.tipSeg;
           this.tipMm = gtip.tipMm;
           if (!this.route.includes(this.tipSeg)) {
-            this.tipSeg = "LM";
-            this.tipMm = this.g.byId.LM.length * 0.92;
+            this.tipSeg = s.guide.engaged ?? "LM";
+            this.tipMm = this.g.byId[this.tipSeg].length * 0.92;
           }
           s.wire = { id: a.id, tipSeg: this.tipSeg, tipMm: this.tipMm, bendDeg: 0, rotDeg: 0, route: [...this.route] };
           out.push(this.ev("wire", `Wire ${a.id} loaded.`));

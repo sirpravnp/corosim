@@ -32,6 +32,7 @@ function buildGraph(): VGraph {
 
 const blankState = (): LabState => ({
   access: null, sheathFr: null, sheath: null, act: 0, guide: null, wire: null, balloon: null, stent: null,
+  targetSeg: null,
   carm: { rot: 30, tilt: 20 }, contrastMl: 0, fluoroSeconds: 0, doseMGy: 0, elapsedS: 0, log: [],
 });
 

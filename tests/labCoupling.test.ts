@@ -80,7 +80,7 @@ describe("lab coupling", () => {
     e.apply({ t: "select", slot: "stent", id: "stent-des-3.00-24" });
     e.apply({ t: "select", slot: "wire", id: "wire-workhorse" });
     e.apply({ t: "torque", deg: 0 });
-    const st = { access: "femoral-R" as const, sheathFr: 6, sheath: null, act: 250, guide: null, wire: null, balloon: null, stent: { id: "s", segId: "LAD", centerMm: d1Attach, deployed: false }, carm: { rot: 0, tilt: 0 }, contrastMl: 0, fluoroSeconds: 0, doseMGy: 0, elapsedS: 0, log: [] };
+    const st = { access: "femoral-R" as const, sheathFr: 6, sheath: null, act: 250, guide: null, wire: null, balloon: null, stent: { id: "s", segId: "LAD", centerMm: d1Attach, deployed: false }, targetSeg: null, carm: { rot: 0, tilt: 0 }, contrastMl: 0, fluoroSeconds: 0, doseMGy: 0, elapsedS: 0, log: [] };
     const r = deployStentAt(st, byId["stent-des-3.00-24"] as Stent, 14, 0, [plaque], e.graph(), d1Attach, "LAD", () => 0.2);
     expect(r.jailed.some((j) => j.branchSeg === "D1")).toBe(true);
     applyToSim(sim, [], { occlusions: [], bedResistance: {}, liveLesions: [ostialJailLesion("D1", 0.75)] });
