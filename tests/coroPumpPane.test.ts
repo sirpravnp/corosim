@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { alarmLines, coroPumpLabsLine, coroPumpNumbers, coroPumpShown } from "../src/panels/coroPump";
+import { alarmLines, coroPumpCpo, coroPumpFigureCaptions, coroPumpLabsLine, coroPumpNumbers, coroPumpShown } from "../src/panels/coroPump";
+import { DASH } from "../src/panels/numbers";
 import { casePanels } from "../src/page/caseMonitor";
 import { itemById } from "../src/cases/orders";
 import type { CoroPumpReadout } from "../src/sim/coreDevices";
@@ -49,5 +50,32 @@ describe("CoroPump console pane", () => {
     expect(casePanels(["hr", "bp", "ecg"], panelOf)).not.toContain("coropump");
     expect(casePanels(["hr", "coropump"], panelOf)).toContain("coropump");
     expect(itemById("coropump")?.group).toBe("panel");
+  });
+  it("cardiac power output is MAP times pump flow over 451, in watts", () => {
+    const r = readout({ flowLpm: 3.0, waveform: { dtMs: 10, inletMmHg: [], aorticMmHg: Array(100).fill(90), currentMa: [] } });
+    expect(coroPumpCpo(r)).toBeCloseTo(0.6, 2);
+  });
+  it("cardiac power output is null without a waveform or with a non-finite flow", () => {
+    expect(coroPumpCpo(readout({ waveform: null }))).toBeNull();
+    expect(coroPumpCpo(readout({ flowLpm: NaN, waveform: { dtMs: 10, inletMmHg: [], aorticMmHg: Array(100).fill(90), currentMa: [] } }))).toBeNull();
+  });
+  it("motor current reads peak over trough from the waveform", () => {
+    const currentMa = Array.from({ length: 100 }, (_, i) => (i === 0 ? 750 : i === 1 ? 600 : 650));
+    const n = coroPumpNumbers(readout({ waveform: { dtMs: 10, inletMmHg: [], aorticMmHg: [], currentMa } }));
+    expect(n.motorCurrent).toBe("750/600 mA");
+    expect(n.cpo).toBe(DASH);
+  });
+  it("motor current falls back to the mean when there is no waveform", () => {
+    expect(coroPumpNumbers(readout()).motorCurrent).toBe("480 mA");
+  });
+  it("formats cardiac power output with two decimals and a unit, and shows a dash without a waveform", () => {
+    const r = readout({ flowLpm: 3.0, waveform: { dtMs: 10, inletMmHg: [], aorticMmHg: Array(100).fill(90), currentMa: [] } });
+    expect(coroPumpNumbers(r).cpo).toBe("0.60 W");
+    expect(coroPumpNumbers(readout()).cpo).toBe(DASH);
+  });
+  it("captions the pressure figure as Figure 3 and the current figure as Figure 4", () => {
+    expect(coroPumpFigureCaptions.pressure.startsWith("Figure 3. ")).toBe(true);
+    expect(coroPumpFigureCaptions.pressure).toMatch(/Aortic and inlet pressure, mmHg/);
+    expect(coroPumpFigureCaptions.current.startsWith("Figure 4. ")).toBe(true);
   });
 });

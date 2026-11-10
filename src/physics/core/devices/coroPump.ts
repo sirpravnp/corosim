@@ -138,9 +138,10 @@ const resample100 = (xs: number[]): number[] => {
 export class CoroPumpConsole {
   last: CoroPumpBeat | null = null;
   /** Last beat inlet pressure and motor current, 100 points each (CoroPump contract). */
-  waveform: { dtMs: number; inletMmHg: number[]; currentMa: number[] } | null = null;
+  waveform: { dtMs: number; inletMmHg: number[]; aorticMmHg: number[]; currentMa: number[] } | null = null;
   private acc = { n: 0, q: [0, 0, -Infinity] as number[], i: [0, 0, -Infinity] as number[], d: [0, 0, -Infinity] as number[], p: [0, 0, -Infinity] as number[], s: 0, lv: 0 };
   private inletTrace: number[] = [];
+  private aorticTrace: number[] = [];
   private currentTrace: number[] = [];
   private beat = NaN; private next = -Infinity;
   private readonly off: () => void;
@@ -156,6 +157,7 @@ export class CoroPumpConsole {
       if (t.beat !== this.beat) { this.close(s.t, t.level); this.beat = t.beat; }
       const a = this.acc; a.n++;
       this.inletTrace.push(t.pIn);
+      this.aorticTrace.push(t.pOut);
       this.currentTrace.push(t.current);
       for (const [arr, x] of [[a.q, t.flow], [a.i, t.current], [a.d, t.placement], [a.p, t.pIn]] as const) { arr[0] += x; arr[1] = Math.min(arr[1], x); arr[2] = Math.max(arr[2], x); }
       a.s += t.suctionAlarm; a.lv = Math.max(a.lv, t.suctionLevel);
@@ -164,6 +166,7 @@ export class CoroPumpConsole {
   private reset() {
     this.acc = { n: 0, q: [0, Infinity, -Infinity], i: [0, Infinity, -Infinity], d: [0, Infinity, -Infinity], p: [0, Infinity, -Infinity], s: 0, lv: 0 };
     this.inletTrace = [];
+    this.aorticTrace = [];
     this.currentTrace = [];
   }
   private close(t: number, level: number) {
@@ -174,7 +177,7 @@ export class CoroPumpConsole {
       this.last = { t, level, flow, current: stat(a.i), pulsatility: a.i[2] - a.i[1], placement: { ...d, amplitude: d.max - d.min },
         inlet: { ...pin, amplitude: pin.max - pin.min }, positionAlarm: level > 0 && flow.mean > C.positionMinFlowLpm && d.max - d.min < C.positionAmpMmHg, suctionFraction: frac, suctionLevel: a.lv, suctionAlarm: a.lv >= COROPUMP_CONSOLE.alarmLevel };
       const durS = a.n * COROPUMP_CONSOLE.strideS;
-      this.waveform = { dtMs: (durS / 100) * 1000, inletMmHg: resample100(this.inletTrace), currentMa: resample100(this.currentTrace) };
+      this.waveform = { dtMs: (durS / 100) * 1000, inletMmHg: resample100(this.inletTrace), aorticMmHg: resample100(this.aorticTrace), currentMa: resample100(this.currentTrace) };
       for (const l of this.listeners) l(this.last);
     }
     this.reset();

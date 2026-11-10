@@ -49,7 +49,7 @@ export interface CoroPumpReadout {
   /** 0..1 truth for tests; not on the console. */
   thrombusBurden: number;
   /** Last completed beat, resampled to 100 points each. */
-  waveform: { dtMs: number; inletMmHg: number[]; currentMa: number[] } | null;
+  waveform: { dtMs: number; inletMmHg: number[]; aorticMmHg: number[]; currentMa: number[] } | null;
   alarms: string[];
 }
 

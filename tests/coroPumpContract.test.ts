@@ -17,6 +17,24 @@ describe("CoroPump contract readout", () => {
     expect(d!.waveform).toBeTruthy();
     expect(d!.waveform!.inletMmHg.length).toBe(100);
     expect(d!.waveform!.currentMa.length).toBe(100);
+    expect(d!.waveform!.aorticMmHg.length).toBe(100);
+  });
+
+  it("the aortic trace is the aorta in every position; the inlet trace is the LV only when correct", () => {
+    const run = (position: "correct" | "aortic") => {
+      const s = new Simulation({}, { engine: "core" });
+      s.reset({ devices: { coroPump: { model: "CP", level: 6, position } } }, { settled: true });
+      s.warmup(10);
+      s.step(30);
+      const w = s.devices()!.coroPump!.waveform!;
+      const lo = (a: number[]) => Math.min(...a);
+      return { inletMin: lo(w.inletMmHg), aorticMin: lo(w.aorticMmHg), aorticMax: Math.max(...w.aorticMmHg), finite: w.aorticMmHg.every(Number.isFinite) };
+    };
+    const ok = run("correct"), ao = run("aortic");
+    expect(ok.finite && ao.finite).toBe(true);
+    expect(ok.inletMin).toBeLessThan(ok.aorticMin - 20);       // the LV falls well below the aortic diastolic pressure
+    expect(Math.abs(ao.inletMin - ao.aorticMin)).toBeLessThan(5); // pushed out: both are the aorta
+    expect(ok.aorticMax).toBeGreaterThan(ok.aorticMin + 15);
   });
 
   it("normalizes coroPump.purge", () => {

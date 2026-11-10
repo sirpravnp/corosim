@@ -1,6 +1,6 @@
 /**
  * The CoroPump console as a workspace panel (id `coropump`, the catalog item of src/cases/orders.ts). It shows what a pump console
- * shows: flow, P-level, purge pressure and flow, the placement and motor-current waveforms of the last beat, and the alarm list.
+ * shows: flow, cardiac power output, P-level, purge pressure and flow, the aortic and inlet pressure and motor-current waveforms of the last beat, and the alarm list.
  * Free hemoglobin and urine color are not on a pump console; in free play a separate labs line shows them, in a case the learner
  * orders the lab and reads the bedside item. `thrombusBurden` is never displayed: the learner infers a clot from the purge
  * pressure, the lab and the urine. The treatment controls (src/panels/playgroundControls.ts) are hosted inside the pane.
@@ -15,17 +15,44 @@ import "./coroPump.css";
 const fin = (x: number) => Number.isFinite(x);
 const num = (x: number, d = 0) => (fin(x) ? x.toFixed(d) : DASH);
 
+/** Cardiac power output in watts: MAP (mean of the aortic trace) times pump flow, over 451. Null without a waveform or a finite input. */
+export function coroPumpCpo(r: CoroPumpReadout): number | null {
+  const ao = r.waveform?.aorticMmHg;
+  if (!ao || ao.length === 0) return null;
+  const map = ao.reduce((a, b) => a + b, 0) / ao.length;
+  if (!fin(map) || !fin(r.flowLpm)) return null;
+  return (map * r.flowLpm) / 451;
+}
+
+/** Motor current as peak over trough from the beat's waveform (`745/602 mA`), else the mean. */
+function motorCurrentText(r: CoroPumpReadout): string {
+  const c = r.waveform?.currentMa;
+  if (c && c.length) {
+    const hi = Math.round(Math.max(...c)), lo = Math.round(Math.min(...c));
+    if (fin(hi) && fin(lo)) return `${hi}/${lo} mA`;
+  }
+  return fin(r.motorCurrentMa) ? `${num(r.motorCurrentMa)} mA` : DASH;
+}
+
 /** The console's numbers as text with units. */
 export function coroPumpNumbers(r: CoroPumpReadout) {
+  const cpo = coroPumpCpo(r);
   return {
     flow: fin(r.flowLpm) ? `${num(r.flowLpm, 1)} L/min` : DASH,
+    cpo: cpo === null ? DASH : `${cpo.toFixed(2)} W`,
     level: `P${r.level}`,
     purgePressure: fin(r.purge.pressureMmHg) ? `${num(r.purge.pressureMmHg)} mmHg` : DASH,
     purgeFlow: fin(r.purge.flowMlHr) ? `${num(r.purge.flowMlHr)} ml/hr` : DASH,
     placement: fin(r.placementAmplitudeMmHg) ? `${num(r.placementAmplitudeMmHg)} mmHg` : DASH,
-    motorCurrent: fin(r.motorCurrentMa) ? `${num(r.motorCurrentMa)} mA` : DASH,
+    motorCurrent: motorCurrentText(r),
   };
 }
+
+/** Captions of the two waveform figures (the first sentence is bolded by the pane). */
+export const coroPumpFigureCaptions = {
+  pressure: "Figure 3. Aortic and inlet pressure, mmHg, over the last beat. With the inlet in the ventricle the inlet trace falls well below the aortic trace in diastole; with the inlet pushed out into the aorta the two traces coincide.",
+  current: "Figure 4. Motor current, mA, over the last beat.",
+};
 
 /** Alarms as words with a label, so color is never the only cue. */
 export function alarmLines(r: CoroPumpReadout): string[] {
@@ -85,7 +112,8 @@ function create(): Panel {
     return { f, cv };
   };
 
-  function wave(cv: HTMLCanvasElement, ys: readonly number[] | undefined, unit: string) {
+  /** One trace (ink) or two on one shared axis: `second` is drawn muted, and `second.names` gives the legend text for both traces. */
+  function wave(cv: HTMLCanvasElement, ys: readonly number[] | undefined, unit: string, second?: { ys: readonly number[] | undefined; names: [string, string] }) {
     const dpr = window.devicePixelRatio || 1, W = Math.max(160, cv.clientWidth || cv.width), H = Math.round(W * 0.32);
     if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
     const g = cv.getContext("2d");
@@ -96,7 +124,7 @@ function create(): Panel {
     g.font = "11px ui-monospace, Menlo, monospace"; g.fillStyle = muted;
     if (!ys || ys.length < 2) { g.textAlign = "center"; g.fillText("waiting for a completed beat", W / 2, H / 2); g.textAlign = "start"; return; }
     let lo = Infinity, hi = -Infinity;
-    for (const y of ys) { lo = Math.min(lo, y); hi = Math.max(hi, y); }
+    for (const y of [...ys, ...(second?.ys ?? [])]) { lo = Math.min(lo, y); hi = Math.max(hi, y); }
     if (hi - lo < 10) { const m = (hi + lo) / 2; lo = m - 5; hi = m + 5; } // a flat trace still gets a readable axis
     const pad = (hi - lo) * 0.12; lo -= pad; hi += pad;
     const L = 40, R = W - 8, T = 8, B = H - 8;
@@ -104,9 +132,20 @@ function create(): Panel {
     g.strokeStyle = rule; g.lineWidth = 1;
     for (const v of [lo + pad, hi - pad]) { g.beginPath(); g.moveTo(L, y(v)); g.lineTo(R, y(v)); g.stroke(); g.fillText(String(Math.round(v)), 4, y(v) + 4); }
     g.fillText(unit, L + 4, T + 8);
-    g.strokeStyle = ink; g.lineWidth = 1.5; g.beginPath();
-    ys.forEach((v, i) => (i ? g.lineTo(x(i), y(v)) : g.moveTo(x(i), y(v))));
-    g.stroke();
+    const trace = (series: readonly number[], color: string) => {
+      g.strokeStyle = color; g.lineWidth = 1.5; g.beginPath();
+      series.forEach((v, i) => (i ? g.lineTo(x(i), y(v)) : g.moveTo(x(i), y(v))));
+      g.stroke();
+    };
+    if (second?.ys && second.ys.length >= 2) trace(second.ys, muted);
+    trace(ys, ink);
+    if (second) { // text legend, in the two trace colors, top right
+      g.textAlign = "right";
+      g.fillStyle = muted; g.fillText(second.names[1], R - 4, T + 8);
+      const w = g.measureText(second.names[1]).width;
+      g.fillStyle = ink; g.fillText(second.names[0], R - 4 - w - 14, T + 8);
+      g.textAlign = "start";
+    }
   }
 
   return {
@@ -126,10 +165,10 @@ function create(): Panel {
       offBtn = h("button", "", "Remove pump"); offBtn.type = "button";
       top.append(offBtn);
       const grid = h("div", "cp-grid");
-      grid.append(cell("flow", "Flow"), cell("level", "P-level"), cell("purgePressure", "Purge pressure"), cell("purgeFlow", "Purge flow"), cell("placement", "Placement swing"), cell("motorCurrent", "Motor current"));
+      grid.append(cell("flow", "Pump flow"), cell("cpo", "Cardiac power (pump flow)"), cell("level", "P-level"), cell("purgePressure", "Purge pressure"), cell("purgeFlow", "Purge flow"), cell("placement", "Placement swing"), cell("motorCurrent", "Motor current"));
       alarms = h("div", "cp-alarms"); alarms.setAttribute("role", "status"); alarms.setAttribute("aria-live", "polite");
-      const a = figure("cp-cv", "Placement signal: inlet pressure across the last beat", "Figure 3. Placement signal, mmHg, over the last beat. A pump inlet in the ventricle swings with each beat; one pushed out into the aorta does not.");
-      const b = figure("cp-cv", "Motor current across the last beat", "Figure 4. Motor current, mA, over the last beat.");
+      const a = figure("cp-cv", "Aortic and inlet pressure across the last beat", coroPumpFigureCaptions.pressure);
+      const b = figure("cp-cv", "Motor current across the last beat", coroPumpFigureCaptions.current);
       inlet = a.cv; current = b.cv;
       labs = h("p", "cp-labs"); labs.hidden = true;
       live.append(top, grid, alarms, a.f, b.f, labs);
@@ -158,7 +197,7 @@ function create(): Panel {
       }
       const line = coroPumpLabsLine(r, gate);
       labs.hidden = line === null; if (line !== null) labs.textContent = line;
-      wave(inlet, r.waveform?.inletMmHg, "mmHg");
+      wave(inlet, r.waveform?.aorticMmHg, "mmHg", { ys: r.waveform?.inletMmHg, names: ["Aortic", "LV inlet"] });
       wave(current, r.waveform?.currentMa, "mA");
     },
     resize() { /* the canvases are sized from their CSS width on each draw */ },
