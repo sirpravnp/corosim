@@ -103,6 +103,11 @@ export interface LabEngineLike {
   apply(a: Action): LabEvent[];
   replay(actions: Action[]): LabEvent[];
   reset(): void;
+  /** Replay-based undo of the last action; no-op when the log is empty. */
+  undo(): LabEvent[];
+  canUndo(): boolean;
+  /** Practice aid: how many undos this run (shown to the user and in the score). */
+  undoCount: number;
   /** Optional: let real time pass (the live lab calls it every frame). */
   tick?(seconds: number): LabEvent[];
   /** Optional: blood in the pericardium, mL. */

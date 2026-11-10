@@ -41,15 +41,23 @@ export class StubLabEngine implements LabEngineLike {
   private st: LabState = blankState();
   private pl: Plaque[] = [];
   private pos = 0; // mm of wire past the puncture, along ROUTE
+  private undoTally = 0;
 
   constructor() { this.reset(); }
 
   state(): Readonly<LabState> { return this.st; }
   graph(): VGraph { return this.g; }
   plaques(): readonly Plaque[] { return this.pl; }
+  get undoCount(): number { return this.undoTally; }
+  canUndo(): boolean { return this.st.log.length > 0; }
+  undo(): LabEvent[] {
+    if (!this.canUndo()) return [];
+    this.undoTally += 1;
+    return this.replay(this.st.log.slice(0, -1));
+  }
 
   reset(): void {
-    this.st = blankState(); this.pos = 0;
+    this.st = blankState(); this.pos = 0; this.undoTally = 0;
     const lad = this.g.byId.LAD;
     this.pl = [{
       segId: "LAD", centerMm: lad.length * 0.5, lengthMm: 18, ds: 0.75, referenceMm: 3, eccentric: 0.4, eccentricAngleDeg: 30,
@@ -57,7 +65,12 @@ export class StubLabEngine implements LabEngineLike {
     }];
   }
 
-  replay(actions: Action[]): LabEvent[] { this.reset(); return actions.flatMap((a) => this.apply(a)); }
+  replay(actions: Action[]): LabEvent[] {
+    const undos = this.undoTally;
+    this.reset();
+    this.undoTally = undos;
+    return actions.flatMap((a) => this.apply(a));
+  }
 
   private ev(kind: string, text: string, severity: LabEvent["severity"] = "info", data?: Record<string, unknown>): LabEvent {
     return { at: this.st.elapsedS, kind, text, severity, data };

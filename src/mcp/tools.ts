@@ -560,6 +560,31 @@ export const TOOLS: ToolDef[] = [
       return { hint: `Suggested devices: guide ${c.recommended.guide}, wire ${c.recommended.wire}, balloon ${c.recommended.balloon ?? "per lesion"}, stent ${c.recommended.stent ?? "per vessel"}.` };
     },
   },
+  {
+    name: "corosim_lab_undo",
+    title: "Undo the last cath-lab action",
+    readOnly: false,
+    description: `Replay-based undo of the last procedure action. No-op when there is nothing to undo. Returns events from the restored log and undoCount. ${NOT_CLINICAL}`,
+    inputSchema: { type: "object", properties: {} },
+    run(ctx) {
+      if (!labSession) throw new Error("No active lab case.");
+      const events = labSession.engine.undo();
+      const st = labSession.engine.state();
+      return {
+        narrative: labSession.engine.canUndo() || st.log.length > 0 || events.length >= 0
+          ? `Undid the last cath-lab action (undo #${labSession.engine.undoCount}); ${st.log.length} actions remain.`
+          : `Nothing to undo.`,
+        events,
+        undoCount: labSession.engine.undoCount,
+        canUndo: labSession.engine.canUndo(),
+        state: {
+          access: st.access, act: st.act, guide: st.guide, wire: st.wire, balloon: st.balloon, stent: st.stent,
+          contrastMl: st.contrastMl, fluoroSeconds: st.fluoroSeconds,
+        },
+        map: ctx.sim.state().rolling10s.map,
+      };
+    },
+  },
 ];
 
 /** OpenAI function-calling format. */

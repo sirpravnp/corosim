@@ -1,5 +1,4 @@
 import { buildTree } from "../anatomy/tree";
-import { mulberry32 } from "../physics/ecg";
 import { byId } from "../config/labDevices";
 import { LAB } from "../config/lab";
 import {
@@ -18,6 +17,7 @@ import { applyToSim } from "./coupling";
 import type { Balloon, Guidewire, Stent } from "./types";
 import type { Lesion } from "../physics/network";
 import type { Simulation } from "../sim/simulation";
+import type { PatientSpec } from "../sim/patient";
 import type {
   AccessSite, AccessVariant, Action, GuideCatheter, LabEngineLike, LabEvent, LabState, Plaque, VGraph,
 } from "./types";
@@ -40,6 +40,35 @@ const coronaryRoot = (g: VGraph, segId: string): "LM" | "RCA" => {
   return "LM";
 };
 
+/** Mulberry32 with get/set so undo snapshots can restore the RNG. */
+class SeededRng {
+  private a: number;
+  constructor(seed: number) { this.a = seed >>> 0; }
+  next = (): number => {
+    this.a = (this.a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(this.a ^ (this.a >>> 15), 1 | this.a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  state(): number { return this.a; }
+  setState(a: number) { this.a = a >>> 0; }
+}
+
+type EngineSnap = {
+  st: LabState;
+  tipSeg: string; tipMm: number; route: string[]; active: "guide" | "wire" | "balloon" | "stent" | null;
+  site: AccessSite;
+  plaqueList: Plaque[];
+  occlusions: Lesion[];
+  extraLiveLesions: Lesion[];
+  bedResistance: Record<string, number>;
+  accessUltrasound: boolean; accessClosed: boolean; manualHold: boolean;
+  tamponadeRate: number; vfAt: number; effusion: number; perforationSealed: boolean;
+  ischemiaSeconds: number; forcedFired: string[];
+  rng: number;
+  patient: PatientSpec;
+};
+
 const guideSweetMm: Record<GuideCatheter["curve"], number> = {
   "JL3.5": 30, "JL4": 35, "JL5": 40, "JR4": 36,
   "EBU3.5": 32, "XB3.5": 34, "AL1": 36, "AL2": 38,
@@ -55,6 +84,7 @@ export class LabEngine implements LabEngineLike {
   private tipSeg = "";
   private tipMm = 0;
   private active: "guide" | "wire" | "balloon" | "stent" | null = null;
+  private rng: SeededRng;
   private rand: () => number;
   private plaqueList: Plaque[];
   private occlusions: Lesion[] = [];
@@ -69,13 +99,20 @@ export class LabEngine implements LabEngineLike {
   private perforationSealed = false;
   private ischemiaSeconds = 0;
   private forcedFired = new Set<string>();
+  private undoTally = 0;
+  /** Patient the procedure started from; replay restores it so death and effusion undo cleanly. */
+  private baseline: PatientSpec;
+  /** Snapshots after each action (and at start) so undo does not re-simulate hundreds of steps. */
+  private snaps: EngineSnap[] = [];
 
   constructor(
     private sim: Simulation,
     private opts: { seed: number; access: AccessVariant; plaques: Plaque[]; forced?: ForcedEvent[] },
   ) {
-    this.rand = mulberry32(opts.seed);
+    this.rng = new SeededRng(opts.seed);
+    this.rand = this.rng.next;
     this.plaqueList = opts.plaques.map((p) => ({ ...p, stents: [...p.stents] }));
+    this.baseline = sim.restartSpec();
     const tree = buildTree(this.sim.n.anatomy);
     const roots = [tree.byId.LM.samples[0], tree.byId.RCA.samples[0]];
     this.g = unify(buildAccess(opts.access, roots), tree);
@@ -85,6 +122,69 @@ export class LabEngine implements LabEngineLike {
   state(): Readonly<LabState> { return this.st; }
   graph(): VGraph { return this.g; }
   plaques(): readonly Plaque[] { return this.plaqueList; }
+  get undoCount(): number { return this.undoTally; }
+  canUndo(): boolean { return this.st.log.length > 0; }
+
+  undo(): LabEvent[] {
+    if (!this.canUndo()) return [];
+    this.undoTally += 1;
+    // Snapshot-based undo: restore the state before the last action (snaps[0] is the post-reset baseline).
+    if (this.snaps.length >= 2) {
+      this.snaps.pop();
+      this.restoreSnap(this.snaps[this.snaps.length - 1]!);
+      return [];
+    }
+    return this.replay(this.st.log.slice(0, -1));
+  }
+
+  private capturePatient(): PatientSpec {
+    const sc = this.sim.scenario();
+    const patient: PatientSpec = JSON.parse(JSON.stringify(sc));
+    if (this.effusion > 0) {
+      patient.pericardium = {
+        ...(patient.pericardium ?? {}),
+        effusionMl: this.effusion,
+        effusionRateMlMin: this.tamponadeRate > 0 && !this.perforationSealed ? 150 : 0,
+      };
+    } else if (patient.pericardium) {
+      delete patient.pericardium.effusionMl;
+      delete patient.pericardium.effusionRateMlMin;
+    }
+    return patient;
+  }
+
+  private takeSnap(): EngineSnap {
+    return {
+      st: JSON.parse(JSON.stringify(this.st)),
+      tipSeg: this.tipSeg, tipMm: this.tipMm, route: [...this.route], active: this.active, site: this.site,
+      plaqueList: JSON.parse(JSON.stringify(this.plaqueList)),
+      occlusions: JSON.parse(JSON.stringify(this.occlusions)),
+      extraLiveLesions: JSON.parse(JSON.stringify(this.extraLiveLesions)),
+      bedResistance: { ...this.bedResistance },
+      accessUltrasound: this.accessUltrasound, accessClosed: this.accessClosed, manualHold: this.manualHold,
+      tamponadeRate: this.tamponadeRate, vfAt: this.vfAt, effusion: this.effusion, perforationSealed: this.perforationSealed,
+      ischemiaSeconds: this.ischemiaSeconds, forcedFired: [...this.forcedFired],
+      rng: this.rng.state(),
+      patient: this.capturePatient(),
+    };
+  }
+
+  private restoreSnap(s: EngineSnap): void {
+    this.st = JSON.parse(JSON.stringify(s.st));
+    this.tipSeg = s.tipSeg; this.tipMm = s.tipMm; this.route = [...s.route]; this.active = s.active; this.site = s.site;
+    this.plaqueList = JSON.parse(JSON.stringify(s.plaqueList));
+    this.occlusions = JSON.parse(JSON.stringify(s.occlusions));
+    this.extraLiveLesions = JSON.parse(JSON.stringify(s.extraLiveLesions));
+    this.bedResistance = { ...s.bedResistance };
+    this.accessUltrasound = s.accessUltrasound; this.accessClosed = s.accessClosed; this.manualHold = s.manualHold;
+    this.tamponadeRate = s.tamponadeRate; this.vfAt = s.vfAt; this.effusion = s.effusion; this.perforationSealed = s.perforationSealed;
+    this.ischemiaSeconds = s.ischemiaSeconds; this.forcedFired = new Set(s.forcedFired);
+    this.rng.setState(s.rng);
+    this.sim.reset(JSON.parse(JSON.stringify(s.patient)) as PatientSpec);
+    this.sim.setRealtime(!!s.st.access);
+    this.sim.setLive(null);
+    this.syncSim();
+  }
 
   private syncSim(): void {
     applyToSim(this.sim, this.plaqueList, {
@@ -120,9 +220,14 @@ export class LabEngine implements LabEngineLike {
     this.perforationSealed = false;
     this.ischemiaSeconds = 0;
     this.forcedFired = new Set();
-    this.rand = mulberry32(this.opts.seed);
+    this.undoTally = 0;
+    this.rng = new SeededRng(this.opts.seed);
+    this.rand = this.rng.next;
+    this.sim.reset(JSON.parse(JSON.stringify(this.baseline)) as PatientSpec);
     this.sim.setRealtime(false);
     this.sim.setLive(null);
+    this.syncSim();
+    this.snaps = [this.takeSnap()];
   }
 
   /** Vessel the wire should treat; defaults to the first plaque. */
@@ -142,8 +247,14 @@ export class LabEngine implements LabEngineLike {
   effusionMl(): number { return this.effusion; }
 
   replay(actions: Action[]): LabEvent[] {
+    const undos = this.undoTally;
     this.reset();
+    this.undoTally = undos; // public reset clears the tally; undo needs it kept
     return actions.flatMap((a) => this.apply(a));
+  }
+
+  private pushSnap(): void {
+    this.snaps.push(this.takeSnap());
   }
 
   private ev(kind: string, text: string, severity: LabEvent["severity"] = "info", data?: Record<string, unknown>): LabEvent {
@@ -578,6 +689,7 @@ export class LabEngine implements LabEngineLike {
       this.rollComplications(a, out);
     }
     if (a.t !== "carm" && a.t !== "shape" && a.t !== "torque") this.syncSim();
+    this.pushSnap();
     return out;
   }
 }
