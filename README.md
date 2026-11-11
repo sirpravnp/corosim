@@ -154,6 +154,10 @@ The echo panel (phase 2) will draw from a real CT-derived heart. The baked anato
 healthy adult human heart.* PLoS Comput Biol 17(4): e1008851 (2021); data: "Virtual cohort of extreme and average four-chamber heart
 meshes from statistical shape model", Zenodo, doi:10.5281/zenodo.4593739. It is the average shape of healthy adult CT hearts, not a patient.
 
+Peripheral access vessels (aorta, iliacs, femoral and arm routes) are baked into `src/cath/data/peripheral.json` from
+hand-defined centerlines checked against open angiogram and Gray's references; licenses and the assumed-segment list are in
+[docs/CATH_PERIPHERAL_SOURCES.md](docs/CATH_PERIPHERAL_SOURCES.md). Reference images are not shipped.
+
 ## Connecting an AI
 
 CoroSim is a teaching layer beside image-based solvers such as SimVascular, not a competitor to them. An assistant

@@ -22,6 +22,10 @@ export interface VSeg {
 }
 export interface VGraph {
   segs: VSeg[]; byId: Record<string, VSeg>;
+  /** Side branches (renals, carotids, deep femorals...). Drawn and filled with dye, but no route, wire or branch choice uses them. Optional. */
+  branches?: VSeg[];
+  /** Baked run-off and arm vessels (popliteal, tibials, foot, ulnar, vertebrals): drawn for the peripheral views only, never routed. Optional. */
+  runoff?: VSeg[];
   ostium: Record<"LM" | "RCA", { segId: string; mm: number }>;
 }
 
@@ -39,6 +43,9 @@ export interface Plaque {
   cto?: { ageMonths: number; capHardness: number; microchannels: boolean };
   stents: DeployedStent[];
 }
+
+/** Set-up slider for a coronary lesion: segment, center and length in mm, diameter stenosis 0..1. */
+export interface LesionSlider { segId: string; centerMm: number; lengthMm: number; ds: number }
 
 // ------------------------------------------------------------------------------------------------ devices
 
@@ -58,7 +65,9 @@ export type Action =
   | { t: "sheath"; french: 5 | 6 | 7 }
   | { t: "drug"; id: "heparin" | "nitro" | "adenosine" | "protamine" | "atropine"; dose: number }
   | { t: "select"; slot: "guide" | "wire" | "balloon" | "stent"; id: string }
+  | { t: "target"; segId: string } // vessel the operator intends to treat
   | { t: "advance"; mm: number } // moves the active (most distal selected) device; negative withdraws
+  | { t: "autoAdvance"; to: "ostium" | "LM" | "RCA" }
   | { t: "torque"; deg: number }
   | { t: "shape"; tipBendDeg: number }
   | { t: "inject"; where: "LCA" | "RCA" | "LV" | "aorta"; ml: number }
@@ -66,19 +75,30 @@ export type Action =
   | { t: "deflate" }
   | { t: "deploy"; atm: number; seconds: number }
   | { t: "carm"; rot: number; tilt: number }
-  | { t: "close"; method: "manual" | "closure-device" };
+  | { t: "close"; method: "manual" | "closure-device" }
+  | { t: "cpr"; on: boolean }
+  | { t: "shock"; joules: number; sync?: boolean }
+  | { t: "pressor"; id: "norepi" | "epi" | "phenylephrine"; dose: number }
+  | { t: "fluid"; ml: number }
+  | { t: "pericardiocentesis"; ml: number }
+  | { t: "restart" };
 
 export type LabEventSeverity = "info" | "caution" | "bad";
 export interface LabEvent { at: number; kind: string; text: string; severity: LabEventSeverity; data?: Record<string, unknown> }
 
 export interface LabState {
-  access: AccessSite | null; sheathFr: number | null;
+  access: AccessSite | null;
+  sheathFr: number | null;
+  sheath: { site: AccessSite; french: number; lengthMm: number } | null;
   act: number; // activated clotting time, seconds
-  guide: { id: string; engaged: "LM" | "RCA" | null; quality: number } | null;
-  wire: { id: string; tipSeg: string; tipMm: number; bendDeg: number; rotDeg: number; route: string[] } | null;
+  guide: { id: string; engaged: "LM" | "RCA" | null; quality: number; tipSeg: string; tipMm: number } | null;
+  /** `capLoad` counts the presses the tip has spent loaded against a lesion it has not yet crossed (steady pressure builds force). */
+  wire: { id: string; tipSeg: string; tipMm: number; bendDeg: number; rotDeg: number; route: string[]; capLoad?: number } | null;
   /** `inflatedAtm` 0 means deflated. The vessel is occluded while it is above 0. */
   balloon: { id: string; segId: string; centerMm: number; inflatedAtm: number } | null;
   stent: { id: string; segId: string; centerMm: number; deployed: boolean } | null;
+  /** Vessel the operator intends to treat; the wire route ends here. */
+  targetSeg: string | null;
   carm: { rot: number; tilt: number };
   contrastMl: number; fluoroSeconds: number; doseMGy: number; elapsedS: number;
   log: Action[];
@@ -92,4 +112,13 @@ export interface LabEngineLike {
   apply(a: Action): LabEvent[];
   replay(actions: Action[]): LabEvent[];
   reset(): void;
+  /** Replay-based undo of the last action; no-op when the log is empty. */
+  undo(): LabEvent[];
+  canUndo(): boolean;
+  /** Practice aid: how many undos this run (shown to the user and in the score). */
+  undoCount: number;
+  /** Optional: let real time pass (the live lab calls it every frame). */
+  tick?(seconds: number): LabEvent[];
+  /** Optional: blood in the pericardium, mL. */
+  effusionMl?(): number;
 }

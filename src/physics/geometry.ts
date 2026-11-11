@@ -24,6 +24,17 @@ export const defaultLesion = (): LesionSpec => ({
 
 export const lesionLength = (s: LesionSpec) => s.entranceLength + s.plateau + s.exitLength;
 
+/** Physical lesion window along a centerline (mm); matches the legacy 14 mm default in the coronary solver. */
+export const DEFAULT_LESION_LENGTH_MM = (LESION.length * 1e3);
+
+/** Cosine-shoulder spec for a lesion window of `lengthMm` mm; the 2 mm plateau stays fixed. */
+export function lesionSpecForMm(lengthMm = DEFAULT_LESION_LENGTH_MM): LesionSpec {
+  const base = defaultLesion();
+  const total = lengthMm * 1e-3;
+  const shoulder = Math.max(0, (total - base.plateau) / 2);
+  return { ...base, entranceLength: shoulder, exitLength: shoulder };
+}
+
 /** Cosine-tapered lesion with plateau, sampled at n points (a uniform tube if ds = 0). */
 export function lesionProfile(s: LesionSpec, n = 200): LumenProfile {
   const L = lesionLength(s);

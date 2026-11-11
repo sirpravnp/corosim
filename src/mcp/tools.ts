@@ -24,11 +24,18 @@ import type { ArrestDrug } from "../sim/arrest";
  * Tool definitions in one place, as plain JSON Schema. The MCP server, the HTTP/OpenAPI adapter and the
  * OpenAI/Anthropic function-calling exports are all generated from this list, so they cannot drift apart.
  */
+import { LabEngine } from "../lab/engine";
+import { LAB_CASES, caseById } from "../cath/lab/cases";
+import { scoreProcedure } from "../lab/score";
+import { nextHint } from "../lab/hint";
+import type { Action } from "../lab/types";
+
 export interface ToolContext {
   sim: Simulation; appUrl: string;
   /** A host that is running a case on this patient sets it: only treatments may be applied and the patient cannot be replaced (src/cases/gate.ts). The page does not set it; it refuses the whole connection while a case runs. */
   inCase?: boolean;
 }
+let labSession: { engine: LabEngine; caseId: string } | null = null;
 /** Throws the gate's sentence when a case is running and the edit would give the patient disease. */
 const patientFromUnknown = (raw: unknown): PatientSpec => migrateLegacyKeys(raw ?? {}).spec as PatientSpec;
 
@@ -453,6 +460,170 @@ export const TOOLS: ToolDef[] = [
         ...(quiz ? { answerKey: tracing } : { tracing }),
         ...(!custom && simRhythmId(p.id) ? { applyToPatient: { offer: `To see what ${p.name} does to the patient's blood pressure and output, apply it to the patient.`, tool: "corosim_adjust", args: { patch: { patient: { rhythm: simRhythmId(p.id) } } } } } : {}),
         link: custom ? `${root}/ekg/#c=${encodeCustom(custom)}` : `${root}/ekg/#p=${p.id}`,
+      };
+    },
+  },
+  {
+    name: "corosim_lab_start",
+    title: "Start a cath-lab case",
+    readOnly: false,
+    description: `Start an interactive PCI teaching case on the current patient. Returns the case title and initial hemodynamics. ${NOT_CLINICAL}`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        caseId: { type: "string", description: "Lab case id (see LAB_CASES)." },
+        seed: { type: "number", description: "Deterministic procedure seed." },
+      },
+    },
+    run(ctx, a) {
+      const c = caseById(typeof a.caseId === "string" ? a.caseId : "") ?? LAB_CASES[0];
+      const seed = typeof a.seed === "number" ? a.seed : 11;
+      ctx.sim.reset(c.scenario);
+      ctx.sim.warmup(40);
+      labSession = {
+        engine: new LabEngine(ctx.sim, { seed, access: c.access, plaques: c.plaques, forced: c.forced }),
+        caseId: c.id,
+      };
+      return {
+        narrative: `Started cath-lab case "${c.title}" (seed ${seed}): ${c.blurb}`,
+        caseId: c.id, title: c.title, blurb: c.blurb, goals: c.goals, egfr: c.egfr,
+      };
+    },
+  },
+  {
+    name: "corosim_lab_act",
+    title: "Apply cath-lab actions",
+    readOnly: false,
+    description: `Run one or more cath-lab actions (access, devices, inflate, deploy). Returns events and a short state summary. ${NOT_CLINICAL}`,
+    inputSchema: {
+      type: "object",
+      properties: { actions: { type: "array", items: { type: "object" }, description: "Lab Action objects." } },
+      required: ["actions"],
+    },
+    run(_ctx, a) {
+      if (!labSession) throw new Error("Start a case with corosim_lab_start first.");
+      const acts = (a.actions as Action[]) ?? [];
+      const events = acts.flatMap((x) => labSession!.engine.apply(x));
+      const st = labSession.engine.state();
+      const kinds = acts.map((x) => x.t).join(", ") || "none";
+      return {
+        narrative: `Applied ${acts.length} cath-lab action${acts.length === 1 ? "" : "s"} (${kinds}): now ${st.act}, access ${st.access ?? "none"}, guide ${st.guide ?? "none"}, wire ${st.wire ?? "none"}.`,
+        events,
+        state: {
+          access: st.access, act: st.act, guide: st.guide, wire: st.wire, balloon: st.balloon, stent: st.stent,
+          contrastMl: st.contrastMl, fluoroSeconds: st.fluoroSeconds,
+        },
+      };
+    },
+  },
+  {
+    name: "corosim_lab_state",
+    title: "Cath-lab state",
+    readOnly: true,
+    description: `Devices, plaques, hemodynamics summary for the active lab case. ${NOT_CLINICAL}`,
+    inputSchema: { type: "object", properties: {} },
+    run(ctx) {
+      if (!labSession) throw new Error("No active lab case.");
+      const st = labSession.engine.state();
+      return {
+        caseId: labSession.caseId,
+        devices: st,
+        plaques: labSession.engine.plaques(),
+        map: ctx.sim.state().rolling10s.map,
+        hr: ctx.sim.state().rolling10s.hr,
+      };
+    },
+  },
+  {
+    name: "corosim_lab_score",
+    title: "Score the cath-lab case",
+    readOnly: true,
+    description: `Scoring rubric and debrief for the finished procedure. ${NOT_CLINICAL}`,
+    inputSchema: { type: "object", properties: {} },
+    run() {
+      if (!labSession) throw new Error("No active lab case.");
+      const c = caseById(labSession.caseId)!;
+      return scoreProcedure(labSession.engine, c);
+    },
+  },
+  {
+    name: "corosim_lab_hint",
+    title: "Graded cath-lab hint",
+    readOnly: true,
+    description: `Level 1 is conceptual only; level 3 names specific devices from the recommended plan. Also returns the nextHint planner step (with its action) toward segId, the engine target, or the first plaque. ${NOT_CLINICAL}`,
+    inputSchema: { type: "object", properties: { level: { type: "number", enum: [1, 2, 3] }, segId: { type: "string", description: "Vessel to plan toward (a plaque's segment, e.g. RCA or OM1); defaults to the engine's target, else the first plaque." } }, required: ["level"] },
+    run(_ctx, a) {
+      if (!labSession) throw new Error("No active lab case.");
+      const c = caseById(labSession.caseId)!;
+      const level = a.level as 1 | 2 | 3;
+      const plaques = labSession.engine.plaques(), want = (a.segId as string | undefined) ?? labSession.engine.state().targetSeg;
+      const plaque = plaques.find((p) => p.segId === want) ?? plaques[0];
+      const next = plaque
+        ? nextHint(labSession.engine, { segId: plaque.segId, centerMm: plaque.centerMm })
+        : { kind: "none" as const, why: "No plaque target is loaded." };
+      const graded = level === 1
+        ? "Establish access, anticoagulate, then engage the coronary ostium with an appropriate guide before wiring."
+        : level === 2
+          ? `Use a ${c.recommended.guide.startsWith("guide-j") ? "judkins-style" : "supportive"} guide and cross the lesion with a workhorse wire before PCI.`
+          : `Suggested devices: guide ${c.recommended.guide}, wire ${c.recommended.wire}, balloon ${c.recommended.balloon ?? "per lesion"}, stent ${c.recommended.stent ?? "per vessel"}.`;
+      return { hint: graded, next };
+    },
+  },
+  {
+    name: "corosim_lab_undo",
+    title: "Undo the last cath-lab action",
+    readOnly: false,
+    description: `Replay-based undo of the last procedure action. No-op when there is nothing to undo. Returns events from the restored log and undoCount. ${NOT_CLINICAL}`,
+    inputSchema: { type: "object", properties: {} },
+    run(ctx) {
+      if (!labSession) throw new Error("No active lab case.");
+      const events = labSession.engine.undo();
+      const st = labSession.engine.state();
+      return {
+        narrative: labSession.engine.canUndo() || st.log.length > 0 || events.length >= 0
+          ? `Undid the last cath-lab action (undo #${labSession.engine.undoCount}); ${st.log.length} actions remain.`
+          : `Nothing to undo.`,
+        events,
+        undoCount: labSession.engine.undoCount,
+        canUndo: labSession.engine.canUndo(),
+        state: {
+          access: st.access, act: st.act, guide: st.guide, wire: st.wire, balloon: st.balloon, stent: st.stent,
+          contrastMl: st.contrastMl, fluoroSeconds: st.fluoroSeconds,
+        },
+        map: ctx.sim.state().rolling10s.map,
+      };
+    },
+  },
+  {
+    name: "corosim_lab_resus",
+    title: "Cath-lab resuscitation action",
+    readOnly: false,
+    description: `CPR, shock, pressor, fluid, pericardiocentesis or restart on the active lab case (same Simulation models as the main page). ${NOT_CLINICAL}`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "object",
+          description: "One of {t:'cpr',on}, {t:'shock',joules,sync?}, {t:'pressor',id,dose}, {t:'fluid',ml}, {t:'pericardiocentesis',ml}, {t:'restart'}.",
+        },
+      },
+      required: ["action"],
+    },
+    run(ctx, a) {
+      if (!labSession) throw new Error("No active lab case.");
+      const action = a.action as Action;
+      const allowed = new Set(["cpr", "shock", "pressor", "fluid", "pericardiocentesis", "restart"]);
+      if (!action || !allowed.has(action.t)) throw new Error("action.t must be a resuscitation action.");
+      const events = labSession.engine.apply(action);
+      const st = labSession.engine.state();
+      return {
+        narrative: `Lab resuscitation: ${action.t}.`,
+        events,
+        undoCount: labSession.engine.undoCount,
+        effusionMl: labSession.engine.effusionMl?.() ?? 0,
+        dead: ctx.sim.dead,
+        map: ctx.sim.state().rolling10s.map,
+        state: { access: st.access, act: st.act, elapsedS: st.elapsedS },
       };
     },
   },

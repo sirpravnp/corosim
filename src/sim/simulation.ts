@@ -9,8 +9,10 @@ import { Treated, untreated, applyProcedure } from "../physics/revasc";
 import { MMHG } from "../config/anatomy";
 import { INFARCT, SUPPORT, PROCEDURE, Procedure } from "../config/management";
 import { stepSeverity } from "../physics/ischemia";
+import { LAB } from "../config/lab";
+import { ISCHEMIA as ISCHEMIA_ECG } from "../config/ecg";
 import { stepNecrosis, lvInfarctSize } from "../physics/infarct";
-import { BedSite, bedSites, ischemicBurden, globalSeverity, injuryVector, transmurality, meetsStElevation } from "../physics/ecgLink";
+import { BedSite, bedSites, ischemicBurden, globalSeverity, injuryVector, bedTransmurality, meetsStElevation } from "../physics/ecgLink";
 import { rhythmState, RhythmState, SinusModulation, Patient } from "../physics/rhythm";
 import { circulation, Circulation, CIRC } from "../physics/circulation";
 import { Support, supportedRhythm } from "../physics/support";
@@ -109,6 +111,10 @@ export class Simulation {
   support!: Support;
   patient!: Patient;
   grafts: Graft[] = [];
+  /** Live PCI overlay on the coronary tree; null uses the scenario's lesions (Task 2, cath lab). */
+  private labLesions: Lesion[] | null = null;
+  private labBed: Record<string, number> = {};
+  private realtimeLab = false;
   stream!: BeatStream;
   /** VT, VF and AIVR (core engine, task B3b; physics/arrhythmia.ts); undefined with the legacy engine. */
   arrhythmia?: Arrhythmia;
@@ -258,6 +264,7 @@ export class Simulation {
       this.applyCoroPumpInitial();
     }
     this.t = 0; this.clinicalMinutes = 0; this.ischemicMinutes = 0; this.treated = untreated(); this.history = []; this.beatCount = 0;
+    this.labLesions = null; this.labBed = {}; this.realtimeLab = false; this.minutesPerSecond = INFARCT.minutesPerSecond;
     for (const k of Object.keys(this.sev)) delete this.sev[k];
     for (const k of Object.keys(this.scar)) delete this.scar[k];
     this.map = this.perfusion = this.solvedPerfusion = CIRC.baseMap; this.solvedDemand = 1; this.mapClock = 0;
@@ -445,13 +452,31 @@ export class Simulation {
     this.resolveCoronaries(true);
   }
 
+  private coronaryLesions(): Lesion[] { return this.labLesions ?? this.n.lesions; }
+
+  /** Overlay lesions and optional bed resistance for the cath lab without changing the scenario (`setLive(null)` restores). */
+  setLive(lesions: Lesion[] | null, bedResistance?: Record<string, number>): void {
+    this.labLesions = lesions;
+    if (bedResistance !== undefined) this.labBed = { ...bedResistance };
+    if (lesions === null) this.labBed = {};
+    this.resolveCoronaries(true);
+  }
+
+  liveOn(): boolean { return this.labLesions !== null; }
+
+  /** Real-time lab mode: one clinical minute per simulated minute; off restores the default infarct clock. */
+  setRealtime(on: boolean): void {
+    this.realtimeLab = on;
+    this.minutesPerSecond = on ? LAB.realtimeMinutesPerSecond : INFARCT.minutesPerSecond;
+  }
+
   private resolveCoronaries(full: boolean) {
-    const lesions: Lesion[] = this.n.lesions, Pa = this.perfusion * MMHG;
-    if (full) this.analysis = analyze(this.tree, lesions, this.n.exertion, Pa, this.grafts, this.solvedDemand);
-    else this.analysis = { ...this.analysis, cond: solveNetwork(this.tree, lesions, this.demand * this.solvedDemand, Pa, this.grafts) };
+    const lesions = this.coronaryLesions(), Pa = this.perfusion * MMHG;
+    if (full) this.analysis = analyze(this.tree, lesions, this.n.exertion, Pa, this.grafts, this.solvedDemand, this.labBed);
+    else this.analysis = { ...this.analysis, cond: solveNetwork(this.tree, lesions, this.demand * this.solvedDemand, Pa, this.grafts, this.labBed) };
     this.solvedPerfusion = this.perfusion;
     this.target = Object.fromEntries(this.analysis.cond.terminals.map((t) => [t.key, t.severity]));
-    this.transmural = Object.fromEntries(this.analysis.cond.terminals.map((t) => [t.key, transmurality(t.blocked ? 0 : t.ratio)]));
+    this.transmural = bedTransmurality(this.analysis.cond.terminals);
   }
 
   private updateCirculation() {
@@ -561,7 +586,8 @@ export class Simulation {
   }
 
   private sub(h: number, minutes: number) {
-    for (const s of this.sites) this.sev[s.key] = stepSeverity(this.sev[s.key] ?? 0, this.target[s.key] ?? 0, h * this.speed);
+    const ischDt = h * this.speed;
+    for (const s of this.sites) this.sev[s.key] = this.stepIschemia(this.sev[s.key] ?? 0, this.target[s.key] ?? 0, ischDt);
     if (minutes > 0) {
       for (const s of this.sites) this.scar[s.key] = stepNecrosis(this.scar[s.key] ?? 0, this.sev[s.key] ?? 0, minutes);
       this.clinicalMinutes += minutes;
@@ -1673,6 +1699,13 @@ export class Simulation {
     else if (r.lysed) { this.treated.lysed = true; this.apply({ lesions: [{ ...first, occluded: false, stenosis: r.lesion!.ds }, ...others] }); result = `The clot lysed; a ${Math.round(r.lesion!.ds * 100)}% stenosis remains.`; }
     else { this.treated.lysed = false; result = "Fibrinolysis failed: the artery is still closed. Rescue PCI is the next step."; }
     return { procedure: PROCEDURE[kind].label, delayMinutes: delay, result, lvInfarctBefore: +lvBefore.toFixed(3), lvInfarctAtArrival: +lvAtArrival.toFixed(3) };
+  }
+
+  private stepIschemia(current: number, target: number, dt: number): number {
+    if (!this.realtimeLab) return stepSeverity(current, target, dt);
+    const rise = LAB.ischemiaTauSeconds, rec = ISCHEMIA_ECG.recoveryTau;
+    if (target > current) return Math.min(target, current + dt / rise);
+    return target + (current - target) * Math.exp(-dt / rec);
   }
 
   /** The serialisable scenario, including what the app's controls have changed since it was loaded. */

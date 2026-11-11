@@ -26,6 +26,8 @@ export function resizeRing(old: Float32Array, idx: number, n: number): { ring: F
  */
 export class EcgStrip {
   posterior = false;
+  /** A rhythm strip: these leads, one per row, instead of the 3 x 4 twelve-lead page (the cath lab's monitor). */
+  strip: LeadName[] | null = null;
   /** "twelve" is the Simulator's 2.5 s twelve-lead page; "strip" is lead II alone on a long rhythm strip that fills the canvas width at 25 mm/s;
    *  "full" is the twelve-lead with a lead II rhythm strip under it across the whole width (the case monitor). */
   private ring = Object.fromEntries(ALL_LEADS.map((l) => [l, new Float32Array(N).fill(NaN)])) as Record<LeadName, Float32Array>;
@@ -121,11 +123,11 @@ export class EcgStrip {
   draw() {
     if (this.mode === "strip") return this.drawStrip();
     const c = this.canvas, dpr = devicePixelRatio || 1;
-    const layout = this.posterior ? LAYOUT.map((row, r) => [...row, POSTERIOR[r]]) : LAYOUT;
-    const cols = layout[0].length, rows = 3, w = c.clientWidth, full = this.mode === "full";
+    const layout = this.strip ? this.strip.map((l) => [l]) : this.posterior ? LAYOUT.map((row, r) => [...row, POSTERIOR[r]]) : LAYOUT;
+    const cols = layout[0].length, rows = layout.length, w = c.clientWidth, full = this.mode === "full" && !this.strip;
     if (!w) return; // not laid out (its panel is closed or on a hidden tab): nothing to draw, and the paper loop below would not end
     const mm = w / cols / (WIN * 25);
-    const ph = Math.max(96, Math.round(mm * 22));
+    const ph = this.strip ? 78 : Math.max(96, Math.round(mm * 22));
     const h = (rows + (full ? 1 : 0)) * ph; // "full" adds the rhythm strip as a fourth row
     if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
       c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c.style.height = h + "px";
