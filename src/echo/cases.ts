@@ -64,7 +64,7 @@ export const CASES: EchoCase[] = [
     spec: { ...L("ms"), laSize: 1.9 }, look: { valves: { mv: { thick: 4.5, openMax: 0.3, calcium: 0.2 } } } },
   { id: "mr", title: "Severe mitral regurgitation", blurb: "Leaflets that do not meet, a big left atrium and a hyperdynamic left ventricle.",
     findings: ["The mitral leaflets close short of each other: a coaptation gap.", "Left atrium and left ventricle enlarged by the volume load.", "Vigorous wall motion; EF overstates forward function."],
-    note: "Chamber enlargement is set by hand (`lvSize`, `laSize`); color Doppler is not simulated, so the jet itself is not shown.",
+    note: "Chamber enlargement is set by hand (`lvSize`, `laSize`); the regurgitant jet in color and CW comes from the engine's regurgitant flow through the gap.",
     spec: { ...L("mr", { severity: 0.7 }), lvSize: 1.3, laSize: 1.8 }, look: { valves: { mv: { gap: 14 } } } },
   { id: "effusion", title: "Large pericardial effusion", blurb: "An echo-free band of fluid all round the heart.",
     findings: ["Black fluid between the epicardium and the bright pericardium, front and back.", "In the parasternal long axis it sits in front of the descending aorta (pleural fluid sits behind it).", "The heart swings within the fluid."],

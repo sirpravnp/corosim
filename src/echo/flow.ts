@@ -121,8 +121,10 @@ export function velocityAt(p: V3, part: number, jets: Jet[], out: V3, turb: { va
       // ventricular outflow: a plug through the outflow tract, at flow over the tract's area, narrowing into the valve's own speed
       const px = dx - x * J.n[0], py = dy - x * J.n[1], pz = dz - x * J.n[2], rho = Math.hypot(px, py, pz);
       if (rho > J.tractR * 1.4) continue;
-      const plug = J.q / (Math.PI * (J.tractR / 10) ** 2) / 100, k = Math.max(0, Math.min(1, 1 + x / 8)); // the last 8 mm accelerate to the valve
-      const v = (plug + (J.v0 - plug) * k * k) * Math.exp(-((rho / J.tractR) ** 6)) * Math.min(1, (30 + x) / 6);
+      // close to the valve the flow converges on its orifice at Q / (2 pi r^2), faster than the plug only within about tractR / sqrt(2)
+      // of it (about 8 mm), whatever the orifice's size: a pulsed-wave gate 5 to 10 mm below the valve reads the plug, as on a real scan
+      const plug = J.q / (Math.PI * (J.tractR / 10) ** 2) / 100, rcm = Math.max(J.r0, -x) / 10;
+      const v = Math.max(plug, Math.min(J.v0, J.q / (2 * Math.PI * rcm * rcm) / 100)) * Math.exp(-((rho / J.tractR) ** 6)) * Math.min(1, (30 + x) / 6);
       out[0] += v * J.n[0]; out[1] += v * J.n[1]; out[2] += v * J.n[2];
     } else if (part === J.outOf && x < 1) {
       // upstream: flow converging on the orifice, speed Q / (2 pi r^2) on a hemisphere, capped at the orifice speed

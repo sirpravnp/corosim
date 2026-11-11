@@ -1,5 +1,5 @@
 import { V3 } from "../anatomy/curve";
-import { MorphPart, Part } from "../anatomy/heartSurface";
+import { MorphPart, Part, meshSdf } from "../anatomy/heartSurface";
 import { CT, CtHeart, ahaSegment, ctDirToHeart, ctLandmarks, ctToHeart, heartToCt, labelAt, nearestLabel, place, sampleField } from "../anatomy/ctHeart";
 import { Annulus, LEAFLET_MM, LvPoint, ValveLook, onAtrioventricularLeaflet } from "./anatomy";
 import { LvGeom, NA, NT } from "./motion";
@@ -452,4 +452,34 @@ export function ctGeomFor(lvWallRef: number, septumRef: number): LvGeom {
     rc[c] = Math.max(1, re - wt); wall[c] = re - rc[c];
   }
   return { ...g, rc, wall };
+}
+
+/**
+ * The CT heart as a surface mesh in the heart frame, for the 3D probe pane: its outer surface and the great vessels beyond the stubs,
+ * each vertex labeled with the chamber or vessel it covers (found by stepping inward from the surface to the first blood).
+ */
+export function ctMesh(step = 1.6): import("../anatomy/heartSurface").SurfaceMesh {
+  const h = H!, c: V3 = [0, 0, 0];
+  const field = (q: V3) => {
+    heartToCt(h, q, c);
+    let d = sampleField(h, h.body, c);
+    for (const t of VESSELS) { const dv = tubeDistance(c, t); if (dv < d) d = dv; }
+    return d;
+  };
+  const which = (q: V3) => {
+    heartToCt(h, q, c);
+    for (const t of VESSELS) if (tubeDistance(c, t) < 0.5) return t.part;
+    const e = 0.75, gx = sampleField(h, h.body, [c[0] + e, c[1], c[2]]) - sampleField(h, h.body, [c[0] - e, c[1], c[2]]);
+    const gy = sampleField(h, h.body, [c[0], c[1] + e, c[2]]) - sampleField(h, h.body, [c[0], c[1] - e, c[2]]);
+    const gz = sampleField(h, h.body, [c[0], c[1], c[2] + e]) - sampleField(h, h.body, [c[0], c[1], c[2] - e]);
+    const n = unit([gx, gy, gz]);
+    for (let t = 1; t < 18; t += 1) { const l = labelAt(h, [c[0] - n[0] * t, c[1] - n[1] * t, c[2] - n[2] * t]); if (isChamber(l)) return PART_OF[l] ?? Part.LV; }
+    return Part.LV;
+  };
+  // the box: the CT volume's corners (and the vessels') in the heart frame
+  const lo: V3 = [Infinity, Infinity, Infinity], hi: V3 = [-Infinity, -Infinity, -Infinity];
+  const grow = (p: V3) => { for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], p[k] - 3); hi[k] = Math.max(hi[k], p[k] + 3); } };
+  for (let i = 0; i < 8; i++) grow(ctToHeart(h, [h.origin[0] + (i & 1 ? h.nx : 0), h.origin[1] + (i & 2 ? h.ny : 0), h.origin[2] + (i & 4 ? h.nz : 0)]));
+  for (const t of VESSELS) for (const p of t.pts) grow(ctToHeart(h, p));
+  return meshSdf(field, which, [lo, hi], step);
 }

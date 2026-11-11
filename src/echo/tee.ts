@@ -138,8 +138,10 @@ export function teeViews(): Record<string, TeeControls> {
   const E = esophagus(), mvLevel = l.mv[1] - E.y0, avLevel = l.av[1] - E.y0 + 6;
   const tgTarget = mid(l.apex, l.mv, 0.42);
   return {
-    me4c: controlsFor(mvLevel - 6, l.mv, l.tv, mid(l.apex, mid(l.mv, l.tv), 0.45), left),
-    me2c: (() => { const c = controlsFor(mvLevel - 6, l.mv, l.tv, mid(l.apex, mid(l.mv, l.tv), 0.45), left); return { ...c, angle: Math.min(180, c.angle + 85) }; })(),
+    // the four- and two-chamber views from behind the left atrium, about 2 cm above the mitral valve, looking down through it: the beam
+    // then runs within about 20 degrees of mitral inflow, as it does on a real ME four-chamber view (lower, the angle opens past 50)
+    me4c: controlsFor(mvLevel + 24, l.mv, l.tv, mid(l.apex, mid(l.mv, l.tv), 0.45), left),
+    me2c: (() => { const c = controlsFor(mvLevel + 24, l.mv, l.tv, mid(l.apex, mid(l.mv, l.tv), 0.45), left); return { ...c, angle: Math.min(180, c.angle + 85) }; })(),
     meLax: controlsFor(mvLevel - 2, l.mv, l.av, mid(l.apex, l.mv, 0.55), head),
     meAvSax: controlsFor(avLevel, l.av, add(l.av, cross(rootAxis, ant), 10), l.av, left),
     meAvLax: controlsFor(avLevel, l.av, add(l.av, rootAxis, 25), l.av, head),

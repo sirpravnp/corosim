@@ -1,70 +1,80 @@
-/* Echo: probe on the 3D heart, ideal slice, and teaching echo that yields to a real reference at calibrated views. */
-main.echomain { grid-template-columns: 250px minmax(0, 1fr); }
-@media (max-width: 820px) { main.echomain { grid-template-columns: minmax(0, 1fr); } }
+/* Echo: a working echo machine. The image is the one dominant stage; the probe, reference and measurements sit unboxed in the rail. */
+main.echomain { grid-template-columns: 250px minmax(0, 1fr) minmax(280px, 360px); }
+@media (max-width: 1180px) { main.echomain { grid-template-columns: 250px minmax(0, 1fr); } main.echomain .rail { grid-column: 2; } }
+@media (max-width: 820px) { main.echomain { grid-template-columns: minmax(0, 1fr); } main.echomain .rail { grid-column: auto; } }
 /* Sidebar heading: sentence case, body size, like the other labels. */
-main.echomain .lib-head { font: 600 13px/1.3 var(--font-ui); letter-spacing: 0; text-transform: none; color: var(--ink); }
+main.echomain .lib-head { padding: 10px 10px 0; font: 600 13px/1.3 var(--font-ui); letter-spacing: 0; text-transform: none; color: var(--ink); }
+main.echomain .library { max-height: calc(100vh - 24px); overflow-y: auto; }
+main.echomain .library .list { overflow: visible; }
 
-.echo-stage { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
-@media (max-width: 1200px) { .echo-stage { grid-template-columns: minmax(0, 1fr); } }
-/* Panes are unboxed: the screen carries the only frame. Each pane has the same header row, so screens align. */
-.echo-pane {
-  margin: 0; padding: 0; min-width: 0;
-  display: grid; grid-template-rows: 28px 400px auto; gap: 8px; align-content: start;
-  background: none; border: 0; border-radius: 0;
-}
-.pane-head { display: flex; align-items: center; justify-content: flex-end; height: 28px; }
-.echo-pane figcaption { max-width: 58ch; font-size: 12.5px; color: var(--muted); line-height: 1.4; }
-.echo-pane figcaption a { color: var(--muted); }
+.rail { display: grid; gap: 16px; align-content: start; min-width: 0; }
+
+.echo-bar { gap: 10px 14px; }
+.echo-fig { margin: 0; display: grid; gap: 8px; min-width: 0; }
+.echo-fig figcaption { max-width: 72ch; font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.echo-fig figcaption a { color: var(--muted); }
 /* The long license credit sits on its own smaller line under the reference caption. */
 .echo-credit { display: block; margin-top: 4px; font-size: 11.5px; line-height: 1.4; }
 
-.echo-3d, .echo-slice, .echo-live {
-  position: relative;
-  height: 400px;
-  background: #05060a;
-  border: 1px solid var(--rule);
-  border-radius: 0;
-  overflow: hidden;
-}
-.echo-3d canvas, .echo-slice canvas, .echo-live canvas { width: 100%; height: 100%; display: block; }
-.echo-load { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: var(--muted); font-size: 13px; }
+/* The image: the scanner's screen, black in both themes. The overlay canvas (scale, cursor, header) sits exactly on top. */
+.echo-screen, .echo-strip, .echo-3d, .echo-ref { position: relative; background: #000; border: 1px solid var(--rule); border-radius: 0; overflow: hidden; }
+.echo-screen { max-width: 760px; aspect-ratio: 640 / 560; }
+.echo-screen canvas, .echo-strip canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.echo-strip { max-width: 760px; aspect-ratio: 900 / 250; }
+.echo-over { cursor: crosshair; }
+.echo-3d { height: 300px; background: #05060a; }
+.echo-3d canvas { width: 100%; height: 100%; display: block; }
+.echo-ref canvas { display: block; width: 100%; height: auto; }
+.echo-load { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: #b9b4aa; font-size: 13px; pointer-events: none; }
+.echo-load[hidden] { display: none; }
 
-/* Two-state segmented control for the labels: square, 1px hairline, selected state is an ink fill. */
-.echo-seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 0; }
+/* Segmented controls (imaging mode): square, 1px hairline, selected state is an ink fill. */
+.echo-seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--rule); border-radius: 0; }
 .echo-seg button {
-  margin: 0; padding: 5px 10px;
-  font: 500 12px/1 var(--font-ui); letter-spacing: 0;
+  margin: 0; padding: 6px 11px;
+  font: 500 12.5px/1 var(--font-ui); letter-spacing: 0;
   color: var(--muted); background: var(--panel);
   border: 0; border-radius: 0; cursor: pointer;
 }
 .echo-seg button + button { border-left: 1px solid var(--rule); }
 .echo-seg button[aria-pressed="true"] { color: var(--bg); background: var(--ink); }
-.echo-seg button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-
-.echo-live .echo-real {
-  position: absolute; inset: 0; width: 100%; height: 100%;
-  opacity: 0; pointer-events: none; transition: opacity 160ms linear;
-}
-/* The one tracked uppercase label on this page. */
-.echo-badge {
-  position: absolute; left: 10px; top: 10px; z-index: 2;
-  margin: 0; padding: 0 0 4px;
-  font: 700 10px/1 var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase;
-  color: #f4f1ea; border-bottom: 1px solid #f4f1ea; background: none;
+.echo-seg button:focus-visible, .echo-play:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.echo-play {
+  margin: 0; padding: 6px 11px; min-width: 7ch;
+  font: 500 12.5px/1 var(--font-ui); color: var(--ink); background: var(--panel);
+  border: 1px solid var(--rule); border-radius: 0; cursor: pointer;
 }
 
-/* Probe placement, index mark and structures: unboxed columns divided by hairline rules. */
-.echo-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 18px; border-top: 1px solid var(--rule); }
+/* Transesophageal probe controls: label, slider, value, one row each, unboxed. */
+.tee-controls { display: grid; gap: 6px; font-size: 13px; }
+.tee-controls[hidden] { display: none; }
+.tee-controls label { display: grid; grid-template-columns: 9ch minmax(0, 1fr) 7ch; gap: 10px; align-items: center; }
+.tee-controls span { color: var(--muted); font-weight: 600; }
+.tee-controls input[type=range] { width: 100%; accent-color: var(--range); }
+.tee-controls output { font: 13px var(--font-data); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Measurements: a plain ruled table, the echo value beside the engine's. */
+.echo-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.echo-table caption { caption-side: top; text-align: left; padding: 0 0 8px; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.echo-table th, .echo-table td { padding: 4px 0; border-bottom: 1px solid var(--rule-light); vertical-align: baseline; }
+.echo-table thead th { font-weight: 600; color: var(--ink); border-bottom: 1px solid var(--rule); text-align: right; }
+.echo-table thead th:first-child { text-align: left; }
+.echo-table tbody th { font-weight: 400; color: var(--muted); text-align: left; padding-right: 10px; }
+.echo-table tr.grp th { padding-top: 12px; font-weight: 600; color: var(--ink); border-bottom: 1px solid var(--rule); }
+.echo-table td { text-align: right; white-space: nowrap; padding-left: 10px; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+
+/* View notes and the patient: unboxed columns divided by hairline rules. */
+.echo-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 6px; border-top: 1px solid var(--rule); }
 .echo-card { min-width: 0; padding: 14px 18px 0 0; font-size: 14px; line-height: 1.45; }
 .echo-card + .echo-card { padding-left: 18px; border-left: 1px solid var(--rule); }
 .echo-card b { display: block; margin: 0 0 4px; font: 600 13px/1.3 var(--font-ui); letter-spacing: 0; text-transform: none; color: var(--ink); }
+.echo-card li b { display: inline; }
 .echo-card p { margin: 0 0 10px; } .echo-card p:last-child { margin-bottom: 0; }
 .echo-card ul { margin: 0; padding-left: 18px; } .echo-card li { margin: 2px 0; }
-@media (max-width: 720px) {
+@media (max-width: 980px) {
   .echo-cards { grid-template-columns: minmax(0, 1fr); }
   .echo-card, .echo-card + .echo-card { padding: 14px 0 0; border-left: 0; }
   .echo-card + .echo-card { border-top: 1px solid var(--rule); margin-top: 14px; }
 }
 
-footer.fine { margin: 18px 0 32px; }
-.echo-note { margin: 18px 0 0; }
+.echo-note { margin: 18px 0 0; max-width: 110ch; }

@@ -161,7 +161,11 @@ export function buildPoses(): Record<string, Pose> {
   if (CA) {
     // on the CT heart both are anatomical planes: the five-chamber view tilts up from the four-chamber one until it holds the aortic
     // valve (apex, aortic and tricuspid valves); the two-chamber view holds the apex, the mitral valve and the left atrial appendage
-    raw.a5c = planePose(l.apex, l.av, l.tv, apicalTarget, l.longAxis);
+    // the five-chamber plane holds the apex and the aortic root's own axis (the outflow tract and the ascending aorta), and the beam
+    // turns partway from the LV axis toward the outflow: the probe slides a little medial of the apex, as a sonographer moves it to
+    // line the continuous-wave cursor up with an aortic jet
+    let ao = unit(toPatientDir(CA.aoAxis)); if (dot(ao, l.longAxis) < 0) ao = scale(ao, -1);
+    raw.a5c = planePose(l.apex, l.av, add(l.av, ao, 30), mid(l.apex, l.av, 0.6), unit(add(l.longAxis, ao, 3)));
     raw.a2c = planePose(l.apex, l.mv, toPatient(CA.laa), apicalTarget, l.longAxis);
   } else {
     raw.a5c = planePose(l.apex, l.av, mid(l.mv, l.tv), apicalTarget, l.longAxis);

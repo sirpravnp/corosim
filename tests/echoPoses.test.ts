@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { installCtHeartNode } from "../src/echo/ctNode";
 import { buildPoses, landmarks, insideHeart } from "../src/echo/poses";
 import { IMAGES, VIEWS } from "../src/echo/views";
+import { teeViews } from "../src/echo/tee";
 
 /**
  * Probe poses for the transthoracic views, on the CT heart: each standard plane holds the landmarks that define it, the probe is outside
@@ -23,7 +24,8 @@ const TTE = ["plax", "subcostal", "psaxPM", "psaxMV", "psaxApex", "psaxAV", "a4c
 describe("transthoracic probe poses on the CT heart", () => {
   it("covers every standard transthoracic view; every listed view has a pose and every reference image a view", () => {
     expect(Object.keys(poses).sort()).toEqual([...TTE].sort());
-    for (const v of VIEWS) expect(poses[v.pose], v.id).toBeDefined();
+    const tee = teeViews();
+    for (const v of VIEWS) expect(v.approach === "tte" ? poses[v.pose] : tee[v.pose], v.id).toBeDefined();
     for (const im of IMAGES) expect(VIEWS.some((v) => v.id === im.view), im.view).toBe(true);
   });
   it("gives every pose unit, perpendicular beam and lateral axes, with the marker on the lateral (screen-right) side", () => {
@@ -50,8 +52,10 @@ describe("transthoracic probe poses on the CT heart", () => {
     expect(poses.plax.beam[2]).toBeLessThan(-0.5);
     expect(Math.abs(dot(poses.plax.beam, l.longAxis))).toBeLessThan(0.1);
     for (const id of ["a4c", "a3c", "a5c", "a2c"]) {
-      expect(dot(poses[id].beam, l.longAxis), id).toBeGreaterThan(0.95);
-      expect(dot(sub(poses[id].probe, l.apex), l.longAxis), id).toBeLessThan(0); // the probe is beyond the apex
+      // the five-chamber beam turns partway toward the outflow tract, to line up with an aortic jet (about 35 degrees off the LV axis)
+      expect(dot(poses[id].beam, l.longAxis), id).toBeGreaterThan(id === "a5c" ? 0.75 : 0.95);
+      // the probe is beyond the apex (the five-chamber probe slides medially, beside it)
+      expect(dot(sub(poses[id].probe, l.apex), l.longAxis), id).toBeLessThan(id === "a5c" ? 10 : 0);
     }
   });
   it("the two-chamber plane is the four-chamber plane turned 55 to 75 degrees about the long axis", () => {

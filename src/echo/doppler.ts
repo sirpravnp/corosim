@@ -119,7 +119,8 @@ export function spectrum(beat: EchoBeat, req: SpectralRequest, jetOpt: JetOption
     const zero = (top / (top - bottom)) * bins;
     for (let k = 0; k < bins; k++) {
       let val = Math.min(1, Math.log1p(12 * hist[k] / mx) / Math.log1p(12));
-      if (req.mode !== "tdi" && Math.abs(k - zero) < 1.2) val *= 0.15;
+      // the wall filter: a high-pass that removes the slow, strong returns of walls and valves (about 0.1 m/s for CW, 0.05 for PW)
+      if (req.mode !== "tdi") { const vk = Math.abs(((zero - k) / bins) * (top - bottom)), wf = req.mode === "cw" ? 0.12 : 0.05; if (vk < wf) val *= 0.08 + 0.92 * (vk / wf) ** 2; }
       val = val * (0.75 + 0.5 * hash(col, k, 7)) + 0.05 * hash(col, k, 11);
       img[k * cols + col] = Math.min(1, val);
     }
@@ -226,7 +227,12 @@ export function standardDoppler(beat: EchoBeat, poses: Record<string, Pose>, jet
   const tdi = (x: number) => earlyDiastolicAway(tdiSpec(x));
   const septalE = tdi(-R), lateralE = tdi(R);
   // LV outflow, 8 mm below the aortic valve, and the valve itself by CW: flow away from an apical probe
-  const lvot = envelopeMeasures(run(line(along(av, nAv, -8), nAv, false), "pw", { scale: 1.6, baseline: 0.25 }), false);
+  // As the guidelines advise, the sample is moved toward the apex until it is out of the zone where flow accelerates into the orifice
+  // (a few millimeters for a normal valve, more in aortic stenosis): of the positions 6 to 20 mm below the valve, the one with the
+  // lowest VTI, where the envelope is laminar and its VTI is the outflow tract's own.
+  const lvotAt = (mm: number) => envelopeMeasures(run(line(along(av, nAv, -mm), nAv, false), "pw", { scale: 1.6, baseline: 0.25 }), false);
+  let lvot = lvotAt(6);
+  for (let mm = 8; mm <= 20; mm += 4) { const next = lvotAt(mm); if (next.vti > 0 && next.vti < lvot.vti) lvot = next; }
   const avCw = envelopeMeasures(run(line(along(av, nAv, 4), nAv, false), "cw", { baseline: 0.15 }), false);
   const lvotD = 2.2, lvotArea = Math.PI * (lvotD / 2) ** 2;
   // tricuspid regurgitation by CW, along the regurgitant jet (from the RV into the RA, away from an apical probe)
