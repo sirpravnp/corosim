@@ -26,6 +26,20 @@ export function bedSites(tree: Tree): BedSite[] {
 }
 
 /** How far through the wall a bed's ischemia reaches (0 subendocardial … 1 transmural), from its supply/demand ratio. */
+/**
+ * Transmurality of every bed, from its supply ratio, with the diffuse-ischemia rule (ECG_LINK.diffuseTerritories): ischemic, unblocked
+ * beds in two or more territories are global subendocardial ischemia, so their transmurality is capped.
+ */
+export function bedTransmurality(terminals: readonly { key: string; group: string; ratio: number; blocked: boolean; severity: number }[]): Record<string, number> {
+  const out = Object.fromEntries(terminals.map((t) => [t.key, transmurality(t.blocked ? 0 : t.ratio)]));
+  const anyBlocked = terminals.some((t) => t.blocked && t.severity > 0.5);
+  const territories = new Set(terminals.filter((t) => !t.blocked && t.severity > 0.5).map((t) => t.group));
+  if (!anyBlocked && territories.size >= ECG_LINK.diffuseTerritories) {
+    for (const t of terminals) if (!t.blocked) out[t.key] = Math.min(out[t.key]!, ECG_LINK.diffuseTransmuralCap);
+  }
+  return out;
+}
+
 export function transmurality(supplyRatio: number): number {
   const { subendocardialAbove: hi, transmuralBelow: lo } = ECG_LINK;
   const x = Math.min(1, Math.max(0, (hi - supplyRatio) / (hi - lo)));
