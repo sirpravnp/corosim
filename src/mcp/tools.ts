@@ -550,13 +550,14 @@ export const TOOLS: ToolDef[] = [
     name: "corosim_lab_hint",
     title: "Graded cath-lab hint",
     readOnly: true,
-    description: `Level 1 is conceptual only; level 3 names specific devices from the recommended plan. Also returns the pure nextHint planner step for the first plaque. ${NOT_CLINICAL}`,
-    inputSchema: { type: "object", properties: { level: { type: "number", enum: [1, 2, 3] } }, required: ["level"] },
+    description: `Level 1 is conceptual only; level 3 names specific devices from the recommended plan. Also returns the nextHint planner step (with its action) toward segId, the engine target, or the first plaque. ${NOT_CLINICAL}`,
+    inputSchema: { type: "object", properties: { level: { type: "number", enum: [1, 2, 3] }, segId: { type: "string", description: "Vessel to plan toward (a plaque's segment, e.g. RCA or OM1); defaults to the engine's target, else the first plaque." } }, required: ["level"] },
     run(_ctx, a) {
       if (!labSession) throw new Error("No active lab case.");
       const c = caseById(labSession.caseId)!;
       const level = a.level as 1 | 2 | 3;
-      const plaque = labSession.engine.plaques()[0];
+      const plaques = labSession.engine.plaques(), want = (a.segId as string | undefined) ?? labSession.engine.state().targetSeg;
+      const plaque = plaques.find((p) => p.segId === want) ?? plaques[0];
       const next = plaque
         ? nextHint(labSession.engine, { segId: plaque.segId, centerMm: plaque.centerMm })
         : { kind: "none" as const, why: "No plaque target is loaded." };

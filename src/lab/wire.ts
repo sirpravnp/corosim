@@ -1,6 +1,7 @@
 import { LAB } from "../config/lab";
 import type { Guidewire, LabEvent, LabState, Plaque, VGraph } from "./types";
 import { transmission } from "./route";
+import { routeArcTo } from "./geometry";
 
 export interface AdvanceResult {
   tipSeg: string;
@@ -9,11 +10,13 @@ export interface AdvanceResult {
   route: string[];
   event?: LabEvent;
   prolapse?: { seg: string; atMm: number };
+  /** Presses spent loaded against an uncrossed lesion (0 once it is crossed or the wire is pulled back). */
+  capLoad: number;
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
-/** Resistance to advancing through a plaque (0..1), compared with push × transmission. */
+/** Resistance to advancing through a plaque, compared with push × transmission. Not clamped at 1: a hard calcified cap is several times a soft lesion. */
 export function crossingResistance(w: Guidewire, p: Plaque, tipLoadGf: number): number {
   let r = 0.12 + p.ds * 0.55 + p.calcium * 0.4;
   if (p.cto) r += p.cto.capHardness * (p.cto.microchannels ? 0.35 : 0.85);
@@ -21,7 +24,7 @@ export function crossingResistance(w: Guidewire, p: Plaque, tipLoadGf: number): 
   const stiff = w.stiffness === "stiff" ? 0.28 : w.stiffness === "intermediate" ? 0.12 : 0;
   r = Math.max(0.08, r - stiff - tipLoadGf * 0.012);
   if (w.coating === "hydrophilic" || w.coating === "polymer") r *= 1 - LAB.hydrophilicCrossingDiscount;
-  return clamp01(r);
+  return Math.min(3, Math.max(0, r));
 }
 
 /** Pick a daughter branch. `""` means stay on the parent segment past the bifurcation. */
@@ -85,27 +88,56 @@ export function advanceWire(
   const route = [...(st.wire?.route ?? [])];
   let tipSeg = st.wire?.tipSeg ?? route[0] ?? "";
   let tipMm = st.wire?.tipMm ?? 0;
-  const tx = transmission(g, route, tipMm, 0.35 + guideSupport);
-  const push = Math.abs(mm) * tx * (0.35 + w.support + guideSupport * 0.45);
-  const want = Math.sign(mm) * Math.abs(mm);
+  // how much of the push reaches the tip depends on all the curvature from the puncture to the tip, so measure along the whole route
+  const tx = transmission(g, route, routeArcTo(g, route, tipSeg, tipMm), 0.35 + guideSupport);
+  let want = Math.sign(mm) * Math.abs(mm);
   let moved = 0;
   let event: LabEvent | undefined;
   let prolapse: AdvanceResult["prolapse"];
+  let capLoad = 0;
 
-  const plaque = plaqueAt(plaques, tipSeg, tipMm);
-  if (plaque && want > 0) {
-    const res = crossingResistance(w, plaque, w.tipLoadGf);
-    let need = res * (9 + plaque.calcium * 2);
+  // A lesion on this segment ahead of the tip (or around it) that the move would push into.
+  const ahead = want > 0
+    ? plaques
+      .filter((p) => p.segId === tipSeg && p.ds >= 0.2)
+      .map((p) => ({ p, edge: p.centerMm - p.lengthMm / 2, far: p.centerMm + p.lengthMm / 2 }))
+      // only a lesion whose proximal edge is at or ahead of the tip resists: once the tip is through the cap, the channel is made
+      .filter((x) => x.far > tipMm + 0.5 && x.edge >= tipMm - 0.5 && x.edge <= tipMm + want)
+      .sort((a, b) => a.edge - b.edge)[0]
+    : undefined;
+  if (ahead) {
+    const plaque = ahead.p;
+    // force needed grows with the square of the lesion's resistance, and calcium makes it worse: soft lesions are easy for any wire,
+    // a calcified cap needs a stiff wire and steady load
+    const r = crossingResistance(w, plaque, w.tipLoadGf);
+    let need = 9 * (1 + 2 * plaque.calcium) * r * r;
     if (w.stiffness === "stiff") need *= 0.45;
     else if (w.stiffness === "intermediate") need *= 0.85;
-    if (push < need) {
-      const idx = Math.max(0, route.indexOf(tipSeg));
-      const prox = route[Math.max(0, idx - 1)] ?? tipSeg;
-      prolapse = { seg: prox, atMm: Math.max(0, tipMm - 4) };
-      event = { at: st.elapsedS, kind: "prolapse", text: "The wire buckled and prolapsed proximally.", severity: "caution" };
-      return { tipSeg: prox, tipMm: prolapse.atMm, moved: 0, route, event, prolapse };
+    // a soft hydrophilic tip finds the microchannels of a young occlusion and tracks through them
+    if (plaque.cto?.microchannels && w.stiffness === "floppy" && w.coating === "hydrophilic") need *= LAB.microchannelFloppyFactor;
+    const atCap = tipMm >= ahead.edge - 0.5;
+    const load = atCap ? Math.min(LAB.capLoadMax, (st.wire?.capLoad ?? 0) + 1) : 0;
+    const force = tx * (0.35 + w.support + guideSupport * 0.45) * LAB.crossingForceScale * (1 + LAB.capLoadPerPress * load);
+    if (force < need) {
+      // a soft wire pushed against a lesion it cannot cross (far short of the force, once loaded or on a hard shove) buckles back
+      const hopeless = force < need * LAB.prolapseBelowFraction && w.stiffness !== "stiff";
+      if (hopeless && (load >= 1 || Math.abs(mm) >= LAB.prolapseShoveMm)) {
+        // the wire buckles and its tip springs back proximally, on its own vessel where there is room, else into the one before
+        const idx = Math.max(0, route.indexOf(tipSeg));
+        const back = ahead.edge - LAB.prolapseBackMm; // from where the tip met the cap
+        const seg = back >= 0 || idx === 0 ? tipSeg : route[idx - 1]!;
+        const at = back >= 0 || idx === 0 ? Math.max(0, back) : Math.max(0, g.byId[seg].length + back);
+        prolapse = { seg, atMm: at };
+        event = { at: st.elapsedS, kind: "prolapse", text: "The wire buckled and prolapsed proximally: a hard push on a soft wire. Steady small advances load the tip instead.", severity: "caution" };
+        return { tipSeg: seg, tipMm: at, moved: 0, route, event, prolapse, capLoad: 0 };
+      }
+      // the tip stops at the lesion's proximal edge and loads against it
+      const stopAt = Math.max(tipMm, ahead.edge);
+      moved = stopAt - tipMm;
+      event = { at: st.elapsedS, kind: "resistance", text: atCap ? "The wire tip is loaded against the lesion; keep steady pressure, or change to a stiffer wire." : "The wire tip meets the lesion.", severity: "info" };
+      return { tipSeg, tipMm: stopAt, moved, route, event, capLoad: atCap ? load : 0 };
     }
-    if (plaque.cto && !plaque.cto.microchannels && push >= need) {
+    if (plaque.cto && !plaque.cto.microchannels) {
       const risk = (w.stiffness === "stiff" ? 0.45 : 0.2) + (w.coating === "hydrophilic" ? 0.35 : 0);
       if (rand() < risk) {
         const sub = rand() < 0.55 ? "subintimal" : "perforation";
@@ -117,6 +149,7 @@ export function advanceWire(
       }
     }
   }
+  void want;
 
   let left = Math.abs(want);
   const dir = Math.sign(want) || 1;
@@ -152,5 +185,5 @@ export function advanceWire(
       } else break;
     }
   }
-  return { tipSeg, tipMm: Math.max(0, tipMm), moved, route, event, prolapse };
+  return { tipSeg, tipMm: Math.max(0, tipMm), moved, route, event, prolapse, capLoad };
 }

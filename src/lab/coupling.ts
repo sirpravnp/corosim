@@ -8,7 +8,7 @@ export function applyToSim(
   plaques: Plaque[],
   extra: { occlusions: Lesion[]; bedResistance: Record<string, number>; liveLesions?: Lesion[] },
 ): void {
-  const lesions = plaques.flatMap(plaqueToLesions);
+  const lesions = plaques.flatMap((p) => plaqueToLesions(p, sim.tree.byId[p.segId]?.length));
   for (const l of extra.liveLesions ?? []) lesions.push(l);
   for (const l of extra.occlusions) lesions.push(l);
   sim.setLive(lesions, extra.bedResistance);

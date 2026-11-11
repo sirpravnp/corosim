@@ -1,7 +1,7 @@
 import { byId } from "../config/labDevices";
 import { LAB } from "../config/lab";
 import { planSizing } from "./balloonStent";
-import type { Guidewire, LabEngineLike, Plaque, VGraph } from "./types";
+import type { Action, Guidewire, LabEngineLike, Plaque, VGraph } from "./types";
 
 export type Hint = {
   kind: "advance" | "withdraw" | "torque" | "shape" | "engage" | "inject" | "select" | "inflate" | "deflate" | "deploy" | "wait" | "none";
@@ -11,6 +11,8 @@ export type Hint = {
   atm?: number;
   why: string;
   target?: { segId: string; mm: number };
+  /** The one action that carries the hint out (what a "Show me" button or an MCP caller performs); absent when nothing is to be done. */
+  action?: Action;
 };
 
 const ancestry = (g: VGraph, segId: string): string[] => {
@@ -77,8 +79,40 @@ const childBranches = (g: VGraph, segId: string) =>
 const plaqueOn = (plaques: readonly Plaque[], segId: string, mm: number) =>
   plaques.find((p) => p.segId === segId && Math.abs(p.centerMm - mm) < p.lengthMm / 2 + 2);
 
-/** Next procedural step for the lab; never mutates the engine. */
+/** The action a hint means: the planner names any device, site or target in parentheses at the end of its reason. */
+export function hintAction(h: Hint): Action | undefined {
+  const id = h.why.match(/\(([a-zA-Z0-9._-]+)\)/)?.[1];
+  switch (h.kind) {
+    case "advance": return { t: "advance", mm: h.mm ?? 4 };
+    case "withdraw": return { t: "advance", mm: -(h.mm ?? 4) };
+    case "torque": return { t: "torque", deg: h.deg ?? 0 };
+    case "shape": return { t: "shape", tipBendDeg: h.bendDeg ?? 45 };
+    case "engage": return { t: "autoAdvance", to: h.target?.segId === "RCA" ? "RCA" : "LM" };
+    case "inject": return { t: "inject", where: h.target?.segId === "RCA" ? "RCA" : "LCA", ml: 6 };
+    case "inflate": return { t: "inflate", atm: h.atm ?? 10, seconds: 5 };
+    case "deflate": return { t: "deflate" };
+    case "deploy": return { t: "deploy", atm: h.atm ?? 14, seconds: 5 };
+    case "select": {
+      if (!id) return undefined;
+      if (/^(femoral|radial)-[RL]$/.test(id)) return { t: "access", site: id as "femoral-R" };
+      if (id.startsWith("sheath-")) return { t: "sheath", french: Number(id.slice(7)) as 5 | 6 | 7 };
+      if (id === "heparin") return { t: "drug", id: "heparin", dose: 5000 };
+      if (id.startsWith("target-")) return { t: "target", segId: id.slice(7) };
+      const slot = id.startsWith("guide") ? "guide" : id.startsWith("wire") ? "wire" : id.startsWith("bal") ? "balloon" : id.startsWith("stent") ? "stent" : null;
+      return slot ? { t: "select", slot, id } : undefined;
+    }
+    default: return undefined;
+  }
+}
+
+/** Next procedural step for the lab, with the action that performs it; never mutates the engine. */
 export function nextHint(engine: LabEngineLike, goal: { segId: string; centerMm: number }): Hint {
+  const h = planHint(engine, goal);
+  const action = hintAction(h);
+  return action ? { ...h, action } : h;
+}
+
+function planHint(engine: LabEngineLike, goal: { segId: string; centerMm: number }): Hint {
   const st = engine.state();
   const g = engine.graph();
   const plaques = engine.plaques();
@@ -97,7 +131,8 @@ export function nextHint(engine: LabEngineLike, goal: { segId: string; centerMm:
   if (st.act < 200) {
     return { kind: "select", why: "Give heparin 5000 units (heparin).", target: tgt };
   }
-  if (!st.targetSeg) {
+  // aim at the goal vessel; with a guide already seated in the other coronary, exchange the guide first (below)
+  if (st.targetSeg !== goal.segId && (!st.guide?.engaged || st.guide.engaged === root)) {
     return { kind: "select", why: `Set the treatment target to ${goal.segId} (target-${goal.segId}).`, target: tgt };
   }
   if (!st.guide) {
@@ -112,9 +147,10 @@ export function nextHint(engine: LabEngineLike, goal: { segId: string; centerMm:
     };
   }
   if (st.guide.engaged !== root) {
+    const id = guideFor(root);
     return {
-      kind: "engage",
-      why: `The guide is in the ${st.guide.engaged}; re-engage the ${root} for this target.`,
+      kind: "select",
+      why: `The guide is seated in the ${st.guide.engaged}; exchange it for a ${root === "RCA" ? "JR4" : "JL4"} guide for the ${root} (${id}).`,
       target: { segId: root, mm: 0 },
     };
   }

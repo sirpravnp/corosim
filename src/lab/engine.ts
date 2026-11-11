@@ -147,7 +147,7 @@ export class LabEngine implements LabEngineLike {
       patient.pericardium = {
         ...(patient.pericardium ?? {}),
         effusionMl: this.effusion,
-        effusionRateMlMin: this.tamponadeRate > 0 && !this.perforationSealed ? 150 : 0,
+        effusionRateMlMin: 0, // the engine itself fills the pericardium while a perforation is open; the patient must not add a second rate
       };
     } else if (patient.pericardium) {
       delete patient.pericardium.effusionMl;
@@ -186,7 +186,7 @@ export class LabEngine implements LabEngineLike {
     this.sim.reset(JSON.parse(JSON.stringify(s.patient)) as PatientSpec);
     this.sim.setRealtime(!!s.st.access);
     this.sim.setLive(null);
-    this.syncSim();
+    if (s.st.log.length) this.syncSim();
   }
 
   private syncSim(): void {
@@ -228,8 +228,7 @@ export class LabEngine implements LabEngineLike {
     this.rand = this.rng.next;
     this.sim.reset(JSON.parse(JSON.stringify(this.baseline)) as PatientSpec);
     this.sim.setRealtime(false);
-    this.sim.setLive(null);
-    this.syncSim();
+    this.sim.setLive(null); // until the first action the patient's own scenario carries the lesions; the lab overlay starts with the procedure
     this.snaps = [this.takeSnap()];
   }
 
@@ -360,7 +359,7 @@ export class LabEngine implements LabEngineLike {
     const checks: Complication[] = [];
     if (a.t === "inflate") checks.push("dissection", "no-reflow");
     if (a.t === "deploy") checks.push("no-reflow", "dissection");
-    if (a.t === "advance" && this.active === "wire") checks.push("perforation");
+    // wire perforation is rolled in the advance itself, per millimeter through a lesion (see "advance")
     for (const c of checks) {
       const eff = draw(c, ctx, this.rand);
       this.applyComplicationResult(eff, out, c);
@@ -473,7 +472,11 @@ export class LabEngine implements LabEngineLike {
   apply(a: Action): LabEvent[] {
     const s = this.st;
     const out: LabEvent[] = [];
-    const needsAccess = a.t !== "access" && a.t !== "carm";
+    // Turning the C-arm is not a procedure step: it changes the picture, not the patient, so it is neither logged nor undoable.
+    if (a.t === "carm") { s.carm = { rot: a.rot, tilt: a.tilt }; return out; }
+    // Resuscitation needs no vascular access: an arrest on the table is treated whether or not the procedure has begun.
+    const resus = a.t === "cpr" || a.t === "shock" || a.t === "pressor" || a.t === "fluid" || a.t === "pericardiocentesis" || a.t === "restart";
+    const needsAccess = a.t !== "access" && !resus;
     if (needsAccess && !s.access) {
       out.push(this.ev("no-access", "Get vascular access first.", "bad"));
       return out;
@@ -527,6 +530,14 @@ export class LabEngine implements LabEngineLike {
           break;
         }
         s.targetSeg = a.segId;
+        // a wire whose tip is on the new target's path now aims there; one in another branch keeps its path, to be withdrawn first
+        if (s.wire) {
+          const next = routeTo(this.g, this.site, a.segId);
+          if (next.includes(s.wire.tipSeg)) {
+            this.route = next;
+            s.wire = { ...s.wire, route: [...next] };
+          }
+        }
         out.push(this.ev("target", `Treating ${a.segId}.`));
         break;
       }
@@ -535,10 +546,17 @@ export class LabEngine implements LabEngineLike {
           const g = byId[a.id] as GuideCatheter | undefined;
           if (!g || g.kind !== "guide") return [this.ev("no-device", "Unknown guide.", "bad")];
           this.active = "guide";
-          const root = coronaryRoot(this.g, this.treatTarget());
+          // a right Judkins goes to the right coronary and a left-sided curve to the left main, whatever was targeted before;
+          // an Amplatz goes where the target is
+          const root = g.curve === "JR4" ? "RCA" : g.curve.startsWith("AL") ? coronaryRoot(this.g, this.treatTarget()) : "LM";
           this.route = routeTo(this.g, this.site, root);
           this.tipSeg = this.route[0];
           this.tipMm = 0;
+          // a guide exchange comes out over the wire: the wire and anything on it are withdrawn first
+          if (s.wire || s.balloon || s.stent) {
+            out.push(this.ev("exchange", "Wire and devices withdrawn for the guide exchange.", "info"));
+            s.wire = null; s.balloon = null; if (s.stent && !s.stent.deployed) s.stent = null;
+          }
           s.guide = { id: a.id, engaged: null, quality: 0, tipSeg: this.tipSeg, tipMm: 0 };
           out.push(this.ev("guide", `Guide ${g.name} selected.`));
         } else if (a.slot === "wire") {
@@ -575,25 +593,35 @@ export class LabEngine implements LabEngineLike {
           const w = byId[s.wire.id] as Guidewire | undefined;
           const gdev = byId[s.guide.id] as GuideCatheter;
           if (!w || w.kind !== "wire") break;
+          const from = { seg: s.wire.tipSeg, mm: s.wire.tipMm };
           const r = advanceWire(this.g, s, w, [...this.plaqueList], gdev.support, a.mm, this.rand);
           this.tipSeg = r.tipSeg;
           this.tipMm = r.tipMm;
           this.route = r.route;
-          s.wire = { ...s.wire, tipSeg: r.tipSeg, tipMm: r.tipMm, route: r.route };
+          s.wire = { ...s.wire, tipSeg: r.tipSeg, tipMm: r.tipMm, route: r.route, capLoad: r.capLoad };
           if (r.event) {
-            out.push(r.event);
+            if (r.event.kind !== "perforation") out.push(r.event); // the complication below reports a perforation, with its effect
             if (r.event.kind === "perforation") {
               this.applyComplicationResult(draw("perforation", baseRiskContext({ calcium: 0.5, tipLoad: w.tipLoadGf, territorySeg: this.territorySeg() }), this.rand, true), out, "perforation");
             }
-          } else if (r.moved < Math.abs(a.mm) * 0.25 && a.mm > 2) {
-            out.push(this.ev("resistance", "Heavy lesion resistance.", "caution"));
           }
-          const pl = this.plaqueList.find((p) => p.segId === r.tipSeg && Math.abs(p.centerMm - r.tipMm) < p.lengthMm / 2 + 2);
-          if (pl && a.mm > 0) {
-            if (this.rand() < perforationRisk(w, pl)) {
-              this.applyComplicationResult(draw("perforation", baseRiskContext({ tipLoad: w.tipLoadGf, calcium: pl.calcium, territorySeg: pl.segId, hydrophilic: w.coating === "hydrophilic" }), this.rand), out, "perforation");
+          // Wire perforation: a risk per millimeter the tip traveled through a lesion, and per millimeter it was driven into the end of
+          // a small distal vessel. A move that stops at the lesion's edge, or travels open vessel, carries none.
+          if (a.mm > 0 && r.moved > 0) {
+            const seg = from.seg === r.tipSeg ? r.tipSeg : null;
+            const pl = seg ? this.plaqueList.find((p) => p.segId === seg && p.ds >= 0.2 && Math.min(r.tipMm, p.centerMm + p.lengthMm / 2) > Math.max(from.mm, p.centerMm - p.lengthMm / 2)) : undefined;
+            const throughMm = pl ? Math.min(r.tipMm, pl.centerMm + pl.lengthMm / 2) - Math.max(from.mm, pl.centerMm - pl.lengthMm / 2) : 0;
+            const tipSegDef = this.g.byId[r.tipSeg];
+            const terminal = !!tipSegDef && !this.g.segs.some((x) => x.parent === r.tipSeg) && r.tipMm >= tipSegDef.length - 2;
+            const pushedIntoEnd = terminal ? Math.max(0, a.mm - r.moved) + (r.tipMm >= tipSegDef!.length - 0.5 ? 2 : 0) : 0;
+            const tipFactor = (w.tipLoadGf / 4) * (w.coating === "hydrophilic" ? 2 : 1);
+            const pLesion = pl ? 1 - Math.pow(1 - perforationRisk(w, pl) * LAB.perforationPerMmScale, throughMm) : 0;
+            const pDistal = 1 - Math.pow(1 - LAB.distalPerforationPerMm * tipFactor, pushedIntoEnd);
+            if (this.rand() < pLesion + pDistal) {
+              const where = pl ?? null;
+              this.applyComplicationResult(draw("perforation", baseRiskContext({ tipLoad: w.tipLoadGf, calcium: where?.calcium ?? 0, territorySeg: r.tipSeg, hydrophilic: w.coating === "hydrophilic" }), this.rand, true), out, "perforation");
             }
-            if (this.rand() < subintimalRisk(w, pl)) out.push(this.ev("subintimal", "Subintimal tracking.", "caution"));
+            if (pl && this.rand() < subintimalRisk(w, pl) * Math.min(1, throughMm / Math.max(1, pl.lengthMm))) out.push(this.ev("subintimal", "Subintimal tracking.", "caution"));
           }
           if (s.act < 250 && a.mm > 0) out.push(this.ev("thrombus-risk", "Low ACT: thrombus risk on the wire.", "caution"));
           s.fluoroSeconds += Math.abs(a.mm) * 0.02;
@@ -626,9 +654,6 @@ export class LabEngine implements LabEngineLike {
         this.syncGuideState();
         break;
       }
-      case "carm":
-        s.carm = { rot: a.rot, tilt: a.tilt };
-        break;
       case "inject":
         s.contrastMl += a.ml;
         out.push(this.ev("contrast", `${a.ml} mL contrast into the ${a.where}.`));
@@ -705,9 +730,8 @@ export class LabEngine implements LabEngineLike {
       }
       case "pericardiocentesis": {
         const { drained, events } = applyPericardiocentesis(this.sim, a.ml, this.effusion, () => {
+          // draining relieves the tamponade but does not close the hole: an open perforation keeps bleeding until it is sealed
           this.effusion = Math.max(0, this.effusion - Math.min(a.ml, this.effusion));
-          this.tamponadeRate = 0;
-          this.perforationSealed = true;
         });
         out.push(...events.map((e) => ({ ...e, at: s.elapsedS })));
         if (drained > 0) {
@@ -728,11 +752,11 @@ export class LabEngine implements LabEngineLike {
     }
 
     s.log = [...s.log, a];
-    if (a.t !== "carm" && a.t !== "shape" && a.t !== "torque" && a.t !== "inflate" && a.t !== "deploy"
+    if (a.t !== "shape" && a.t !== "torque" && a.t !== "inflate" && a.t !== "deploy"
       && a.t !== "cpr" && a.t !== "shock" && a.t !== "pressor" && a.t !== "fluid" && a.t !== "pericardiocentesis" && a.t !== "restart") {
       this.rollComplications(a, out);
     }
-    if (a.t !== "carm" && a.t !== "shape" && a.t !== "torque") this.syncSim();
+    if (a.t !== "shape" && a.t !== "torque") this.syncSim();
     this.pushSnap();
     return out;
   }

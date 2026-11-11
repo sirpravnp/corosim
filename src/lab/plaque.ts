@@ -19,21 +19,29 @@ const logistic = (x: number) => 1 / (1 + Math.exp(-8 * (x - 0.5)));
 
 const GRADES = ["A", "B", "C", "D", "E", "F"] as const;
 
-/** Approximate segment length for centerline mm → lesion pos when the tree is not in scope (coupling uses the real length). */
-const posFromMm = (p: Plaque, mm: number) => Math.min(0.99, Math.max(0.01, mm / Math.max(p.centerMm * 2, p.lengthMm * 3, 1)));
+/**
+ * Centerline mm to the solver's 0..1 position. With the segment's real length (the coupling passes it) the position is exact; without
+ * it the estimate assumes the lesion sits a third of the way along a segment at least three lesion lengths long.
+ */
+const posFromMm = (p: Plaque, mm: number, segLenMm?: number) =>
+  Math.min(0.99, Math.max(0.01, mm / (segLenMm && segLenMm > 0 ? segLenMm : Math.max(p.centerMm * 2, p.lengthMm * 3, 1))));
 
-/** Turn plaque anatomy into network lesions for the coronary solver. */
-export function plaqueToLesions(p: Plaque): Lesion[] {
+/**
+ * Turn plaque anatomy into network lesions for the coronary solver. A total occlusion goes over as `occluded`, the solver's own
+ * representation (TIMI 0 and no flow beyond it); a bare ds of 1 would leave it dividing by a zero lumen.
+ */
+export function plaqueToLesions(p: Plaque, segLenMm?: number): Lesion[] {
   const out: Lesion[] = [];
   if (p.ds >= PLAQUE.cleanDs) {
-    out.push({ segId: p.segId, pos: posFromMm(p, p.centerMm), ds: p.ds, lengthMm: p.lengthMm });
+    const pos = posFromMm(p, p.centerMm, segLenMm);
+    out.push(p.ds >= 0.995 ? { segId: p.segId, pos, ds: 1, occluded: true, lengthMm: p.lengthMm } : { segId: p.segId, pos, ds: p.ds, lengthMm: p.lengthMm });
   }
   for (const st of p.stents) {
     const res = Math.max(0, 1 - st.expansionPct / 100);
     if (res >= PLAQUE.cleanDs) {
       out.push({
         segId: p.segId,
-        pos: posFromMm(p, (st.fromMm + st.toMm) / 2),
+        pos: posFromMm(p, (st.fromMm + st.toMm) / 2, segLenMm),
         ds: res,
         lengthMm: st.toMm - st.fromMm,
       });

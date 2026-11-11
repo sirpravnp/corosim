@@ -92,7 +92,8 @@ export interface LabState {
   sheath: { site: AccessSite; french: number; lengthMm: number } | null;
   act: number; // activated clotting time, seconds
   guide: { id: string; engaged: "LM" | "RCA" | null; quality: number; tipSeg: string; tipMm: number } | null;
-  wire: { id: string; tipSeg: string; tipMm: number; bendDeg: number; rotDeg: number; route: string[] } | null;
+  /** `capLoad` counts the presses the tip has spent loaded against a lesion it has not yet crossed (steady pressure builds force). */
+  wire: { id: string; tipSeg: string; tipMm: number; bendDeg: number; rotDeg: number; route: string[]; capLoad?: number } | null;
   /** `inflatedAtm` 0 means deflated. The vessel is occluded while it is above 0. */
   balloon: { id: string; segId: string; centerMm: number; inflatedAtm: number } | null;
   stent: { id: string; segId: string; centerMm: number; deployed: boolean } | null;
