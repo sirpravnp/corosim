@@ -116,6 +116,8 @@ export interface ScanSettings {
 window?: EchoWindow;
   lines?: number;
   dr?: number;
+  /** Acquire only these lines (angles from the centre line, radians), for M-mode; the sector's edge apodization is skipped. */
+  lineAngles?: number[];
   /** Color Doppler: blood velocity along the beam inside a box, from the flow model's jets at this moment. Needs the CT heart. */
   color?: ColorSettings;
 }
@@ -232,7 +234,7 @@ function kernel(sigma: number): Float32Array {
  * the beat to image them; without, the resting normal heart.
  */
 export function acquire(pose: Pose, depth: number, patient: { heart: EchoHeart; frame: EchoFrame } = { heart: NORMAL_HEART, frame: stillFrame() }, s: ScanSettings = {}): Polar {
-  const NL = s.lines ?? BEAM.lines, dr = s.dr ?? BEAM.dr, NS = Math.max(8, Math.round(depth / dr));
+  const NL = s.lineAngles ? s.lineAngles.length : s.lines ?? BEAM.lines, dr = s.dr ?? BEAM.dr, NS = Math.max(8, Math.round(depth / dr));
   const win = s.window ?? "parasternal", frameNo = s.frameNo ?? 0, gainLin = Math.pow(10, (s.gain ?? 0) / 20);
   const n = NL * NS, half = SECTOR.halfAngle;
   const echo = new Float32Array(n), z = new Float32Array(n), att = new Float32Array(n);
@@ -247,7 +249,7 @@ export function acquire(pose: Pose, depth: number, patient: { heart: EchoHeart; 
 
   // 1-2: classify every sample, give it acoustic properties and its scatterers
   for (let l = 0; l < NL; l++) {
-    const a = -half + (2 * half * (l + 0.5)) / NL, ca = Math.cos(a), sa = Math.sin(a);
+    const a = s.lineAngles ? s.lineAngles[l] : -half + (2 * half * (l + 0.5)) / NL, ca = Math.cos(a), sa = Math.sin(a);
     const dir: V3 = [pose.beam[0] * ca + pose.lateral[0] * sa, pose.beam[1] * ca + pose.lateral[1] * sa, pose.beam[2] * ca + pose.lateral[2] * sa];
     const inBoxLine = col !== null && a >= col.box.a0 && a <= col.box.a1;
     const dirCt = inBoxLine ? heartDirToCt(ctHeart()!, toHeart(dir)) : null;
@@ -393,7 +395,7 @@ export function acquire(pose: Pose, depth: number, patient: { heart: EchoHeart; 
   // 7: log compression to the display range; lines at the sector's edge are a little weaker (aperture apodization)
   const img = new Float32Array(n), top = BEAM.ceiling;
   for (let j = 0; j < NS; j++) for (let l = 0; l < NL; l++) {
-    const i = j * NL + l, edge = Math.min(l, NL - 1 - l) / 6, apod = edge < 1 ? 0.5 + 0.5 * edge : 1;
+    const i = j * NL + l, edge = s.lineAngles ? 6 : Math.min(l, NL - 1 - l) / 6, apod = edge < 1 ? 0.5 + 0.5 * edge : 1;
     const db = 20 * Math.log10(Math.max(1e-6, env[i] * apod));
     const u = (db - (top - BEAM.range)) / BEAM.range;
     img[i] = Math.max(0, Math.min(1, u));

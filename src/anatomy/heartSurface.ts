@@ -265,6 +265,16 @@ export function meshHeart(step = 1.4, bounds: [V3, V3] = [[-64, -74, -72], [64, 
     // the great vessels reach further than the coronary views' box: a branch pulmonary artery, an enlarged aortic arch, the pulmonary veins
     if (morph.greatVessels) { lo = [Math.min(lo[0], -80 * k), lo[1], Math.min(lo[2], -84)]; hi = [Math.max(hi[0], 80 * k), Math.max(hi[1], 132), hi[2]]; }
   }
+  const mesh = meshSdf(sdf, which, [lo, hi], step);
+  return morph ? dropSmallPieces(mesh, 60) : mesh;
+}
+
+/**
+ * Surface nets over any signed distance field (negative inside) in a box, with a part per vertex from `which`: the mesher `meshHeart`
+ * uses, open to other shapes (the CT heart, src/anatomy/ctHeart.ts).
+ */
+export function meshSdf(sdf: (q: V3) => number, which: (q: V3) => number, bounds: [V3, V3], step = 1.4): SurfaceMesh {
+  const [lo, hi] = bounds;
   const nx = Math.ceil((hi[0] - lo[0]) / step) + 1, ny = Math.ceil((hi[1] - lo[1]) / step) + 1, nz = Math.ceil((hi[2] - lo[2]) / step) + 1;
   const at = (i: number, j: number, k: number) => i + nx * (j + ny * k);
   // Coarse pass every 3rd node; exact evaluation only in a narrow band around the surface.
@@ -334,8 +344,7 @@ export function meshHeart(step = 1.4, bounds: [V3, V3] = [[-64, -74, -72], [64, 
       + positions[a + 2] * (positions[b] * positions[c + 1] - positions[b + 1] * positions[c])) / 6;
   }
   if (vol < 0) for (let t = 0; t < idx.length; t += 3) { const x = idx[t + 1]; idx[t + 1] = idx[t + 2]; idx[t + 2] = x; }
-  const mesh: SurfaceMesh = { positions, normals, indices: Uint32Array.from(idx), parts: partArr };
-  return morph ? dropSmallPieces(mesh, 60) : mesh;
+  return { positions, normals, indices: Uint32Array.from(idx), parts: partArr };
 }
 
 /**

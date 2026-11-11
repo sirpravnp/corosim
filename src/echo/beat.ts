@@ -3,6 +3,7 @@ import { morphFor } from "../structural/morph";
 import { EchoCase } from "./cases";
 import { FrameMotion, longShortening, solveShortening } from "./motion";
 import { EchoFrame, EchoHeart, makeHeart } from "./tissue";
+import { NATIVE, ctGeom, lvScaleFor } from "./ctEcho";
 
 /**
  * One heartbeat of an echo patient, from the structural engine: the LV, RV and atrial volumes and the valve flows through the beat,
@@ -88,7 +89,11 @@ export function beatOfSpec(spec: StructuralSpec, look: EchoCase["look"] = {}, nF
   const lvEdv = Math.max(...lv), lvEsv = Math.min(...lv), rvEdv = Math.max(...rv), rvEsv = Math.min(...rv);
   const nr = normalReport();
   // the echo LV is sized from the engine's end-diastolic volume against a normal heart's (linear scale = volume^(1/3))
-  const lvScale = Math.min(1.45, Math.max(0.8, Math.cbrt(lvEdv / nr.lvEdv)));
+  // On the CT heart: the size whose cavity, with the case's walls, holds the engine's EDV (ctEcho.lvScaleFor). On the schematic, the cube
+  // root of the volume ratio against a normal heart.
+  const lvScale = ctGeom()
+    ? lvScaleFor(lvEdv, look.lvWall ?? NATIVE.lv, look.septum ?? look.lvWall ?? NATIVE.lv)
+    : Math.min(1.45, Math.max(0.8, Math.cbrt(lvEdv / nr.lvEdv)));
   const morph = morphFor(spec, r);
   // the other chambers' sizes from the same volumes (morphFor gives linear scales; its RV term is a square root of the volume ratio)
   const chamberScale = { rv: Math.pow(morph.rvBulge ?? 1, 2 / 3), ra: morph.raScale ?? 1, la: morph.laScale ?? 1 };

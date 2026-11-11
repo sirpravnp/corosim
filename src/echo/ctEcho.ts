@@ -410,3 +410,46 @@ export function lvTable(tau: number, angDeg: number): { rc: number; wall: number
   return { rc: g.rc[i * NA + j], wall: g.wall[i * NA + j] };
 }
 export { IAS_CENTER as _iasCenter };
+
+/**
+ * The LV size (linear scale about its own frame) at which the CT LV's cavity, with the case's diastolic walls (`lvWall`, `septum`, mm)
+ * in place of its own, holds `edvMl`. The engine's end-diastolic volume is the cavity's, so thick walls must push the epicardium out
+ * (concentric hypertrophy keeps a near-normal cavity) and thin walls give the cavity room (a dilated ventricle): sizing by the cube root
+ * of the volume ratio alone would ignore both. Integrates the measured cavity and wall tables; bisection.
+ */
+export function lvScaleFor(edvMl: number, lvWall: number, septum: number): number {
+  const g = G!, dT = g.length / NT, dA = (2 * Math.PI) / NA;
+  const cavity = (s: number, own: boolean) => {
+    let v = 0;
+    for (let i = 0; i < NT; i++) for (let j = 0; j < NA; j++) {
+      const c = i * NA + j, tau = (i + 0.5) / NT, ang = -180 + (360 * (j + 0.5)) / NA;
+      const septal = Math.max(0, Math.cos(((ang - 180) * Math.PI) / 180 * 1.3)) * (tau > 0.1 && tau < 0.85 ? 1 : 0);
+      const re = g.rc[c] + g.wall[c], wt = own ? g.wall[c] * s : lvWall + (septum - lvWall) * septal;
+      const r = Math.max(0, s * re - wt);
+      v += 0.5 * r * r * dA * dT * s;
+    }
+    return v / 1000;
+  };
+  // calibrate the table integral against the CT's own cavity volume (the tables are a polar approximation of it)
+  let own = 0; for (const l of H!.labels) if (l === CT.LV) own++;
+  const k = own / 1000 / cavity(1, true);
+  let lo = 0.6, hi = 1.8;
+  for (let n = 0; n < 40; n++) { const m = (lo + hi) / 2; if (cavity(m, false) * k < edvMl) lo = m; else hi = m; }
+  return (lo + hi) / 2;
+}
+
+/**
+ * The CT LV geometry as one patient's walls make it: in reference millimetres, the case's diastolic wall (`lvWallRef`, `septumRef`)
+ * replaces the CT's own and the cavity takes up the difference, so the motion warp contracts the cavity the case actually has (a thinned
+ * wall's inner part is cavity and shortens like it; a thickened wall's inner part is wall and thickens like it).
+ */
+export function ctGeomFor(lvWallRef: number, septumRef: number): LvGeom {
+  const g = G!, rc = new Float32Array(g.rc.length), wall = new Float32Array(g.wall.length);
+  for (let i = 0; i < NT; i++) for (let j = 0; j < NA; j++) {
+    const c = i * NA + j, tau = (i + 0.5) / NT, ang = -180 + (360 * (j + 0.5)) / NA;
+    const septal = Math.max(0, Math.cos(((ang - 180) * Math.PI) / 180 * 1.3)) * (tau > 0.1 && tau < 0.85 ? 1 : 0);
+    const wt = lvWallRef + (septumRef - lvWallRef) * septal, re = g.rc[c] + g.wall[c];
+    rc[c] = Math.max(1, re - wt); wall[c] = re - rc[c];
+  }
+  return { ...g, rc, wall };
+}

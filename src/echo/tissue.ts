@@ -7,7 +7,7 @@ import {
 } from "./anatomy";
 import { ContractionMap, FrameMotion, STILL, WarpShape, contractionMap, schematicGeom, segmentAt, wallAt, warp } from "./motion";
 import { organicWarp, patchiness, roughness } from "./organic";
-import { CtSample, classifyCt, ctGeom } from "./ctEcho";
+import { CtSample, classifyCt, ctGeom, ctGeomFor } from "./ctEcho";
 
 
 
@@ -124,8 +124,9 @@ export function makeHeart(o: HeartOptions = {}): EchoHeart {
   const wma = o.wma ?? new Array(17).fill(1), scar = o.scar ?? new Array(17).fill(0);
   const v = (x?: Partial<ValveLook>): ValveLook => ({ ...NORMAL_VALVE, ...(x ?? {}) });
   const anatomy = o.anatomy ?? (ctGeom() ? "ct" : "schematic");
-  const geom = anatomy === "ct" ? ctGeom() : null;
-  if (anatomy === "ct" && !geom) throw new Error("makeHeart: the CT heart is not installed");
+  if (anatomy === "ct" && !ctGeom()) throw new Error("makeHeart: the CT heart is not installed");
+  // on the CT heart the warp moves the cavity this patient has: the case's walls, in reference millimetres (the LV is scaled by lvScale)
+  const geom = anatomy === "ct" ? (o.lvWall !== undefined || o.septum !== undefined ? ctGeomFor(lvWall / lvScale, septum / lvScale) : ctGeom()) : null;
   const map: ContractionMap = contractionMap(wma, geom ?? schematicGeom(lvWall / lvScale, septum / lvScale));
   const morph = o.morph ?? null;
   const cs = { rv: o.chamberScale?.rv ?? 1, ra: o.chamberScale?.ra ?? 1, la: o.chamberScale?.la ?? 1 };
