@@ -77,7 +77,7 @@ components:
 
 The room is dark so the display can be bright. CoroSim is a working instrument first and a website second: black and bone, one hot-spot color, and a heart drawn the way a thermal camera sees it. The name comes from the project's own opening comment in `style.css` ("scan-room black and bone"), and this document keeps that thesis rather than inventing a new one.
 
-The system has two registers that must stay in one family. The **front door** (home) is the thermogram: a full-bleed stippled heart on black, a 104px wordmark, hairline frames, and the thermal ramp as the only color. The **workbench** (/sim, /cath, /structural, /echo) is a console: a stage for the 3D heart or the probe view, with readouts and controls beside it. Everything on screen should look like it belongs to equipment, not to a SaaS dashboard. The ECG is always drawn on real pink paper, in dark and light themes alike.
+The system has two registers that must stay in one family. The **front door** (home) is the thermogram: a full-bleed stippled heart on black, a 104px wordmark, hairline frames, and the thermal ramp as the only color. The **workbench** (/sim, /cath, /structural, /echo, /lipids) is a console: a stage for the 3D heart or the probe view, with readouts and controls beside it. Everything on screen should look like it belongs to equipment, not to a SaaS dashboard. The ECG is always drawn on real pink paper, in dark and light themes alike.
 
 **Decision (confirmed by the owner):** the home page's thermogram theme is the theme for the whole site. The workbench tabs are to be brought into it, not the other way round. All copy is American English.
 
@@ -134,7 +134,7 @@ A near-monochrome palette. Color carries physiology, not decoration.
 
 ## Layout
 
-Home is a full-viewport overlay on a fixed canvas: header top-left, fact card top-right, doors bottom-left, legend bottom-right on desktop; a single stacked column on phones. The workbench is a two-column grid: a flexible left column (3D heart, 12-lead) and a 360px right rail of readouts and controls, collapsing to one column at 980px. Every page's content shell (simulator body, EKG/cath/structural/echo `.app`, home header gutters) is capped at 1680px with 20px side gutters so wide screens are not empty margins around a squeezed stage. Spacing rhythm is 8 / 14 / 20 / 24px.
+Home is a full-viewport overlay on a fixed canvas: header top-left, fact card top-right, doors bottom-left, legend bottom-right on desktop; a single stacked column on phones. The workbench is a two-column grid: a flexible left column (3D heart, 12-lead) and a 360px right rail of readouts and controls, collapsing to one column at 980px. Every page's content shell (simulator body, EKG/cath/structural/echo/lipids `.app`, home header gutters) is capped at 1680px with 20px side gutters so wide screens are not empty margins around a squeezed stage. Spacing rhythm is 8 / 14 / 20 / 24px.
 
 ## Elevation & Depth
 

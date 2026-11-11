@@ -15,7 +15,7 @@
 .shell-brand { display: flex; align-items: center; gap: 10px; padding: 14px 18px 14px 14px; border-left: 1px solid var(--sh-line); color: var(--ink); text-decoration: none; font: 650 20px/1 var(--font-ui); letter-spacing: -0.02em; }
 .shell-brand img { display: block; width: 32px; height: 32px; }
 /* Cells are one width (never wider than 150px) and sit together after the brand, so the spacing is even and the gap falls at the right end, before Share. */
-.shell-nav { display: grid; grid-template-columns: repeat(7, minmax(0, 132px)); justify-content: start; }
+.shell-nav { display: grid; grid-template-columns: repeat(8, minmax(0, 124px)); justify-content: start; }
 .shell-nav a:last-child { border-right: 1px solid var(--sh-line); }
 .shell-nav a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; min-height: 72px; padding: 12px 8px; color: var(--muted); text-decoration: none; border-left: 1px solid var(--sh-line); font: 300 16px/1.1 var(--font-ui); letter-spacing: -0.01em; transition: color 0.15s var(--sh-ease); }
 .shell-nav a:hover { color: var(--ink); }
@@ -104,7 +104,7 @@
 .shell-foot a { color: var(--muted); text-underline-offset: 3px; }
 .shell-foot a:hover { color: var(--ink); }
 
-/* Between a phone and a laptop the bar is tight: the wordmark and the Share / theme labels give way so the seven cells keep their room. */
+/* Between a phone and a laptop the bar is tight: the wordmark and the Share / theme labels give way so the eight cells keep their room. */
 @media (min-width: 761px) and (max-width: 1280px) {
   .shell-brand span { display: none; }
   .shell-brand { padding-right: 14px; }
