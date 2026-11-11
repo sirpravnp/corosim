@@ -3,8 +3,8 @@ import { V3 } from "../src/anatomy/curve";
 import { Part, classifyHeart, heartSdf, gradient } from "../src/anatomy/heartSurface";
 import { buildPoses, LANDMARKS_HEART_FRAME as LM } from "../src/echo/poses";
 import { frameFor, rasterize } from "../src/echo/paint";
-import { Tissue, classifyEcho, isSolidTissue } from "../src/echo/tissue";
-import { AORTIC, E1, E2, LV_AXIS, LV_LENGTH, MITRAL, TRICUSPID, flaps, lvEpiDistance, lvFrame, LvPoint } from "../src/echo/anatomy";
+import { PERICARDIAL_REFLECTION_Y, Tissue, classifyEcho, isSolidTissue } from "../src/echo/tissue";
+import { AORTIC, E1, E2, LEAFLET_BOW, LV_AXIS, LV_LENGTH, MITRAL, TRICUSPID, flaps, lvEpiDistance, lvFrame, LvPoint } from "../src/echo/anatomy";
 
 const add = (a: V3, b: V3, k = 1): V3 => [a[0] + k * b[0], a[1] + k * b[1], a[2] + k * b[2]];
 const at = (c: V3, a: number, b: number): V3 => add(add(c, E1, a), E2, b);
@@ -87,7 +87,8 @@ describe("valves", () => {
     for (const [name, ann, part] of [["mitral", MITRAL, Part.LV], ["tricuspid", TRICUSPID, Part.RV]] as const) {
       const [s0, s1] = flaps(ann, 0.35);
       for (const s of [s0, s1]) {
-        const mid = add(s.origin, s.dir, s.length / 2);
+        // leaflets bow along their length: the middle sits LEAFLET_BOW off the straight hinge-to-tip line
+        const mid = add(add(s.origin, s.dir, s.length / 2), s.norm, LEAFLET_BOW);
         const e = classifyEcho(mid, 0.35);
         expect(e.tissue, name).toBe(Tissue.Leaflet);
         expect(e.part, name).toBe(part);
@@ -168,8 +169,10 @@ describe("pericardium", () => {
       const th = Math.acos(1 - 2 * rnd()), ph = 2 * Math.PI * rnd(), d: V3 = [Math.sin(th) * Math.cos(ph), Math.cos(th), Math.sin(th) * Math.sin(ph)];
       let t = 0; while (t < 160 && heartSdf(add([0, 0, 0], d, t)) < 0) t += 0.5;
       if (t >= 160) continue;
-      tried++;
       const s: V3 = add([0, 0, 0], d, t), g = gradient(heartSdf, s);
+      // the pericardium reflects onto the great arteries a few centimeters above the valves; above that there is none
+      if (s[1] > PERICARDIAL_REFLECTION_Y - 8) continue;
+      tried++;
       // the first pericardium point out along the surface normal; its thickness is measured along the field's own normal there
       let q: V3 | null = null;
       for (let u = 2; u < 8; u += 0.05) if (classifyEcho(add(s, g, u)).tissue === Tissue.Pericardium) { q = add(s, g, u); break; }

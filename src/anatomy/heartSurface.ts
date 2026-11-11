@@ -144,6 +144,42 @@ const FLOOR = 1.2; // mm: the thinnest vessel drawn (the page's smallest tube is
 
 const scale = (x: number | undefined, lo = 0.05, def = 1) => (x !== undefined && Number.isFinite(x) ? Math.max(lo, x) : def);
 
+/** Paths that `partsMorph` would otherwise rebuild on every call (it runs per sample when the echo slices the heart). */
+const AORTA_UP = MORPH_AORTA.slice(0, 6), AORTA_DOWN = MORPH_AORTA.slice(5);
+const PV_LEFT_ALL = PV_LEFT;
+const pvRightCache = new Map<number, V3[][]>();
+function pvRight(ra: number): V3[][] {
+  let v = pvRightCache.get(ra);
+  if (!v) {
+    // a big right atrium would swallow the right pulmonary veins, so they leave the left atrium further back and to the right
+    // (in the patient frame) the free ends move back and to the right; the end on the left atrium stays on it
+    const shiftHeart = unrotateHeart([-6 * (ra - 1), 0, -12 * (ra - 1)]);
+    v = PV_RIGHT.map((path) => fromPatient(path).map((q, i): V3 => (i === 0 ? q : [q[0] + shiftHeart[0], q[1] + shiftHeart[1], q[2] + shiftHeart[2]])));
+    if (pvRightCache.size > 64) pvRightCache.clear();
+    pvRightCache.set(ra, v);
+  }
+  return v;
+}
+/** Beyond this distance (mm) from a tube's padded bounding box, the box distance stands in for the tube's: it is a lower bound and larger than any fillet used to blend the parts. */
+const FAR = 15;
+const boxes = new WeakMap<V3[], [V3, V3]>();
+function boxOf(pts: V3[]): [V3, V3] {
+  let b = boxes.get(pts);
+  if (!b) {
+    const lo: V3 = [Infinity, Infinity, Infinity], hi: V3 = [-Infinity, -Infinity, -Infinity];
+    for (const q of pts) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], q[k]); hi[k] = Math.max(hi[k], q[k]); }
+    b = [lo, hi]; boxes.set(pts, b);
+  }
+  return b;
+}
+/** `polyline`, with a cheap early answer far from the tube. */
+function tube(p: V3, pts: V3[], r: number): number {
+  const [lo, hi] = boxOf(pts);
+  const dx = Math.max(lo[0] - r - p[0], 0, p[0] - hi[0] - r), dy = Math.max(lo[1] - r - p[1], 0, p[1] - hi[1] - r), dz = Math.max(lo[2] - r - p[2], 0, p[2] - hi[2] - r);
+  const d = Math.hypot(dx, dy, dz);
+  return d > FAR ? d : polyline(p, pts, r);
+}
+
 export function partsMorph(p: V3, m: HeartMorph): number[] {
   const kv = scale(m.ventricleScale), ra = scale(m.raScale), la = scale(m.laScale), ao = scale(m.aortaScale), rb = scale(m.rvBulge, 0.05);
   const q: V3 = [p[0] / kv, 54 + (p[1] - 54) / kv, p[2] / kv];
@@ -154,24 +190,24 @@ export function partsMorph(p: V3, m: HeartMorph): number[] {
   const rAtrium = smin(ellipsoid(p, [-27, 54, -6], [16 * ra, 17 * ra, 18 * ra]), taperedLobe(p, [[-26, 58, 6], [-20, 61, 15], [-12, 60, 21]], 7 * ra, 3.5 * ra), 7);
   const lAtrium = smin(ellipsoid(p, [5, 56, -21], [25 * la, 12 * la, 15 * la]), taperedLobe(p, [[17, 57, -6], [27, 59, 3], [33, 56, 11]], 6 * la, 3 * la), 7);
   // the root, ascending aorta and arch are the aorta; from the top of the arch down is the descending aorta, so the two can carry different blood
-  const aorta = smin(polyline(p, MORPH_AORTA.slice(0, 6), 12 * ao), ellipsoid(p, [0, 50, 2], [15 * ao, 9 * ao, 15 * ao]), 4);
+  const aorta = smin(tube(p, AORTA_UP, 12 * ao), ellipsoid(p, [0, 50, 2], [15 * ao, 9 * ao, 15 * ao]), 4);
   const out = new Array(12).fill(Infinity);
   out[MorphPart.LV] = lv; out[MorphPart.RA] = rAtrium; out[MorphPart.LA] = lAtrium; out[MorphPart.Aorta] = aorta;
-  out[MorphPart.DAO] = polyline(p, MORPH_AORTA.slice(5), 12 * ao);
+  out[MorphPart.DAO] = tube(p, AORTA_DOWN, 12 * ao);
   if (m.greatVessels) {
     const pa = m.paScale === undefined || !Number.isFinite(m.paScale) ? 1 : Math.max(0, m.paScale), pv = m.pvScale === undefined || !Number.isFinite(m.pvScale) ? 1 : Math.max(0, m.pvScale), cv = scale(m.cavaScale);
     const trunk: V3[] = [[PA_TRUNK[0][0] * kv, 54 + (PA_TRUNK[0][1] - 54) * kv, PA_TRUNK[0][2] * kv], ...PA_TRUNK.slice(1)]; // starts on the (scaled) outflow tract
-    if (pa > 0) out[MorphPart.PA] = Math.min(polyline(p, trunk, Math.max(FLOOR, 10 * pa)), polyline(p, LPA, Math.max(FLOOR, 6.5 * pa)), polyline(p, RPA, Math.max(FLOOR, 6.5 * pa)));
-    out[MorphPart.SVC] = polyline(p, SVC_PATH, 7.5 * cv); out[MorphPart.IVC] = polyline(p, IVC_PATH, 8.5 * cv);
+    if (pa > 0) out[MorphPart.PA] = Math.min(polyline(p, trunk, Math.max(FLOOR, 10 * pa)), tube(p, LPA, Math.max(FLOOR, 6.5 * pa)), tube(p, RPA, Math.max(FLOOR, 6.5 * pa)));
+    out[MorphPart.SVC] = tube(p, SVC_PATH, 7.5 * cv); out[MorphPart.IVC] = tube(p, IVC_PATH, 8.5 * cv);
     if (pv > 0) {
-      // a big right atrium would swallow the right pulmonary veins, so they leave the left atrium further back and to the right
-      // (in the patient frame) the free ends move back and to the right; the end on the left atrium stays on it
-      const shiftHeart = unrotateHeart([-6 * (ra - 1), 0, -12 * (ra - 1)]);
-      const moved = PV_RIGHT.map((path) => fromPatient(path).map((v, i): V3 => (i === 0 ? v : [v[0] + shiftHeart[0], v[1] + shiftHeart[1], v[2] + shiftHeart[2]])));
-      out[MorphPart.PV] = Math.min(...[...moved, ...PV_LEFT].map((path) => polyline(p, path, Math.max(FLOOR, 4.5 * pv))));
+      const rv = Math.max(FLOOR, 4.5 * pv);
+      let d = Infinity;
+      for (const path of pvRight(ra)) d = Math.min(d, tube(p, path, rv));
+      for (const path of PV_LEFT_ALL) d = Math.min(d, tube(p, path, rv));
+      out[MorphPart.PV] = d;
     }
-    if ((m.ductRadius ?? 0) > 0) out[MorphPart.Duct] = polyline(p, DUCT_PATH, Math.max(FLOOR, m.ductRadius!));
-    if ((m.btRadius ?? 0) > 0) out[MorphPart.BT] = polyline(p, BT_PATH, Math.max(FLOOR, m.btRadius!));
+    if ((m.ductRadius ?? 0) > 0) out[MorphPart.Duct] = tube(p, DUCT_PATH, Math.max(FLOOR, m.ductRadius!));
+    if ((m.btRadius ?? 0) > 0) out[MorphPart.BT] = tube(p, BT_PATH, Math.max(FLOOR, m.btRadius!));
   }
   return out;
 }
