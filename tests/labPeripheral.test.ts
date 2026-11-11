@@ -139,3 +139,16 @@ describe("peripheral anatomy data", () => {
     }
   });
 });
+
+describe("baked peripheral symmetry", () => {
+  it("each left limb vessel mirrors its right partner and stays on the left side", async () => {
+    const data = (await import("../src/cath/data/peripheral.json")).default as { segments: { id: string; points: number[][] }[] };
+    const len = (p: number[][]) => p.slice(1).reduce((a, q, i) => a + Math.hypot(q[0] - p[i][0], q[1] - p[i][1], q[2] - p[i][2]), 0);
+    const byId = Object.fromEntries(data.segments.map((s) => [s.id, s]));
+    for (const s of data.segments.filter((x) => x.id.endsWith("_L") && !/^(CIA|IIA|CCA)_/.test(x.id))) {
+      const r = byId[s.id.replace(/_L$/, "_R")];
+      expect(Math.abs(len(s.points) - len(r.points)), s.id).toBeLessThan(2);
+      for (const p of s.points) expect(p[0], s.id).toBeGreaterThan(-10); // patient left is +x of the midline
+    }
+  });
+});

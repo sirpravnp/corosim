@@ -221,9 +221,11 @@ export function buildAccess(v: AccessVariant, coronaryRoot: V3[]): VGraph {
     rad.radialR, rad.brach, rad.subcl, rad.innom,
   ];
   const byId = Object.fromEntries(segs.map((s) => [s.id, s]));
-  // Run-off and arm extras from the bake, drawn as branches (not on the guide/wire route).
-  const runoff = loadPeripheral().filter((s) =>
-    /^(SFA|POP|ATA|PTA|PERONEAL|DP|PFA|IIA|ULNAR|CCA|VERT)_/.test(s.id));
+  // Run-off and arm vessels from the bake, kept apart from the side branches: drawn in the peripheral views, never routed.
+  // Vessels the procedural graph already has (SFA, profunda, internal iliac, carotids) are not duplicated.
+  const branches = buildBranches(v, fem, rad, sinus) ?? [];
+  const have = new Set([...segs, ...branches].map((s) => s.id));
+  const runoff = loadPeripheral().filter((s) => /^(POP|ATA|PTA|PERONEAL|DP|ULNAR|VERT)_/.test(s.id) && !have.has(s.id));
   const asc = fem.asc;
   const lmDist = dist(endOf(asc), lm);
   const rcaDist = dist(endOf(asc), rca);
@@ -231,7 +233,7 @@ export function buildAccess(v: AccessVariant, coronaryRoot: V3[]): VGraph {
   const ostiumRcaMm = Math.max(0, asc.length - rcaDist * 0.4);
   return {
     segs, byId,
-    branches: [...(buildBranches(v, fem, rad, sinus) ?? []), ...runoff],
+    branches, runoff,
     ostium: {
       LM: { segId: "AORTA_ASC", mm: ostiumLmMm },
       RCA: { segId: "AORTA_ASC", mm: ostiumRcaMm },
@@ -259,7 +261,7 @@ export function unify(access: VGraph, tree: Tree): VGraph {
   }
   return {
     segs, byId,
-    branches: access.branches,
+    branches: access.branches, runoff: access.runoff,
     ostium: {
       LM: { segId: "LM", mm: 0 },
       RCA: { segId: "RCA", mm: 0 },

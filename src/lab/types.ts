@@ -24,6 +24,8 @@ export interface VGraph {
   segs: VSeg[]; byId: Record<string, VSeg>;
   /** Side branches (renals, carotids, deep femorals...). Drawn and filled with dye, but no route, wire or branch choice uses them. Optional. */
   branches?: VSeg[];
+  /** Baked run-off and arm vessels (popliteal, tibials, foot, ulnar, vertebrals): drawn for the peripheral views only, never routed. Optional. */
+  runoff?: VSeg[];
   ostium: Record<"LM" | "RCA", { segId: string; mm: number }>;
 }
 

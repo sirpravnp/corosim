@@ -101,8 +101,11 @@ const build = (): Seg[] => {
   for (const side of [1, -1] as const) {
     const R = side === 1;
     const tag = R ? "R" : "L";
-    const m = (p: V3): V3 => (R ? p : mirror(p));
-    const lat = R ? 1 : -1;
+    // Build every side in right-side coordinates, then mirror the finished left segments once. Mirroring each landmark as it
+    // was built mirrored points that were derived from already-mirrored ones a second time, so the left leg and arm crossed the midline.
+    const m = (p: V3): V3 => p;
+    const lat = 1;
+    const first = segs.length;
 
     // Iliacs from bifurcation.
     const ciaEnd = m(lerp(bifurcation, inguinal, 0.35));
@@ -194,6 +197,10 @@ const build = (): Seg[] => {
     segs.push(assumed(`ULNAR_${tag}`, `BRACHIAL_${tag}`,
       [br.points[br.points.length - 1]!, m(off(elbow, 12 * lat, -40, 4)), m(off(wrist, 18 * lat, 0, 2))],
       1.5, 1.1, "Ensemble des voies"));
+    if (!R) {
+      for (const sg of segs.slice(first)) sg.points = sg.points.map(mirror);
+      segs[first]!.points[0] = bif; // the left common iliac still starts at the aortic bifurcation, which sits just off the midline
+    }
   }
 
   // Carotid and vertebral origins off the arch.
