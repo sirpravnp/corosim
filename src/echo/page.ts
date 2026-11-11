@@ -193,7 +193,10 @@ function paint(now = performance.now()) {
   drawSweep(t);
 }
 
-function loop(now: number) { if (st.playing) paint(now); requestAnimationFrame(loop); }
+function loop(now: number) { if (st.playing) paint(now); requestAnimationFrame(loop);
+// redraw the overlay when the image is shown at a new size (its text scales with it)
+new ResizeObserver(() => drawOverlay()).observe(over);
+new ResizeObserver(() => drawStrip()).observe(stripO); }
 requestAnimationFrame(loop);
 
 const INK = "#f4f1ea", FAINT = "rgba(244,241,234,0.55)";
@@ -201,26 +204,28 @@ function drawOverlay() {
   og.clearRect(0, 0, over.width, over.height);
   const s = st.shown; if (!s) return;
   const cx = over.width / 2, px = s.px;
-  og.font = "500 12px 'JetBrains Mono', monospace"; og.fillStyle = INK; og.strokeStyle = FAINT; og.lineWidth = 1;
+  // text keeps its size on screen: on a narrow screen the canvas is shown smaller, so its text is drawn larger (k)
+  const k = Math.min(2, Math.max(1, over.width / Math.max(1, over.clientWidth || over.width) * 0.75)), mono = `500 ${Math.round(12 * k)}px 'JetBrains Mono', monospace`;
+  og.font = mono; og.fillStyle = INK; og.strokeStyle = FAINT; og.lineWidth = 1;
   // depth scale along the right edge of the sector: a tick every centimeter, labeled every 5
   const x0 = Math.min(over.width - 30, cx + Math.sin(HALF) * s.depth * px + 6);
   for (let cm = 0; cm * 10 <= s.depth; cm++) {
     const y = cm * 10 * px, major = cm % 5 === 0;
     og.beginPath(); og.moveTo(x0, y); og.lineTo(x0 + (major ? 8 : 4), y); og.stroke();
-    if (major && cm > 0) og.fillText(String(cm), x0 + 10, y + 4);
+    if (major && cm > 0) og.fillText(String(cm), Math.min(x0 + 10, over.width - 16 * k), y + 4 * k);
   }
   // the index mark: a dot on the screen's right, beside the sector's apex
   og.beginPath(); og.arc(cx + 34, 12, 4, 0, 2 * Math.PI); og.fill();
   // the scanner's header: view, mode, heart rate, depth
-  og.fillText(`${st.view.short}  ${MODE_NAME[st.mode]}`, 12, 20);
-  if (st.beat) og.fillText(`HR ${Math.round(st.beat.hr)}`, 12, 38);
-  og.fillText(`${(s.depth / 10).toFixed(0)} cm`, 12, 56);
+  og.fillText(`${st.view.short}  ${MODE_NAME[st.mode]}`, 12, 20 * k);
+  if (st.beat) og.fillText(`HR ${Math.round(st.beat.hr)}`, 12, 38 * k);
+  og.fillText(`${(s.depth / 10).toFixed(0)} cm`, 12, 56 * k);
   if (st.labelsOn) {
     // structure labels, centered in each cavity, as a teaching scanner's annotation
-    og.font = "600 15px 'Hanken Grotesk', system-ui, sans-serif"; og.textAlign = "center"; og.textBaseline = "middle";
+    og.font = `600 ${Math.round(15 * k)}px 'Hanken Grotesk', system-ui, sans-serif`; og.textAlign = "center"; og.textBaseline = "middle";
     og.lineWidth = 4; og.strokeStyle = "rgba(0,0,0,0.85)"; og.fillStyle = INK;
     for (const l of st.labels) { const x = cx + l.lateral * px, y = l.depth * px; og.strokeText(l.text, x, y); og.fillText(l.text, x, y); }
-    og.textAlign = "start"; og.textBaseline = "alphabetic"; og.font = "500 12px 'JetBrains Mono', monospace"; og.strokeStyle = FAINT; og.lineWidth = 1;
+    og.textAlign = "start"; og.textBaseline = "alphabetic"; og.font = mono; og.strokeStyle = FAINT; og.lineWidth = 1;
   }
   if (st.mode === "color") {
     // color box outline and the scale bar with its Nyquist limit
@@ -253,11 +258,12 @@ function drawStrip() {
   if (!strip) return;
   sg.putImageData(strip.img, 0, 0);
   so.clearRect(0, 0, stripO.width, stripO.height);
-  so.font = "500 12px 'JetBrains Mono', monospace"; so.fillStyle = INK; so.strokeStyle = FAINT; so.lineWidth = 1;
+  const ks = Math.min(2.2, Math.max(1, stripO.width / Math.max(1, stripO.clientWidth || stripO.width) * 0.75));
+  so.font = `500 ${Math.round(12 * ks)}px 'JetBrains Mono', monospace`; so.fillStyle = INK; so.strokeStyle = FAINT; so.lineWidth = 1;
   const W = stripO.width, H = stripO.height;
   if (strip.mode === "mmode") {
-    for (let cm = 1; cm * 10 < strip.depth; cm++) { const y = (cm * 10 * H) / strip.depth; so.beginPath(); so.moveTo(W - 8, y); so.lineTo(W, y); so.stroke(); if (cm % 2 === 0) so.fillText(String(cm), W - 28, y + 4); }
-    so.fillText("cm", W - 28, 14);
+    for (let cm = 1; cm * 10 < strip.depth; cm++) { const y = (cm * 10 * H) / strip.depth; so.beginPath(); so.moveTo(W - 8, y); so.lineTo(W, y); so.stroke(); if (cm % 2 === 0) so.fillText(String(cm), W - 28 * ks, y + 4 * ks); }
+    so.fillText("cm", W - 28 * ks, 14 * ks);
   } else {
     // velocity scale (m/s) and the baseline
     const vToY = (v: number) => ((strip!.top - v) / (strip!.top - strip!.bottom)) * H, span = strip.top - strip.bottom;
@@ -265,11 +271,11 @@ function drawStrip() {
     for (let v = Math.ceil(strip.bottom / step) * step; v <= strip.top + 1e-9; v += step) {
       const y = vToY(v); if (y < 6 || y > H - 4) continue;
       so.beginPath(); so.moveTo(W - 8, y); so.lineTo(W, y); so.stroke();
-      so.fillText((Math.abs(v) < 1e-9 ? 0 : v).toFixed(step < 0.1 ? 2 : 1), W - 46, y + 4);
+      so.fillText((Math.abs(v) < 1e-9 ? 0 : v).toFixed(step < 0.1 ? 2 : 1), W - 46 * ks, y + 4 * ks);
     }
-    const y0 = vToY(0); so.beginPath(); so.moveTo(0, y0); so.lineTo(W - 50, y0); so.stroke();
-    so.fillText("m/s", W - 46, 14);
-    if (Number.isFinite(strip.nyquist)) so.fillText(`Nyquist ${strip.nyquist.toFixed(2)} m/s`, 10, 18);
+    const y0 = vToY(0); so.beginPath(); so.moveTo(0, y0); so.lineTo(W - 50 * ks, y0); so.stroke();
+    so.fillText("m/s", W - 46 * ks, 14 * ks);
+    if (Number.isFinite(strip.nyquist)) so.fillText(`Nyquist ${strip.nyquist.toFixed(2)} m/s`, 10, 18 * ks);
   }
   // time marks: one per 200 ms, as on a scanner's sweep
   for (let t = 0.2; t < strip.seconds; t += 0.2) { const x = (t / strip.seconds) * W; so.beginPath(); so.moveTo(x, H - 6); so.lineTo(x, H); so.stroke(); }
@@ -310,10 +316,12 @@ over.addEventListener("click", (e) => {
 
 // ---- the page ---------------------------------------------------------------------------------------------------------------------
 function renderCases() {
-  $("cases").innerHTML = CASES.map((c) => `<a href="#" data-case="${c.id}" role="button">${esc(c.title)}<small>${esc(c.blurb)}</small></a>`).join("");
+  ($("caseSel") as HTMLSelectElement).innerHTML = CASES.map((c) => `<option value="${c.id}">${esc(c.title)}</option>`).join("");
 }
 function renderList() {
   const groups: [string, Window][] = [["Transthoracic: parasternal", "Parasternal"], ["Transthoracic: apical", "Apical"], ["Transthoracic: subcostal", "Subcostal"], ["Transthoracic: suprasternal", "Suprasternal"], ["Transesophageal: mid-esophageal", "Mid-esophageal"], ["Transesophageal: transgastric", "Transgastric"]];
+  ($("viewSel") as HTMLSelectElement).innerHTML = `<optgroup label="Free probe"><option value="free-tte">Transthoracic probe</option><option value="free-tee">Transesophageal probe</option></optgroup>` +
+    groups.map(([label, g]) => `<optgroup label="${label}">` + VIEWS.filter((v) => v.window === g).map((v) => `<option value="${v.id}">${esc(v.name)}</option>`).join("") + "</optgroup>").join("");
   $("list").innerHTML = `<h3>Free probe</h3><a href="#free-tte" data-free="tte" role="button">Transthoracic probe<small>Slide, tilt and roll it anywhere on the chest</small></a><a href="#free-tee" data-free="tee" role="button">Transesophageal probe<small>Advance, turn, flex and rotate the omniplane</small></a>` + groups.map(([label, g]) => `<h3>${label}</h3>` + VIEWS.filter((v) => v.window === g).map((v) =>
     `<a href="#${v.id}" data-id="${v.id}" role="button">${esc(v.short)}<small>${esc(v.name)}</small></a>`).join("")).join("");
 }
@@ -321,7 +329,8 @@ function renderList() {
 function fillMeta() {
   const v = st.view, c = CASE_BY_ID[st.caseId]!, between = st.free && !st.snapped;
   document.querySelectorAll<HTMLElement>("#list a").forEach((a) => a.classList.toggle("on", st.free ? a.dataset.free === st.free : a.dataset.id === v.id));
-  document.querySelectorAll<HTMLElement>("#cases a").forEach((a) => a.classList.toggle("on", a.dataset.case === st.caseId));
+  ($("caseSel") as HTMLSelectElement).value = st.caseId;
+  ($("viewSel") as HTMLSelectElement).value = st.free ? `free-${st.free}` : v.id;
   const probeName = st.free === "tee" ? "Free transesophageal probe" : "Free transthoracic probe";
   $("title").textContent = !st.free ? v.name : between ? probeName : `${probeName}: ${v.name.charAt(0).toLowerCase()}${v.name.slice(1)}`;
   $("summary").textContent = between ? "Between standard views. Move the probe toward a dot on the heart and it snaps into that view." : v.lookFor;
@@ -459,6 +468,7 @@ function setMode(m: Mode) {
   st.mode = m;
   $("modes").querySelectorAll<HTMLButtonElement>("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === m)));
   $("nyqWrap").hidden = m !== "color";
+  $("over").classList.toggle("aimable", STRIP_MODES.has(m));
   $("baseWrap").hidden = !(m === "pw" || m === "cw" || m === "tdi");
   strip = null; sweepBase = null; sg.clearRect(0, 0, stripC.width, stripC.height); so.clearRect(0, 0, stripO.width, stripO.height);
   captions();
@@ -496,15 +506,17 @@ $("list").addEventListener("click", (e) => {
   const a = (e.target as HTMLElement).closest<HTMLElement>("a[data-id]");
   if (a) { e.preventDefault(); selectView(a.dataset.id!); }
 });
-$("cases").addEventListener("click", (e) => {
-  const a = (e.target as HTMLElement).closest<HTMLElement>("a[data-case]");
-  if (!a) return;
-  e.preventDefault();
-  if (a.dataset.case === st.caseId) return;
-  st.caseId = a.dataset.case!; fillMeta();
+function setCase(id: string) {
+  if (id === st.caseId || !CASE_BY_ID[id]) return;
+  st.caseId = id; fillMeta();
   st.beat = null; cine = new Array(NF).fill(null); st.report = null; renderTable();
   $("status").textContent = "Building the patient…"; $("status").hidden = false;
   send({ type: "case", id: st.caseId });
+}
+$("caseSel").addEventListener("change", (e) => setCase((e.target as HTMLSelectElement).value));
+$("viewSel").addEventListener("change", (e) => {
+  const id = (e.target as HTMLSelectElement).value;
+  if (id === "free-tte" || id === "free-tee") enterFree(id === "free-tte" ? "tte" : "tee"); else selectView(id);
 });
 $("modes").addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-mode]");

@@ -203,16 +203,16 @@ export class EchoScene {
     }
     const idx: number[] = []; for (let i = 1; i <= steps; i++) idx.push(0, i, i + 1);
     const fan = new THREE.BufferGeometry().setFromPoints(pts); fan.setIndex(idx);
-    const fanMesh = new THREE.Mesh(fan, new THREE.MeshBasicMaterial({ color: 0x35d0c8, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false }));
+    const fanMesh = new THREE.Mesh(fan, new THREE.MeshBasicMaterial({ color: 0xf4f1ea, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false }));
     fanMesh.renderOrder = 2;
-    const edge = new THREE.Line(new THREE.BufferGeometry().setFromPoints([...pts.slice(1), probe, pts[1]]), new THREE.LineBasicMaterial({ color: 0x35d0c8 }));
+    const edge = new THREE.Line(new THREE.BufferGeometry().setFromPoints([...pts.slice(1), probe, pts[1]]), new THREE.LineBasicMaterial({ color: 0xf4f1ea, transparent: true, opacity: 0.8 }));
     edge.renderOrder = 3;
     // Probe: a block whose long side runs along the beam, with a bright dot on the index-mark side.
-    const body = new THREE.Mesh(new THREE.BoxGeometry(20, 10, 34), new THREE.MeshStandardMaterial({ color: 0xf4f1ea, roughness: 0.4 }));
+    const body = new THREE.Mesh(new THREE.BoxGeometry(20, 10, 34), new THREE.MeshStandardMaterial({ color: 0x5a5f72, roughness: 0.45 }));
     body.setRotationFromMatrix(new THREE.Matrix4().makeBasis(lat, beam.clone().cross(lat).normalize(), beam));
     body.position.copy(probe).addScaledVector(beam, -17);
     body.name = "probe-body";
-    const mark = new THREE.Mesh(new THREE.SphereGeometry(3, 12, 8), new THREE.MeshBasicMaterial({ color: 0xff5a4d }));
+    const mark = new THREE.Mesh(new THREE.SphereGeometry(3.4, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
     mark.position.copy(probe).addScaledVector(beam, -3).addScaledVector(mk, 10);
     const cable = new THREE.Line(new THREE.BufferGeometry().setFromPoints([probe.clone().addScaledVector(beam, -34), probe.clone().addScaledVector(beam, -110)]), new THREE.LineBasicMaterial({ color: 0xf4f1ea }));
     // A fatter invisible handle along the probe, so it is easy to grab at this scale.

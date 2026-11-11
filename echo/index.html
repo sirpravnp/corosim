@@ -17,9 +17,7 @@
 <header id="shell-head"></header>
 
 <main class="echomain">
-  <nav class="library" aria-label="Patients and views">
-    <div class="lib-head">Patient</div>
-    <div id="cases" class="list"></div>
+  <nav class="library" aria-label="Views">
     <div class="lib-head">View</div>
     <div id="list" class="list"></div>
   </nav>
@@ -28,6 +26,10 @@
     <div class="titlebar">
       <h2 id="title">Parasternal long axis</h2>
       <p id="summary" class="summary"></p>
+    </div>
+    <div class="echo-pick">
+      <label class="echo-field"><span>Patient</span><select id="caseSel"></select></label>
+      <label class="echo-field echo-viewsel"><span>View</span><select id="viewSel"></select></label>
     </div>
     <div class="toolbar echo-bar">
       <div class="echo-seg" id="modes" role="group" aria-label="Imaging mode">
