@@ -29,11 +29,11 @@ import { patchiness } from "./organic";
 /** Per tissue: backscatter amplitude (myocardium = 1), relative impedance, attenuation in dB/cm one way at the imaging frequency. */
 interface Acoustic { echo: number; z: number; att: number }
 export const ACOUSTIC: Record<string, Acoustic> = {
-  blood: { echo: 0.03, z: 1.0, att: 0.4 },
+  blood: { echo: 0.045, z: 1.0, att: 0.4 },
   fluid: { echo: 0.006, z: 0.99, att: 0.1 },
   myocardium: { echo: 1, z: 1.07, att: 1.5 },
   papillary: { echo: 1.15, z: 1.08, att: 1.5 },
-  leaflet: { echo: 1.9, z: 1.12, att: 2 },
+  leaflet: { echo: 2.6, z: 1.14, att: 2 },
   scar: { echo: 2.6, z: 1.14, att: 2.2 },
   calcium: { echo: 4.5, z: 1.7, att: 28 },
   pericardium: { echo: 5.5, z: 1.25, att: 3 },
@@ -75,9 +75,9 @@ export const BEAM = {
   range: 52, ceiling: 32,
 };
 
-export type EchoWindow = "parasternal" | "apical" | "subcostal";
+export type EchoWindow = "parasternal" | "apical" | "subcostal" | "suprasternal" | "tee";
 /** Depth of the chest wall under the probe, mm: skin, fat, muscle. Subcostally the liver comes next. */
-const CHEST = { parasternal: 13, apical: 15, subcostal: 9 } as const;
+const CHEST = { parasternal: 13, apical: 15, subcostal: 9, suprasternal: 10, tee: 3.5 } as const;
 /** Fat in front of the heart: this many mm before it along a line is soft tissue, not lung. */
 const FAT_PAD = 9;
 /** Behind the heart, tissue within this many mm of its outer surface is mediastinum (aorta, esophagus, the posterior pericardial fat); beyond is lung. */
@@ -88,6 +88,11 @@ export interface ScanSettings {
   gain?: number;
   /** Frame number: blood speckle reshuffles from frame to frame. */
   frameNo?: number;
+  /**
+   * Spontaneous echo contrast ("smoke"), 0..1: slow-moving blood stacks its red cells into rouleaux that scatter, so a low-output
+   * ventricle or a big stagnant atrium shows swirling gray in the cavity. 0 in a normal heart.
+   */
+  smoke?: number;
   /** Which window the probe sits in: sets the chest wall and whether the liver is in the near field. */
 window?: EchoWindow;
   lines?: number;
@@ -229,7 +234,8 @@ export function acquire(pose: Pose, depth: number, patient: { heart: EchoHeart; 
       const r = (j + 0.5) * dr, i = j * NL + l;
       if (j >= stop && tissue[i] !== Tissue.Outside) continue;
       let ac: Acoustic;
-      if (r < 1.6) ac = ACOUSTIC.skin;
+      if (win === "tee" && j < stop) ac = r < 1.2 ? ACOUSTIC.skin : r < chest ? ACOUSTIC.muscle : { echo: 0.35, z: 1.0, att: 1.2 }; // esophageal wall, then mediastinal fat
+      else if (r < 1.6) ac = ACOUSTIC.skin;
       else if (r < fatEnd) ac = ACOUSTIC.fat;
       else if (r < wallEnd) ac = ACOUSTIC.muscle;
       else if (j < stop) {
@@ -253,8 +259,10 @@ export function acquire(pose: Pose, depth: number, patient: { heart: EchoHeart; 
 
   // Real tissue is not one even gray: echogenicity varies with fiber direction and make-up, by a few dB over several millimeters.
   // Blood, fluid and lung are left alone (they have no structure to vary).
+  const smoke = Math.max(0, Math.min(1, s.smoke ?? 0));
   for (let i = 0; i < n; i++) {
     const t = tissue[i];
+    if (t === Tissue.Blood && smoke > 0) { echo[i] *= 1 + 3.5 * smoke * (0.5 + 0.5 * patch[i]); continue; } // swirls, not an even fog
     if (t === Tissue.Blood || t === Tissue.Fluid || echo[i] < 0.1) continue;
     echo[i] *= Math.exp(BEAM.patchiness * patch[i]);
   }

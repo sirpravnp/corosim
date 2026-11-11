@@ -2,11 +2,22 @@ import { V3 } from "../anatomy/curve";
 import { HeartMorph, MorphPart, Part, classifyHeart, parts, partsMorph, septalDistance, smin } from "../anatomy/heartSurface";
 import { isWall, WALL_MM } from "./wall";
 import {
-  LV, E1, E2, LvPoint, MITRAL, TRICUSPID, LV_LENGTH, NORMAL_VALVE, ValveLook,
+  LV, E1, E2, LvPoint, MITRAL, TRICUSPID, LV_LENGTH, LV_APEX_SHIFT, NORMAL_VALVE, ValveLook,
   lvEpiDistance, lvFrame, onAorticCusp, onAtrioventricularLeaflet, papillaryDistance,
 } from "./anatomy";
 import { ContractionMap, FrameMotion, STILL, WarpShape, contractionMap, segmentAt, wallAt, warp } from "./motion";
 import { organicWarp, patchiness, roughness } from "./organic";
+
+/**
+ * The display heart's atria are flat ellipsoids sitting almost on the valve plane: in an apical view they come out a fifth of the
+ * ventricle's length, where a real left atrium is about half of it. The echo reads everything above the valve plane stretched along the
+ * long axis by this factor (the display heart itself is unchanged).
+ */
+export const ATRIAL_STRETCH = 1.7;
+const VALVE_PLANE_Y = 50;
+const dq: V3 = [0, 0, 0];
+const toDisplay = (p: V3): V3 => { dq[0] = p[0]; dq[1] = p[1] > VALVE_PLANE_Y ? VALVE_PLANE_Y + (p[1] - VALVE_PLANE_Y) / ATRIAL_STRETCH : p[1]; dq[2] = p[2]; return dq; };
+
 
 /**
  * The echo anatomy: what a point of the heart is, as an ultrasound beam would meet it. Separate from the 3D display heart
@@ -102,8 +113,9 @@ export const NORMAL_WALL = { lv: LV.wall, rv: LV.rvWall };
 
 const ias = (morph: HeartMorph | null): V3 => {
   // the point between the two atrial centers where they meet: the fossa ovalis, where a secundum defect sits
-  const a: V3 = [-27, 54, -6], b: V3 = [5, 56, -21];
-  const d = (p: V3) => { const x = morph ? partsMorph(p, morph) : parts(p); return x[Part.RA] - x[Part.LA]; };
+  const st = (q: V3): V3 => [q[0], VALVE_PLANE_Y + (q[1] - VALVE_PLANE_Y) * ATRIAL_STRETCH, q[2]];
+  const a = st([-27, 54, -6]), b = st([5, 56, -21]);
+  const d = (p: V3) => { const x = morph ? partsMorph(toDisplay(p), morph) : parts(toDisplay(p)); return x[Part.RA] - x[Part.LA]; };
   let lo = 0, hi = 1;
   for (let i = 0; i < 30; i++) { const m = (lo + hi) / 2, p: V3 = [a[0] + (b[0] - a[0]) * m, a[1] + (b[1] - a[1]) * m, a[2] + (b[2] - a[2]) * m]; if (d(p) < 0) lo = m; else hi = m; }
   const m = (lo + hi) / 2;
@@ -141,7 +153,8 @@ interface Display {
   core: number;
 }
 const disp: Display = { sdf: 0, part: null, gap: Infinity, second: -1, core: 0 };
-function display(p: V3, morph: HeartMorph | null, out: Display): Display {
+function display(p0: V3, morph: HeartMorph | null, out: Display): Display {
+  const p = toDisplay(p0);
   if (!morph) {
     const d = parts(p), atria = smin(d[Part.RA], d[Part.LA], 6), sdf = smin(smin(d[Part.LV], atria, 3.5), d[Part.Aorta], 3);
     nearest(d, sdf, out);
@@ -182,7 +195,6 @@ function nearest(d: number[], sdf: number, out: Display) {
 /** Signed distance to the heart's outer surface, mm: the display heart, or the LV where a dilated LV bulges past it. */
 function outerSdf(p: V3, heart: EchoHeart): number {
   const d = display(p, heart.morph, { sdf: 0, part: null, gap: 0, second: -1, core: 0 }).core;
-  if (heart.lvScale <= 1.02) return d;
   const s = heart.lvScale, c = LV_SCALE_CENTER, f = lvFrame([c[0] + (p[0] - c[0]) / s, c[1] + (p[1] - c[1]) / s, c[2] + (p[2] - c[2]) / s], { t: 0, x: 0, y: 0 });
   return f.t / LV_LENGTH > 0.95 ? d : Math.min(d, lvEpiDistance(f) * s);
 }
@@ -236,14 +248,20 @@ export function classifyFrame(p: V3, heart: EchoHeart, frame: EchoFrame, out: Fr
   const dEpiLv = lvEpiDistance(f); // LV units
   out.sdf = hit.sdf;
   // a dilated LV may bulge past the display ventricles; inside its epicardium below the valve plane it is still LV
-  const inLv = dEpiLv < 0 && (hit.part === Part.LV || hit.part === Part.RV || (hit.part === null && s > 1.02 && tau < 0.92));
-  if (hit.part === null && !inLv) {
+  // The echo LV owns its outline: it may bulge past the display ventricles, and on the LV side, near the apex, the display shape beyond it
+  // is not heart (the display heart is longer and narrower than a real left ventricle).
+  // Below the valve plane the LV wins over whatever display part is nearest (the stretched atria must not take its base).
+  const inLv = dEpiLv < 0 && (hit.part === Part.LV || hit.part === Part.RV || ((hit.part === null || tau < 0.9) && tau < 0.92));
+  const sd = septalDistance(qRef);
+  const ventricular = hit.part === Part.LV || hit.part === Part.RV;
+  // the right ventricle's apex stops short of the left's; nothing of the display ventricles caps the LV apex
+  const trimmed = !inLv && ventricular && ((sd >= LV.rvSideLimit && tau < 0.45) || tau < LV_APEX_SHIFT / LV_LENGTH + 0.1);
+  if ((hit.part === null && !inLv) || trimmed) {
     out.part = null;
-    out.tissue = pericardial(anat, s > 1.02 && tau < 0.95 ? Math.min(hit.core, dEpiLv * s) : hit.core, heart);
+    out.tissue = pericardial(anat, tau < 0.95 ? (trimmed ? dEpiLv * s : Math.min(hit.core, dEpiLv * s)) : hit.core, heart);
     return out;
   }
   const part = hit.part ?? Part.LV;
-  const sd = septalDistance(qRef);
 
   if (!inLv && part !== Part.LV && part !== Part.RV) { // atria, aorta and great vessels: thin wall, blood inside, partitions between them
     const wall = part <= Part.Aorta ? isWall(part as Part, hit.sdf, sd, anat[1]) : hit.sdf > -2;

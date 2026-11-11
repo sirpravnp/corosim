@@ -23,10 +23,10 @@ const L = LANDMARKS_HEART_FRAME;
 /** Shape parameters, mm. */
 export const LV = {
   /** Epicardial radius in the short axis (the cut is round), and the wall thickness (cavity inset). */
-  radius: 28.5,
+  radius: 32.5,
   wall: 9.5,
   /** Length of the rounded apical cap along the long axis. */
-  cap: 62,
+  cap: 50,
   /** The RV cavity stops where it would round the lateral side of the LV: septal distance above this is LV wall. */
   rvSideLimit: 10,
   /** Inset of the RV cavity from the display heart's outer surface (the RV free wall). */
@@ -89,9 +89,10 @@ export function lvPoint(t: number, x: number, y: number, out: V3): V3 {
 
 /** Radius of the LV epicardium at distance `t` from the apex, for the shape `lvEpiDistance` describes (0 beyond the tip). */
 export function lvEpiRadius(t: number): number {
-  if (t >= LV.cap) return LV.radius * taperAt(t);
-  if (t <= 0) return 0;
-  const u = (t - LV.cap) / LV.cap;
+  const ts = t - LV_APEX_SHIFT;
+  if (ts >= LV.cap) return LV.radius * taperAt(t);
+  if (ts <= 0) return 0;
+  const u = (ts - LV.cap) / LV.cap;
   return LV.radius * Math.sqrt(Math.max(0, 1 - u * u));
 }
 
@@ -100,13 +101,20 @@ export function lvEpiRadius(t: number): number {
  * is bullet-shaped, widest in its middle third, not a cylinder with parallel walls.
  */
 export const LV_TAPER = 0.1;
+/**
+ * The echo LV's epicardial tip sits this far up the axis from the apex landmark. The display heart, laid out for the coronary tree, is
+ * long and narrow (cavity about 3:1); a real left ventricle is under 2:1 (about 85 by 48 mm at end-diastole), so the echo LV is shorter
+ * and wider than the display shape, and owns its own outline (see tissue.ts).
+ */
+export const LV_APEX_SHIFT = 12;
 const taperAt = (t: number) => { const u = Math.min(1, Math.max(0, (t - LV.cap) / (LV_LENGTH - LV.cap))); return 1 - LV_TAPER * u * u; };
 
 /** Approximate signed distance (mm, negative inside) to the LV epicardial surface: a rounded cap, then a body narrowing gently to the base. */
 export function lvEpiDistance(f: LvPoint): number {
   const rho = Math.hypot(f.x, f.y);
-  if (f.t >= LV.cap) return rho - LV.radius * taperAt(f.t);
-  const R = LV.radius, T = LV.cap, dt = f.t - T;
+  const t = f.t - LV_APEX_SHIFT;
+  if (t >= LV.cap) return rho - LV.radius * taperAt(f.t);
+  const R = LV.radius, T = LV.cap, dt = t - T;
   const k0 = Math.sqrt((rho / R) ** 2 + (dt / T) ** 2), k1 = Math.sqrt(rho * rho / R ** 4 + dt * dt / T ** 4);
   return k1 > 1e-9 ? (k0 * (k0 - 1)) / k1 : -R;
 }
