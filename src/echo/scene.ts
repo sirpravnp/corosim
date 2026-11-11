@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { V3 } from "../anatomy/curve";
-import { meshHeart, Part } from "../anatomy/heartSurface";
+import { meshHeart, MorphPart, Part, SurfaceMesh } from "../anatomy/heartSurface";
 import { rotateHeart } from "../anatomy/tree";
 import { Pose, SECTOR, toPatient } from "./poses";
 import { ProbeControls, ProbePreset, controlsFromPose, poseFromControls, projectOntoChest, slideProbe, snapPose, tiltProbe, twistProbe } from "./probe";
@@ -13,7 +13,10 @@ import { ProbeControls, ProbePreset, controlsFromPose, poseFromControls, project
  * Like the simulator's heart: drag anywhere to turn the heart, scroll to zoom. On the probe itself, drag to slide it on the schematic
  * chest, shift-drag to tilt, scroll to roll the index mark. Picking a view flies the probe and the camera there.
  */
-const PART_COLOR: Record<Part, number> = { [Part.LV]: 0xb24a3f, [Part.RV]: 0x4f7fb5, [Part.RA]: 0x7aa6d4, [Part.LA]: 0xd98a6e, [Part.Aorta]: 0xe3b35c };
+const PART_COLOR: Record<number, number> = { [Part.LV]: 0xb24a3f, [Part.RV]: 0x4f7fb5, [Part.RA]: 0x7aa6d4, [Part.LA]: 0xd98a6e, [Part.Aorta]: 0xe3b35c };
+// the great vessels take their chamber's color: pulmonary artery as the RV, venae cavae as the RA, pulmonary veins as the LA, descending aorta as the aorta
+PART_COLOR[MorphPart.PA] = PART_COLOR[Part.RV]; PART_COLOR[MorphPart.SVC] = PART_COLOR[Part.RA]; PART_COLOR[MorphPart.IVC] = PART_COLOR[Part.RA];
+PART_COLOR[MorphPart.PV] = PART_COLOR[Part.LA]; PART_COLOR[MorphPart.DAO] = PART_COLOR[Part.Aorta];
 const v = (p: V3) => new THREE.Vector3(p[0], p[1], p[2]);
 const asV3 = (p: THREE.Vector3): V3 => [p.x, p.y, p.z];
 
@@ -23,6 +26,7 @@ export class EchoScene {
   private camera = new THREE.PerspectiveCamera(32, 1, 1, 3000);
   private controls?: OrbitControls;
   private poseGroup = new THREE.Group();
+  private markerGroup = new THREE.Group();
   private centre: THREE.Vector3;
   private current: Pose | null = null;
   private presets: ProbePreset[] = [];
@@ -45,28 +49,90 @@ export class EchoScene {
     this.scene.environment = new THREE.PMREMGenerator(this.renderer).fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environmentIntensity = 0.5;
 
-    const m = meshHeart(), n = m.positions.length / 3, pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), col = new Float32Array(n * 3), c = new THREE.Color();
-    for (let i = 0; i < n; i++) {
-      pos.set(rotateHeart([m.positions[3 * i], m.positions[3 * i + 1], m.positions[3 * i + 2]]), 3 * i);
-      nor.set(rotateHeart([m.normals[3 * i], m.normals[3 * i + 1], m.normals[3 * i + 2]]), 3 * i);
-      c.setHex(PART_COLOR[m.parts[i] as Part]); col.set([c.r, c.g, c.b], 3 * i);
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    g.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
-    g.setAttribute("color", new THREE.BufferAttribute(col, 3));
-    g.setIndex(new THREE.BufferAttribute(m.indices, 1));
-    const heart = new THREE.Mesh(g, new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.5, clearcoat: 0.4, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide }));
-    heart.renderOrder = 1;
+    this.heart = this.buildHeart(meshHeart());
     this.centre = v(toPatient([0, 0, 0]));
     const key = new THREE.DirectionalLight(0xfff4ea, 1.6); key.position.set(120, 160, 220);
-    this.scene.add(heart, new THREE.AmbientLight(0xffffff, 0.3), key, this.poseGroup);
+    this.scene.add(this.heart, new THREE.AmbientLight(0xffffff, 0.3), key, this.poseGroup, this.markerGroup);
     new ResizeObserver(() => this.resize()).observe(host);
     this.resize();
     this.camera.position.copy(this.centre).addScaledVector(new THREE.Vector3(0, 0, 1), 460);
     this.initControls();
     this.bindPointer();
     this.renderer.setAnimationLoop((now) => { this.step(now); this.controls?.update(); this.renderer.render(this.scene, this.camera); });
+  }
+
+  private heart: THREE.Mesh;
+  /** Whether the probe can be dragged on the chest (transthoracic); a transesophageal probe is moved by its controls instead. */
+  interactive = true;
+
+  /** A heart-frame surface mesh as a translucent, part-colored shell in the patient frame. */
+  private buildHeart(m: SurfaceMesh): THREE.Mesh {
+    const n = m.positions.length / 3, pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), col = new Float32Array(n * 3), c = new THREE.Color();
+    for (let i = 0; i < n; i++) {
+      pos.set(rotateHeart([m.positions[3 * i], m.positions[3 * i + 1], m.positions[3 * i + 2]]), 3 * i);
+      nor.set(rotateHeart([m.normals[3 * i], m.normals[3 * i + 1], m.normals[3 * i + 2]]), 3 * i);
+      c.setHex(PART_COLOR[m.parts[i]] ?? PART_COLOR[Part.LV]); col.set([c.r, c.g, c.b], 3 * i);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    g.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
+    g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    g.setIndex(new THREE.BufferAttribute(m.indices, 1));
+    const mesh = new THREE.Mesh(g, new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.5, clearcoat: 0.4, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide }));
+    mesh.renderOrder = 1;
+    return mesh;
+  }
+
+  /** Replace the heart (the CT heart's mesh, once the engine has built it). */
+  setMesh(m: SurfaceMesh) {
+    this.scene.remove(this.heart); this.heart.geometry.dispose();
+    this.heart = this.buildHeart(m);
+    this.scene.add(this.heart);
+  }
+
+  /** Look square onto a pose's plane (used when a transesophageal probe moves). */
+  frameOn(p: Pose) {
+    const f = this.framing(p);
+    this.camera.position.copy(f.camera); this.controls?.target.copy(f.target); this.controls?.update();
+  }
+
+  /**
+   * Dots where the probe sits for each standard view, each with its short name; the current one larger. Views that share a probe
+   * position (a transesophageal probe that only turns its omniplane) share a dot and list both names.
+   */
+  setMarkers(ms: { id: string; label: string; at: V3 }[], active: string | null) {
+    for (const o of [...this.markerGroup.children]) {
+      this.markerGroup.remove(o);
+      const m = o as THREE.Mesh | THREE.Sprite; m.geometry?.dispose();
+      const mat = m.material as THREE.SpriteMaterial; mat.map?.dispose(); mat.dispose();
+    }
+    const groups: { at: V3; labels: string[]; active: boolean }[] = [];
+    for (const m of ms) {
+      const g = groups.find((q) => Math.hypot(q.at[0] - m.at[0], q.at[1] - m.at[1], q.at[2] - m.at[2]) < 4);
+      if (g) { if (m.id === active) g.labels.unshift(m.label); else g.labels.push(m.label); g.active ||= m.id === active; }
+      else groups.push({ at: m.at, labels: [m.label], active: m.id === active });
+    }
+    for (const g of groups) {
+      if (g.labels.length > 2) g.labels = [`${g.labels[0]} and ${g.labels.length - 1} more`];
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(g.active ? 4.2 : 2.6, 14, 10), new THREE.MeshBasicMaterial({ color: g.active ? 0xffffff : 0xd8d3c8, depthTest: false, transparent: true, opacity: g.active ? 1 : 0.85 }));
+      dot.position.set(...g.at); dot.renderOrder = 5;
+      this.markerGroup.add(dot, this.label(g.labels.join(" / "), g.at, g.active));
+    }
+  }
+
+  /** A text label as a sprite beside a point: drawn on a canvas, always facing the camera, never hidden by the heart. */
+  private label(text: string, at: V3, strong: boolean): THREE.Sprite {
+    const c = document.createElement("canvas"), g = c.getContext("2d")!, font = `${strong ? 600 : 500} 30px "Hanken Grotesk", system-ui, sans-serif`;
+    g.font = font; const w = Math.ceil(g.measureText(text).width) + 12;
+    c.width = w; c.height = 40;
+    g.font = font; g.textBaseline = "middle"; g.lineWidth = 6; g.strokeStyle = "rgba(5,6,10,0.9)"; g.fillStyle = strong ? "#ffffff" : "#e4dfd4";
+    g.strokeText(text, 6, 21); g.fillText(text, 6, 21);
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+    const h = 10; sp.scale.set((h * w) / 40, h, 1);
+    sp.center.set(-0.08, 0.5);
+    sp.position.set(...at); sp.renderOrder = 6;
+    return sp;
   }
 
   /** Standard views the drag snap can pull toward. */
@@ -137,16 +203,16 @@ export class EchoScene {
     }
     const idx: number[] = []; for (let i = 1; i <= steps; i++) idx.push(0, i, i + 1);
     const fan = new THREE.BufferGeometry().setFromPoints(pts); fan.setIndex(idx);
-    const fanMesh = new THREE.Mesh(fan, new THREE.MeshBasicMaterial({ color: 0x35d0c8, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false }));
+    const fanMesh = new THREE.Mesh(fan, new THREE.MeshBasicMaterial({ color: 0xf4f1ea, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false }));
     fanMesh.renderOrder = 2;
-    const edge = new THREE.Line(new THREE.BufferGeometry().setFromPoints([...pts.slice(1), probe, pts[1]]), new THREE.LineBasicMaterial({ color: 0x35d0c8 }));
+    const edge = new THREE.Line(new THREE.BufferGeometry().setFromPoints([...pts.slice(1), probe, pts[1]]), new THREE.LineBasicMaterial({ color: 0xf4f1ea, transparent: true, opacity: 0.8 }));
     edge.renderOrder = 3;
     // Probe: a block whose long side runs along the beam, with a bright dot on the index-mark side.
-    const body = new THREE.Mesh(new THREE.BoxGeometry(20, 10, 34), new THREE.MeshStandardMaterial({ color: 0xf4f1ea, roughness: 0.4 }));
+    const body = new THREE.Mesh(new THREE.BoxGeometry(20, 10, 34), new THREE.MeshStandardMaterial({ color: 0x5a5f72, roughness: 0.45 }));
     body.setRotationFromMatrix(new THREE.Matrix4().makeBasis(lat, beam.clone().cross(lat).normalize(), beam));
     body.position.copy(probe).addScaledVector(beam, -17);
     body.name = "probe-body";
-    const mark = new THREE.Mesh(new THREE.SphereGeometry(3, 12, 8), new THREE.MeshBasicMaterial({ color: 0xff5a4d }));
+    const mark = new THREE.Mesh(new THREE.SphereGeometry(3.4, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
     mark.position.copy(probe).addScaledVector(beam, -3).addScaledVector(mk, 10);
     const cable = new THREE.Line(new THREE.BufferGeometry().setFromPoints([probe.clone().addScaledVector(beam, -34), probe.clone().addScaledVector(beam, -110)]), new THREE.LineBasicMaterial({ color: 0xf4f1ea }));
     // A fatter invisible handle along the probe, so it is easy to grab at this scale.
@@ -174,7 +240,7 @@ export class EchoScene {
     const el = this.renderer.domElement;
     // Capture phase: decide before OrbitControls sees the press, so a press on the probe moves the probe and anything else turns the heart.
     el.addEventListener("pointerdown", (e) => {
-      if (e.button !== 0 || !this.overProbe(e)) return;
+      if (e.button !== 0 || !this.interactive || !this.overProbe(e)) return;
       this.anim = null;
       this.dragging = true;
       this.mode = e.shiftKey ? "tilt" : "slide";
@@ -185,7 +251,7 @@ export class EchoScene {
       e.preventDefault(); e.stopPropagation();
     }, true);
     el.addEventListener("pointermove", (e) => {
-      if (!this.dragging) { el.style.cursor = this.overProbe(e) ? "grab" : ""; return; }
+      if (!this.dragging) { el.style.cursor = this.interactive && this.overProbe(e) ? "grab" : ""; return; }
       if (!this.current) return;
       el.style.cursor = "grabbing";
       let next: Pose;
@@ -215,7 +281,7 @@ export class EchoScene {
     el.addEventListener("pointercancel", endDrag);
     // Scroll over the probe rolls the index mark; anywhere else it zooms, as on the simulator.
     el.addEventListener("wheel", (e) => {
-      if (!this.overProbe(e)) return;
+      if (!this.interactive || !this.overProbe(e)) return;
       e.preventDefault(); e.stopImmediatePropagation();
       const next = twistProbe(this.current!, e.deltaY * 0.004);
       this.setPose(next);

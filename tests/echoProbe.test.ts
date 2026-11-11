@@ -8,6 +8,10 @@ import {
   projectOntoChest,
   snapPose,
 } from "../src/echo/probe";
+import { installCtHeartNode } from "../src/echo/ctNode";
+
+// the echo images the CT heart in production; these tests check that path
+installCtHeartNode();
 
 const poses = buildPoses();
 const presets = presetsFromPoses(poses);
@@ -26,10 +30,14 @@ const alike = (a: Pose, b: Pose, where: string) => {
 };
 
 describe("echo probe controls on the chest shell", () => {
-  it("round-trips each calibrated pose through the chest controls", () => {
+  it("round-trips each calibrated pose that sits on the chest shell through the chest controls", () => {
+    // the subcostal, IVC and suprasternal probes sit below the xiphoid or in the notch, off the radial shell the free probe slides on
+    let n = 0;
     for (const [id, pose] of Object.entries(poses)) {
-      alike(poseFromControls(controlsFromPose(pose)), pose, id);
+      if (dist(pose.probe, projectOntoChest(pose.probe)) > 15) continue;
+      n++; alike(poseFromControls(controlsFromPose(pose)), pose, id);
     }
+    expect(n).toBeGreaterThanOrEqual(6);
   });
 
   it("keeps the probe on the chest shell and outside the heart", () => {
@@ -75,6 +83,7 @@ describe("echo probe controls on the chest shell", () => {
 });
 
 import { tiltProbe } from "../src/echo/probe";
+
 describe("tilt", () => {
   it("rocks the beam about the lateral axis, keeps the probe on the chest, and refuses to point out of the chest", () => {
     const pose = buildPoses().plax;

@@ -1,5 +1,7 @@
 # Echo atlas: standard views from the 3D heart, paired with open reference images
 
+> Superseded, 2026-11: `/echo/` is now a working echo simulator on a CT-derived heart; see [ECHO_SIMULATOR.md](ECHO_SIMULATOR.md). This file is kept as the history of the atlas and of the image-licensing audit.
+
 Status: proposal, no app code. Builds on the TEE slicer already in `spikes/cathlab/` and planned in `docs/CATH_LAB_INTEGRATION.md` (`src/cath/echo/*`).
 
 ## Idea

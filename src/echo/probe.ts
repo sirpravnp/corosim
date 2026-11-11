@@ -41,8 +41,11 @@ export interface ProbeControls {
 
 export interface ProbePreset {
   id: string;
+  /** The exact view: where picking it puts the probe. */
   pose: Pose;
   controls: ProbeControls;
+  /** The same view as the free probe reaches it on the chest shell: what a dragged probe is compared against when snapping. */
+  shell: Pose;
 }
 
 type Frame = { x: V3; y: V3; z: V3 };
@@ -108,8 +111,10 @@ export function poseFromControls(c: ProbeControls): Pose {
 }
 
 export function presetsFromPoses(poses: Record<string, Pose>): ProbePreset[] {
-  return Object.entries(poses).map(([id, pose]) => ({ id, pose, controls: controlsFromPose(pose) }));
+  return Object.entries(poses).map(([id, pose]) => { const controls = controlsFromPose(pose); return { id, pose, controls, shell: poseFromControls(controls) }; });
 }
+/** Distance from a (dragged) pose to a preset: the nearer of its exact pose and its shell equivalent. */
+const presetDistance = (pose: Pose, p: ProbePreset) => Math.min(poseDistance(pose, p.pose), poseDistance(pose, p.shell));
 
 /** Weighted distance between two poses: millimetres of probe gap plus angle costs. */
 export function poseDistance(a: Pose, b: Pose): number {
@@ -123,7 +128,7 @@ export function poseDistance(a: Pose, b: Pose): number {
 export function nearestPreset(pose: Pose, presets: ProbePreset[]): ProbePreset | null {
   let best: ProbePreset | null = null, bestD = Infinity;
   for (const preset of presets) {
-    const d = poseDistance(pose, preset.pose);
+    const d = presetDistance(pose, preset);
     if (d < bestD) { bestD = d; best = preset; }
   }
   return best && bestD <= NEAR ? best : null;
@@ -133,7 +138,7 @@ export function nearestPreset(pose: Pose, presets: ProbePreset[]): ProbePreset |
 export function snapPose(pose: Pose, presets: ProbePreset[]): { id: string | null; pose: Pose } {
   let best: ProbePreset | null = null, bestD = Infinity;
   for (const preset of presets) {
-    const d = poseDistance(pose, preset.pose);
+    const d = presetDistance(pose, preset);
     if (d < bestD) { bestD = d; best = preset; }
   }
   if (best && bestD <= SNAP) return { id: best.id, pose: best.pose };
@@ -144,7 +149,7 @@ export function snapPose(pose: Pose, presets: ProbePreset[]): { id: string | nul
 export function referenceBlend(pose: Pose, presets: ProbePreset[]): { id: string | null; amount: number } {
   let best: ProbePreset | null = null, bestD = Infinity;
   for (const preset of presets) {
-    const d = poseDistance(pose, preset.pose);
+    const d = presetDistance(pose, preset);
     if (d < bestD) { bestD = d; best = preset; }
   }
   if (!best) return { id: null, amount: 0 };

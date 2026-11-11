@@ -1,0 +1,137 @@
+{
+  "source": "CardioNetworks ECHOpedia normal loops (CC BY-SA 3.0), measured by scripts/echo/reference-stats.ts",
+  "loops": {
+    "plax": {
+      "frames": 51,
+      "pxPerMm": 2.72,
+      "percentiles": {
+        "p5": 0,
+        "p25": 6,
+        "p50": 42,
+        "p75": 100,
+        "p95": 213
+      },
+      "darkFraction": 0.379,
+      "grain": {
+        "axial": 0.812,
+        "lateral": 1.9,
+        "axialFar": 0.77,
+        "lateralFar": 3.085
+      },
+      "depthProfile": [
+        null,
+        77.628,
+        82.983,
+        93.511,
+        100.947,
+        93.028,
+        71.372,
+        104.851,
+        87.764,
+        84.818,
+        164.61,
+        125.038,
+        99.602,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "tissueContrast": 1.928,
+      "edges": {
+        "edgeWidth": 3.25,
+        "edges": 31777,
+        "specularRatio": 2.248
+      }
+    },
+    "psax-pm": {
+      "frames": 93,
+      "pxPerMm": 2.6,
+      "percentiles": {
+        "p5": 0,
+        "p25": 1,
+        "p50": 17,
+        "p75": 47,
+        "p95": 135
+      },
+      "darkFraction": 0.544,
+      "grain": {
+        "axial": 0.795,
+        "lateral": 1.222,
+        "axialFar": 0.71,
+        "lateralFar": 4
+      },
+      "depthProfile": [
+        null,
+        91.754,
+        66.999,
+        71.711,
+        68.382,
+        71.702,
+        69.854,
+        65.209,
+        62.199,
+        63.747,
+        72.669,
+        96.6,
+        131.139,
+        110.852,
+        null,
+        null,
+        null,
+        null
+      ],
+      "tissueContrast": 3.211,
+      "edges": {
+        "edgeWidth": 3.25,
+        "edges": 16669,
+        "specularRatio": 2.333
+      }
+    },
+    "subcostal": {
+      "frames": 44,
+      "pxPerMm": 2.02,
+      "percentiles": {
+        "p5": 1,
+        "p25": 9,
+        "p50": 26,
+        "p75": 64,
+        "p95": 119
+      },
+      "darkFraction": 0.454,
+      "grain": {
+        "axial": 0.757,
+        "lateral": 1.164,
+        "axialFar": 0.79,
+        "lateralFar": 1.92
+      },
+      "depthProfile": [
+        null,
+        57.841,
+        78.834,
+        88.102,
+        82.549,
+        79.851,
+        103.742,
+        98.123,
+        98.385,
+        107.143,
+        82.973,
+        71.053,
+        69.193,
+        74.205,
+        85.317,
+        107.098,
+        79.406,
+        56.305
+      ],
+      "tissueContrast": 2.267,
+      "edges": {
+        "edgeWidth": 4,
+        "edges": 17128,
+        "specularRatio": 1.859
+      }
+    }
+  }
+}
