@@ -18,8 +18,14 @@ const arcLen = (pts: V3[]) => {
   return L;
 };
 
-/** Load baked peripheral centerlines as VSeg rows (patient frame, mm). */
+let cached: VSeg[] | null = null;
+/** Load baked peripheral centerlines as VSeg rows (patient frame, mm). Parsed once; callers get fresh copies of the arrays they may change. */
 export function loadPeripheral(): VSeg[] {
+  if (!cached) cached = parse();
+  return cached.map((s) => ({ ...s, samples: s.samples.map((p) => [...p] as V3), diameterMm: [...s.diameterMm] }));
+}
+
+function parse(): VSeg[] {
   const raw = (peripheral as unknown as { segments: Raw[] }).segments;
   return raw.map((s) => {
     const samples = s.points.map((p) => [p[0], p[1], p[2]] as V3);

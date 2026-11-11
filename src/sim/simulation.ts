@@ -12,7 +12,7 @@ import { stepSeverity } from "../physics/ischemia";
 import { LAB } from "../config/lab";
 import { ISCHEMIA as ISCHEMIA_ECG } from "../config/ecg";
 import { stepNecrosis, lvInfarctSize } from "../physics/infarct";
-import { BedSite, bedSites, ischemicBurden, globalSeverity, injuryVector, transmurality, meetsStElevation } from "../physics/ecgLink";
+import { BedSite, bedSites, ischemicBurden, globalSeverity, injuryVector, bedTransmurality, meetsStElevation } from "../physics/ecgLink";
 import { rhythmState, RhythmState, SinusModulation, Patient } from "../physics/rhythm";
 import { circulation, Circulation, CIRC } from "../physics/circulation";
 import { Support, supportedRhythm } from "../physics/support";
@@ -476,7 +476,7 @@ export class Simulation {
     else this.analysis = { ...this.analysis, cond: solveNetwork(this.tree, lesions, this.demand * this.solvedDemand, Pa, this.grafts, this.labBed) };
     this.solvedPerfusion = this.perfusion;
     this.target = Object.fromEntries(this.analysis.cond.terminals.map((t) => [t.key, t.severity]));
-    this.transmural = Object.fromEntries(this.analysis.cond.terminals.map((t) => [t.key, transmurality(t.blocked ? 0 : t.ratio)]));
+    this.transmural = bedTransmurality(this.analysis.cond.terminals);
   }
 
   private updateCirculation() {

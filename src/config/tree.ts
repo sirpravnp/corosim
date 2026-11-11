@@ -58,6 +58,13 @@ export const ECG_LINK = {
   transmuralBelow: 0.05, // at or below which it is fully transmural (in the model, ~90%+ stenosis on exertion at rest, or occlusion)
   subendocardialGainMv: 0.5, // gives 1–3 mm of depression for a large demand-ischemic territory
   subendocardialDir: [-0.866, -0.5, 0] as const, // toward aVR: depression in I, II, V4–V6
+  // Diffuse ischemia with flow still getting through (a critical left main, or several tight vessels): when beds in two or more
+  // coronary territories are ischemic and none of them is cut off, the injury is global and subendocardial, the left-main pattern
+  // of diffuse ST depression with ST elevation in aVR, not a localizing STEMI. Each unblocked bed's transmurality is capped here;
+  // an occluded culprit (a blocked bed) still elevates its own leads. [assumed cap; pattern from the left-main and three-vessel
+  // ECG literature]
+  diffuseTerritories: 2,
+  diffuseTransmuralCap: 0.12,
 };
 
 // Display-only side branches drawn from the taps (never read by the physics). Diameters follow Murray's law, d ∝ mass^(1/3).

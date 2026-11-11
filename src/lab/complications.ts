@@ -79,7 +79,7 @@ export function risk(c: Complication, ctx: RiskContext): number {
 }
 
 export function draw(c: Complication, ctx: RiskContext, rand: () => number, force = false): Effect | null {
-  if (!force && rand() > risk(c, ctx) && c !== "no-reflow") return null;
+  if (!force && rand() > risk(c, ctx)) return null; // no-reflow included: it follows a minority of inflations, not every one
   const bed = terminalBedKey(ctx.territorySeg ?? "LAD");
   switch (c) {
     case "no-reflow":

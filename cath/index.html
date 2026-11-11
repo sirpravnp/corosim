@@ -6,65 +6,231 @@
 <link rel="icon" href="/favicon.ico" sizes="any" />
 <link rel="icon" type="image/png" href="/favicon.png" />
 <title>CoroSim Cath lab</title>
-<meta name="description" content="A virtual cath lab on the simulator's own patient: an angiogram with contrast filling at each vessel's solved flow, TIMI flow, and a pressure-wire pullback with FFR.">
+<meta name="description" content="A virtual cath lab on the simulator's own patient: set up coronary lesions, diagnose them with angiography, TIMI flow and a pressure wire, then treat them with a guide, wire, balloon and stent on live fluoroscopy.">
 <script>try{var t=localStorage.getItem("corosim-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Doto:wght@400;800&display=swap">
 </head>
-<body>
+<body class="lab cu" data-step="1">
 <div class="app" id="app">
 <header id="shell-head"></header>
 
-<main>
-  <nav class="library" aria-label="Patients">
-    <div id="list" class="list"></div>
-    <p class="lib-foot"><a href="lab/">Open the PCI lab</a> to treat a lesion with a wire, balloon and stent. Or <a id="fromSim" href="../sim/">set up a patient in the simulator</a> and use “Open in cath lab” to bring them here.</p>
-  </nav>
+<nav class="stepbar" aria-label="Steps">
+  <ol>
+    <li><button type="button" data-step="1" aria-current="step"><span>1</span>Set up</button></li>
+    <li><button type="button" data-step="2"><span>2</span>Diagnose</button></li>
+    <li><button type="button" data-step="3"><span>3</span>Treat</button></li>
+  </ol>
+  <p id="patientLine" class="patient-line"></p>
+</nav>
 
-  <section class="room">
+<main class="lab-main">
+  <section class="stage" aria-label="Fluoroscopy">
     <div class="titlebar">
-      <h2 id="title">Normal coronaries</h2>
-      <p id="summary" class="summary"></p>
+      <h1 id="title">Cath lab</h1>
+      <p id="next" class="next" role="status" hidden></p>
+      <p id="last" class="last" role="status"></p>
+      <p id="status" class="status" role="status"></p>
       <div id="xlinks" hidden></div>
     </div>
-    <div class="screen"><canvas id="ang" width="560" height="560" aria-label="Coronary angiogram"></canvas></div>
-    <div class="toolbar">
+    <div class="screen">
+      <canvas id="ang" width="640" height="640" aria-label="Fluoroscopy and angiogram"></canvas>
+      <canvas id="dev" class="overlay" width="640" height="640" aria-hidden="true"></canvas>
+      <canvas id="hintc" class="overlay" width="640" height="640" aria-hidden="true"></canvas>
+      <div id="dead" class="dead" role="alert" hidden><p id="deadText"></p><button type="button" id="restart">Restart patient</button></div>
+    </div>
+    <p class="caption" id="fig1"><b>Figure 1.</b> <span id="fig1Text">Live fluoroscopy of the patient on the table.</span></p>
+    <div class="carm cams" role="group" aria-label="Camera">
+      <span>View</span>
+      <button type="button" data-cam="heart" aria-pressed="true">Heart</button>
+      <button type="button" data-cam="follow" aria-pressed="false">Follow device</button>
+      <button type="button" data-cam="overview" aria-pressed="false">Overview</button>
+      <button type="button" id="skip" class="treat-only">Skip to coronaries</button>
+    </div>
+    <div class="carm">
       <label><span>LAO / RAO</span><input id="rot" type="range" min="-60" max="60" value="30"><output id="rotv"></output></label>
       <label><span>Cranial / caudal</span><input id="tilt" type="range" min="-45" max="45" value="-20"><output id="tiltv"></output></label>
-      <label class="field"><span>Injection</span>
-        <select id="inj" aria-label="Injection site"><option value="both">Aortic root</option><option value="left">Left coronary</option><option value="right">Right coronary</option></select></label>
-      <button id="inject" class="primary">Inject contrast</button>
-      <label class="chk"><input id="lab" type="checkbox"> Labels</label>
+      <label class="chk"><input id="lab" type="checkbox"> Vessel names</label>
     </div>
-    <div class="meas" id="flow"></div>
-    <ul class="findings" id="findings"></ul>
+
+    <details class="ecg12" id="ecg12" open>
+      <summary>12-lead ECG</summary>
+      <canvas id="ecgFull" class="ecg" aria-label="Live 12-lead ECG with a lead II rhythm strip"></canvas>
+      <p class="caption"><b>Figure 2.</b> The patient's live 12-lead ECG on standard paper, 25 mm/s and 10 mm/mV, with a lead II rhythm strip. ST changes follow the ischemia the lesions, a balloon inflation or a complication cause.</p>
+    </details>
   </section>
 
-  <section class="wire">
-    <h2>Pressure wire</h2>
-    <div class="toolbar">
-      <label class="field"><span>Vessel</span><select id="artery" aria-label="Vessel"></select></label>
-      <label><span>Wire</span><input id="pos" type="range" min="0" max="100" value="100"><output id="posv"></output></label>
+  <aside class="rail" aria-label="Controls">
+    <!-- 1 Set up -->
+    <div class="panel" data-panel="1">
+      <section>
+        <h2>Patient</h2>
+        <div id="presets" class="presets" role="list"></div>
+      </section>
+      <section>
+        <h2>Lesions</h2>
+        <div id="lesions" class="lesions"></div>
+        <div class="row">
+          <label class="field"><span>Artery</span><select id="addSeg" aria-label="Artery for a new lesion"></select></label>
+          <button type="button" id="addLesion">Add lesion</button>
+        </div>
+        <div class="row">
+          <label class="chk"><input id="exertion" type="checkbox"> On exertion</label>
+        </div>
+        <p class="fine" id="setupNote"></p>
+      </section>
+      <section>
+        <h2>Treatment target</h2>
+        <div class="row">
+          <label class="field"><span>Treat</span><select id="target" aria-label="Vessel to treat"></select></label>
+        </div>
+        <div class="row"><button type="button" class="primary" id="toDiagnose">Diagnose this patient</button></div>
+      </section>
     </div>
-    <div class="screen"><canvas id="pull" width="560" height="360" aria-label="Pressure wire pullback"></canvas></div>
-    <div class="meas" id="wirestat"></div>
-    <div class="treat" id="treat"><span>Treat</span>
-      <button data-proc="pci">PCI</button><button data-proc="lysis">Fibrinolytic</button><button data-proc="cabg">CABG</button><button id="reset">Reset patient</button>
-      <p class="result" id="treatResult" role="status"></p></div>
-  </section>
-  <section class="heart" aria-label="Heart catheterisation">
-    <div class="tabs" role="tablist" aria-label="Heart catheterisation reports">
-      <button type="button" role="tab" id="tab-rhc" aria-controls="tabpanel-rhc" aria-selected="true" tabindex="0">Right heart</button>
-      <button type="button" role="tab" id="tab-lhc" aria-controls="tabpanel-lhc" aria-selected="false" tabindex="-1">Left heart</button>
+
+    <!-- 2 Diagnose -->
+    <div class="panel" data-panel="2" hidden>
+      <section>
+        <h2>Angiography</h2>
+        <div class="row">
+          <label class="field"><span>Injection</span><select id="inj" aria-label="Injection site"><option value="left">Left coronary</option><option value="right">Right coronary</option><option value="both">Aortic root</option></select></label>
+          <button type="button" class="primary" id="dxInject">Inject contrast</button>
+        </div>
+        <div id="flow" class="tiles"></div>
+        <p class="caption"><b>Table 2.</b> TIMI flow in each main vessel, from the contrast transit at its solved blood velocity.</p>
+        <ul id="findings" class="findings"></ul>
+      </section>
+      <section>
+        <h2>Pressure wire</h2>
+        <div class="row">
+          <label class="field"><span>Vessel</span><select id="artery" aria-label="Vessel for the pressure wire"></select></label>
+        </div>
+        <div class="row">
+          <label class="slide"><span>Wire</span><input id="pos" type="range" min="0" max="100" value="100" aria-label="Wire position"><output id="posv"></output></label>
+        </div>
+        <canvas id="pull" class="pull" width="560" height="320" aria-label="Pressure wire pullback"></canvas>
+        <p class="caption"><b>Figure 3.</b> Pressure-wire pullback: Pd/Pa along the vessel at hyperemia (solid) and at rest (dashed), the 0.80 line, and the lumen under it.</p>
+        <div id="wirestat" class="tiles"></div>
+        <p class="caption"><b>Table 3.</b> FFR and the pressures at the wire.</p>
+      </section>
+      <section class="heart" aria-label="Heart catheterization">
+        <h2>Heart catheterization</h2>
+        <div class="tabs" role="tablist" aria-label="Heart catheterization reports">
+          <button type="button" role="tab" id="tab-rhc" aria-controls="tabpanel-rhc" aria-selected="true" tabindex="0">Right heart</button>
+          <button type="button" role="tab" id="tab-lhc" aria-controls="tabpanel-lhc" aria-selected="false" tabindex="-1">Left heart</button>
+        </div>
+        <div class="tabpanel" role="tabpanel" id="tabpanel-rhc" aria-labelledby="tab-rhc"></div>
+        <div class="tabpanel" role="tabpanel" id="tabpanel-lhc" aria-labelledby="tab-lhc" hidden></div>
+      </section>
+      <section>
+        <h2>Peripheral angiography</h2>
+        <div class="row cams" role="group" aria-label="Peripheral views" id="peri">
+          <button type="button" data-peri="aortogram" aria-pressed="false">Aortogram</button>
+          <button type="button" data-peri="iliac" aria-pressed="false">Iliacs</button>
+          <button type="button" data-peri="runoff" aria-pressed="false">Run-off</button>
+          <button type="button" data-peri="arm" aria-pressed="false">Arch and arm</button>
+        </div>
+        <div class="row"><button type="button" class="primary" id="toTreat">Treat this patient</button></div>
+      </section>
     </div>
-    <div class="tabpanel" role="tabpanel" id="tabpanel-rhc" aria-labelledby="tab-rhc"></div>
-    <div class="tabpanel" role="tabpanel" id="tabpanel-lhc" aria-labelledby="tab-lhc" hidden></div>
-  </section>
+
+    <!-- 3 Treat -->
+    <div class="panel" data-panel="3" hidden>
+      <section>
+        <h2>Help</h2>
+        <div class="row">
+          <button type="button" id="hint">Hint</button>
+          <button type="button" id="showMe" disabled>Show me</button>
+          <button type="button" id="undo" disabled>Undo</button>
+          <span class="fine" id="undoCount"></span>
+        </div>
+        <p class="hinttext" id="hintText" role="status"></p>
+      </section>
+      <section>
+        <h2>Access</h2>
+        <div class="row">
+          <label class="field"><span>Site</span>
+            <select id="site" aria-label="Access site"><option value="femoral-R">Right femoral</option><option value="femoral-L">Left femoral</option><option value="radial-R">Right radial</option><option value="radial-L">Left radial</option></select></label>
+          <button type="button" id="doAccess">Gain access</button>
+          <button type="button" id="doSheath">Place 6 French sheath</button>
+        </div>
+        <div class="row"><button type="button" id="doHeparin">Heparin 6000 units</button><button type="button" id="doNitro">Nitroglycerin</button></div>
+      </section>
+      <section>
+        <h2>Devices</h2>
+        <div id="shelf" class="shelf"></div>
+      </section>
+      <section>
+        <h2>Move</h2>
+        <div class="row">
+          <button type="button" id="advance" title="W. Hold to keep moving">Advance (hold)</button><button type="button" id="retract" title="S. Hold to keep moving">Withdraw (hold)</button>
+          <button type="button" id="rotL" title="A">Rotate left</button><button type="button" id="rotR" title="D">Rotate right</button>
+        </div>
+        <div class="row">
+          <label class="field"><span>Wire tip</span><select id="shape" aria-label="Wire tip bend"><option value="0">Straight</option><option value="30">30 degree bend</option><option value="45">45 degree bend</option><option value="60">60 degree bend</option></select></label>
+          <button type="button" id="inject" title="Space">Inject contrast 6 mL</button>
+        </div>
+        <p class="fine" id="tipv" role="status"></p>
+      </section>
+      <section>
+        <h2>Balloon and stent</h2>
+        <div class="row">
+          <label class="slide"><span>Pressure</span><input id="atm" type="range" min="2" max="20" value="10"><output id="atmv">10 atm</output></label>
+        </div>
+        <div class="row"><button type="button" id="inflate" title="I">Inflate 5 s</button><button type="button" id="deflate" title="O">Deflate</button><button type="button" id="deploy" class="primary">Deploy stent</button></div>
+      </section>
+      <section>
+        <h2>Resuscitation</h2>
+        <div class="row" id="resus">
+          <button type="button" id="cpr" hidden>Start CPR</button>
+          <button type="button" id="shock" class="primary" hidden>Shock 200 J</button>
+          <button type="button" id="epi" hidden>Epinephrine 1 mg</button>
+          <button type="button" id="amio" hidden>Amiodarone 300 mg</button>
+          <button type="button" id="drain" hidden>Pericardiocentesis</button>
+          <button type="button" id="norepi">Norepinephrine</button>
+          <button type="button" id="fluid">Fluid 500 mL</button>
+        </div>
+        <p class="fine" id="resusNote"></p>
+      </section>
+      <section>
+        <h2>Procedure log</h2>
+        <ol id="feed" class="feed" aria-live="polite"></ol>
+        <p class="fine" id="summary"></p>
+        <div class="row"><button type="button" id="reset">Reset procedure</button></div>
+      </section>
+    </div>
+
+    <section class="monitor">
+      <h2>Monitor</h2>
+      <div class="tiles" id="tiles"></div>
+      <p class="caption"><b>Table 1.</b> Live vital signs and the pressure-wire FFR in the target vessel, from the simulator's patient.</p>
+    </section>
+  </aside>
 </main>
-<p class="fine" id="credit">Flows, pressures and FFR come from the same coronary model as the simulator (<a href="../sim/">Simulator</a>); contrast moves at each vessel's solved blood velocity, so a tight lesion fills late and an occlusion stops the dye.</p>
+<section class="keys treat-only" aria-label="Keyboard controls">
+  <table>
+    <caption><b>Table 4.</b> Keyboard controls on the Treat step. Click the picture area or press a key; mouse clicks release the focus so the keys keep working.</caption>
+    <tbody>
+      <tr><th scope="row">Device</th><td><kbd>W</kbd> <kbd>S</kbd> advance and withdraw (Shift for fast)</td><td><kbd>A</kbd> <kbd>D</kbd> rotate</td><td><kbd>I</kbd> inflate <kbd>O</kbd> deflate</td><td><kbd>Space</kbd> inject contrast</td></tr>
+      <tr><th scope="row">Help</th><td><kbd>H</kbd> hint</td><td><kbd>Z</kbd> undo</td><td colspan="2"><kbd>K</kbd> shock 200 J <kbd>P</kbd> start or stop CPR, in arrest</td></tr>
+      <tr><th scope="row">C-arm</th><td><kbd>←</kbd> <kbd>→</kbd> LAO and RAO (Shift for 15 degrees)</td><td><kbd>↑</kbd> <kbd>↓</kbd> cranial and caudal</td><td colspan="2"><kbd>1</kbd> AP <kbd>2</kbd> LAO cranial <kbd>3</kbd> RAO cranial <kbd>4</kbd> RAO caudal <kbd>5</kbd> spider</td></tr>
+      <tr><th scope="row">View</th><td><kbd>C</kbd> cycle Heart, Follow and Overview</td><td><kbd>V</kbd> vessel names</td><td colspan="2"><kbd>G</kbd> skip to the coronaries</td></tr>
+    </tbody>
+  </table>
+  <table class="padmap">
+    <caption><b>Table 5.</b> Game controller, Xbox or 8BitDo (the Micro included), in its controller mode. An 8BitDo in keyboard mode sends keys instead: map its buttons to the keys in Table 4 with the 8BitDo app. <span id="padStatus"></span></caption>
+    <tbody>
+      <tr><th scope="row">Device</th><td>Left stick or D-pad up and down: advance and withdraw (hold)</td><td>D-pad left and right: rotate 10°; left stick sideways: rotate continuously</td><td><kbd>A</kbd> inject contrast</td></tr>
+      <tr><th scope="row">Therapy</th><td><kbd>X</kbd> inflate <kbd>B</kbd> deflate</td><td><kbd>Y</kbd> deploy the stent</td><td><kbd>L3</kbd> shock <kbd>R3</kbd> CPR, in arrest</td></tr>
+      <tr><th scope="row">Help</th><td><kbd>RB</kbd> or <kbd>R</kbd>: hint, then press again to do it</td><td><kbd>LB</kbd> or <kbd>L</kbd>: undo</td><td><kbd>Menu</kbd> or <kbd>Start</kbd>: skip to the coronaries</td></tr>
+      <tr><th scope="row">C-arm</th><td>Right stick: LAO and RAO, cranial and caudal</td><td><kbd>LT</kbd> <kbd>RT</kbd> or <kbd>L2</kbd> <kbd>R2</kbd>: previous and next standard view</td><td><kbd>View</kbd> or <kbd>Select</kbd>: cycle Heart, Follow and Overview</td></tr>
+    </tbody>
+  </table>
+</section>
+<p class="fine" id="credit">Educational simulation. Flows, pressures, FFR and the ECG come from the same model as the <a href="../sim/">Simulator</a>; device handling is simplified and not a substitute for supervised training.</p>
 <footer id="shell-foot"></footer>
 </div>
-<script type="module" src="../src/cath/page.ts"></script>
+<script type="module" src="../src/cath/unified/page.ts"></script>
 </body>
 </html>

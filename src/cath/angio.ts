@@ -26,10 +26,15 @@ export interface AngioOptions {
   overlay?: HTMLCanvasElement | null; // devices drawn as attenuation (white = dense) by the lab; they go through the same image formation
 }
 
-/** Patient frame -> screen (x right, y up) for a C-arm at rotation `ry` and tilt `rx`. Iodine adds along the ray, so overlap and foreshortening come out of this. */
+/**
+ * Patient frame -> screen (x right, y up) for a C-arm at rotation `ry` (LAO positive) and tilt `rx` (cranial positive). The image is
+ * shown as from the detector, the patient's left on the screen's right in AP. In LAO the detector moves to the patient's left, so
+ * anterior structures shift to the screen's left and the spine to its right, and the AV groove opens toward the viewer (the RCA's "C");
+ * in RAO the reverse. Iodine adds along the ray, so overlap and foreshortening come out of this.
+ */
 function project(p: V3, ry: number, rx: number): V3 {
   const cy = Math.cos(ry), sy = Math.sin(ry), cx = Math.cos(rx), sx = Math.sin(rx);
-  const x = p[0] * cy + p[2] * sy, z = -p[0] * sy + p[2] * cy, y = p[1];
+  const x = p[0] * cy - p[2] * sy, z = p[0] * sy + p[2] * cy, y = p[1];
   return [x, y * cx - z * sx, y * sx + z * cx];
 }
 

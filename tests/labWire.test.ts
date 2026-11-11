@@ -125,6 +125,13 @@ const readyForWire = (e: LabEngine, wire = "wire-floppy", root = 35) => {
   return e;
 };
 
+/** Press the wire forward `mm` at a time, up to `n` presses, until `stop` holds; returns every event kind seen. */
+const pressUntil = (e: LabEngine, mm: number, n: number, stop: (kinds: string[]) => boolean): string[] => {
+  const all: string[] = [];
+  for (let i = 0; i < n; i++) { const k = e.apply({ t: "advance", mm }).map((x) => x.kind); all.push(...k); if (stop(k)) break; }
+  return all;
+};
+
 describe("wire mechanics", () => {
   it("crosses a soft 70 % lesion with a floppy wire", () => {
     const e = engine(35, 21);
@@ -146,9 +153,10 @@ describe("wire mechanics", () => {
       seed: 21, access: { arch: "II", iliacTortuosity: 0.2, radialLoop: false, aorticRootMm: 35, calcifiedIliac: false }, plaques: [hard],
     });
     readyForWire(e);
-    for (let i = 0; i < 8; i++) e.apply({ t: "advance", mm: 6 });
-    const kinds = e.apply({ t: "advance", mm: 5 }).map((x) => x.kind);
+    // steady 5 mm presses: the floppy wire meets the cap, loads, and buckles back without ever crossing
+    const kinds = pressUntil(e, 5, 20, (k) => k.includes("prolapse"));
     expect(kinds).toContain("prolapse");
+    expect(e.state().wire!.tipMm).toBeLessThan(55);
   });
 
   it("crosses a 95 % lesion with a stiff CTO wire", () => {
@@ -159,8 +167,7 @@ describe("wire mechanics", () => {
       seed: 33, access: { arch: "II", iliacTortuosity: 0.2, radialLoop: false, aorticRootMm: 35, calcifiedIliac: false }, plaques: [hard],
     });
     readyForWire(e, "wire-stiff-cto");
-    for (let i = 0; i < 8; i++) e.apply({ t: "advance", mm: 6 });
-    e.apply({ t: "advance", mm: 12 });
+    pressUntil(e, 6, 20, () => e.state().wire!.tipMm > 54);
     expect(e.state().wire!.tipMm).toBeGreaterThan(54);
   });
 
@@ -173,8 +180,7 @@ describe("wire mechanics", () => {
         seed: 5, access: { arch: "II", iliacTortuosity: 0.2, radialLoop: false, aorticRootMm: 35, calcifiedIliac: false }, plaques: [hard],
       });
       readyForWire(e, "wire-floppy");
-      for (let i = 0; i < 8; i++) e.apply({ t: "advance", mm: 6 });
-      return e.apply({ t: "advance", mm: 5 }).some((x) => x.kind === "prolapse");
+      return pressUntil(e, 5, 20, (k) => k.includes("prolapse")).includes("prolapse");
     };
     const crossEbu = () => {
       const sim = new Simulation({ seed: 7 });
@@ -187,11 +193,11 @@ describe("wire mechanics", () => {
       e.apply({ t: "drug", id: "heparin", dose: 5000 });
       e.apply({ t: "select", slot: "guide", id: "guide-ebu35" });
       for (let i = 0; i < 50; i++) e.apply({ t: "advance", mm: 80 });
-      e.apply({ t: "select", slot: "wire", id: "wire-floppy" });
-      for (let i = 0; i < 8; i++) e.apply({ t: "advance", mm: 6 });
-      e.apply({ t: "advance", mm: 8 });
+      e.apply({ t: "select", slot: "wire", id: "wire-workhorse" });
+      pressUntil(e, 5, 20, () => e.state().wire!.tipMm > 52);
       return e.state().wire!.tipMm;
     };
+    // a floppy wire on a JL guide buckles at a calcified 92 percent lesion; more wire support (a workhorse on a backup guide) crosses it
     expect(prolapse()).toBe(true);
     expect(crossEbu()).toBeGreaterThan(52);
   });
@@ -226,9 +232,8 @@ describe("wire mechanics", () => {
         seed, access: { arch: "II", iliacTortuosity: 0.2, radialLoop: false, aorticRootMm: 35, calcifiedIliac: false }, plaques: [cto],
       });
       readyForWire(e, "wire-stiff-cto");
-      for (let i = 0; i < 8; i++) e.apply({ t: "advance", mm: 6 });
-      const ev = e.apply({ t: "advance", mm: 20 });
-      if (ev.some((x) => x.kind === "subintimal" || x.kind === "perforation")) subOrPerf++;
+      const ev = pressUntil(e, 6, 20, () => e.state().wire!.tipMm > 60);
+      if (ev.some((k) => k === "subintimal" || k === "perforation")) subOrPerf++;
       expect(e.state().wire!.tipMm).toBeGreaterThan(0);
     }
     expect(subOrPerf).toBeGreaterThanOrEqual(10);
@@ -241,8 +246,7 @@ describe("wire mechanics", () => {
         seed, access: { arch: "II", iliacTortuosity: 0.2, radialLoop: false, aorticRootMm: 35, calcifiedIliac: false }, plaques: [softCto],
       });
       readyForWire(e, "wire-floppy");
-      for (let i = 0; i < 8; i++) e.apply({ t: "advance", mm: 6 });
-      e.apply({ t: "advance", mm: 15 });
+      pressUntil(e, 6, 20, () => e.state().wire!.tipMm >= 50);
       if (e.state().wire!.tipMm >= 50) crossed++;
     }
     expect(crossed).toBeGreaterThanOrEqual(30);
