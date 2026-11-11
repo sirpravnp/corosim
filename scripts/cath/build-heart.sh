@@ -15,3 +15,4 @@ fi
 python3 scripts/cath/parse_vtk.py "$WORK/average/average.vtk" "$WORK/average.npz"
 python3 scripts/cath/voxelize.py   # frame and 1 mm label volume
 python3 scripts/cath/fill2.py      # cavities, valves, segments -> src/cath/data/heart.bin.gz + heart.json
+python3 scripts/cath/repair-heart.py   # one connected blood pool per chamber
