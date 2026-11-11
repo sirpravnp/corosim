@@ -27,7 +27,21 @@ export interface EchoBeat {
   lvEdv: number; lvEsv: number; lvEf: number; rvEdv: number; rvEsv: number; rvEf: number; laMax: number;
   heart: EchoHeart;
   report: StructuralReport;
+  /** The beat at fine time steps, for Doppler and M-mode: see `FlowWave`. */
+  wave: FlowWave;
 }
+
+/**
+ * The beat at `WAVE_N` evenly spaced times (from end-diastole): valve and shunt flows (ml/s; forward positive, for a shunt left to
+ * right), chamber and great-artery pressures (mmHg), and the LV's longitudinal shortening (fraction of its length) for tissue Doppler.
+ */
+export interface FlowWave {
+  n: number; dt: number;
+  q: { MV: Float32Array; AV: Float32Array; TV: Float32Array; PV: Float32Array; ASD: Float32Array; VSD: Float32Array };
+  p: { LV: Float32Array; LA: Float32Array; RV: Float32Array; RA: Float32Array; AO: Float32Array; PA: Float32Array };
+  long: Float32Array;
+}
+export const WAVE_N = 200;
 
 /** Frames per beat. A real machine shows 30 to 60 per second; this many is smooth at resting rates and keeps the cine cheap to draw. */
 export const FRAMES = 24;
@@ -86,9 +100,36 @@ export function beatOfSpec(spec: StructuralSpec, look: EchoCase["look"] = {}, nF
     frames.push({ t: (period * i) / n, lv: lv[i], rv: rv[i], la: la[i], ra: ra[i], motion, open: { mv: mv[i] ?? 0, av: av[i] ?? 0, tv: tv[i] ?? 0, pv: pv[i] ?? 0 } });
   }
   const ed = lv.indexOf(lvEdv), es = lv.indexOf(lvEsv);
+  // the fine waveform
+  const N = WAVE_N, F = (y: number[] | undefined) => Float32Array.from(y && y.length ? resample(w.t, y, period, N) : new Array(N).fill(0));
+  const lvF = resample(w.t, w.vLV, period, N), long = new Float32Array(N);
+  for (let i = 0; i < N; i++) long[i] = longShortening(solveShortening(lvF[i] / lvEdv, heart.shape.map), heart.shape.map);
+  const wave: FlowWave = {
+    n: N, dt: period / N,
+    q: { MV: F(w.q.MV), AV: F(w.q.AV), TV: F(w.q.TV), PV: F(w.q.PVL), ASD: F(w.q.ASD), VSD: F(w.q.VSD) },
+    p: { LV: F(w.p.LV), LA: F(w.p.LA), RV: F(w.p.RV), RA: F(w.p.RA), AO: F(w.p.AO), PA: F(w.p.PA) },
+    long,
+  };
   return {
     hr: r.hr, period, frames, ed, es,
     lvEdv, lvEsv, lvEf: (lvEdv - lvEsv) / lvEdv, rvEdv, rvEsv, rvEf: (rvEdv - rvEsv) / rvEdv, laMax: Math.max(...la),
-    heart, report: r,
+    heart, report: r, wave,
   };
+}
+
+/** The beat at any time `t` (seconds, wrapped to the beat), interpolated between frames: motion and leaflet opening. */
+export function frameAt(b: EchoBeat, t: number): BeatFrame {
+  const n = b.frames.length, u = ((((t / b.period) % 1) + 1) % 1) * n, i = Math.floor(u) % n, j = (i + 1) % n, k = u - Math.floor(u);
+  const A = b.frames[i], B = b.frames[j], m = (x: number, y: number) => x + (y - x) * k;
+  return {
+    t, lv: m(A.lv, B.lv), rv: m(A.rv, B.rv), la: m(A.la, B.la), ra: m(A.ra, B.ra),
+    motion: { s: m(A.motion.s, B.motion.s), long: m(A.motion.long, B.motion.long), rv: m(A.motion.rv, B.motion.rv) },
+    open: { mv: m(A.open.mv, B.open.mv), av: m(A.open.av, B.open.av), tv: m(A.open.tv, B.open.tv), pv: m(A.open.pv ?? 0, B.open.pv ?? 0) },
+  };
+}
+
+/** Sample index of the fine waveform at time `t` (wrapped), with the fraction to the next. */
+export function waveIndex(w: FlowWave, t: number): { i: number; j: number; k: number } {
+  const u = ((t / (w.dt * w.n)) % 1 + 1) % 1 * w.n, i = Math.floor(u) % w.n;
+  return { i, j: (i + 1) % w.n, k: u - Math.floor(u) };
 }

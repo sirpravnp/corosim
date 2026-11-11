@@ -2,6 +2,9 @@ import { V3 } from "../anatomy/curve";
 import { Pose, SECTOR, toHeart } from "./poses";
 import { EchoFrame, EchoHeart, FrameSample, NORMAL_HEART, Tissue, classifyFrame, stillFrame } from "./tissue";
 import { patchiness } from "./organic";
+import { Jet, velocityAt } from "./flow";
+import { ctHeart } from "./ctEcho";
+import { heartDirToCt } from "../anatomy/ctHeart";
 
 /**
  * A simulated B-mode acquisition. The picture is built the way a scanner builds it, in its own coordinates (scan lines fanning out from
@@ -113,6 +116,22 @@ export interface ScanSettings {
 window?: EchoWindow;
   lines?: number;
   dr?: number;
+  /** Color Doppler: blood velocity along the beam inside a box, from the flow model's jets at this moment. Needs the CT heart. */
+  color?: ColorSettings;
+}
+
+/**
+ * Color Doppler settings. The box is in the scan's own coordinates: lateral angles (radians from the centre line, negative to the image's
+ * left) and depths (mm). The scale is the Nyquist velocity: faster flow aliases (wraps to the other color). The wall filter hides slow
+ * motion (moving walls on a real scanner; here it keeps the cavities' slow drift from coloring everything).
+ */
+export interface ColorSettings {
+  jets: Jet[];
+  box: { a0: number; a1: number; r0: number; r1: number };
+  nyquist: number;
+  wallFilter?: number;
+  /** Gray level (0..1 display) above which tissue wins over color. */
+  priority?: number;
 }
 
 /** The scan in its own coordinates: `lines` columns from left to right, `samples` rows down from the probe; display values 0..1. */
@@ -124,6 +143,9 @@ export interface Polar {
   tissue: Uint8Array;
   /** Part per sample (-1 outside the heart). */
   part: Int8Array;
+  /** Color Doppler, when asked for: velocity toward the probe as a fraction of the Nyquist velocity (-1..1, NaN where no color is shown), and the flow's variance (0..1, turbulence). */
+  colorU?: Float32Array;
+  colorVar?: Float32Array;
 }
 
 // ---- deterministic noise on a lattice ----------------------------------------------------------
@@ -217,6 +239,9 @@ export function acquire(pose: Pose, depth: number, patient: { heart: EchoHeart; 
   const tissue = new Uint8Array(n), part = new Int8Array(n).fill(-1), sdfOf = new Float32Array(n), patch = new Float32Array(n);
   const re = new Float32Array(n), im = new Float32Array(n), re2 = new Float32Array(n), im2 = new Float32Array(n);
   const hit: FrameSample = { tissue: Tissue.Outside, part: null, sdf: 0, ref: [0, 0, 0] };
+  const col = s.color && ctHeart() ? s.color : null;
+  const velAlong = col ? new Float32Array(n).fill(NaN) : null, turbAt = col ? new Float32Array(n) : null;
+  const vtmp: V3 = [0, 0, 0], ttmp = { value: 0 };
   const sc: [number, number] = [0, 0], pt: V3 = [0, 0, 0];
   const chest = CHEST[win];
 
@@ -224,11 +249,19 @@ export function acquire(pose: Pose, depth: number, patient: { heart: EchoHeart; 
   for (let l = 0; l < NL; l++) {
     const a = -half + (2 * half * (l + 0.5)) / NL, ca = Math.cos(a), sa = Math.sin(a);
     const dir: V3 = [pose.beam[0] * ca + pose.lateral[0] * sa, pose.beam[1] * ca + pose.lateral[1] * sa, pose.beam[2] * ca + pose.lateral[2] * sa];
+    const inBoxLine = col !== null && a >= col.box.a0 && a <= col.box.a1;
+    const dirCt = inBoxLine ? heartDirToCt(ctHeart()!, toHeart(dir)) : null;
     let firstHeart = -1;
     for (let j = 0; j < NS; j++) {
       const r = (j + 0.5) * dr, i = j * NL + l;
       pt[0] = pose.probe[0] + dir[0] * r; pt[1] = pose.probe[1] + dir[1] * r; pt[2] = pose.probe[2] + dir[2] * r;
       classifyFrame(toHeart(pt), patient.heart, patient.frame, hit);
+      if (dirCt && hit.tissue === Tissue.Blood && r >= col!.box.r0 && r <= col!.box.r1) {
+        // velocity toward the probe (the Doppler shift is positive for flow coming toward the transducer)
+        velocityAt(hit.ref, hit.part ?? -1, col!.jets, vtmp, ttmp);
+        velAlong![j * NL + l] = -(vtmp[0] * dirCt[0] + vtmp[1] * dirCt[1] + vtmp[2] * dirCt[2]);
+        turbAt![j * NL + l] = ttmp.value;
+      }
       tissue[i] = hit.tissue; part[i] = hit.part ?? -1; sdfOf[i] = hit.sdf;
       if (hit.tissue !== Tissue.Outside && firstHeart < 0) firstHeart = j;
       const ac = acousticOf(hit.tissue);
@@ -371,7 +404,72 @@ export function acquire(pose: Pose, depth: number, patient: { heart: EchoHeart; 
     for (let j = 0; j < NS; j++) convRow(sm, NL, j, boxKernel(1), true);
     for (let i = 0; i < n; i++) img[i] = img[i] + (sm[i] - img[i]) * BEAM.despeckle;
   }
-  return { lines: NL, samples: NS, depth, dr, img, tissue, part };
+  const out: Polar = { lines: NL, samples: NS, depth, dr, img, tissue, part };
+  if (col && velAlong && turbAt) Object.assign(out, colorDoppler(velAlong, turbAt, img, NL, NS, dr, col, frameNo));
+  return out;
+}
+
+/**
+ * From velocities along the beam to the color display: estimated over a small packet of lines and samples (a scanner averages an
+ * ensemble of pulses, so color is coarser than the gray image), with estimator noise that grows with turbulence, then the wall filter,
+ * aliasing at the Nyquist velocity, and color priority (where the gray image is bright, tissue is shown instead).
+ */
+function colorDoppler(v: Float32Array, turb: Float32Array, img: Float32Array, NL: number, NS: number, dr: number, c: ColorSettings, frameNo: number) {
+  const n = NL * NS, colorU = new Float32Array(n).fill(NaN), colorVar = new Float32Array(n);
+  const N = c.nyquist, wall = c.wallFilter ?? 0.08, prio = c.priority ?? 0.42, ra = Math.max(1, Math.round(1.2 / dr));
+  for (let j = 0; j < NS; j++) for (let l = 0; l < NL; l++) {
+    const i = j * NL + l;
+    if (Number.isNaN(v[i])) continue;
+    let sv = 0, st = 0, cnt = 0;
+    for (let dj = -ra; dj <= ra; dj++) for (let dl = -1; dl <= 1; dl++) {
+      const jj = j + dj, ll = l + dl;
+      if (jj < 0 || jj >= NS || ll < 0 || ll >= NL) continue;
+      const k = jj * NL + ll; if (Number.isNaN(v[k])) continue;
+      sv += v[k]; st += turb[k]; cnt++;
+    }
+    if (cnt < 3) continue;
+    let u = sv / cnt;
+    const t = st / cnt;
+    // estimator noise: small in laminar flow, large in a turbulent jet (the mosaic)
+    u += (0.02 + 0.7 * t) * N * gauss(l >> 1, j >> 2, frameNo, 91);
+    if (Math.abs(u) < wall || img[i] > prio) continue;
+    const wrapped = ((((u + N) % (2 * N)) + 2 * N) % (2 * N)) - N;
+    colorU[i] = wrapped / N; colorVar[i] = t;
+  }
+  return { colorU, colorVar };
+}
+
+/**
+ * The color map of most cardiac scanners (BART: blue away, red toward): toward the probe dark red through red to yellow at the Nyquist
+ * velocity, away dark blue through blue to cyan; variance (turbulence) adds green. Returns 0..255 RGB.
+ */
+export function dopplerColor(u: number, variance: number): [number, number, number] {
+  const a = Math.min(1, Math.abs(u));
+  let r: number, g: number, b: number;
+  if (u >= 0) { r = 110 + 145 * Math.min(1, a * 1.6); g = a > 0.55 ? 255 * ((a - 0.55) / 0.45) : 0; b = a > 0.85 ? 160 * ((a - 0.85) / 0.15) : 0; }
+  else { b = 120 + 135 * Math.min(1, a * 1.6); g = a > 0.45 ? 230 * ((a - 0.45) / 0.55) : 30 * a; r = a > 0.85 ? 120 * ((a - 0.85) / 0.15) : 0; }
+  g = Math.min(255, g + 200 * Math.max(0, variance - 0.15));
+  return [r, g, b];
+}
+
+/** Scan-convert to RGBA: the gray image, with color Doppler laid over it where the polar frame has color. */
+export function scanConvertRGBA(p: Polar, w: number, h: number, pxPerMm: number, out = new Uint8ClampedArray(w * h * 4)): Uint8ClampedArray {
+  const gray = scanConvert(p, w, h, pxPerMm);
+  const half = SECTOR.halfAngle, NL = p.lines, NS = p.samples, cx = w / 2;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const o = y * w + x, q = o * 4, g = gray[o];
+    out[q] = out[q + 1] = out[q + 2] = g; out[q + 3] = 255;
+    if (!p.colorU) continue;
+    const lat = (x + 0.5 - cx) / pxPerMm, d = (y + 0.5) / pxPerMm, r = Math.hypot(lat, d), a = Math.atan2(lat, d);
+    if (r >= p.depth || Math.abs(a) > half) continue;
+    const l = Math.round(((a + half) / (2 * half)) * NL - 0.5), j = Math.round(r / p.dr - 0.5);
+    if (l < 0 || l >= NL || j < 0 || j >= NS) continue;
+    const u = p.colorU[j * NL + l];
+    if (Number.isNaN(u)) continue;
+    const [cr, cg, cb] = dopplerColor(u, p.colorVar![j * NL + l]);
+    out[q] = cr; out[q + 1] = cg; out[q + 2] = cb;
+  }
+  return out;
 }
 
 /** Convolve every column (one scan line, along the beam) of a lines-by-samples grid with a 1D kernel. `mean` normalizes to unit sum. */
