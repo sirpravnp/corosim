@@ -109,6 +109,22 @@ export function patientEllipsoids(heartCentre: V3, breath = 0, effusionMl = 0): 
     ...sym({ c: [xm + 78, -405, 6], a: [23, 23, 23], w: 2.4, group: "bone" }),
     ...sym({ c: [xm + 97, -432, 6], a: [32, 9, 9], roll: -38, w: 2.2, group: "bone" }),
     ...sym({ c: [xm + 102, -540, 8], a: [14, 110, 14], roll: 3, w: 2.2, group: "bone" }),
+    // the rest of the leg, for the run-off views: thigh and calf, the femur down to its condyles, the patella, tibia and fibula, the ankle
+    ...sym({ c: [xm + 78, -700, 6], a: [56, 110, 56], w: 1, group: "body" }),
+    ...sym({ c: [xm + 76, -870, 0], a: [44, 110, 44], w: 1, group: "body" }),
+    ...sym({ c: [xm + 100, -655, 8], a: [13, 70, 13], roll: 4, w: 2.2, group: "bone" }),
+    ...sym({ c: [xm + 92, -728, 4], a: [30, 16, 24], w: 2.3, group: "bone", clipY: 13 }),
+    ...sym({ c: [xm + 92, -716, 30], a: [16, 18, 7], w: 2.2, group: "bone" }),
+    ...sym({ c: [xm + 88, -760, 2], a: [28, 14, 22], w: 2.2, group: "bone", clipY: 11 }),
+    ...sym({ c: [xm + 86, -858, 4], a: [12, 92, 12], w: 2.2, group: "bone" }),
+    ...sym({ c: [xm + 108, -862, -6], a: [6, 92, 6], roll: -2, w: 2.2, group: "bone" }),
+    ...sym({ c: [xm + 92, -956, -2], a: [26, 12, 22], w: 2.3, group: "bone" }),
+    // the abducted arm the radial route runs along: upper arm and forearm soft tissue, humerus, radius and ulna
+    ...sym({ c: [xm - 228, 76, 6], a: [96, 44, 40], roll: 6, w: 1, group: "body" }),
+    ...sym({ c: [xm - 468, 2, 10], a: [178, 34, 30], roll: 21, w: 1, group: "body" }),
+    ...sym({ c: [xm - 232, 74, 2], a: [86, 11, 11], roll: 9, w: 2.2, group: "bone" }),
+    ...sym({ c: [xm - 470, 8, 6], a: [158, 7, 7], roll: 21, w: 2.2, group: "bone" }),
+    ...sym({ c: [xm - 462, -6, 2], a: [166, 6, 6], roll: 23, w: 2.2, group: "bone" }),
   ];
   return out;
 }

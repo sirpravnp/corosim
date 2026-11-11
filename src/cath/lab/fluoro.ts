@@ -94,6 +94,12 @@ const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s) % 6
  * which is a monitor feature and not x-ray, and the counters go on the visible canvas. Everything maps through the angiogram's `frameOf`,
  * so a wire lies on its vessel and moves with the heart.
  */
+/** The shaped wire tip as the detector sees it: how far it reaches along the shaft and to the side, per unit limb length. */
+export function tipView(bendDeg: number, rotDeg: number): { along: number; side: number } {
+  const b = (bendDeg * Math.PI) / 180, r = (rotDeg * Math.PI) / 180;
+  return { along: Math.cos(b), side: Math.sin(b) * Math.cos(r) };
+}
+
 export class FluoroView {
   private ctx: CanvasRenderingContext2D;
   readonly att: HTMLCanvasElement; private A: CanvasRenderingContext2D;
@@ -134,8 +140,12 @@ export class FluoroView {
       const coil = pts.slice(from);
       if (coil.length > 1) { trace(coil); A.lineWidth = Math.max(1.5, 0.62 * sc); A.strokeStyle = white(0.34); A.stroke(); A.save(); A.setLineDash([Math.max(1, 0.5 * sc), Math.max(1, 0.35 * sc)]); trace(coil); A.lineWidth = Math.max(1.5, 0.62 * sc); A.strokeStyle = white(0.22); A.stroke(); A.restore(); }
       const tip = pts[pts.length - 1], prev = pts[Math.max(0, pts.length - 4)], dx = tip[0] - prev[0], dy = tip[1] - prev[1], l = Math.hypot(dx, dy) || 1;
-      const bend = ((st.wire?.bendDeg || 28) * Math.PI) / 180, ca = Math.cos(bend), sa = Math.sin(bend), len = Math.max(5, 3.2 * sc);
-      const jx = tip[0] + ((dx / l) * ca - (dy / l) * sa) * len, jy = tip[1] + ((dx / l) * sa + (dy / l) * ca) * len;
+      // The shaped tip is a short limb bent `bendDeg` off the shaft; torque spins it about the shaft. Seen from the detector, the limb's
+      // sideways reach is sin(bend)·cos(rot): it swings to one side, shortens as it turns toward or away from the tube, and comes out
+      // the other side past 90 degrees. A straight wire has no limb to show.
+      const t = tipView(st.wire?.bendDeg ?? 0, st.wire?.rotDeg ?? 0), len = Math.max(6, 3.6 * sc);
+      const ux = dx / l, uy = dy / l, nx = -uy, ny = ux;
+      const jx = tip[0] + (ux * t.along + nx * t.side) * len, jy = tip[1] + (uy * t.along + ny * t.side) * len;
       A.beginPath(); A.moveTo(tip[0], tip[1]); A.lineTo(jx, jy); A.lineWidth = Math.max(1.5, 0.62 * sc); A.strokeStyle = white(0.4); A.stroke();
       A.beginPath(); A.arc(jx, jy, Math.max(0.9, 0.34 * sc), 0, 6.283); A.fillStyle = white(0.5); A.fill();
     }

@@ -179,3 +179,14 @@ describe("standard views", () => {
     for (const v of STANDARD_VIEWS) { expect(Math.abs(v.rot)).toBeLessThanOrEqual(60); expect(Math.abs(v.tilt)).toBeLessThanOrEqual(45); }
   });
 });
+
+describe("the backdrop for the peripheral views", () => {
+  it("has leg bones down to the ankle and arm bones along the radial route, on both sides", () => {
+    const bones = patientEllipsoids([0, 0, 0]).filter((e) => e.group === "bone");
+    expect(bones.some((b) => b.c[1] < -900 && b.c[0] < -10)).toBe(true); // right ankle
+    expect(bones.some((b) => b.c[1] < -900 && b.c[0] > -10)).toBe(true); // left ankle
+    expect(bones.filter((b) => b.c[1] < -800 && b.c[1] > -900).length).toBeGreaterThanOrEqual(4); // tibia and fibula, both legs
+    expect(bones.some((b) => b.c[0] < -400 && Math.abs(b.c[1]) < 40)).toBe(true); // right forearm
+    expect(bones.some((b) => b.c[0] > 380 && Math.abs(b.c[1]) < 40)).toBe(true); // left forearm
+  });
+});
