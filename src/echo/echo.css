@@ -48,6 +48,9 @@ main.echomain .library .list { overflow: visible; }
 /* An on/off toggle (labels): pressed is an ink fill, like the segmented control. */
 .echo-toggle[aria-pressed="true"] { color: var(--bg); background: var(--ink); border-color: var(--ink); }
 
+.echo-free { justify-self: start; }
+.echo-free[hidden] { display: none; }
+
 /* Transesophageal probe controls: label, slider, value, one row each, unboxed. */
 .tee-controls { display: grid; gap: 6px; font-size: 13px; }
 .tee-controls[hidden] { display: none; }

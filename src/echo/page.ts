@@ -337,6 +337,9 @@ function fillMeta() {
   if (scene) scene.interactive = st.free === "tte";
   for (const id of ["teeLevel", "teeTurn", "teeFlex", "teeAngle"]) ($(id) as HTMLInputElement).disabled = st.free !== "tee";
   $("teeControls").classList.toggle("locked", st.free !== "tee");
+  // a standard view holds the probe: this hands it over from right here, keeping the patient and the view
+  $("freeBtn").hidden = !!st.free;
+  $("freeBtn").textContent = approach() === "tee" ? "Move the transesophageal probe" : "Move the probe";
   markers();
   reference();
   captions();
@@ -541,6 +544,7 @@ window.addEventListener("hashchange", () => {
   if (h.free) { if (h.free !== st.free) enterFree(h.free); }
   else if (h.id !== st.view.id || st.free) selectView(h.id);
 });
+$("freeBtn").addEventListener("click", () => enterFree(st.view.approach));
 $("labels").addEventListener("click", () => {
   st.labelsOn = !st.labelsOn;
   $("labels").setAttribute("aria-pressed", String(st.labelsOn));

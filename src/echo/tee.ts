@@ -141,9 +141,15 @@ export function teeViews(): Record<string, TeeControls> {
     // the four- and two-chamber views from behind the left atrium, about 2 cm above the mitral valve, looking down through it: the beam
     // then runs within about 20 degrees of mitral inflow, as it does on a real ME four-chamber view (lower, the angle opens past 50)
     me4c: controlsFor(mvLevel + 24, l.mv, l.tv, mid(l.apex, mid(l.mv, l.tv), 0.45), left),
-    me2c: (() => { const c = controlsFor(mvLevel + 24, l.mv, l.tv, mid(l.apex, mid(l.mv, l.tv), 0.45), left); return { ...c, angle: Math.min(180, c.angle + 85) }; })(),
+    // the two-chamber plane holds the mitral valve and the left atrial appendage (as the transthoracic one does), so it shows the LA,
+    // its appendage and the LV only, and not the RV outflow that a plain 85-degree turn of the four-chamber plane catches
+    me2c: ct ? controlsFor(mvLevel + 24, l.mv, P(ct.laa), mid(l.apex, l.mv, 0.45), sub(P(ct.laa), l.mv))
+      : (() => { const c = controlsFor(mvLevel + 24, l.mv, l.tv, mid(l.apex, mid(l.mv, l.tv), 0.45), left); return { ...c, angle: Math.min(180, c.angle + 85) }; })(),
     meLax: controlsFor(mvLevel - 2, l.mv, l.av, mid(l.apex, l.mv, 0.55), head),
-    meAvSax: controlsFor(avLevel, l.av, add(l.av, cross(rootAxis, ant), 10), l.av, left),
+    // through the sinuses, 5 mm above the valve's center along the root, as the transthoracic short axis
+    meAvSax: (() => { if (!ct) return controlsFor(avLevel, l.av, add(l.av, cross(rootAxis, ant), 10), l.av, left);
+      let ao = unit(P(ct.aoAxis)); if (dot(ao, l.longAxis) < 0) ao = scale(ao, -1);
+      const t = add(l.av, ao, 5); return controlsFor(avLevel, t, add(t, unit(cross(ao, ant)), 10), t, left); })(),
     meAvLax: controlsFor(avLevel, l.av, add(l.av, rootAxis, 25), l.av, head),
     meRvIo: controlsFor(mvLevel + 2, l.tv, rvot, mid(l.tv, rvot), left),
     meBicaval: controlsFor(mvLevel + 4, raTop, raBottom, mid(raTop, raBottom), head),

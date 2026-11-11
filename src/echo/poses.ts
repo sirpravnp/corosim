@@ -146,7 +146,9 @@ export function buildPoses(): Record<string, Pose> {
   // at the aortic valve: the plane across the aortic root (on the CT heart, square to the root's own axis), so it cuts the three
   // cusps, the RV outflow wrapping in front, the right atrium and the left atrium behind
   if (ctGeom()) {
-    const ao = unit(toPatientDir(ctLandmarksHeart().aoAxis)), t = l.av, beam = perp(scale(ANTERIOR, -1), ao);
+    // the cut sits 5 mm above the valve's center, through the sinuses, so it shows the three cusps and not the outflow tract below them
+    let ao = unit(toPatientDir(ctLandmarksHeart().aoAxis)); if (dot(ao, l.longAxis) < 0) ao = scale(ao, -1);
+    const t = add(l.av, ao, 5), beam = perp(scale(ANTERIOR, -1), ao);
     raw.psaxAV = { probe: outside(t, beam, SKIN), beam, lateral: unit(cross(ao, beam)), target: t };
   } else {
     const t = l.av, beam = unit(add(beamSax, l.longAxis, 0.25));
