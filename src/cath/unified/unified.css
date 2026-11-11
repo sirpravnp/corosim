@@ -1,0 +1,61 @@
+/* The unified cath page: a three-step bar over the lab's stage and rail. Tokens come from ../cath.css, the stage and rail from ../lab/lab.css. */
+
+/* Step bar: hairline, sentence case; the current step is the one filled */
+.stepbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; margin-top: 18px; padding-bottom: 12px; border-bottom: 1px solid var(--rule-light); }
+.stepbar ol { display: flex; margin: 0; padding: 0; list-style: none; }
+.stepbar li + li button { border-left: 0; }
+.stepbar button { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border: 1px solid var(--rule); border-radius: 0; background: transparent; color: var(--ink); font: 600 14px/1 var(--font-ui); }
+.stepbar button span { font: 500 12px/1 var(--font-data); color: var(--muted); }
+.stepbar button[aria-current="step"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.stepbar button[aria-current="step"] span { color: var(--bg); }
+.patient-line { margin: 0; color: var(--muted); font-size: 14px; }
+
+/* Panels: one per step in the rail, each a run of hairline-divided sections */
+.cu .rail .panel { display: grid; }
+.cu .rail .panel[hidden] { display: none; }
+.cu .rail .panel > section { padding: 14px 0; border-top: 1px solid var(--rule-light); }
+.cu .rail .panel > section:first-child { border-top: 0; padding-top: 0; }
+.cu .rail > section.monitor { padding: 14px 0 0; border-top: 1px solid var(--rule-light); }
+body.cu:not([data-step="3"]) .treat-only { display: none; }
+
+/* Set up: presets as a plain list, lesions as hairline fieldsets */
+.presets { display: grid; }
+.presets button { display: block; width: 100%; padding: 8px 0 8px 10px; text-align: left; border: 0; border-left: 2px solid transparent; border-bottom: 1px solid var(--rule-light); border-radius: 0; background: transparent; font: 600 14px/1.3 var(--font-ui); color: var(--ink); }
+.presets button small { display: block; margin-top: 2px; font-weight: 400; font-size: 12.5px; color: var(--muted); }
+.presets button:hover { background: var(--rule-light); }
+.presets button[aria-pressed="true"] { border-left-color: var(--ink); }
+.lesions { display: grid; gap: 10px; }
+.lesion { margin: 0; padding: 10px 0 4px; border: 0; border-top: 1px solid var(--rule-light); display: grid; gap: 6px; }
+.lesion:first-child { border-top: 0; padding-top: 0; }
+.lesion legend { padding: 0; font-weight: 600; font-size: 13px; color: var(--ink); }
+.lesion .slide { display: grid; grid-template-columns: 70px minmax(0, 1fr) 8ch; }
+.lesion .slide input { width: 100%; }
+.chk { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13.5px; }
+
+/* Diagnose */
+.findings { margin: 10px 0 0; padding: 0; list-style: none; font-size: 13.5px; }
+.findings li { padding: 4px 0; border-bottom: 1px solid var(--rule-light); }
+.findings li.bad { color: var(--bad); font-weight: 600; }
+.pull { display: block; width: 100%; height: auto; margin-top: 8px; border: 1px solid var(--sh-line); background: #0b0b0b; }
+#flow, #wirestat { margin-top: 8px; }
+#peri { margin-top: 0; }
+
+/* Treat: the hint is an inline line under a hairline, not a tinted box */
+.hinttext { margin: 8px 0 0; min-height: 1.4em; font-size: 14px; color: var(--ink); }
+.hinttext:not(:empty) { padding-left: 10px; border-left: 2px solid var(--rule); }
+
+/* the 12-lead: under the image on every step, collapsible, on pink paper in both themes */
+.ecg12 { margin-top: 6px; border-top: 1px solid var(--rule-light); padding-top: 10px; }
+.ecg12 summary { cursor: pointer; font: 600 13px/1 var(--font-ui); color: var(--muted); margin-bottom: 8px; }
+.ecg12 .ecg { background: #fffaf8; }
+.ecg12 .caption { margin-top: 6px; }
+
+@media (max-width: 640px) {
+  .stepbar button { padding: 8px 10px; }
+  .lesion .slide { grid-template-columns: 62px minmax(0, 1fr) 7ch; }
+  .carm input[type=range] { width: 120px; }
+}
+
+/* the controller table sits under the keyboard one, same hairline style */
+.keys table.padmap { margin-top: 14px; }
+.keys table td, .keys table th { vertical-align: top; }

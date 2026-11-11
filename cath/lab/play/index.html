@@ -3,36 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="icon" href="/favicon.ico" sizes="any" />
-<link rel="icon" type="image/png" href="/favicon.png" />
-<title>CoroSim PCI lab (playtest)</title>
-<script>try{var t=localStorage.getItem("corosim-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<title>CoroSim Cath lab</title>
+<meta name="robots" content="noindex">
+<meta http-equiv="refresh" content="0; url=../../">
+<script>location.replace("../../" + location.hash);</script>
+<style>html,body{margin:0;background:#05060a;color:#f4f1ea;font:15px/1.5 "Hanken Grotesk",Helvetica,Arial,sans-serif}p{padding:20px}a{color:inherit}</style>
 </head>
 <body>
-<div class="app" id="app">
-<header id="shell-head"></header>
-<main class="labplay">
-  <section class="stage">
-    <h1>PCI lab playtest</h1>
-    <p class="hint">Keys: <kbd>W</kbd>/<kbd>S</kbd> advance and withdraw · <kbd>A</kbd>/<kbd>D</kbd> torque · hold for repeat</p>
-    <canvas id="view" width="720" height="480" aria-label="Access and coronary path"></canvas>
-    <p class="cap">Figure 1. Schematic centerline (patient frame); tip follows the active device.</p>
-  </section>
-  <aside class="rail">
-    <div class="readout" id="readout"></div>
-    <div class="actions" id="actions">
-      <button type="button" id="setup" class="primary">Set up access and guide</button>
-      <button type="button" id="skip">Skip to coronaries</button>
-      <button type="button" id="wire">Load wire</button>
-    </div>
-    <ol id="log" class="log"></ol>
-  </aside>
-</main>
-<footer id="shell-foot"></footer>
-</div>
-<script type="module" src="../../../src/cath/lab/play.ts"></script>
+<p>The PCI lab is now the Treat step of the <a href="../../">cath lab</a>.</p>
 </body>
 </html>
