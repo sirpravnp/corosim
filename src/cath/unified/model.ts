@@ -3,7 +3,7 @@ import { LabEngine } from "../../lab/engine";
 import { OLD_PRESETS, plaquesToScenario, segmentChoices, sliderToPlaque } from "../../lab/lesions";
 import { cathReport, ffrCall, timi, wireModel, type CathReport, type WireModel } from "../../sim/cath";
 import { WIRE } from "../../config/cath";
-import type { Hint } from "../../lab/hint";
+import { hintAction, type Hint } from "../../lab/hint";
 import type { AccessVariant, Action, LabEngineLike, LesionSlider, Plaque } from "../../lab/types";
 import type { Scenario } from "../../sim/scenario";
 
@@ -173,34 +173,9 @@ export function wireReadout(sim: Simulation, artery: string, position: number): 
 }
 
 // ---------------------------------------------------------------- Treat: hint to action
-/**
- * The action a hint means. The engine's planner names devices in the reason, in parentheses (for example "(guide-jl4)");
- * this turns the hint into the one action Show me performs. Returns null when there is nothing to do.
- */
+/** The one action Show me performs for a hint (the planner supplies it); null when there is nothing to do. */
 export function hintToAction(h: Hint): Action | null {
-  const id = h.why.match(/\(([a-zA-Z0-9._-]+)\)/)?.[1];
-  switch (h.kind) {
-    case "none": case "wait": return null;
-    case "advance": return { t: "advance", mm: h.mm ?? 4 };
-    case "withdraw": return { t: "advance", mm: -(h.mm ?? 4) };
-    case "torque": return { t: "torque", deg: h.deg ?? 0 };
-    case "shape": return { t: "shape", tipBendDeg: h.bendDeg ?? 45 };
-    case "engage": return { t: "autoAdvance", to: h.target?.segId === "RCA" ? "RCA" : "LM" };
-    case "inject": return { t: "inject", where: h.target?.segId === "RCA" ? "RCA" : "LCA", ml: 6 };
-    case "inflate": return { t: "inflate", atm: h.atm ?? 10, seconds: 5 };
-    case "deflate": return { t: "deflate" };
-    case "deploy": return { t: "deploy", atm: h.atm ?? 14, seconds: 5 };
-    case "select": {
-      if (!id) return null;
-      if (/^(femoral|radial)-[RL]$/.test(id)) return { t: "access", site: id as "femoral-R" };
-      if (id.startsWith("sheath-")) return { t: "sheath", french: Number(id.slice(7)) as 5 | 6 | 7 };
-      if (id === "heparin") return { t: "drug", id: "heparin", dose: 5000 };
-      if (id.startsWith("target-")) return { t: "target", segId: id.slice(7) };
-      const slot = id.startsWith("guide") ? "guide" : id.startsWith("wire") ? "wire" : id.startsWith("bal") ? "balloon" : id.startsWith("stent") ? "stent" : null;
-      return slot ? { t: "select", slot, id } : null;
-    }
-    default: return null;
-  }
+  return h.action ?? hintAction(h) ?? null;
 }
 
 /** The goal the hint plans toward: the target vessel's lesion, else the first lesion. */

@@ -13,8 +13,8 @@ export interface Basis { e1: V3; e2: V3; e3: V3 }
 export function viewBasis(rotDeg: number, tiltDeg: number): Basis {
   const ry = (rotDeg * Math.PI) / 180, rx = (tiltDeg * Math.PI) / 180;
   const cy = Math.cos(ry), sy = Math.sin(ry), cx = Math.cos(rx), sx = Math.sin(rx);
-  // matches `project` in angio.ts: x' = x cy + z sy; y' = y cx - z' sx with z' = -x sy + z cy; depth = y sx + z' cx
-  return { e1: [cy, 0, sy], e2: [sy * sx, cx, -cy * sx], e3: [-sy * cx, sx, cy * cx] };
+  // matches `project` in angio.ts: x' = x cy - z sy; y' = y cx - z' sx with z' = x sy + z cy; depth = y sx + z' cx (LAO positive)
+  return { e1: [cy, 0, -sy], e2: [-sy * sx, cx, -cy * sx], e3: [sy * cx, sx, cy * cx] };
 }
 
 export type Group = "body" | "lung" | "gas" | "heart" | "mediastinum" | "bone";

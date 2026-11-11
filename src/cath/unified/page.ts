@@ -22,6 +22,7 @@ import { deviceFocus, zoneOf } from "../../lab/camera";
 import { samplePoint } from "../../lab/geometry";
 import { nextHint, type Hint } from "../../lab/hint";
 import { OLD_PRESETS, segmentChoices } from "../../lab/lesions";
+import { CASE_BY_ID } from "../cases";
 import { applyCpr, applyFluid, applyPericardiocentesis, applyPressor, applyRestart, applyShock } from "../../lab/resus";
 import type { V3 } from "../../anatomy/curve";
 import { PadReader, padName, type PadCommand } from "./gamepad";
@@ -93,6 +94,12 @@ function patientChanged() {
   ecg.reset(S.sim.t);
   if (!target || !S.lesions.some((l) => l.segId === target && l.ds > 0)) target = S.lesions.find((l) => l.ds > 0)?.segId ?? null;
   wireArtery = target ?? (S.lesions[0]?.segId ?? "LAD");
+  // a preset opens at its case's usual angiographic view and injection; a custom patient at the view for its first lesion
+  const c = S.presetId ? CASE_BY_ID[S.presetId] : undefined;
+  const right = coronaryOf(wireArtery) === "RCA";
+  const v = c?.view ?? (right ? { injection: "right" as const, rot: 30, tilt: 0 } : { injection: "left" as const, rot: -30, tilt: 25 });
+  setView(v.rot, v.tilt);
+  $<HTMLSelectElement>("inj").value = v.injection === "both" ? "both" : v.injection;
   remodel();
   setupUi();
   if (S.step === 2) diagnoseUi();
@@ -125,8 +132,7 @@ function setupUi() {
   const treatable = [...new Set(S.lesions.filter((l) => l.ds > 0).map((l) => l.segId))];
   $<HTMLSelectElement>("target").innerHTML = treatable.length ? treatable.map((id) => `<option value="${id}"${id === target ? " selected" : ""}>${esc(segLabel(id))}</option>`).join("") : `<option value="">No lesion to treat</option>`;
   $<HTMLSelectElement>("target").disabled = !treatable.length;
-  const dup = S.lesions.some((l, i) => l.ds > 0 && S.lesions.some((m, j) => j < i && m.ds > 0 && m.segId === l.segId));
-  $("setupNote").textContent = [linkNote, dup ? "Two lesions on one artery: the angiogram and the procedure show both, but the coronary flow model counts only the first." : ""].filter(Boolean).join(" ");
+  $("setupNote").textContent = linkNote;
   $("patientLine").textContent = lesionSummary(S.lesions, S.exertion);
   $("title").textContent = title();
   links.refresh();
@@ -176,7 +182,8 @@ function diagnoseUi() {
   const order = ["LM", "LAD", "LCX", "RCA"].filter((id) => S.sim.tree.byId[id]).concat(S.sim.tree.segments.map((s) => s.id).filter((id) => !["LM", "LAD", "LCX", "RCA"].includes(id)));
   if (!S.sim.tree.byId[wireArtery]) wireArtery = "LAD";
   $<HTMLSelectElement>("artery").innerHTML = order.map((id) => `<option value="${id}"${id === wireArtery ? " selected" : ""}>${esc(S.sim.tree.byId[id].name)}</option>`).join("");
-  $<HTMLSelectElement>("inj").value = coronaryOf(wireArtery) === "RCA" ? "right" : "left";
+  const inj = $<HTMLSelectElement>("inj");
+  if (inj.value !== "both") inj.value = coronaryOf(wireArtery) === "RCA" ? "right" : "left";
   wireUi();
 }
 function wireUi() {
@@ -416,7 +423,7 @@ function setView(rot: number, tilt: number) {
     if (S.engine.state().access && (c.rot !== view.opts.rot || c.tilt !== view.opts.tilt)) S.engine.apply({ t: "carm", rot: view.opts.rot, tilt: view.opts.tilt });
   }, 400);
 }
-const angleText = () => { const o = view.opts; $("rotv").textContent = `${o.rot < 0 ? "RAO" : "LAO"} ${Math.abs(o.rot)}°`; $("tiltv").textContent = `${o.tilt < 0 ? "caud" : "cran"} ${Math.abs(o.tilt)}°`; };
+const angleText = () => { const o = view.opts, r = Math.round(o.rot), t = Math.round(o.tilt); $("rotv").textContent = `${r < 0 ? "RAO" : "LAO"} ${Math.abs(r)}°`; $("tiltv").textContent = `${t < 0 ? "caud" : "cran"} ${Math.abs(t)}°`; };
 $("rot").addEventListener("input", () => setView(+$<HTMLInputElement>("rot").value, view.opts.tilt));
 $("tilt").addEventListener("input", () => setView(view.opts.rot, +$<HTMLInputElement>("tilt").value));
 $("lab").addEventListener("change", () => { view.opts.labels = $<HTMLInputElement>("lab").checked; });
@@ -617,9 +624,13 @@ function liveStep(now: number) {
   if ((slowClock += dt) > 0.4) { slowClock = 0; renderTiles(); arrestUi(); }
   if (S.step === 2 && source) TABS[activeTab].panel.draw(S.sim.t);
 }
+// pads poll on their own 60 Hz timer, not the frame loop: a throttled or slow frame must not swallow a press
 let padClock = performance.now();
+window.setInterval(() => { const now = performance.now(); pollPads(Math.min(0.05, (now - padClock) / 1000)); padClock = now; }, 16);
+/** What the browser reports for each pad, for setting up a new controller (window.corosimPads()). */
+(window as unknown as { corosimPads: () => object[] }).corosimPads = () => (navigator.getGamepads?.() ?? []).filter((p): p is Gamepad => !!p)
+  .map((p) => ({ id: p.id, mapping: p.mapping, buttons: p.buttons.length, pressed: p.buttons.map((b, i) => (b.pressed ? i : -1)).filter((i) => i >= 0), axes: p.axes.map((a) => +a.toFixed(2)) }));
 const frame = (now: number) => {
-  pollPads(Math.min(0.05, (now - padClock) / 1000)); padClock = now;
   liveStep(now);
   if (isSchematic(mode) && !peri) {
     drawSchematic(angCtx, devCanvas.width, devCanvas.height, S.engine.graph(), geom, S.engine.state());
@@ -643,4 +654,4 @@ const frame = (now: number) => {
   requestAnimationFrame(frame);
 };
 requestAnimationFrame(frame);
-(window as unknown as { corosimCath: object }).corosimCath = { state: S, act, view, goStep, setPeri, undo, hint: () => hint, hasProcedure: () => hasProcedure(S) };
+(window as unknown as { corosimCath: object }).corosimCath = { state: S, act, view, goStep, setPeri, undo, hint: () => hint, hasProcedure: () => hasProcedure(S), ecg, fluoro, geom: () => geom, model: () => model, heartDraw: () => TABS[activeTab].panel.draw(S.sim.t) };

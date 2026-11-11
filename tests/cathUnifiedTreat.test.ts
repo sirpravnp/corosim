@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { nextHint } from "../src/lab/hint";
 import { createUnified, hintToAction, hintGoal, resusModel, coronaryOf, undoStep } from "../src/cath/unified/model";
 import type { Action } from "../src/lab/types";
+import { LEADS, LEAD_AXES } from "../src/config/ecg";
 
 /** Get to an engaged guide with a wire loaded on the target's coronary. */
 const toWire = (s: ReturnType<typeof createUnified>, segId: string) => {
@@ -133,16 +134,35 @@ describe("unified cath page: Treat", () => {
     expect(e.effusionMl!()).toBeLessThan(m.effusionMl);
   });
 
-  const mag = (v: readonly number[]) => Math.hypot(v[0], v[1], v[2]);
-  it("the 12-lead shows an injury current with a critical left main, and none with normal coronaries", () => {
-    const lm = createUnified("lm90").sim.ecgInputs().injury;
-    expect(mag(lm)).toBeGreaterThan(0.1);
-    expect(mag(createUnified("normal").sim.ecgInputs().injury)).toBeLessThan(0.01);
+  /** ST in mV in each lead from the patient's injury vector. */
+  const st = (id: string) => {
+    const v = createUnified(id).sim.ecgInputs().injury;
+    return Object.fromEntries(LEADS.map((l) => [l, v[0] * LEAD_AXES[l][0] + v[1] * LEAD_AXES[l][1] + v[2] * LEAD_AXES[l][2]])) as Record<string, number>;
+  };
+  it("a proximal LAD occlusion elevates V1 to V5, I and aVL, with reciprocal inferior depression", () => {
+    const e = st("ladocc");
+    for (const l of ["V2", "V3", "V4", "I", "aVL"]) expect(e[l], l).toBeGreaterThan(0.1);
+    expect(e.III).toBeLessThan(-0.1);
   });
-
-  it.fails("the 12-lead shows anterior ST elevation after a proximal LAD occlusion (blocked by engine finding C1)", () => {
-    const occ = createUnified("ladocc").sim.ecgInputs().injury;
-    expect(mag(occ)).toBeGreaterThan(0.1);
-    expect(occ[2]).toBeGreaterThan(0); // the anterior leads look forward (+z)
+  it("an RCA occlusion elevates II, III and aVF, III more than II, with aVL depressed", () => {
+    const e = st("rcaocc");
+    for (const l of ["II", "III", "aVF"]) expect(e[l], l).toBeGreaterThan(0.1);
+    expect(e.III).toBeGreaterThan(e.II);
+    expect(e.aVL).toBeLessThan(-0.05);
+  });
+  it("a circumflex occlusion elevates I and aVL and depresses V1 to V3 (the posterior mirror)", () => {
+    const e = st("lcxocc");
+    expect(e.I).toBeGreaterThan(0.1); expect(e.aVL).toBeGreaterThan(0.1);
+    for (const l of ["V1", "V2", "V3"]) expect(e[l], l).toBeLessThan(-0.1);
+  });
+  it("a critical left main gives diffuse ST depression with aVR elevated above V1, not a localizing STEMI", () => {
+    const e = st("lm90");
+    for (const l of ["I", "II", "V5", "V6"]) expect(e[l], l).toBeLessThan(-0.1);
+    expect(e.aVR).toBeGreaterThan(0.15);
+    expect(e.aVR).toBeGreaterThan(e.V1);
+    for (const l of ["V2", "V3", "V4"]) expect(e[l], l).toBeLessThan(0.1);
+  });
+  it("normal coronaries give no injury current", () => {
+    for (const v of Object.values(st("normal"))) expect(Math.abs(v)).toBeLessThan(0.01);
   });
 });

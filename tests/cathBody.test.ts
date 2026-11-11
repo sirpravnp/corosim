@@ -190,3 +190,36 @@ describe("the backdrop for the peripheral views", () => {
     expect(bones.some((b) => b.c[0] > 380 && Math.abs(b.c[1]) < 40)).toBe(true); // left forearm
   });
 });
+
+import { buildTree } from "../src/anatomy/tree";
+describe("C-arm angulation matches the textbook views", () => {
+  const t = buildTree();
+  const pts = (ids: string[]) => ids.flatMap((id) => t.byId[id].samples);
+  const heart = ((p) => [0, 1, 2].map((k) => p.reduce((a, q) => a + q[k], 0) / p.length))(pts(["LM", "LAD", "LCX", "RCA"])) as [number, number, number];
+  const at = (rot: number, tilt = 0) => frameOf(heart, { rot, tilt, injection: "both", labels: false, heartRate: 0 }, 0, 640, 640);
+  /** Minor over major axis of the projected points: 1 is a circle, 0 a line. */
+  const roundness = (rot: number, ids: string[]) => {
+    const f = at(rot), p = pts(ids).map((q) => f.toStatic(q)), m = [0, 1].map((k) => p.reduce((a, q) => a + q[k], 0) / p.length);
+    let xx = 0, yy = 0, xy = 0; for (const q of p) { const dx = q[0] - m[0], dy = q[1] - m[1]; xx += dx * dx; yy += dy * dy; xy += dx * dy; }
+    const tr = xx + yy, d = Math.sqrt(tr * tr / 4 - (xx * yy - xy * xy));
+    return Math.sqrt((tr / 2 - d) / (tr / 2 + d));
+  };
+  const meanX = (rot: number, ids: string[]) => { const f = at(rot), p = pts(ids).map((q) => f.toStatic(q)); return p.reduce((a, q) => a + q[0], 0) / p.length; };
+
+  it("LAO looks down the AV groove (the RCA and circumflex open into a ring); RAO sees it edge-on", () => {
+    expect(roundness(30, ["RCA", "LCX"])).toBeGreaterThan(roundness(0, ["RCA", "LCX"]));
+    expect(roundness(30, ["RCA", "LCX"])).toBeGreaterThan(roundness(-30, ["RCA", "LCX"]) + 0.2);
+  });
+  it("the spine is on the image right in LAO and on the left in RAO", () => {
+    const sp = spine()[6].c;
+    expect(at(30).toStatic(sp)[0]).toBeGreaterThan(at(30).toStatic(heart)[0]);
+    expect(at(-30).toStatic(sp)[0]).toBeLessThan(at(-30).toStatic(heart)[0]);
+  });
+  it("in LAO the RCA lies on the image left of the circumflex", () => {
+    expect(meanX(30, ["RCA"])).toBeLessThan(meanX(30, ["LCX"]));
+  });
+  it("cranial tilt moves anterior structures down the screen", () => {
+    const front: [number, number, number] = [heart[0], heart[1], heart[2] + 60];
+    expect(at(0, 30).toStatic(front)[1]).toBeGreaterThan(at(0, 0).toStatic(front)[1]);
+  });
+});

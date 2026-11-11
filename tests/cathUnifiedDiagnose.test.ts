@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { Simulation } from "../src/sim/simulation";
 import { CASES } from "../src/cath/cases";
 import { timi, wireModel } from "../src/sim/cath";
-import { createUnified, diagnoseModel, wireReadout } from "../src/cath/unified/model";
+import { createUnified, diagnoseModel, wireReadout, setLesions } from "../src/cath/unified/model";
 
 /** The old diagnostic page: a core-engine Simulation on the case's scenario, warmed up 20 s. */
 const oldSim = (id: string) => {
@@ -11,13 +11,6 @@ const oldSim = (id: string) => {
   s.reset(c.scenario, { settled: true }); s.warmup(20);
   return { s, c };
 };
-
-/**
- * Known engine bug (review finding C1, src/lab/plaque.ts): plaqueToLesions sends a total occlusion to the solver as ds 1 without
- * `occluded: true`, and the left system's flow goes to NaN (the patient starts in PEA). These presets are checked in it.fails below,
- * which turns red once the engine is fixed: then fold them back into the main test.
- */
-const OCCLUSION_PRESETS = ["ladocc", "rcaocc", "lcxocc"];
 
 const matchesOld = (ids: string[]) => {
   for (const c of CASES.filter((x) => ids.includes(x.id))) {
@@ -39,11 +32,7 @@ const matchesOld = (ids: string[]) => {
 
 describe("unified cath page: Diagnose", () => {
   it("Diagnose reproduces each old preset's TIMI flow and pullback gradient within the old page's tolerances", () => {
-    matchesOld(CASES.map((c) => c.id).filter((id) => !OCCLUSION_PRESETS.includes(id)));
-  });
-
-  it.fails("the occlusion presets match the old page too (blocked by engine finding C1)", () => {
-    matchesOld(OCCLUSION_PRESETS);
+    matchesOld(CASES.map((c) => c.id));
   });
 
   it("lists the lesions as findings and calls flow-limiting ones out", () => {
@@ -55,8 +44,20 @@ describe("unified cath page: Diagnose", () => {
     expect(n.flow.every((f) => f.grade === 3)).toBe(true);
   });
 
-  it.fails("the pressure wire stops at an occlusion (blocked by engine finding C1)", () => {
-    expect(wireReadout(createUnified("ladocc").sim, "LAD", 1).ffr).toBeNull();
+  it("the pressure wire stops at an occlusion, and an occlusion leaves the other vessels and the pressure alone", () => {
+    const u = createUnified("ladocc");
+    expect(wireReadout(u.sim, "LAD", 1).ffr).toBeNull();
+    expect(timi(u.sim, "LCX").grade).toBe(3);
+    expect(u.sim.state().rolling10s.map!).toBeGreaterThan(60);
+    expect(u.sim.arrestState().status).not.toBe("arrest");
+  });
+
+  it("moving a lesion along the artery moves it in the flow model", () => {
+    const u = createUnified("lad75");
+    const near = { ...u.lesions[0], centerMm: 15 }, far = { ...u.lesions[0], centerMm: 90 };
+    setLesions(u, [near], false); const posNear = u.sim.n.lesionSpecs[0].position;
+    setLesions(u, [far], false); const posFar = u.sim.n.lesionSpecs[0].position;
+    expect(posFar).toBeGreaterThan(posNear + 0.4);
   });
 
   it("the pressure wire reads a drop across a stenosis", () => {

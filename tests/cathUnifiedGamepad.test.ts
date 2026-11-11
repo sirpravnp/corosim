@@ -34,7 +34,7 @@ describe("game controller mapping", () => {
     const drift = Array.from({ length: 120 }, () => r.read(pad([], [0.1, -0.15, 0.1, 0.1]), 1 / 60)).flat();
     expect(drift).toEqual([]);
     const full = Array.from({ length: 60 }, () => r.read(pad([], [0, -1, 0, 0]), 1 / 60)).flat();
-    expect(full.filter((c) => c.k === "advance").length).toBeGreaterThan(8);
+    expect(full.filter((c) => c.k === "advance").length).toBeGreaterThanOrEqual(4); // about 24 mm in a second, in 4 mm steps
   });
 
   it("D-pad left and right rotate the wire by a fixed turn; the right stick moves the C-arm", () => {
