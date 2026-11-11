@@ -81,21 +81,43 @@ export function segmentAt(tau: number, ang: number): number {
   return nearest(RING6);
 }
 
-const NT = 28, NA = 36;
-/** A per-patient grid of contraction shares over the LV (rows: fraction of length; columns: angle), and the reference cavity radius per row. */
-export interface ContractionMap { k: Float32Array; rc: Float32Array; kBase: number }
+export const NT = 28, NA = 36;
 
-/** Precompute the grid once per patient: it does not change through the beat. `wallLv` is the diastolic wall in LV units. */
-export function contractionMap(k: ArrayLike<number>, wallLv: number): ContractionMap {
-  const grid = new Float32Array(NT * NA), rc = new Float32Array(NT);
-  for (let i = 0; i < NT; i++) {
-    const tau = (i + 0.5) / NT;
-    rc[i] = Math.max(0, lvEpiRadius(tau * LV_LENGTH) - wallLv);
-    for (let j = 0; j < NA; j++) grid[i * NA + j] = contraction(k, tau, -180 + (360 * (j + 0.5)) / NA);
+/**
+ * An LV the warp can move: coordinates along its long axis (t, from the apex) and across it (x toward the free wall, y anterior, about
+ * a centre line), their inverse, and its end-diastolic cavity radius and wall thickness by level and angle (NT rows by NA columns:
+ * row i at t = (i + 0.5) / NT of `length`, column j at angle -180 + 360 (j + 0.5) / NA degrees). The schematic LV (anatomy.ts) and the
+ * CT heart's LV (ctEcho.ts) are two of these.
+ */
+export interface LvGeom {
+  length: number;
+  frame(p: V3, out: LvPoint): LvPoint;
+  point(t: number, x: number, y: number, out: V3): V3;
+  rc: Float32Array; wall: Float32Array;
+  /** Signed distance from the septal plane, mm: negative on the RV side; and that plane's unit normal (pointing to the LV side). */
+  septal(p: V3): number; septalNormal: V3;
+}
+
+/** The schematic LV of anatomy.ts as an `LvGeom`, with a uniform diastolic wall (`wall`, mm) and optional thicker septum. */
+export function schematicGeom(wall: number, septum = wall): LvGeom {
+  const rc = new Float32Array(NT * NA), w = new Float32Array(NT * NA);
+  for (let i = 0; i < NT; i++) for (let j = 0; j < NA; j++) {
+    const tau = (i + 0.5) / NT, ang = -180 + (360 * (j + 0.5)) / NA, wl = wallAt(ang, tau, wall, septum);
+    rc[i * NA + j] = Math.max(0, lvEpiRadius(tau * LV_LENGTH) - wl); w[i * NA + j] = wl;
   }
+  return { length: LV_LENGTH, frame: lvFrame, point: lvPoint, rc, wall: w, septal: septalDistance, septalNormal: [SEPT[0], 0, SEPT[2]] };
+}
+
+/** A per-patient grid of contraction shares over the LV (same grid as `LvGeom`), with the geometry it moves. */
+export interface ContractionMap { k: Float32Array; geom: LvGeom; kBase: number }
+
+/** Precompute the grid once per patient: it does not change through the beat. */
+export function contractionMap(k: ArrayLike<number>, geom: LvGeom): ContractionMap {
+  const grid = new Float32Array(NT * NA);
+  for (let i = 0; i < NT; i++) for (let j = 0; j < NA; j++) grid[i * NA + j] = contraction(k, (i + 0.5) / NT, -180 + (360 * (j + 0.5)) / NA);
   // the base's descent comes from the longitudinal fibers of the whole ring: mean share of the basal and mid segments
   let kBase = 0; for (let i = 0; i < 12; i++) kBase += k[i]; kBase /= 12;
-  return { k: grid, rc, kBase };
+  return { k: grid, geom, kBase };
 }
 
 /** Longitudinal shortening (fraction of LV length) that goes with radial shortening `s`: about 15 % when `s` is a normal 0.33. */
@@ -104,9 +126,9 @@ export const longShortening = (s: number, m: ContractionMap) => 0.45 * s * Math.
 /** Cavity volume at shortening `s`, as a fraction of its end-diastolic volume, on this geometry. */
 export function volumeRatio(s: number, m: ContractionMap): number {
   let num = 0, den = 0;
-  for (let i = 0; i < NT; i++) {
-    const r2 = m.rc[i] * m.rc[i];
-    for (let j = 0; j < NA; j++) { const g = Math.max(0, 1 - m.k[i * NA + j] * s); num += r2 * g * g; den += r2; }
+  for (let i = 0; i < NT * NA; i++) {
+    const r2 = m.geom.rc[i] * m.geom.rc[i], g = Math.max(0, 1 - m.k[i] * s);
+    num += r2 * g * g; den += r2;
   }
   return den > 0 ? (num / den) * (1 - longShortening(s, m)) : 1;
 }
@@ -133,6 +155,7 @@ export const STILL: FrameMotion = { s: 0, long: 0, rv: 0 };
 const smooth = (x: number) => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
 const lp: LvPoint = { t: 0, x: 0, y: 0 };
 const SEPT = [septalDistance([1, 0, 0]) - septalDistance([0, 0, 0]), 0, septalDistance([0, 0, 1]) - septalDistance([0, 0, 0])];
+// SEPT is needed by schematicGeom, which modules may call at load: keep it above any use
 
 /** How far above the base the atria still follow its descent, LV units. */
 const ATRIAL_FOLLOW = 45;
@@ -143,15 +166,15 @@ const DRAG = 22;
  * Where point `q` (LV units, heart frame) sat at end-diastole. `out` receives the reference point; `q` is not changed.
  * Identity when the frame does not move.
  */
-/** The LV's static shape for the warp: the contraction grid and the diastolic wall, lateral and septal, in LV units. */
-export interface WarpShape { map: ContractionMap; wall: number; septum: number }
+/** The LV's static shape for the warp: the contraction grid (which carries the geometry). Kept as an object so more can join it. */
+export interface WarpShape { map: ContractionMap }
 
 export function warp(q: V3, f: FrameMotion, shape: WarpShape, out: V3): V3 {
-  const m = shape.map;
+  const m = shape.map, G = m.geom;
   out[0] = q[0]; out[1] = q[1]; out[2] = q[2];
   if (f.s === 0 && f.long === 0 && f.rv === 0) return out;
-  lvFrame(q, lp);
-  const L = LV_LENGTH, Lnow = L * (1 - f.long);
+  G.frame(q, lp);
+  const L = G.length, Lnow = L * (1 - f.long);
   // longitudinal: stretch the ventricles back to their diastolic length; carry the atria back up with the base
   let t = lp.t;
   if (t <= Lnow) t = t / (1 - f.long);
@@ -164,8 +187,8 @@ export function warp(q: V3, f: FrameMotion, shape: WarpShape, out: V3): V3 {
     const ti = Math.min(NT - 1, Math.max(0, Math.floor(Math.max(0, tau) * NT)));
     const ang = (Math.atan2(y, x) * 180) / Math.PI;
     const aj = Math.min(NA - 1, Math.max(0, Math.floor(((ang + 180) / 360) * NA)));
-    const k = m.k[ti * NA + aj], rcEd = m.rc[ti], g = Math.max(0.03, 1 - k * f.s), rc = rcEd * g;
-    const reEd = rcEd + wallAt(ang, tau, shape.wall, shape.septum), cons = 1 - f.long;
+    const cell = ti * NA + aj, k = m.k[cell], rcEd = G.rc[cell], g = Math.max(0.03, 1 - k * f.s), rc = rcEd * g;
+    const reEd = rcEd + G.wall[cell], cons = 1 - f.long;
     const reNow = Math.sqrt(rc * rc + (reEd * reEd - rcEd * rcEd) / cons);
     let rRef: number;
     if (r <= rc) rRef = r / g;
@@ -174,14 +197,14 @@ export function warp(q: V3, f: FrameMotion, shape: WarpShape, out: V3): V3 {
     const kk = 1 + (rRef / r - 1) * along;
     x *= kk; y *= kk;
   }
-  lvPoint(t, x, y, out);
+  G.point(t, x, y, out);
   // right ventricle: the free wall moves toward the septum (the septal plane is fixed), fading out beyond the free wall and above the base
   if (f.rv !== 0) {
-    const sd = septalDistance(out);
+    const sd = G.septal(out);
     if (sd < 0) {
       const reach = 1 - smooth((-sd - 34) / 20), base = 1 - smooth((tau - 0.92) / 0.12);
-      const shift = -sd * (1 / (1 - f.rv) - 1) * reach * base;
-      out[0] -= SEPT[0] * shift; out[2] -= SEPT[2] * shift;
+      const shift = -sd * (1 / (1 - f.rv) - 1) * reach * base, n = G.septalNormal;
+      out[0] -= n[0] * shift; out[1] -= n[1] * shift; out[2] -= n[2] * shift;
     }
   }
   return out;

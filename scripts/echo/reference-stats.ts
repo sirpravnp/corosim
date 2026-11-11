@@ -11,7 +11,7 @@
 import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { IMAGES } from "../../src/echo/views";
-import { imageStats, wedgeMask } from "../../src/echo/imageStats";
+import { edgeStats, imageStats, wedgeMask } from "../../src/echo/imageStats";
 
 const W = 624, H = 480;
 /** Pixels per millimeter, from the depth labels: PLAX 5 to 10 cm is 136 px; PSAX 130 px; subcostal 5, 10, 15 cm are 101 px apart. */
@@ -31,7 +31,8 @@ for (const im of IMAGES) {
   const f = frames(`src/echo/media/${im.file}`), c = im.clean;
   const mask = wedgeMask(W, H, c.apex, [c.half[0] - 3, c.half[1] - 3], c.radius - 12);
   const stats = imageStats(f, { w: W, h: H, apex: c.apex, pxPerMm: PX_PER_MM[im.view], mask });
-  result[im.view] = { frames: f.length, pxPerMm: PX_PER_MM[im.view], ...stats };
+  const edges = edgeStats(f, { w: W, h: H, apex: c.apex, pxPerMm: PX_PER_MM[im.view], mask });
+  result[im.view] = { frames: f.length, pxPerMm: PX_PER_MM[im.view], ...stats, edges };
   console.log(im.view, JSON.stringify(result[im.view]));
 }
 writeFileSync("src/echo/reference.json", JSON.stringify({

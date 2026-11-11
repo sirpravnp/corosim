@@ -38,7 +38,12 @@
         null,
         null
       ],
-      "tissueContrast": 1.928
+      "tissueContrast": 1.928,
+      "edges": {
+        "edgeWidth": 3.25,
+        "edges": 31777,
+        "specularRatio": 2.248
+      }
     },
     "psax-pm": {
       "frames": 93,
@@ -77,7 +82,12 @@
         null,
         null
       ],
-      "tissueContrast": 3.211
+      "tissueContrast": 3.211,
+      "edges": {
+        "edgeWidth": 3.25,
+        "edges": 16669,
+        "specularRatio": 2.333
+      }
     },
     "subcostal": {
       "frames": 44,
@@ -116,7 +126,12 @@
         79.406,
         56.305
       ],
-      "tissueContrast": 2.267
+      "tissueContrast": 2.267,
+      "edges": {
+        "edgeWidth": 4,
+        "edges": 17128,
+        "specularRatio": 1.859
+      }
     }
   }
 }

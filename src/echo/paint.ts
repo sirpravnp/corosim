@@ -2,7 +2,8 @@ import { V3, add, mul } from "../anatomy/curve";
 import { Part, PART_NAMES } from "../anatomy/heartSurface";
 import { WALL_MM } from "./wall";
 import { stylizeRaster } from "./look";
-import { EchoFrame, EchoHeart, FrameSample, Tissue, classifyEcho, classifyFrame, isSolidTissue } from "./tissue";
+import { EchoFrame, EchoHeart, FrameSample, Tissue, classifyEcho, classifyFrame, idealPatient, isSolidTissue } from "./tissue";
+export { idealPatient };
 import { Pose, SECTOR, toHeart } from "./poses";
 import { EchoSlice, SliceLabel, SliceSample, sampleSlice } from "./slice";
 
@@ -136,7 +137,7 @@ const offscreen = (which: "ideal" | "style", w: number, h: number) => {
 };
 
 /** Classify every sector pixel into part + sdf, hollow out chambers past wall thickness, find cavity anchors for labels. */
-export function rasterize(pose: Pose, w: number, h: number, frame: Frame = frameFor(pose, w / h), patient?: { heart: EchoHeart; frame: EchoFrame }): Raster {
+export function rasterize(pose: Pose, w: number, h: number, frame: Frame = frameFor(pose, w / h), patient = idealPatient()): Raster {
   const hitOut: FrameSample = { tissue: Tissue.Outside, part: null, sdf: 0, ref: [0, 0, 0] };
   const part = new Int8Array(w * h), wall = new Uint8Array(w * h), tissue = new Uint8Array(w * h), sdfArr = new Float32Array(w * h);
   part.fill(-2);

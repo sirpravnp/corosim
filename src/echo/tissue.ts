@@ -2,21 +2,13 @@ import { V3 } from "../anatomy/curve";
 import { HeartMorph, MorphPart, Part, classifyHeart, parts, partsMorph, septalDistance, smin } from "../anatomy/heartSurface";
 import { isWall, WALL_MM } from "./wall";
 import {
-  LV, E1, E2, LvPoint, MITRAL, TRICUSPID, LV_LENGTH, LV_APEX_SHIFT, NORMAL_VALVE, ValveLook,
+  LV, E1, E2, LvPoint, MITRAL, TRICUSPID, LV_LENGTH, NORMAL_VALVE, ValveLook,
   lvEpiDistance, lvFrame, onAorticCusp, onAtrioventricularLeaflet, papillaryDistance,
 } from "./anatomy";
-import { ContractionMap, FrameMotion, STILL, WarpShape, contractionMap, segmentAt, wallAt, warp } from "./motion";
+import { ContractionMap, FrameMotion, STILL, WarpShape, contractionMap, schematicGeom, segmentAt, wallAt, warp } from "./motion";
 import { organicWarp, patchiness, roughness } from "./organic";
+import { CtSample, classifyCt, ctGeom } from "./ctEcho";
 
-/**
- * The display heart's atria are flat ellipsoids sitting almost on the valve plane: in an apical view they come out a fifth of the
- * ventricle's length, where a real left atrium is about half of it. The echo reads everything above the valve plane stretched along the
- * long axis by this factor (the display heart itself is unchanged).
- */
-export const ATRIAL_STRETCH = 1.7;
-const VALVE_PLANE_Y = 50;
-const dq: V3 = [0, 0, 0];
-const toDisplay = (p: V3): V3 => { dq[0] = p[0]; dq[1] = p[1] > VALVE_PLANE_Y ? VALVE_PLANE_Y + (p[1] - VALVE_PLANE_Y) / ATRIAL_STRETCH : p[1]; dq[2] = p[2]; return dq; };
 
 
 /**
@@ -91,13 +83,17 @@ export interface EchoHeart {
    * trabeculation and wall-thickness variation of a real heart (the echo image).
    */
   organic: number;
-  /** Derived: the warp's shape, the interatrial septum's center. */
-  shape: WarpShape;
+  /** "ct": the CT-derived heart (ctEcho.ts), used whenever it is installed; "schematic": the display heart, the fallback. */
+  anatomy: "ct" | "schematic";
+  /** Linear scales of the RV, RA and LA against normal (CT anatomy). */
+  chamberScale: { rv: number; ra: number; la: number };
+  /** Derived: the warp's shape, the diastolic LV wall and septum in LV units, the interatrial septum's center. */
+  shape: WarpShape; wall: number; septumLv: number;
   ias: V3;
 }
 
 /** One moment of the beat: the motion of the walls, and how open each valve is (0 closed to 1 fully open). */
-export interface EchoFrame { motion: FrameMotion; open: { mv: number; av: number; tv: number } }
+export interface EchoFrame { motion: FrameMotion; open: { mv: number; av: number; tv: number; pv?: number } }
 
 /** The scale center for the LV and the ventricles: middle of the valve plane, as `partsMorph` uses. */
 export const LV_SCALE_CENTER: V3 = [0, 54, 0];
@@ -106,6 +102,8 @@ export interface HeartOptions {
   morph?: HeartMorph | null; lvScale?: number; lvWall?: number; septum?: number; rvWall?: number; effusion?: number; asdMm?: number;
   valves?: Partial<{ mv: Partial<ValveLook>; av: Partial<ValveLook>; tv: Partial<ValveLook> }>;
   scar?: number[]; wma?: number[]; organic?: number;
+  anatomy?: "ct" | "schematic";
+  chamberScale?: Partial<{ rv: number; ra: number; la: number }>;
 }
 
 /** Normal wall thicknesses, mm. */
@@ -113,9 +111,8 @@ export const NORMAL_WALL = { lv: LV.wall, rv: LV.rvWall };
 
 const ias = (morph: HeartMorph | null): V3 => {
   // the point between the two atrial centers where they meet: the fossa ovalis, where a secundum defect sits
-  const st = (q: V3): V3 => [q[0], VALVE_PLANE_Y + (q[1] - VALVE_PLANE_Y) * ATRIAL_STRETCH, q[2]];
-  const a = st([-27, 54, -6]), b = st([5, 56, -21]);
-  const d = (p: V3) => { const x = morph ? partsMorph(toDisplay(p), morph) : parts(toDisplay(p)); return x[Part.RA] - x[Part.LA]; };
+  const a: V3 = [-27, 54, -6], b: V3 = [5, 56, -21];
+  const d = (p: V3) => { const x = morph ? partsMorph(p, morph) : parts(p); return x[Part.RA] - x[Part.LA]; };
   let lo = 0, hi = 1;
   for (let i = 0; i < 30; i++) { const m = (lo + hi) / 2, p: V3 = [a[0] + (b[0] - a[0]) * m, a[1] + (b[1] - a[1]) * m, a[2] + (b[2] - a[2]) * m]; if (d(p) < 0) lo = m; else hi = m; }
   const m = (lo + hi) / 2;
@@ -126,18 +123,29 @@ export function makeHeart(o: HeartOptions = {}): EchoHeart {
   const lvScale = o.lvScale ?? 1, lvWall = o.lvWall ?? LV.wall, septum = o.septum ?? lvWall;
   const wma = o.wma ?? new Array(17).fill(1), scar = o.scar ?? new Array(17).fill(0);
   const v = (x?: Partial<ValveLook>): ValveLook => ({ ...NORMAL_VALVE, ...(x ?? {}) });
-  const map: ContractionMap = contractionMap(wma, lvWall / lvScale);
+  const anatomy = o.anatomy ?? (ctGeom() ? "ct" : "schematic");
+  const geom = anatomy === "ct" ? ctGeom() : null;
+  if (anatomy === "ct" && !geom) throw new Error("makeHeart: the CT heart is not installed");
+  const map: ContractionMap = contractionMap(wma, geom ?? schematicGeom(lvWall / lvScale, septum / lvScale));
   const morph = o.morph ?? null;
+  const cs = { rv: o.chamberScale?.rv ?? 1, ra: o.chamberScale?.ra ?? 1, la: o.chamberScale?.la ?? 1 };
   return {
     morph, lvScale, lvWall, septum, rvWall: o.rvWall ?? LV.rvWall, effusion: o.effusion ?? 0, asdMm: o.asdMm ?? 0,
-    valves: { mv: v(o.valves?.mv), av: v(o.valves?.av), tv: v(o.valves?.tv) }, scar, wma, organic: o.organic ?? 1,
-    shape: { map, wall: lvWall / lvScale, septum: septum / lvScale }, ias: ias(morph),
+    valves: { mv: v(o.valves?.mv), av: v(o.valves?.av), tv: v(o.valves?.tv) }, scar, wma, organic: o.organic ?? 1, anatomy, chamberScale: cs,
+    shape: { map }, wall: lvWall / lvScale, septumLv: septum / lvScale, ias: ias(morph),
   };
 }
 
-/** The resting normal heart, as exact schematic shapes. */
-export const NORMAL_HEART: EchoHeart = makeHeart({ organic: 0 });
+/** The resting normal heart, as exact schematic shapes (the fallback before the CT heart loads, and the schematic tests). */
+export const NORMAL_HEART: EchoHeart = makeHeart({ organic: 0, anatomy: "schematic" });
 export const stillFrame = (phase = 0.35): EchoFrame => ({ motion: STILL, open: { mv: phase, av: phase, tv: phase } });
+
+/** The normal heart the labeled slice, the framing and the scorer cut when no patient is given: the CT heart's exact shapes once it is installed. */
+let ctIdeal: { heart: EchoHeart; frame: EchoFrame } | null = null;
+export function idealPatient(): { heart: EchoHeart; frame: EchoFrame } | undefined {
+  if (!ctGeom()) return undefined;
+  return (ctIdeal ??= { heart: makeHeart({ organic: 0 }), frame: stillFrame() });
+}
 
 /** The heart's bounding box (mesh bounds of `meshHeart`). Points outside it, beyond the pericardium, are empty. */
 const BOX_LO: V3 = [-64, -74, -72], BOX_HI: V3 = [64, 114, 48];
@@ -153,8 +161,7 @@ interface Display {
   core: number;
 }
 const disp: Display = { sdf: 0, part: null, gap: Infinity, second: -1, core: 0 };
-function display(p0: V3, morph: HeartMorph | null, out: Display): Display {
-  const p = toDisplay(p0);
+function display(p: V3, morph: HeartMorph | null, out: Display): Display {
   if (!morph) {
     const d = parts(p), atria = smin(d[Part.RA], d[Part.LA], 6), sdf = smin(smin(d[Part.LV], atria, 3.5), d[Part.Aorta], 3);
     nearest(d, sdf, out);
@@ -195,6 +202,7 @@ function nearest(d: number[], sdf: number, out: Display) {
 /** Signed distance to the heart's outer surface, mm: the display heart, or the LV where a dilated LV bulges past it. */
 function outerSdf(p: V3, heart: EchoHeart): number {
   const d = display(p, heart.morph, { sdf: 0, part: null, gap: 0, second: -1, core: 0 }).core;
+  if (heart.lvScale <= 1.02) return d;
   const s = heart.lvScale, c = LV_SCALE_CENTER, f = lvFrame([c[0] + (p[0] - c[0]) / s, c[1] + (p[1] - c[1]) / s, c[2] + (p[2] - c[2]) / s], { t: 0, x: 0, y: 0 });
   return f.t / LV_LENGTH > 0.95 ? d : Math.min(d, lvEpiDistance(f) * s);
 }
@@ -223,7 +231,14 @@ export interface FrameSample extends EchoSample { ref: V3 }
  * the septum as the part of that shell that faces the RV, and the RV as everything else inside the display heart's inset surface, so it
  * wraps the LV as a crescent. Every point gets exactly one tissue: the branches below are exclusive.
  */
+const ctOut: CtSample = { tissue: 0, part: -1, sdf: 0, ref: [0, 0, 0] };
 export function classifyFrame(p: V3, heart: EchoHeart, frame: EchoFrame, out: FrameSample = { tissue: Tissue.Outside, part: null, sdf: 0, ref: [0, 0, 0] }): FrameSample {
+  if (heart.anatomy === "ct") {
+    ctOut.ref = out.ref;
+    classifyCt(p, heart, frame, warp, ctOut);
+    out.tissue = ctOut.tissue as Tissue; out.part = ctOut.part < 0 ? null : (ctOut.part as Part); out.sdf = ctOut.sdf;
+    return out;
+  }
   const s = heart.lvScale, c = LV_SCALE_CENTER;
   // where this point sat at end-diastole: warp in LV units, then back to mm
   q[0] = c[0] + (p[0] - c[0]) / s; q[1] = c[1] + (p[1] - c[1]) / s; q[2] = c[2] + (p[2] - c[2]) / s;
@@ -248,19 +263,13 @@ export function classifyFrame(p: V3, heart: EchoHeart, frame: EchoFrame, out: Fr
   const dEpiLv = lvEpiDistance(f); // LV units
   out.sdf = hit.sdf;
   // a dilated LV may bulge past the display ventricles; inside its epicardium below the valve plane it is still LV
-  // The echo LV owns its outline: it may bulge past the display ventricles, and on the LV side, near the apex, the display shape beyond it
-  // is not heart (the display heart is longer and narrower than a real left ventricle).
-  // Below the valve plane the LV wins over whatever display part is nearest (the stretched atria must not take its base).
-  const inLv = dEpiLv < 0 && (hit.part === Part.LV || hit.part === Part.RV || ((hit.part === null || tau < 0.9) && tau < 0.92));
-  const sd = septalDistance(qRef);
-  const ventricular = hit.part === Part.LV || hit.part === Part.RV;
-  // the right ventricle's apex stops short of the left's; nothing of the display ventricles caps the LV apex
-  const trimmed = !inLv && ventricular && ((sd >= LV.rvSideLimit && tau < 0.45) || tau < LV_APEX_SHIFT / LV_LENGTH + 0.1);
-  if ((hit.part === null && !inLv) || trimmed) {
+  const inLv = dEpiLv < 0 && (hit.part === Part.LV || hit.part === Part.RV || (hit.part === null && s > 1.02 && tau < 0.92));
+  if (hit.part === null && !inLv) {
     out.part = null;
-    out.tissue = pericardial(anat, tau < 0.95 ? (trimmed ? dEpiLv * s : Math.min(hit.core, dEpiLv * s)) : hit.core, heart);
+    out.tissue = pericardial(anat, s > 1.02 && tau < 0.95 ? Math.min(hit.core, dEpiLv * s) : hit.core, heart);
     return out;
   }
+  const sd = septalDistance(qRef);
   const part = hit.part ?? Part.LV;
 
   if (!inLv && part !== Part.LV && part !== Part.RV) { // atria, aorta and great vessels: thin wall, blood inside, partitions between them
@@ -273,7 +282,7 @@ export function classifyFrame(p: V3, heart: EchoHeart, frame: EchoFrame, out: Fr
   if (inLv) { // inside the LV epicardial shape
     const ang = (Math.atan2(f.y, f.x) * 180) / Math.PI;
     const seg = segmentAt(tau, ang), scar = heart.scar[seg] ?? 0;
-    let wall = wallAt(ang, tau, heart.shape.wall, heart.shape.septum) * (1 - 0.45 * scar);
+    let wall = wallAt(ang, tau, heart.wall, heart.septumLv) * (1 - 0.45 * scar);
     if (g > 0) {
       // the wall varies a little in thickness, and trabeculae roughen its inner border (more toward the apex; a scar is smooth)
       wall *= 1 + 0.12 * g * patchiness([r[0] * 0.5, r[1] * 0.5, r[2] * 0.5]);

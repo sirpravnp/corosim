@@ -1,6 +1,7 @@
 import { V3, add, mul } from "../anatomy/curve";
 import { Part, PART_NAMES, heartSdf, partAt } from "../anatomy/heartSurface";
 import { Pose, SECTOR, toHeart } from "./poses";
+import { FrameSample, Tissue, classifyFrame, idealPatient } from "./tissue";
 
 /**
  * Ideal cross-section of one probe pose. Samples lie in the scan sector (the pose plane, within the
@@ -35,6 +36,8 @@ export interface EchoSlice {
   labels: SliceLabel[];
 }
 
+const scratch: FrameSample = { tissue: Tissue.Outside, part: null, sdf: 0, ref: [0, 0, 0] };
+
 /** Rays across the sector, and steps along each ray. Fine enough to catch the aortic root. */
 const RAYS = 61;
 const STEPS = 80;
@@ -61,13 +64,16 @@ export function sampleSlice(pose: Pose, opts: SampleOpts = {}): EchoSlice {
       const radius = (pose.depth * j) / Math.max(1, steps - 1);
       const point = add(pose.probe, mul(dir, radius));
       const heart = toHeart(point);
-      const sdf = heartSdf(heart);
+      // the CT heart when it is installed (its own classification: chamber and outer distance), else the schematic display heart
+      const ideal = idealPatient();
+      const hit = ideal ? classifyFrame(heart, ideal.heart, ideal.frame, scratch) : null;
+      const sdf = hit ? hit.sdf : heartSdf(heart);
       samples.push({
         point,
         depth: radius * c,
         lateral: radius * s,
         sdf,
-        part: sdf < 0 ? partAt(heart) : null,
+        part: hit ? (hit.part !== null && hit.tissue !== Tissue.Outside && hit.part <= Part.Aorta ? hit.part : sdf < 0 ? Part.LV : null) : sdf < 0 ? partAt(heart) : null,
       });
     }
   }

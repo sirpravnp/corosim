@@ -33,16 +33,16 @@ export const ACOUSTIC: Record<string, Acoustic> = {
   fluid: { echo: 0.006, z: 0.99, att: 0.1 },
   myocardium: { echo: 1, z: 1.07, att: 1.5 },
   papillary: { echo: 1.15, z: 1.08, att: 1.5 },
-  leaflet: { echo: 2.6, z: 1.14, att: 2 },
+  leaflet: { echo: 1.5, z: 1.08, att: 2 },
   scar: { echo: 2.6, z: 1.14, att: 2.2 },
   calcium: { echo: 4.5, z: 1.7, att: 28 },
-  pericardium: { echo: 5.5, z: 1.25, att: 3 },
+  pericardium: { echo: 9, z: 1.25, att: 3 },
   skin: { echo: 2.2, z: 1.1, att: 2 },
   fat: { echo: 0.32, z: 0.94, att: 1.2 },
   muscle: { echo: 0.9, z: 1.06, att: 1.6 },
   liver: { echo: 0.85, z: 1.05, att: 1.4 },
   diaphragm: { echo: 2.4, z: 1.12, att: 2 },
-  mediastinum: { echo: 0.5, z: 1.03, att: 1.6 },
+  mediastinum: { echo: 0.85, z: 1.03, att: 1.6 },
   /** Aerated lung: the pleura reflects almost everything, so nothing comes back from behind it. */
   pleura: { echo: 2.2, z: 1.3, att: 6 },
   lung: { echo: 0.02, z: 0.4, att: 60 },
@@ -50,29 +50,45 @@ export const ACOUSTIC: Record<string, Acoustic> = {
 
 export const BEAM = {
   /** Scan lines across the 90 degree sector (a phased array draws about this many). */
-  lines: 128,
+  lines: 192,
   /** Sample spacing down each line, mm. */
   dr: 0.33,
   /** Gaussian width (sigma) of the pulse along the beam, mm. */
   axial: 0.92,
   /** Gaussian width of the beam across, mm, at the focus; the focal depth, mm; how fast it widens away from the focus (mm per mm). */
-  lateral: 0.8, focus: 60, spread: 0.022,
+  lateral: 1.15, focus: 60, spread: 0.03,
   /** Scatterer lattice spacing, mm: finer than the resolution cell, so the speckle is fully developed. */
-  cell: 0.32,
+  cell: 0.2,
   /** Echogenicity variation of solid tissue: log-amplitude spread of the smooth patchiness field (0.35 is about +-3 dB). */
   patchiness: 0.35,
+  /**
+   * Specular echoes bloom on a real scanner: a strong reflector (the posterior pericardium, a calcified ring) comes out as a broad band,
+   * several millimetres thick, not a line. The impedance map is smoothed over `specularWidth` mm along the beam before its step is taken,
+   * and the specular term is blurred `specularSpread` times wider across the beam than the speckle.
+   */
+  specularWidth: 1.1, specularSpread: 1.6,
   /** Specular echo gain on the impedance step per mm along the beam. */
-  specular: 34,
+  specular: 8,
   /** Nominal tissue attenuation that time-gain compensation undoes, dB/cm one way, up to a ceiling of gain (dB) as on a real scanner. */
   tgc: 1.35, tgcMax: 30,
+  /**
+   * Near-field gain: scanners run less gain close to the probe (the operator's top TGC sliders are low, to keep clutter down, and the
+   * transmit focus is deep), so the first few centimetres are darker: this many dB less at the skin, back to none by `nearMm`.
+   */
+  nearDb: 9, nearMm: 50,
   /** Electronic noise amplitude (after TGC it grows with depth). */
   noise: 0.0015,
   /** Side-lobe haze: share of the wide-blurred intensity added back, and its width, mm. */
-  haze: 0.035, hazeWidth: 7,
+  haze: 0.14, hazeWidth: 9,
   /** Near-field clutter amplitude and depth, mm. */
   clutter: 0.35, clutterMm: 24,
+  /**
+   * Speckle reduction after log compression, as cardiac scanners apply it: each sample is blended with the mean of its neighbourhood
+   * (about a millimetre along the beam, two lines across) by this share. It lifts the dark null lines of raw speckle without moving edges.
+   */
+  despeckle: 0.45,
   /** Dynamic range of the display, dB, and the echo level shown as white, dB above mean myocardium after TGC. */
-  range: 52, ceiling: 32,
+  range: 64, ceiling: 44,
 };
 
 export type EchoWindow = "parasternal" | "apical" | "subcostal" | "suprasternal" | "tee";
@@ -177,7 +193,9 @@ function acousticOf(t: Tissue): Acoustic {
 }
 
 /** Time-gain compensation at depth r mm, dB: undoes nominal tissue loss, saturating at `tgcMax`. */
-const tgcDb = (r: number) => Math.min(BEAM.tgcMax, 2 * BEAM.tgc * (r / 10));
+const tgcDb = (r: number) => { const u = Math.max(0, 1 - r / BEAM.nearMm); return Math.min(BEAM.tgcMax, 2 * BEAM.tgc * (r / 10)) - BEAM.nearDb * u * u; };
+
+const boxKernel = (r: number) => new Float32Array(2 * r + 1).fill(1);
 
 /** Separable 1D Gaussian kernel of width `sigma` samples, truncated at 2.5 sigma. */
 function kernel(sigma: number): Float32Array {
@@ -284,7 +302,7 @@ export function acquire(pose: Pose, depth: number, patient: { heart: EchoHeart; 
 
   // 4: specular echoes from impedance steps along the beam, blurred by the same beam across
   const zs = new Float32Array(z);
-  conv1(zs, NL, NS, kernel(0.35 / dr), true, true);
+  conv1(zs, NL, NS, kernel(BEAM.specularWidth / dr), true, true);
   const spec = new Float32Array(n);
   for (let j = 1; j < NS - 1; j++) for (let l = 0; l < NL; l++) {
     const i = j * NL + l, dz = (zs[i + NL] - zs[i - NL]) / (2 * dr);
@@ -292,7 +310,7 @@ export function acquire(pose: Pose, depth: number, patient: { heart: EchoHeart; 
     spec[i] = 2.2 * Math.tanh((BEAM.specular / 2.2) * Math.abs(dz)) * (0.55 + 0.45 * (0.5 + 0.5 * patch[i]));
   }
   for (let j = 0; j < NS; j++) {
-    const r = (j + 0.5) * dr, sigmaMm = Math.hypot(BEAM.lateral, BEAM.spread * (r - BEAM.focus));
+    const r = (j + 0.5) * dr, sigmaMm = BEAM.specularSpread * Math.hypot(BEAM.lateral, BEAM.spread * (r - BEAM.focus));
     convRow(spec, NL, j, kernel(sigmaMm / Math.max(0.05, r * dTheta)), true);
   }
 
@@ -346,6 +364,12 @@ export function acquire(pose: Pose, depth: number, patient: { heart: EchoHeart; 
     const db = 20 * Math.log10(Math.max(1e-6, env[i] * apod));
     const u = (db - (top - BEAM.range)) / BEAM.range;
     img[i] = Math.max(0, Math.min(1, u));
+  }
+  if (BEAM.despeckle > 0) {
+    const sm = new Float32Array(img), ra = Math.max(1, Math.round(0.5 / dr));
+    conv1(sm, NL, NS, boxKernel(ra), true, true);
+    for (let j = 0; j < NS; j++) convRow(sm, NL, j, boxKernel(1), true);
+    for (let i = 0; i < n; i++) img[i] = img[i] + (sm[i] - img[i]) * BEAM.despeckle;
   }
   return { lines: NL, samples: NS, depth, dr, img, tissue, part };
 }

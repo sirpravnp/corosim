@@ -122,16 +122,24 @@ export function ctHeartFromBytes(bin: Uint8Array, metaIn: unknown): CtHeart {
   };
 }
 
-/** Trilinear sample of a field at a CT-frame point (mm); `outside` beyond the volume. */
-export function sampleField(h: CtHeart, f: Float32Array, c: V3, outside = 50): number {
-  const x = c[0] - h.origin[0], y = c[1] - h.origin[1], z = c[2] - h.origin[2];
-  if (x < 0 || y < 0 || z < 0 || x >= h.nx - 1 || y >= h.ny - 1 || z >= h.nz - 1) return outside;
+/**
+ * Trilinear sample of a distance field at a CT-frame point (mm). Beyond the volume (which reaches only a few millimetres past the heart)
+ * the value is extrapolated as the field at the nearest point of the volume plus the distance to it: continuous, and a fair distance
+ * far from the heart, so bands well outside it (a large effusion) are not cut off at the volume's faces.
+ */
+export function sampleField(h: CtHeart, f: Float32Array, c: V3): number {
+  let x = c[0] - h.origin[0], y = c[1] - h.origin[1], z = c[2] - h.origin[2], extra = 0;
+  const mx = h.nx - 1.001, my = h.ny - 1.001, mz = h.nz - 1.001;
+  if (x < 0 || y < 0 || z < 0 || x > mx || y > my || z > mz) {
+    const cx = Math.min(mx, Math.max(0, x)), cy = Math.min(my, Math.max(0, y)), cz = Math.min(mz, Math.max(0, z));
+    extra = Math.hypot(x - cx, y - cy, z - cz); x = cx; y = cy; z = cz;
+  }
   const i = Math.floor(x), j = Math.floor(y), k = Math.floor(z), fx = x - i, fy = y - j, fz = z - k;
   const sy = h.nz, sx = h.ny * h.nz, o = i * sx + j * sy + k;
   const c00 = f[o] + (f[o + sx] - f[o]) * fx, c10 = f[o + sy] + (f[o + sx + sy] - f[o + sy]) * fx;
   const c01 = f[o + 1] + (f[o + sx + 1] - f[o + 1]) * fx, c11 = f[o + sy + 1] + (f[o + sx + sy + 1] - f[o + sy + 1]) * fx;
   const c0 = c00 + (c10 - c00) * fy, c1 = c01 + (c11 - c01) * fy;
-  return c0 + (c1 - c0) * fz;
+  return c0 + (c1 - c0) * fz + extra;
 }
 
 /** Label of the voxel containing a CT-frame point (0 outside the volume). */

@@ -1,6 +1,6 @@
 import { V3 } from "../anatomy/curve";
 import { septalDistance } from "../anatomy/heartSurface";
-import { LANDMARKS_HEART_FRAME } from "./poses";
+import { LANDMARKS_HEART_FRAME } from "./landmarks";
 
 /**
  * The echo layer's own ventricle, valve and papillary geometry, in the heart frame (mm). The display heart (`heartSdf`) is one ellipsoid cut by
@@ -23,10 +23,10 @@ const L = LANDMARKS_HEART_FRAME;
 /** Shape parameters, mm. */
 export const LV = {
   /** Epicardial radius in the short axis (the cut is round), and the wall thickness (cavity inset). */
-  radius: 32.5,
+  radius: 28.5,
   wall: 9.5,
   /** Length of the rounded apical cap along the long axis. */
-  cap: 50,
+  cap: 62,
   /** The RV cavity stops where it would round the lateral side of the LV: septal distance above this is LV wall. */
   rvSideLimit: 10,
   /** Inset of the RV cavity from the display heart's outer surface (the RV free wall). */
@@ -89,10 +89,9 @@ export function lvPoint(t: number, x: number, y: number, out: V3): V3 {
 
 /** Radius of the LV epicardium at distance `t` from the apex, for the shape `lvEpiDistance` describes (0 beyond the tip). */
 export function lvEpiRadius(t: number): number {
-  const ts = t - LV_APEX_SHIFT;
-  if (ts >= LV.cap) return LV.radius * taperAt(t);
-  if (ts <= 0) return 0;
-  const u = (ts - LV.cap) / LV.cap;
+  if (t >= LV.cap) return LV.radius * taperAt(t);
+  if (t <= 0) return 0;
+  const u = (t - LV.cap) / LV.cap;
   return LV.radius * Math.sqrt(Math.max(0, 1 - u * u));
 }
 
@@ -101,20 +100,13 @@ export function lvEpiRadius(t: number): number {
  * is bullet-shaped, widest in its middle third, not a cylinder with parallel walls.
  */
 export const LV_TAPER = 0.1;
-/**
- * The echo LV's epicardial tip sits this far up the axis from the apex landmark. The display heart, laid out for the coronary tree, is
- * long and narrow (cavity about 3:1); a real left ventricle is under 2:1 (about 85 by 48 mm at end-diastole), so the echo LV is shorter
- * and wider than the display shape, and owns its own outline (see tissue.ts).
- */
-export const LV_APEX_SHIFT = 12;
 const taperAt = (t: number) => { const u = Math.min(1, Math.max(0, (t - LV.cap) / (LV_LENGTH - LV.cap))); return 1 - LV_TAPER * u * u; };
 
 /** Approximate signed distance (mm, negative inside) to the LV epicardial surface: a rounded cap, then a body narrowing gently to the base. */
 export function lvEpiDistance(f: LvPoint): number {
   const rho = Math.hypot(f.x, f.y);
-  const t = f.t - LV_APEX_SHIFT;
-  if (t >= LV.cap) return rho - LV.radius * taperAt(f.t);
-  const R = LV.radius, T = LV.cap, dt = t - T;
+  if (f.t >= LV.cap) return rho - LV.radius * taperAt(f.t);
+  const R = LV.radius, T = LV.cap, dt = f.t - T;
   const k0 = Math.sqrt((rho / R) ** 2 + (dt / T) ** 2), k1 = Math.sqrt(rho * rho / R ** 4 + dt * dt / T ** 4);
   return k1 > 1e-9 ? (k0 * (k0 - 1)) / k1 : -R;
 }
@@ -144,14 +136,14 @@ export function papillaryDistance(f: LvPoint): number {
 
 // ---- valves -------------------------------------------------------------------------------------
 /** Leaflet thickness, mm, and how far a leaflet's middle bows out of the straight line from hinge to tip. */
-export const LEAFLET_MM = 2.4;
+export const LEAFLET_MM = 1.5;
 export const LEAFLET_BOW = 1.6;
 
 interface Sheet { origin: V3; dir: V3; lat: V3; norm: V3; length: number; halfWidth: number }
 const makeSheet = (origin: V3, dir: V3, lat: V3, length: number, halfWidth: number): Sheet => ({ origin, dir, lat, norm: unit(cross(lat, dir)), length, halfWidth });
 
 /** Hinged flaps on an annulus: two sheets that close toward the center line and swing toward the wall as `phase` goes 0 -> 1. */
-interface Annulus { center: V3; axis: V3; side: V3; lat: V3; radius: [number, number]; len: [number, number]; closed: [number, number]; open: number }
+export interface Annulus { center: V3; axis: V3; side: V3; lat: V3; radius: [number, number]; len: [number, number]; closed: [number, number]; open: number }
 const OPEN_ANGLE = (82 * Math.PI) / 180;
 
 const deg = (d: number) => (d * Math.PI) / 180;
@@ -172,7 +164,7 @@ export const TRICUSPID: Annulus = {
  * `calcium` (0..1) marks the leaflets as calcified: brighter, and they shadow what lies behind them. Defaults are a normal valve.
  */
 export interface ValveLook { thick: number; openMax: number; gap: number; calcium: number }
-export const NORMAL_VALVE: ValveLook = { thick: 2.4, openMax: 1, gap: 0, calcium: 0 };
+export const NORMAL_VALVE: ValveLook = { thick: 1.5, openMax: 1, gap: 0, calcium: 0 };
 
 /** The two flap sheets of a valve at a given opening. */
 export function flaps(a: Annulus, phase: number, look: ValveLook = NORMAL_VALVE): [Sheet, Sheet] {

@@ -3,8 +3,12 @@ import { Part } from "../src/anatomy/heartSurface";
 import { Tissue } from "../src/echo/tissue";
 import { buildPoses } from "../src/echo/poses";
 import { RasterLike, ViewSpec, VIEW_SPECS, scorePose, scoreRaster } from "../src/echo/score";
-import { controlsFromPose, poseFromControls } from "../src/echo/probe";
+import { controlsFromPose, poseFromControls, twistProbe } from "../src/echo/probe";
 import { tuneView } from "../src/echo/tune";
+import { installCtHeartNode } from "../src/echo/ctNode";
+
+// the echo images the CT heart in production; these tests check that path
+installCtHeartNode();
 
 const W = 40, H = 40;
 /** Synthetic raster: whole image is fan; rect regions painted with a part. */
@@ -72,24 +76,23 @@ const ids = Object.keys(poses);
 
 describe("view specs", () => {
   it("covers every existing pose and the planned views", () => {
-    for (const id of [...ids, "a4c", "a2c", "a3c", "psaxMV", "psaxAV", "ivc"]) expect(VIEW_SPECS[id]?.id).toBe(id);
+    for (const id of ids) expect(VIEW_SPECS[id]?.id, id).toBe(id);
   });
 });
 
-/** Rotate the probe's beam about the local lateral-by-up axis by 40 degrees of yaw-equivalent: a large, clearly wrong pose. */
-const rotated = (id: string, deg: number) => {
-  const c = controlsFromPose(poses[id]);
-  return poseFromControls({ ...c, yaw: c.yaw + (deg * Math.PI) / 180 });
-};
+/** Turn the image plane about the beam by `deg` (rolling the index mark): a large, clearly wrong pose. Sliding the probe instead keeps
+ *  its local beam, and on a real heart a four-chamber view slid along the chest is still a four-chamber view. */
+const rotated = (id: string, deg: number) => twistProbe(poses[id], (deg * Math.PI) / 180);
 
 describe("scorePose on the calibrated poses", () => {
   const check = (id: string) => {
     const s = scorePose(poses[id], VIEW_SPECS[id]);
     expect(s).toBeGreaterThanOrEqual(0);
     expect(s).toBeLessThanOrEqual(1);
+    expect(s, `${id} is a good ${id}`).toBeGreaterThan(0.8);
     expect(s).toBeGreaterThanOrEqual(scorePose(rotated(id, 40), VIEW_SPECS[id]));
   };
-  it.each(ids)("%s scores in 0..1 and at least as high as the same pose slid 40 degrees", check);
+  it.each(ids)("%s scores above 0.8 and at least as high as the same plane turned 40 degrees", check);
 });
 
 describe("tuneView", () => {
@@ -108,6 +111,7 @@ describe("tuneView", () => {
 import { blobStats, scoreRaster as scoreR, VIEW_SPECS as SPECS } from "../src/echo/score";
 import { Part as P } from "../src/anatomy/heartSurface";
 import { Tissue as T } from "../src/echo/tissue";
+
 
 /** A synthetic fan-less raster with one LV blood ellipse (semi-axes ax, ay in pixels, centered) and nothing else. */
 function ellipse(ax: number, ay: number, w = 90, h = 100) {

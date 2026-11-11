@@ -70,16 +70,20 @@ export function beatOfSpec(spec: StructuralSpec, look: EchoCase["look"] = {}, nF
   const period = 60 / r.hr, n = nFrames;
   const lv = resample(w.t, w.vLV, period, n), rv = resample(w.t, w.vRV, period, n), la = resample(w.t, w.vLA, period, n), ra = resample(w.t, w.vRA, period, n);
   const mv = openings(resample(w.t, w.q.MV, period, n)), av = openings(resample(w.t, w.q.AV, period, n)), tv = openings(resample(w.t, w.q.TV, period, n));
+  const pv = openings(resample(w.t, w.q.PVL, period, n));
   const lvEdv = Math.max(...lv), lvEsv = Math.min(...lv), rvEdv = Math.max(...rv), rvEsv = Math.min(...rv);
   const nr = normalReport();
   // the echo LV is sized from the engine's end-diastolic volume against a normal heart's (linear scale = volume^(1/3))
   const lvScale = Math.min(1.45, Math.max(0.8, Math.cbrt(lvEdv / nr.lvEdv)));
-  const heart = makeHeart({ ...look, morph: morphFor(spec, r), lvScale });
+  const morph = morphFor(spec, r);
+  // the other chambers' sizes from the same volumes (morphFor gives linear scales; its RV term is a square root of the volume ratio)
+  const chamberScale = { rv: Math.pow(morph.rvBulge ?? 1, 2 / 3), ra: morph.raScale ?? 1, la: morph.laScale ?? 1 };
+  const heart = makeHeart({ ...look, morph, lvScale, chamberScale });
   const frames: BeatFrame[] = [];
   for (let i = 0; i < n; i++) {
     const s = solveShortening(lv[i] / lvEdv, heart.shape.map);
     const motion: FrameMotion = { s, long: longShortening(s, heart.shape.map), rv: 0.55 * (1 - rv[i] / rvEdv) };
-    frames.push({ t: (period * i) / n, lv: lv[i], rv: rv[i], la: la[i], ra: ra[i], motion, open: { mv: mv[i] ?? 0, av: av[i] ?? 0, tv: tv[i] ?? 0 } });
+    frames.push({ t: (period * i) / n, lv: lv[i], rv: rv[i], la: la[i], ra: ra[i], motion, open: { mv: mv[i] ?? 0, av: av[i] ?? 0, tv: tv[i] ?? 0, pv: pv[i] ?? 0 } });
   }
   const ed = lv.indexOf(lvEdv), es = lv.indexOf(lvEsv);
   return {

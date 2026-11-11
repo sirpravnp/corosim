@@ -1,4 +1,4 @@
-import { Part } from "../anatomy/heartSurface";
+import { MorphPart, Part } from "../anatomy/heartSurface";
 import { Tissue } from "./tissue";
 import { Pose } from "./poses";
 import { rasterize } from "./paint";
@@ -178,12 +178,48 @@ export const VIEW_SPECS: Record<string, ViewSpec> = {
     order: [{ by: "depth", parts: [RV, Aorta, LA], weight: 1.5 }],
     fill: [0.25, 0.7], centered: 1,                        // all guesses
   },
-  // IVC / right atrium (subcostal): RA with the IVC entering; the Part enum has no IVC, so it reads as RA. Little else.
+  // Subcostal IVC: the inferior vena cava entering the right atrium, little of the left heart.
   ivc: {
     id: "ivc",
-    present: [{ part: RA, minFrac: 0.08, weight: 3 }],
-    absent: [{ part: LV, maxFrac: 0.05, weight: 1 }, { part: Aorta, maxFrac: 0.02, weight: 1 }],
-    fill: [0.1, 0.5], centered: 0.7,                       // all guesses
+    present: [{ part: RA, minFrac: 0.06, weight: 2 }, { part: MorphPart.IVC as number as Part, minFrac: 0.012, weight: 3 }],
+    absent: [{ part: LV, maxFrac: 0.02, weight: 1.5 }, { part: LA, maxFrac: 0.02, weight: 1 }],
+    fill: [0.1, 0.6], centered: 0.5,                       // all guesses
+  },
+  // Parasternal short axis at the apex: a small round LV cavity, a sliver of RV in front, nothing else.
+  psaxApex: {
+    id: "psaxApex",
+    present: [{ part: LV, minFrac: 0.08, weight: 2.5 }, { part: RV, minFrac: 0.02, weight: 1 }],
+    absent: [{ part: LA, maxFrac: 0.005, weight: 1.5 }, { part: RA, maxFrac: 0.005, weight: 1.5 }, { part: Aorta, maxFrac: 0.005, weight: 1 }],
+    order: [{ by: "depth", parts: [RV, LV], weight: 1.5 }],
+    fill: [0.15, 0.7], centered: 1,                        // all guesses
+    shape: { lv: { minFrac: 0.06, elong: [1, 1.5], weight: 3 }, oneBlob: { parts: [LV], minLargest: 0.9, weight: 1 }, clipped: { maxFrac: 0.08, weight: 2 } },
+  },
+  // Apical five-chamber: the four-chamber view tilted up to bring in the LV outflow and the aortic valve.
+  a5c: {
+    id: "a5c",
+    present: [
+      { part: LV, minFrac: 0.05, weight: 1.5 }, { part: RV, minFrac: 0.01, weight: 1 }, { part: LA, minFrac: 0.02, weight: 1 },
+      { part: RA, minFrac: 0.02, weight: 1 }, { part: Aorta, minFrac: 0.004, weight: 2 }, { tissue: Tissue.Leaflet, minFrac: 0.002, weight: 1 },
+    ],
+    absent: [],
+    order: [{ by: "depth", parts: [LV, LA], weight: 1.5 }],
+    fill: [0.2, 0.8], centered: 0.5,                       // all guesses
+  },
+  // RV inflow: right ventricle and right atrium with the tricuspid valve between them; no left heart.
+  rvInflow: {
+    id: "rvInflow",
+    present: [{ part: RV, minFrac: 0.12, weight: 2 }, { part: RA, minFrac: 0.06, weight: 2 }, { tissue: Tissue.Leaflet, minFrac: 0.002, weight: 1 }],
+    absent: [{ part: LV, maxFrac: 0.02, weight: 2 }, { part: LA, maxFrac: 0.01, weight: 1.5 }],
+    order: [{ by: "depth", parts: [RV, RA], weight: 1.5 }],
+    fill: [0.25, 0.85], centered: 0.5,                     // all guesses
+  },
+  // Suprasternal long axis: the aortic arch across the top of the image, the left atrium under it; no left ventricle.
+  suprasternal: {
+    id: "suprasternal",
+    present: [{ part: Aorta, minFrac: 0.05, weight: 3 }, { part: MorphPart.DAO as number as Part, minFrac: 0.01, weight: 1.5 }, { part: LA, minFrac: 0.02, weight: 1 }],
+    absent: [{ part: LV, maxFrac: 0.02, weight: 2 }],
+    order: [{ by: "depth", parts: [Aorta, LA], weight: 1.5 }],
+    fill: [0.1, 0.8], centered: 0.3,                       // all guesses
   },
 };
 

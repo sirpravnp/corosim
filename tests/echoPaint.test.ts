@@ -6,6 +6,11 @@ import { toHeart } from "../src/echo/poses";
 import { echoGray, fitFrame, frameFor, insideFan, labelAnchors, layoutLabels, pxPerMm, rasterize, WALL_MM } from "../src/echo/paint";
 import { sampleSlice } from "../src/echo/slice";
 import { V3, add, mul } from "../src/anatomy/curve";
+import { installCtHeartNode } from "../src/echo/ctNode";
+import { Tissue, classifyFrame, idealPatient } from "../src/echo/tissue";
+
+// the echo images the CT heart in production; these tests check that path
+installCtHeartNode();
 
 const poses = buildPoses();
 const presets = presetsFromPoses(poses);
@@ -83,9 +88,10 @@ describe("label anchors", () => {
     expect(anchors.length).toBeGreaterThan(0);
     for (const a of anchors) {
       const point = add(pose.probe, add(mul(pose.beam, a.depth), mul(pose.lateral, a.lateral))) as V3;
-      const hit = classifyHeart(toHeart(point));
-      expect(hit.part).toBe(a.part);
-      expect(hit.sdf).toBeLessThanOrEqual(-WALL_MM[a.part]);
+      // on the CT heart: the anchor is blood of its own chamber
+      const ideal = idealPatient()!, hit = classifyFrame(toHeart(point), ideal.heart, ideal.frame);
+      expect(hit.part, `${name} ${a.short}`).toBe(a.part);
+      expect(hit.tissue, `${name} ${a.short}`).toBe(Tissue.Blood);
     }
     for (const p of layoutLabels(anchors, frame, CW, CH)) {
       expect(insideFan(p.lx, p.ly, frame, CW, CH)).toBe(false);

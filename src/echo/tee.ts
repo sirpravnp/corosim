@@ -1,5 +1,7 @@
 import { V3 } from "../anatomy/curve";
 import { Pose, insideHeart, landmarks, toPatient } from "./poses";
+import { ctGeom, ctLandmarksHeart, vesselPathsHeart } from "./ctEcho";
+import { MorphPart } from "../anatomy/heartSurface";
 
 /**
  * Transesophageal probe. The probe rides a fixed path: down the esophagus just behind the left atrium, then forward into the stomach
@@ -14,16 +16,61 @@ import { Pose, insideHeart, landmarks, toPatient } from "./poses";
  */
 export interface TeeControls { level: number; turn: number; flex: number; angle: number }
 
-/** Esophagus: a vertical line behind the left atrium. Stomach: the path bends forward and to the left under the heart. */
+/**
+ * Esophagus: a vertical line just behind the left atrium (on the CT heart, 6 mm behind its posterior wall at the atrium's centre, found
+ * by walking back from the centre until the heart ends). Stomach: the path bends forward and to the left under the heart. `y0` is the
+ * mid-esophageal reference level, at the left atrium's centre.
+ */
 const ESO = { x: -20, z: -66, y0: 28 };
-const GE_JUNCTION = -22; // level (mm) where the esophagus meets the stomach
+let esoFor: unknown = null;
+function esophagus() {
+  if (!ctGeom()) return ESO;
+  const key = ctGeom();
+  if (esoFor !== key) {
+    const la = toPatient(ctLandmarksHeart().la);
+    let z = la[2];
+    while (z > la[2] - 120 && insideHeart([la[0], la[1], z])) z -= 0.5;
+    ESO.x = la[0]; ESO.z = z - 6; ESO.y0 = la[1]; esoFor = key;
+  }
+  return ESO;
+}
+/**
+ * Levels (mm from the mid-esophageal reference at the left atrium's centre): where the esophagus meets the stomach (it runs several
+ * centimetres below the left atrium before it crosses the diaphragm), the fundus under the LV's mid inferior wall, and the deep
+ * transgastric position under the apex.
+ */
+const GE_JUNCTION = -55, FUNDUS_LEVEL = -85, DEEP_LEVEL = -125;
 /** Levels the probe can take: higher, the modeled aortic arch crosses the path; lower is the deep stomach. */
-export const LEVEL_RANGE: [number, number] = [-110, 22];
+export const LEVEL_RANGE: [number, number] = [-140, 22];
 
 /** Where the probe tip is for a level, and the path's forward (anterior) direction at that point. */
+/** The stomach on the CT heart: the fundus point under the LV's mid inferior wall and the deep point under the apex, 12 mm below the heart. */
+let stomachFor: unknown = null, ST: { fundus: V3; deep: V3 } | null = null;
+function stomach(): { fundus: V3; deep: V3 } | null {
+  if (!ctGeom()) return null;
+  if (stomachFor !== ctGeom()) {
+    const c = ctLandmarksHeart(), below = (p: V3): V3 => { const q: V3 = [p[0], p[1], p[2]]; let n = 0; while (insideHeart(q) && n++ < 300) q[1] -= 0.5; q[1] -= 12; return q; };
+    const lv = toPatient(c.lv), apex = toPatient(c.apex);
+    ST = { fundus: below(lv), deep: below([apex[0] - 8, apex[1] + 12, apex[2] - 10]) };
+    stomachFor = ctGeom();
+  }
+  return ST;
+}
+
 export function probePoint(level: number): { at: V3; forward: V3 } {
+  const ESO = esophagus();
   level = Math.max(LEVEL_RANGE[0], Math.min(LEVEL_RANGE[1], level));
   if (level >= GE_JUNCTION) return { at: [ESO.x, ESO.y0 + level, ESO.z], forward: [0, 0, 1] };
+  const st = stomach();
+  if (st) {
+    // on the CT heart: from the junction down to the fundus under the LV's mid inferior wall (level -62), on to below the apex (-110),
+    // the tip looking up through the inferior wall
+    const ge: V3 = [ESO.x, ESO.y0 + GE_JUNCTION, ESO.z];
+    const seg = level >= FUNDUS_LEVEL ? { a: ge, b: st.fundus, u: (GE_JUNCTION - level) / (GE_JUNCTION - FUNDUS_LEVEL) } : { a: st.fundus, b: st.deep, u: Math.min(1, (FUNDUS_LEVEL - level) / (FUNDUS_LEVEL - DEEP_LEVEL)) };
+    const at: V3 = [seg.a[0] + (seg.b[0] - seg.a[0]) * seg.u, seg.a[1] + (seg.b[1] - seg.a[1]) * seg.u, seg.a[2] + (seg.b[2] - seg.a[2]) * seg.u];
+    const k = Math.min(1, (GE_JUNCTION - level) / 40);
+    return { at, forward: unit(add(scale([0, 0, 1], 1 - k), unit([0.15, 0.75, 0.6]), k)) };
+  }
   // below the junction the tip curves into the fundus: forward and to the left, under the inferior wall
   const k = Math.min(1, (GE_JUNCTION - level) / 70);
   const y = ESO.y0 + GE_JUNCTION - 0.55 * (GE_JUNCTION - level);
@@ -82,11 +129,13 @@ export function teeViews(): Record<string, TeeControls> {
   const l = landmarks();
   const P = (h: V3) => toPatient(h);
   const mid = (a: V3, b: V3, k = 0.5): V3 => add(a, sub(b, a), k);
-  const raTop = P([-30, 70, -8]), raBottom = P([-28, 36, -6]);
-  const rvot = P([0, 52, 25]);
+  const ct = ctGeom() ? ctLandmarksHeart() : null;
+  // the caval entries into the right atrium, the pulmonary valve and the descending aorta: from the CT heart when it is installed
+  const raTop = ct ? P(vesselPathsHeart(MorphPart.SVC)[0][0]) : P([-30, 70, -8]), raBottom = ct ? P(vesselPathsHeart(MorphPart.IVC)[0][0]) : P([-28, 36, -6]);
+  const rvot = ct ? P(ct.pv) : P([0, 52, 25]);
   const left: V3 = [1, 0, 0], head: V3 = [0, 1, 0], ant: V3 = [0, 0, 1];
   const rootAxis = P([0, 1, 0]);
-  const mvLevel = l.mv[1] - ESO.y0, avLevel = l.av[1] - ESO.y0 + 6;
+  const E = esophagus(), mvLevel = l.mv[1] - E.y0, avLevel = l.av[1] - E.y0 + 6;
   const tgTarget = mid(l.apex, l.mv, 0.42);
   return {
     me4c: controlsFor(mvLevel - 6, l.mv, l.tv, mid(l.apex, mid(l.mv, l.tv), 0.45), left),
@@ -96,10 +145,16 @@ export function teeViews(): Record<string, TeeControls> {
     meAvLax: controlsFor(avLevel, l.av, add(l.av, rootAxis, 25), l.av, head),
     meRvIo: controlsFor(mvLevel + 2, l.tv, rvot, mid(l.tv, rvot), left),
     meBicaval: controlsFor(mvLevel + 4, raTop, raBottom, mid(raTop, raBottom), head),
-    tgMidSax: (() => { const lv = l.longAxis, e = unit(cross(lv, left)); return controlsFor(-62, tgTarget, add(tgTarget, unit(cross(lv, e)), 20), tgTarget, left); })(),
-    tg2c: (() => { const lv = l.longAxis, e = unit(cross(lv, left)); const c = controlsFor(-62, tgTarget, add(tgTarget, unit(cross(lv, e)), 20), tgTarget, left); return { ...c, angle: Math.min(180, c.angle + 90) }; })(),
-    deepTgLax: controlsFor(-95, l.apex, l.av, mid(l.apex, l.av, 0.6), left),
-    descAortaSax: { level: 18, turn: 180, flex: 0, angle: 0 },
+    tgMidSax: (() => { const lv = l.longAxis, e = unit(cross(lv, left)); return controlsFor(FUNDUS_LEVEL, tgTarget, add(tgTarget, unit(cross(lv, e)), 20), tgTarget, left); })(),
+    tg2c: (() => { const lv = l.longAxis, e = unit(cross(lv, left)); const c = controlsFor(FUNDUS_LEVEL, tgTarget, add(tgTarget, unit(cross(lv, e)), 20), tgTarget, left); return { ...c, angle: Math.min(180, c.angle + 90) }; })(),
+    deepTgLax: controlsFor(DEEP_LEVEL, l.apex, l.av, mid(l.apex, l.av, 0.6), left),
+    descAortaSax: (() => {
+      if (!ct) return { level: 18, turn: 180, flex: 0, angle: 0 };
+      // a transverse cut through the descending aorta at the mid-esophageal level, the probe turned back toward it
+      const level = 0, at = probePoint(level).at, dao = vesselPathsHeart(MorphPart.DAO)[0].map(P);
+      const a = dao[1], b = dao[2], k = (at[1] - a[1]) / (b[1] - a[1]), c: V3 = [a[0] + (b[0] - a[0]) * k, at[1], a[2] + (b[2] - a[2]) * k];
+      return controlsFor(level, c, add(c, [1, 0, 0], 10), c, left);
+    })(),
   };
 }
 

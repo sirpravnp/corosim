@@ -130,3 +130,45 @@ export function wedgeMask(w: number, h: number, apex: [number, number], half: [n
   }
   return m;
 }
+
+/**
+ * How well defined the borders are: the median 10-90 % rise distance (mm) across blood-to-tissue borders, measured on the image
+ * smoothed over about a millimetre (so speckle does not count as an edge), along the local gradient; and how bright the brightest
+ * echoes are against ordinary tissue (99th percentile of the sector over the median of tissue pixels). Real borders are soft and the
+ * specular lines are bright but not white everywhere; an over-crisp simulation shows short rise distances and a high ratio.
+ */
+export interface EdgeStats { edgeWidth: number; edges: number; specularRatio: number }
+
+export function edgeStats(frames: Uint8Array[], geo: SectorGeometry): EdgeStats {
+  const { w, h, apex, pxPerMm, mask } = geo;
+  const widths: number[] = [], tissue: number[] = [], all: number[] = [];
+  const r = Math.max(1, Math.round(0.8 * pxPerMm)), step = 0.25, reach = 4;
+  for (const raw of frames) {
+    const g = new Float32Array(raw.length); for (let i = 0; i < raw.length; i++) g[i] = raw[i];
+    const m = boxMean(g, w, h, r);
+    for (let y = 2; y < h - 2; y += 2) for (let x = 2; x < w - 2; x += 2) {
+      const i = y * w + x;
+      if (!mask[i] || Math.hypot(x - apex[0], y - apex[1]) / pxPerMm < NEAR_MM) continue;
+      all.push(raw[i]); if (m[i] > TISSUE) tissue.push(raw[i]);
+      const gx = (m[i + 1] - m[i - 1]) / 2, gy = (m[i + w] - m[i - w]) / 2, gm = Math.hypot(gx, gy);
+      if (gm < 6 || m[i] < 25 || m[i] > 90) continue;
+      const ux = gx / gm, uy = gy / gm, prof: number[] = [];
+      let ok = true;
+      for (let d = -reach; d <= reach + 1e-9; d += step) {
+        const v = bilinear(m, w, h, x + ux * d * pxPerMm, y + uy * d * pxPerMm);
+        if (Number.isNaN(v)) { ok = false; break; }
+        prof.push(v);
+      }
+      if (!ok) continue;
+      const lo = prof[0], hi = prof[prof.length - 1];
+      if (lo > 22 || hi < 60) continue; // a blood-to-tissue border only
+      const a = lo + 0.1 * (hi - lo), b = lo + 0.9 * (hi - lo);
+      let ia = -1, ib = -1;
+      for (let k = 0; k < prof.length; k++) { if (ia < 0 && prof[k] >= a) ia = k; if (ib < 0 && prof[k] >= b) ib = k; }
+      if (ia >= 0 && ib > ia) widths.push((ib - ia) * step);
+    }
+  }
+  const med = (v: number[]) => { if (!v.length) return NaN; const s = v.slice().sort((p, q) => p - q); return s[s.length >> 1]; };
+  const p99 = (v: number[]) => { if (!v.length) return NaN; const s = v.slice().sort((p, q) => p - q); return s[Math.floor(0.99 * (s.length - 1))]; };
+  return { edgeWidth: med(widths), edges: widths.length, specularRatio: p99(all) / Math.max(1, med(tissue)) };
+}

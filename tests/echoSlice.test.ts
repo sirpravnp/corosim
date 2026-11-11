@@ -2,6 +2,11 @@ import { describe, it, expect } from "vitest";
 import { Part, PART_NAMES, heartSdf } from "../src/anatomy/heartSurface";
 import { buildPoses, SECTOR, toHeart } from "../src/echo/poses";
 import { sampleSlice } from "../src/echo/slice";
+import { installCtHeartNode } from "../src/echo/ctNode";
+import { ctBodyDistance } from "../src/echo/ctEcho";
+
+// the echo images the CT heart in production; these tests check that path
+installCtHeartNode();
 
 const poses = buildPoses();
 type V = number[];
@@ -22,10 +27,11 @@ describe("echo slice of the three calibrated poses", () => {
         expect(radius, `${id} depth`).toBeLessThanOrEqual(pose.depth + 1e-6);
         expect(s.depth, `${id} in front of the probe`).toBeGreaterThanOrEqual(-1e-6);
         expect(Math.abs(Math.atan2(s.lateral, s.depth)), `${id} sector angle`).toBeLessThanOrEqual(SECTOR.halfAngle + 1e-6);
-        const sdf = heartSdf(toHeart(s.point));
+        const sdf = ctBodyDistance(toHeart(s.point));
         expect(s.sdf, id).toBeCloseTo(sdf, 5);
         if (s.part === null) expect(sdf, `${id} outside`).toBeGreaterThanOrEqual(0);
-        else expect(sdf, `${id} inside`).toBeLessThan(0);
+        // outside the heart there is nothing or a great vessel beyond the CT's stubs (the aorta, here)
+        else if (sdf >= 0) expect(s.part, `${id} outside the heart`).toBe(Part.Aorta);
       }
     }
   });
