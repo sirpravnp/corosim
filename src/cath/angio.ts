@@ -1,6 +1,7 @@
 import { V3 } from "../anatomy/curve";
 import { ANGIO, VESSEL_LABELS } from "../config/cath";
 import { AngioModel, AngioSegment } from "../sim/cath";
+import { playFluoro, syntheticBackground } from "./backdrop";
 
 /** What the C-arm is doing: where it is pointed, which coronary is being injected, whether the vessel names are drawn. */
 export interface AngioOptions {
@@ -23,15 +24,18 @@ function project(p: V3, ry: number, rx: number): V3 {
 
 /**
  * The angiogram: a canvas-2D renderer (a WebGL one could replace it behind this class). Iodine is summed into an
- * accumulation canvas and darkens a soft-tissue background; the dye in each vessel follows `AngioSegment.arrival`.
+ * accumulation canvas and darkens a fluoro field; the dye in each vessel follows `AngioSegment.arrival`.
+ * The field is a real cine, processed frame by frame, once that loop has loaded; until then a synthetic one.
  */
 export class AngioView {
   opts: AngioOptions = { rot: 30, tilt: -20, injection: "both", labels: false, heartRate: 70 };
   private model: AngioModel | null = null;
   private ctx: CanvasRenderingContext2D;
   private acc: HTMLCanvasElement; private actx: CanvasRenderingContext2D;
+  private field: HTMLCanvasElement; private fctx: CanvasRenderingContext2D;
   private W: number; private H: number;
   private base: Float32Array; private noise: Float32Array;
+  private video: HTMLVideoElement;
   private t0 = -1e9; private run = ANGIO.runSeconds;
   private lastPose = "";
 
@@ -40,21 +44,11 @@ export class AngioView {
     this.ctx = canvas.getContext("2d")!;
     this.acc = document.createElement("canvas"); this.acc.width = this.W; this.acc.height = this.H;
     this.actx = this.acc.getContext("2d", { willReadFrequently: true })!;
+    this.field = document.createElement("canvas"); this.field.width = this.W; this.field.height = this.H;
+    this.fctx = this.field.getContext("2d", { willReadFrequently: true })!;
     this.noise = new Float32Array(this.W * this.H); for (let i = 0; i < this.noise.length; i++) this.noise[i] = Math.random();
-    this.base = this.background();
-  }
-
-  /** Soft-tissue backdrop: lung fields, spine, diaphragm hint, vignette. Static, so it is built once. */
-  private background(): Float32Array {
-    const { W, H } = this, out = new Float32Array(W * H);
-    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
-      const X = (i - W / 2) / W, Y = (j - H / 2) / H;
-      let b = 0.46 + 0.10 * Math.exp(-((X - 0.05) ** 2 + (Y + 0.05) ** 2) / 0.05) - 0.2 * Math.exp(-((X + 0.34) ** 2) / 0.012) + 0.12 * Math.exp(-((Y - 0.42) ** 2) / 0.02) - 0.08 * Math.exp(-((X - 0.36) ** 2 + (Y - 0.1) ** 2) / 0.04);
-      b += 0.05 * Math.sin(Y * 60) * Math.exp(-((X + 0.34) ** 2) / 0.012);
-      const rr = Math.hypot(X, Y);
-      out[j * W + i] = rr > 0.47 ? 0 : b * (1 - Math.pow(rr / 0.47, 6) * 0.5);
-    }
-    return out;
+    this.base = syntheticBackground(this.W, this.H);
+    this.video = playFluoro(canvas);
   }
 
   setModel(m: AngioModel) {
@@ -109,9 +103,14 @@ export class AngioView {
       A.strokeStyle = "rgba(255,255,255,.16)"; A.lineWidth = 5; A.beginPath(); A.moveTo(ox, oy); A.bezierCurveTo(ox - 30, oy - 40, ox - 80, oy - 90, ox - 150, oy - 220); A.stroke();
     }
     const px = A.getImageData(0, 0, W, H).data, out = C.createImageData(W, H), od = out.data, f = Math.floor(now / 33) * 977;
+    const live = this.video.readyState >= 2;
+    let fp: Uint8ClampedArray | null = null;
+    if (live) { this.fctx.drawImage(this.video, 0, 0, W, H); fp = this.fctx.getImageData(0, 0, W, H).data; }
+    const grain = live ? 0.03 : 0.09;
     for (let k = 0; k < W * H; k++) {
-      const iod = px[k * 4] / 255, noise = (this.noise[(k + f) % this.noise.length] - 0.5) * 0.09;
-      let v = this.base[k] === 0 ? 0 : (this.base[k] + noise) * Math.exp(-iod * 2.6);
+      const iod = px[k * 4] / 255, noise = (this.noise[(k + f) % this.noise.length] - 0.5) * grain;
+      const field = fp ? fp[k * 4] / 255 : this.base[k];
+      let v = field === 0 ? 0 : (field + noise) * Math.exp(-iod * 2.6);
       v = Math.max(0, Math.min(1, v)) * 255;
       const p = k * 4; od[p] = v; od[p + 1] = v; od[p + 2] = v * 1.02; od[p + 3] = 255;
     }

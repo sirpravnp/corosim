@@ -142,7 +142,10 @@ terms (`src/ekg/custom.ts`), measured back so the AI can check what it drew, and
 mid-LAD 50% and 75%, proximal LAD, RCA and circumflex occlusions, left main) or the patient in a simulator link (`/cath/#s=…`,
 which the simulator's **Cath lab** link builds). The angiogram is drawn from a C-arm angle you choose (LAO/RAO, cranial/caudal);
 the contrast front travels at each vessel's solved blood velocity, so a tight lesion fills late (TIMI 2), an occlusion stops
-the dye (TIMI 0), and overlap and foreshortening come out of the geometry. The pressure wire pulls back along any vessel at rest
+the dye (TIMI 0), and overlap and foreshortening come out of the geometry. The fluoro field behind the tree is a real cine
+(`src/cath/media/fluoro.webm`), processed frame by frame: iodine is stripped by taking the temporal max, the empty chest
+is shifted through a short breathing loop, and a circular collimator is applied (`npm run build:fluoro` rebuilds it). The
+C-arm still rotates the tree; the field is one projection. The pressure wire pulls back along any vessel at rest
 and at adenosine hyperemia and reads Pd/Pa and FFR; PCI, fibrinolytic and CABG run the same `Simulation.revascularize` as the
 simulator, so the lab shows before and after. What the lab reads is DOM-free in `src/sim/cath.ts` (`angioModel`, `timi`,
 `wireModel`, `echoModel`, `cathReport`); the page only draws it. The coronary tree is the simulator's procedural one, thinner and
@@ -153,6 +156,7 @@ The echo panel (phase 2) will draw from a real CT-derived heart. The baked anato
 **Credit (CC BY 4.0):** Rodero C, Strocchi M, Marciniak M, et al. *Linking statistical shape models and simulated function in the
 healthy adult human heart.* PLoS Comput Biol 17(4): e1008851 (2021); data: "Virtual cohort of extreme and average four-chamber heart
 meshes from statistical shape model", Zenodo, doi:10.5281/zenodo.4593739. It is the average shape of healthy adult CT hearts, not a patient.
+**Fluoro field (CC BY-SA 4.0):** Alextogus, [Coronarographie.gif](https://commons.wikimedia.org/wiki/File:Coronarographie.gif), Wikimedia Commons.
 
 ## Connecting an AI
 
@@ -199,7 +203,7 @@ with no atrial ischemia or thrombus. Variant frequencies in the literature vary 
 
 ## Third-party
 
-three.js (MIT). Cath-lab heart anatomy: Rodero et al. 2021, CC BY 4.0 (see Cath lab above). Fonts: Public Sans and IBM Plex Mono (SIL Open Font License), loaded from Google Fonts.
+three.js (MIT). Cath-lab heart anatomy: Rodero et al. 2021, CC BY 4.0 (see Cath lab above). Fluoro field: Alextogus, Coronarographie.gif, CC BY-SA 4.0 (see Cath lab above). Fonts: Public Sans and IBM Plex Mono (SIL Open Font License), loaded from Google Fonts.
 
 ### Writing cases
 
