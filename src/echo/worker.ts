@@ -5,7 +5,7 @@ import { LANDMARKS_HEART_FRAME as L, Pose, buildPoses, toHeart } from "./poses";
 import { TeeControls, teePose, teeViews } from "./tee";
 import { CASE_BY_ID } from "./cases";
 import { EchoBeat, beatOf, frameAt } from "./beat";
-import { frameFor, pxPerMm } from "./paint";
+import { SHORT_NAMES, frameFor, pxPerMm, rasterize } from "./paint";
 import { acquire, scanConvertRGBA, EchoWindow, grayMap } from "./scan";
 import { jetsAt, JetOptions } from "./flow";
 import { spectrum, standardDoppler, SpectralMode } from "./doppler";
@@ -23,18 +23,21 @@ import type { V3 } from "../anatomy/curve";
  */
 export type ViewRef = { approach: "tte"; pose: Pose; window: EchoWindow } | { approach: "tee"; controls: TeeControls };
 
+/** A structure label: its short name and a point inside its cavity, mm from the probe (depth along the beam, lateral to the right). */
+export interface Label { text: string; depth: number; lateral: number }
+
 export type Request =
   | { type: "init" }
   | { type: "case"; id: string }
-  | { type: "frame"; key: number; view: ViewRef; w: number; h: number; t: number; frameNo: number; draft: boolean; gain: number; color: null | { nyquist: number } }
+  | { type: "frame"; key: number; view: ViewRef; w: number; h: number; t: number; frameNo: number; draft: boolean; gain: number; color: null | { nyquist: number }; labels?: boolean }
   | { type: "strip"; key: number; view: ViewRef; w: number; h: number; mode: "mmode" | SpectralMode; lineAngle: number; gateDepth: number; scale?: number; baseline?: number }
   | { type: "measure" }
   | { type: "aim"; key: number; view: ViewRef; viewId: string; mode: "mmode" | SpectralMode };
 
 export type Reply =
-  | { type: "ready"; tte: Record<string, Pose>; tee: Record<string, TeeControls>; mesh: { positions: Float32Array; normals: Float32Array; indices: Uint32Array; parts: Uint8Array } }
+  | { type: "ready"; tte: Record<string, Pose>; tee: Record<string, TeeControls>; teeProbe: Record<string, V3>; mesh: { positions: Float32Array; normals: Float32Array; indices: Uint32Array; parts: Uint8Array } }
   | { type: "case"; id: string; hr: number; period: number; frames: number; ed: number; es: number; engine: { ef: number; edv: number; esv: number; sv: number; avMean: number; mvMean: number; rvSys: number } }
-  | { type: "frame"; key: number; w: number; h: number; rgba: ArrayBuffer; pose: Pose; depth: number; pxPerMm: number; t: number }
+  | { type: "frame"; key: number; w: number; h: number; rgba: ArrayBuffer; pose: Pose; depth: number; pxPerMm: number; t: number; labels?: Label[] }
   | { type: "strip"; key: number; w: number; h: number; rgba: ArrayBuffer; top: number; bottom: number; seconds: number; nyquist: number; depth: number }
   | { type: "measure"; report: Record<string, number | null> }
   | { type: "aim"; key: number; lineAngle: number; gateDepth: number; target: string }
@@ -70,7 +73,9 @@ function frame(r: Extract<Request, { type: "frame" }>) {
   const color = r.color ? { jets: jetsAt(b.wave, t, jetOptions(b)), box: { a0: -0.38, a1: 0.38, r0: 8, r1: fr.depth }, nyquist: r.color.nyquist } : undefined;
   const pol = acquire(pose, fr.depth, { heart: b.heart, frame: f }, { window, frameNo: r.frameNo, gain: r.gain, smoke: smokeOf(b), lines: r.draft ? 64 : 160, dr: r.draft ? 0.55 : 0.33, color });
   const rgba = scanConvertRGBA(pol, r.w, r.h, px);
-  post({ type: "frame", key: r.key, w: r.w, h: r.h, rgba: rgba.buffer as ArrayBuffer, pose, depth: fr.depth, pxPerMm: px, t }, [rgba.buffer]);
+  // labels: the chambers and the aorta found on a coarse raster of the same frame, each anchored in its own cavity
+  const labels = r.labels ? rasterize(pose, 120, Math.round((120 * r.h) / r.w), fr, { heart: b.heart, frame: f }).labels.map((l) => ({ text: SHORT_NAMES[l.part], depth: l.depth, lateral: l.lateral })) : undefined;
+  post({ type: "frame", key: r.key, w: r.w, h: r.h, rgba: rgba.buffer as ArrayBuffer, pose, depth: fr.depth, pxPerMm: px, t, labels }, [rgba.buffer]);
 }
 
 function strip(r: Extract<Request, { type: "strip" }>) {
@@ -147,7 +152,8 @@ scope.onmessage = async (ev: MessageEvent<Request>) => {
       await loadHeart();
       tte = buildPoses();
       const m = ctMesh(1.6);
-      post({ type: "ready", tte, tee: teeViews(), mesh: m }, [m.positions.buffer, m.normals.buffer, m.indices.buffer, m.parts.buffer]);
+      const tee = teeViews(), teeProbe = Object.fromEntries(Object.entries(tee).map(([k, c]) => [k, teePose(c).probe]));
+      post({ type: "ready", tte, tee, teeProbe, mesh: m }, [m.positions.buffer, m.normals.buffer, m.indices.buffer, m.parts.buffer]);
     } else if (r.type === "case") {
       beat = beatOf(CASE_BY_ID[r.id]!);
       const rep = beat.report;

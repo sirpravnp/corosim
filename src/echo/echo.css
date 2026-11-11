@@ -45,12 +45,16 @@ main.echomain .library .list { overflow: visible; }
   border: 1px solid var(--rule); border-radius: 0; cursor: pointer;
 }
 
+/* An on/off toggle (labels): pressed is an ink fill, like the segmented control. */
+.echo-toggle[aria-pressed="true"] { color: var(--bg); background: var(--ink); border-color: var(--ink); }
+
 /* Transesophageal probe controls: label, slider, value, one row each, unboxed. */
 .tee-controls { display: grid; gap: 6px; font-size: 13px; }
 .tee-controls[hidden] { display: none; }
 .tee-controls label { display: grid; grid-template-columns: 9ch minmax(0, 1fr) 7ch; gap: 10px; align-items: center; }
 .tee-controls span { color: var(--muted); font-weight: 600; }
 .tee-controls input[type=range] { width: 100%; accent-color: var(--range); }
+.tee-controls.locked { opacity: 0.55; }
 .tee-controls output { font: 13px var(--font-data); text-align: right; font-variant-numeric: tabular-nums; }
 
 /* Measurements: a plain ruled table, the echo value beside the engine's. */

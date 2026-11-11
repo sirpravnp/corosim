@@ -2,7 +2,7 @@ import "../cath/cath.css";
 import "./echo.css";
 import type { Pose } from "./poses";
 import type { TeeControls } from "./tee";
-import type { Reply, Request, ViewRef } from "./worker";
+import type { Label, Reply, Request, ViewRef } from "./worker";
 import type { EchoWindow } from "./scan";
 import type { SurfaceMesh } from "../anatomy/heartSurface";
 import { ProbePreset, presetsFromPoses } from "./probe";
@@ -43,7 +43,15 @@ const st = {
   /** The pose and geometry of the last frame drawn, for the overlay and for clicks on the image. */
   shown: null as null | { pose: Pose; depth: number; px: number },
   report: null as Record<string, number | null> | null,
+  /**
+   * A standard view holds the probe still; the free probe (transthoracic or transesophageal) moves, and snaps to a standard view
+   * near one of the dots. `snapped` is the view the free probe is on, if any; `view` is then that view (else the last one it was on).
+   */
+  free: null as null | "tte" | "tee", snapped: null as string | null,
+  teeProbe: null as Record<string, [number, number, number]> | null,
+  labelsOn: true, labels: [] as Label[],
 };
+const approach = () => st.free ?? st.view.approach;
 let gen = 0, stripGen = 0, keySeq = 0, inflight = false, draftUntil = 0, needDraft = false, needMeasure = false, needAim = false, needStrip = false;
 let cine: (ImageData | null)[] = new Array(NF).fill(null), draft: ImageData | null = null, frozenAt = 0;
 let strip: { img: ImageData; top: number; bottom: number; seconds: number; nyquist: number; depth: number; mode: Mode } | null = null;
@@ -55,7 +63,7 @@ const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "modu
 const send = (r: Request) => worker.postMessage(r);
 
 function viewRef(): ViewRef {
-  if (st.view.approach === "tee") return { approach: "tee", controls: { ...st.teeCtl } };
+  if (approach() === "tee") return { approach: "tee", controls: { ...st.teeCtl } };
   return { approach: "tte", pose: st.livePose ?? st.tte![st.view.pose], window: WINDOW_OF[st.view.window] };
 }
 
@@ -71,7 +79,7 @@ function invalidate(opts: { draft?: boolean; strip?: boolean; aim?: boolean } = 
 function pump() {
   if (inflight || !st.tte || !st.beat) return;
   const key = ++keySeq, w = 640, h = 560, color = st.mode === "color" ? { nyquist: st.nyquist } : null;
-  const frameReq = (t: number, draftQ: boolean, frameNo: number): Request => ({ type: "frame", key, view: viewRef(), w, h, t, frameNo, draft: draftQ, gain: st.gain, color });
+  const frameReq = (t: number, draftQ: boolean, frameNo: number): Request => ({ type: "frame", key, view: viewRef(), w, h, t, frameNo, draft: draftQ, gain: st.gain, color, labels: frameNo === 0 });
   if (needDraft) {
     needDraft = false;
     pending.set(key, { gen, kind: "draft" }); inflight = true; send(frameReq(0, true, 0));
@@ -125,7 +133,8 @@ worker.onmessage = (ev: MessageEvent<Reply>) => {
   } else if (r.type === "frame") {
     const img = new ImageData(new Uint8ClampedArray(r.rgba), r.w, r.h);
     st.shown = { pose: r.pose, depth: r.depth, px: r.pxPerMm };
-    if (st.view.approach === "tee" && scene) { scene.setPose(r.pose); if (faceNext) { scene.frameOn(r.pose); faceNext = false; } }
+    if (r.labels && (job.kind === "draft" || job.gen === gen)) { st.labels = r.labels; shownSlot = -1; shownDraft = null; }
+    if (approach() === "tee" && scene) { scene.setPose(r.pose); if (faceNext) { scene.frameOn(r.pose); faceNext = false; } }
     if (job.kind === "draft") draft = img;
     else if (job.gen === gen && job.slot !== undefined) { cine[job.slot] = img; if (job.slot === 0) draft = null; }
     $("status").hidden = true;
@@ -135,7 +144,7 @@ worker.onmessage = (ev: MessageEvent<Reply>) => {
 };
 
 function onReady(r: Extract<Reply, { type: "ready" }>) {
-  st.tte = r.tte; st.tee = r.tee;
+  st.tte = r.tte; st.tee = r.tee; st.teeProbe = r.teeProbe;
   presets = presetsFromPoses(r.tte);
   $("status").textContent = "Building the patient…";
   try {
@@ -143,10 +152,13 @@ function onReady(r: Extract<Reply, { type: "ready" }>) {
     scene.setMesh(r.mesh as unknown as SurfaceMesh);
     scene.setPresets(presets);
     scene.onPoseChange = (pose, id) => {
-      if (st.view.approach !== "tte") return;
+      if (st.free !== "tte") return;
       st.livePose = pose;
       const v = id ? VIEWS.find((x) => x.approach === "tte" && x.pose === id) : null;
-      if (v && v.id !== st.view.id) { st.view = v; fillMeta(); }
+      const was = st.snapped;
+      st.snapped = v ? v.id : null;
+      if (v) st.view = v;
+      if (was !== st.snapped) fillMeta();
       invalidate({ draft: !id, aim: true });
     };
     $("loading").remove();
@@ -154,7 +166,7 @@ function onReady(r: Extract<Reply, { type: "ready" }>) {
     $("loading").textContent = "The 3D heart could not be drawn in this browser.";
     console.error(err);
   }
-  selectView(st.view.id, false);
+  if (st.free) enterFree(st.free, true); else selectView(st.view.id, false);
   send({ type: "case", id: st.caseId });
 }
 
@@ -203,6 +215,13 @@ function drawOverlay() {
   og.fillText(`${st.view.short}  ${MODE_NAME[st.mode]}`, 12, 20);
   if (st.beat) og.fillText(`HR ${Math.round(st.beat.hr)}`, 12, 38);
   og.fillText(`${(s.depth / 10).toFixed(0)} cm`, 12, 56);
+  if (st.labelsOn) {
+    // structure labels, centered in each cavity, as a teaching scanner's annotation
+    og.font = "600 15px 'Hanken Grotesk', system-ui, sans-serif"; og.textAlign = "center"; og.textBaseline = "middle";
+    og.lineWidth = 4; og.strokeStyle = "rgba(0,0,0,0.85)"; og.fillStyle = INK;
+    for (const l of st.labels) { const x = cx + l.lateral * px, y = l.depth * px; og.strokeText(l.text, x, y); og.fillText(l.text, x, y); }
+    og.textAlign = "start"; og.textBaseline = "alphabetic"; og.font = "500 12px 'JetBrains Mono', monospace"; og.strokeStyle = FAINT; og.lineWidth = 1;
+  }
   if (st.mode === "color") {
     // color box outline and the scale bar with its Nyquist limit
     og.strokeStyle = FAINT; og.beginPath();
@@ -295,25 +314,30 @@ function renderCases() {
 }
 function renderList() {
   const groups: [string, Window][] = [["Transthoracic: parasternal", "Parasternal"], ["Transthoracic: apical", "Apical"], ["Transthoracic: subcostal", "Subcostal"], ["Transthoracic: suprasternal", "Suprasternal"], ["Transesophageal: mid-esophageal", "Mid-esophageal"], ["Transesophageal: transgastric", "Transgastric"]];
-  $("list").innerHTML = groups.map(([label, g]) => `<h3>${label}</h3>` + VIEWS.filter((v) => v.window === g).map((v) =>
+  $("list").innerHTML = `<h3>Free probe</h3><a href="#free-tte" data-free="tte" role="button">Transthoracic probe<small>Slide, tilt and roll it anywhere on the chest</small></a><a href="#free-tee" data-free="tee" role="button">Transesophageal probe<small>Advance, turn, flex and rotate the omniplane</small></a>` + groups.map(([label, g]) => `<h3>${label}</h3>` + VIEWS.filter((v) => v.window === g).map((v) =>
     `<a href="#${v.id}" data-id="${v.id}" role="button">${esc(v.short)}<small>${esc(v.name)}</small></a>`).join("")).join("");
 }
 
 function fillMeta() {
-  const v = st.view, c = CASE_BY_ID[st.caseId]!;
-  document.querySelectorAll<HTMLElement>("#list a").forEach((a) => a.classList.toggle("on", a.dataset.id === v.id));
+  const v = st.view, c = CASE_BY_ID[st.caseId]!, between = st.free && !st.snapped;
+  document.querySelectorAll<HTMLElement>("#list a").forEach((a) => a.classList.toggle("on", st.free ? a.dataset.free === st.free : a.dataset.id === v.id));
   document.querySelectorAll<HTMLElement>("#cases a").forEach((a) => a.classList.toggle("on", a.dataset.case === st.caseId));
-  $("title").textContent = v.name;
-  $("summary").textContent = v.lookFor;
-  $("placement").textContent = v.placement;
-  $("marker").textContent = v.marker;
-  $("shows").innerHTML = v.shows.map((s) => `<li>${esc(s)}</li>`).join("");
+  const probeName = st.free === "tee" ? "Free transesophageal probe" : "Free transthoracic probe";
+  $("title").textContent = !st.free ? v.name : between ? probeName : `${probeName}: ${v.name.charAt(0).toLowerCase()}${v.name.slice(1)}`;
+  $("summary").textContent = between ? "Between standard views. Move the probe toward a dot on the heart and it snaps into that view." : v.lookFor;
+  $("placement").textContent = between ? "Wherever you put it." : v.placement;
+  $("marker").textContent = between ? "Where you turned it." : v.marker;
+  $("shows").innerHTML = between ? "<li>Whatever the plane cuts. The labels name the chambers it finds.</li>" : v.shows.map((s) => `<li>${esc(s)}</li>`).join("");
   $("findings").innerHTML = `<li><b>${esc(c.title)}.</b> ${esc(c.blurb)}</li>` + c.findings.map((f) => `<li>${esc(f)}</li>`).join("");
   $("caseNote").textContent = c.note ?? "";
-  const hash = `#${v.id}${st.caseId !== "normal" ? `&case=${st.caseId}` : ""}`;
+  const hash = `#${st.free ? `free-${st.free}` : v.id}${st.caseId !== "normal" ? `&case=${st.caseId}` : ""}`;
   if (location.hash !== hash) history.replaceState(null, "", hash);
-  $("teeControls").hidden = v.approach !== "tee";
-  if (scene) scene.interactive = v.approach === "tte";
+  $("teeControls").hidden = approach() !== "tee";
+  // a standard view holds the probe still: only the free probe moves
+  if (scene) scene.interactive = st.free === "tte";
+  for (const id of ["teeLevel", "teeTurn", "teeFlex", "teeAngle"]) ($(id) as HTMLInputElement).disabled = st.free !== "tee";
+  $("teeControls").classList.toggle("locked", st.free !== "tee");
+  markers();
   reference();
   captions();
 }
@@ -321,25 +345,26 @@ function fillMeta() {
 /** Number the figures that are showing, in page order, and say what each shows. */
 function captions() {
   const figs: [string, string][] = [];
-  const where = st.view.approach === "tee" ? "the transesophageal probe's position" : "the probe's position";
+  const where = approach() === "tee" ? "the transesophageal probe's position" : "the probe's position";
   figs.push(["cap1", `${MODE_NAME[st.mode]} of this patient at ${where}.${st.mode === "color" ? " Red is flow toward the probe, blue away; mosaic marks turbulent or aliased flow. Drag the Scale slider to move the Nyquist limit." : ""}${STRIP_MODES.has(st.mode) ? " Click the image to move the cursor." : ""}`]);
   if (STRIP_MODES.has(st.mode)) {
     const at = st.line.target ? ` The cursor starts at ${st.line.target}.` : "";
     const text = st.mode === "mmode" ? "M-mode along the cursor line: depth down, time across, two beats." : `${MODE_NAME[st.mode]} along the cursor line, two beats. Velocities toward the probe are above the baseline. Point at the strip to read a velocity and its simplified Bernoulli gradient (4v²).`;
     figs.push(["cap2", text + at]);
   }
-  figs.push(["cap3", st.view.approach === "tee"
-    ? "The transesophageal probe and its imaging plane on the CT heart. Advance or withdraw, turn, flex and rotate the omniplane with the controls below."
-    : "The probe and its imaging plane on the CT heart. Drag the heart to turn it; drag the probe to slide it, shift-drag to tilt, scroll over it to roll the index mark."]);
-  const im = imageFor(st.view.id);
-  if (im && st.view.approach === "tte") figs.push(["cap4", `Reference echo, ${st.view.name.toLowerCase()}: a real recording for comparison. <span class="echo-credit">${esc(im.note)} ${esc(im.author)}, <a href="${im.licenseUrl}" rel="noopener">${esc(im.license)}</a>, <a href="${im.source}" rel="noopener">source</a>.</span>`]);
+  const dots = "The dots mark where the probe sits for each standard view.";
+  figs.push(["cap3", approach() === "tee"
+    ? `The transesophageal probe and its imaging plane on the CT heart. ${dots} ${st.free ? "Advance or withdraw, turn, flex and rotate the omniplane with the controls below; near a standard view the probe snaps to it." : "A standard view holds the probe still; choose the free transesophageal probe to move it."}`
+    : `The probe and its imaging plane on the CT heart. ${dots} Drag the heart to turn it. ${st.free ? "Drag the probe to slide it, shift-drag to tilt, scroll over it to roll the index mark; let go near a dot and it snaps into that view." : "A standard view holds the probe still; choose the free transthoracic probe to move it."}`]);
+  const im = st.free && !st.snapped ? undefined : imageFor(st.view.id);
+  if (im && approach() === "tte") figs.push(["cap4", `Reference echo, ${st.view.name.toLowerCase()}: a real recording for comparison. <span class="echo-credit">${esc(im.note)} ${esc(im.author)}, <a href="${im.licenseUrl}" rel="noopener">${esc(im.license)}</a>, <a href="${im.source}" rel="noopener">source</a>.</span>`]);
   figs.forEach(([id, text], i) => { $(id).innerHTML = `Figure ${i + 1}. ${text}`; });
   $("stripFig").hidden = !STRIP_MODES.has(st.mode);
 }
 
 function reference() {
-  const im = imageFor(st.view.id), fig = $("refFig");
-  if (!im || im.kind !== "video" || !im.clean || st.view.approach !== "tte") {
+  const im = st.free && !st.snapped ? undefined : imageFor(st.view.id), fig = $("refFig");
+  if (!im || im.kind !== "video" || !im.clean || approach() !== "tte") {
     fig.hidden = true;
     if (refVideo) { refVideo.pause(); refVideo.removeAttribute("src"); refVideo.load(); refVideo = null; refFor = ""; }
     return;
@@ -352,6 +377,7 @@ function reference() {
 
 function selectView(id: string, animate = true) {
   st.view = VIEWS.find((v) => v.id === id) ?? VIEWS[0];
+  st.free = null; st.snapped = null;
   fillMeta();
   if (!st.tte || !st.tee) return;
   if (st.view.approach === "tte") {
@@ -368,16 +394,62 @@ function selectView(id: string, animate = true) {
   if (st.view.approach === "tee") faceNext = true;
 }
 
+/** Hand the probe to the student: from wherever it is now (or the first standard view of that approach), free to move. */
+function enterFree(kind: "tte" | "tee", fresh = false) {
+  const wasApproach = fresh ? null : approach();
+  st.free = kind;
+  if (wasApproach !== kind) {
+    // switching approach: start the free probe at that approach's first standard view
+    st.view = VIEWS.find((v) => v.approach === kind)!;
+  }
+  st.snapped = st.view.approach === kind ? st.view.id : null;
+  if (st.tte && st.tee) {
+    if (kind === "tte") {
+      if (wasApproach !== "tte" || !st.livePose) st.livePose = st.tte[st.view.pose];
+      if (wasApproach !== "tte") { const p = presets.find((x) => x.id === st.view.pose); if (p) scene?.goTo(p, false); }
+    } else if (wasApproach !== "tee") { st.teeCtl = { ...st.tee[st.view.pose] }; syncTee(); faceNext = true; }
+  }
+  fillMeta();
+  invalidate({ aim: true });
+}
+
+/** Dots for the standard views of the current approach, at their probe positions. */
+function markers() {
+  if (!scene || !st.tte || !st.teeProbe) return;
+  const a = approach(), active = st.free ? st.snapped : st.view.id;
+  scene.setMarkers(VIEWS.filter((v) => v.approach === a).map((v) => ({ id: v.id, label: v.short, at: a === "tte" ? st.tte![v.pose].probe : st.teeProbe![v.pose] })), active);
+}
+
+/** The free transesophageal probe snaps to a standard view when every control is close to that view's. */
+function snapTee() {
+  if (st.free !== "tee" || !st.tee) return;
+  let best: string | null = null, bd = Infinity;
+  for (const v of VIEWS) {
+    if (v.approach !== "tee") continue;
+    const c = st.tee[v.pose], q = st.teeCtl;
+    const turn = Math.abs(((q.turn - c.turn + 540) % 360) - 180);
+    const d = Math.abs(q.level - c.level) / 8 + turn / 12 + Math.abs(q.flex - c.flex) / 10 + Math.abs(q.angle - c.angle) / 15;
+    if (d < bd) { bd = d; best = v.id; }
+  }
+  const was = st.snapped;
+  if (best && bd < 1) { const v = VIEWS.find((x) => x.id === best)!; st.view = v; st.snapped = v.id; st.teeCtl = { ...st.tee[v.pose] }; syncTee(); invalidate({ aim: true }); }
+  else st.snapped = null;
+  if (was !== st.snapped) fillMeta();
+}
+
 function syncTee() {
   const c = st.teeCtl, set = (id: string, v: number, unit: string) => { ($(id) as HTMLInputElement).value = String(Math.round(v)); $(`${id}v`).textContent = `${Math.round(v)}${unit}`; };
   set("teeLevel", c.level, " mm"); set("teeTurn", c.turn, "°"); set("teeFlex", c.flex, "°"); set("teeAngle", c.angle, "°");
 }
 for (const [id, k] of [["teeLevel", "level"], ["teeTurn", "turn"], ["teeFlex", "flex"], ["teeAngle", "angle"]] as const) {
   $(id).addEventListener("input", (e) => {
+    if (st.free !== "tee") return;
     st.teeCtl[k] = Number((e.target as HTMLInputElement).value);
     syncTee();
+    if (st.snapped) { st.snapped = null; fillMeta(); }
     invalidate({ draft: true, aim: true });
   });
+  $(id).addEventListener("change", snapTee);
 }
 
 function setMode(m: Mode) {
@@ -416,6 +488,8 @@ function renderTable() {
 
 // ---- controls ---------------------------------------------------------------------------------------------------------------------
 $("list").addEventListener("click", (e) => {
+  const f = (e.target as HTMLElement).closest<HTMLElement>("a[data-free]");
+  if (f) { e.preventDefault(); enterFree(f.dataset.free as "tte" | "tee"); return; }
   const a = (e.target as HTMLElement).closest<HTMLElement>("a[data-id]");
   if (a) { e.preventDefault(); selectView(a.dataset.id!); }
 });
@@ -458,19 +532,26 @@ document.addEventListener("keydown", (e) => {
 });
 function fromHash() {
   const [id, ...rest] = location.hash.slice(1).split("&"), c = rest.find((p) => p.startsWith("case="))?.slice(5);
-  return { id: VIEWS.some((v) => v.id === id) ? id : VIEWS[0].id, caseId: c && CASE_BY_ID[c] ? c : "normal" };
+  const free = id === "free-tte" ? "tte" as const : id === "free-tee" ? "tee" as const : null;
+  return { id: VIEWS.some((v) => v.id === id) ? id : VIEWS[0].id, free, caseId: c && CASE_BY_ID[c] ? c : "normal" };
 }
 window.addEventListener("hashchange", () => {
   const h = fromHash();
   if (h.caseId !== st.caseId) { st.caseId = h.caseId; st.beat = null; send({ type: "case", id: st.caseId }); }
-  if (h.id !== st.view.id) selectView(h.id);
+  if (h.free) { if (h.free !== st.free) enterFree(h.free); }
+  else if (h.id !== st.view.id || st.free) selectView(h.id);
+});
+$("labels").addEventListener("click", () => {
+  st.labelsOn = !st.labelsOn;
+  $("labels").setAttribute("aria-pressed", String(st.labelsOn));
+  drawOverlay();
 });
 
 
 renderCases();
 renderList();
 renderTable();
-{ const h = fromHash(); st.caseId = h.caseId; st.view = VIEWS.find((v) => v.id === h.id)!; }
+{ const h = fromHash(); st.caseId = h.caseId; st.view = VIEWS.find((v) => v.id === h.id)!; st.free = h.free; if (h.free) st.view = VIEWS.find((v) => v.approach === h.free)!; }
 fillMeta();
 mountShell({ page: "echo", root: "../" }).ai.start();
 send({ type: "init" });

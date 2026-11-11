@@ -39,6 +39,7 @@
         <button type="button" data-mode="tdi" aria-pressed="false">TDI</button>
       </div>
       <button type="button" id="play" class="echo-play" aria-pressed="true">Freeze</button>
+      <button type="button" id="labels" class="echo-play echo-toggle" aria-pressed="true">Labels</button>
       <label><span>Gain</span><input id="gain" type="range" min="-12" max="12" step="1" value="0"><output id="gainv">0 dB</output></label>
       <label id="nyqWrap" hidden><span>Scale</span><input id="nyq" type="range" min="0.3" max="1.2" step="0.05" value="0.65"><output id="nyqv"></output></label>
       <label id="baseWrap" hidden><span>Baseline</span><input id="base" type="range" min="0.1" max="0.9" step="0.05" value="0.5"><output id="basev"></output></label>
@@ -68,7 +69,7 @@
   <aside class="rail" aria-label="Probe and measurements">
     <figure class="echo-fig">
       <div class="screen echo-3d" id="scene"><p class="echo-load" id="loading">Drawing the heart…</p></div>
-      <figcaption id="cap3">Figure 3. The probe and its imaging plane on the CT heart. Drag the heart to turn it; drag the probe to slide it, shift-drag to tilt, scroll over it to roll the index mark.</figcaption>
+      <figcaption id="cap3">Figure 3. The probe and its imaging plane on the CT heart.</figcaption>
     </figure>
     <div class="tee-controls" id="teeControls" hidden>
       <label><span>Advance</span><input id="teeLevel" type="range" min="-140" max="22" step="1"><output id="teeLevelv"></output></label>

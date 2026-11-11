@@ -26,6 +26,7 @@ export class EchoScene {
   private camera = new THREE.PerspectiveCamera(32, 1, 1, 3000);
   private controls?: OrbitControls;
   private poseGroup = new THREE.Group();
+  private markerGroup = new THREE.Group();
   private centre: THREE.Vector3;
   private current: Pose | null = null;
   private presets: ProbePreset[] = [];
@@ -51,7 +52,7 @@ export class EchoScene {
     this.heart = this.buildHeart(meshHeart());
     this.centre = v(toPatient([0, 0, 0]));
     const key = new THREE.DirectionalLight(0xfff4ea, 1.6); key.position.set(120, 160, 220);
-    this.scene.add(this.heart, new THREE.AmbientLight(0xffffff, 0.3), key, this.poseGroup);
+    this.scene.add(this.heart, new THREE.AmbientLight(0xffffff, 0.3), key, this.poseGroup, this.markerGroup);
     new ResizeObserver(() => this.resize()).observe(host);
     this.resize();
     this.camera.position.copy(this.centre).addScaledVector(new THREE.Vector3(0, 0, 1), 460);
@@ -93,6 +94,45 @@ export class EchoScene {
   frameOn(p: Pose) {
     const f = this.framing(p);
     this.camera.position.copy(f.camera); this.controls?.target.copy(f.target); this.controls?.update();
+  }
+
+  /**
+   * Dots where the probe sits for each standard view, each with its short name; the current one larger. Views that share a probe
+   * position (a transesophageal probe that only turns its omniplane) share a dot and list both names.
+   */
+  setMarkers(ms: { id: string; label: string; at: V3 }[], active: string | null) {
+    for (const o of [...this.markerGroup.children]) {
+      this.markerGroup.remove(o);
+      const m = o as THREE.Mesh | THREE.Sprite; m.geometry?.dispose();
+      const mat = m.material as THREE.SpriteMaterial; mat.map?.dispose(); mat.dispose();
+    }
+    const groups: { at: V3; labels: string[]; active: boolean }[] = [];
+    for (const m of ms) {
+      const g = groups.find((q) => Math.hypot(q.at[0] - m.at[0], q.at[1] - m.at[1], q.at[2] - m.at[2]) < 4);
+      if (g) { if (m.id === active) g.labels.unshift(m.label); else g.labels.push(m.label); g.active ||= m.id === active; }
+      else groups.push({ at: m.at, labels: [m.label], active: m.id === active });
+    }
+    for (const g of groups) {
+      if (g.labels.length > 2) g.labels = [`${g.labels[0]} and ${g.labels.length - 1} more`];
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(g.active ? 4.2 : 2.6, 14, 10), new THREE.MeshBasicMaterial({ color: g.active ? 0xffffff : 0xd8d3c8, depthTest: false, transparent: true, opacity: g.active ? 1 : 0.85 }));
+      dot.position.set(...g.at); dot.renderOrder = 5;
+      this.markerGroup.add(dot, this.label(g.labels.join(" / "), g.at, g.active));
+    }
+  }
+
+  /** A text label as a sprite beside a point: drawn on a canvas, always facing the camera, never hidden by the heart. */
+  private label(text: string, at: V3, strong: boolean): THREE.Sprite {
+    const c = document.createElement("canvas"), g = c.getContext("2d")!, font = `${strong ? 600 : 500} 30px "Hanken Grotesk", system-ui, sans-serif`;
+    g.font = font; const w = Math.ceil(g.measureText(text).width) + 12;
+    c.width = w; c.height = 40;
+    g.font = font; g.textBaseline = "middle"; g.lineWidth = 6; g.strokeStyle = "rgba(5,6,10,0.9)"; g.fillStyle = strong ? "#ffffff" : "#e4dfd4";
+    g.strokeText(text, 6, 21); g.fillText(text, 6, 21);
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+    const h = 10; sp.scale.set((h * w) / 40, h, 1);
+    sp.center.set(-0.08, 0.5);
+    sp.position.set(...at); sp.renderOrder = 6;
+    return sp;
   }
 
   /** Standard views the drag snap can pull toward. */
