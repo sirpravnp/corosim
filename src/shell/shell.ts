@@ -27,7 +27,7 @@ const ICONS: Record<string, string> = {
   cath: `<path d="M4 22A18 18 0 0 1 22 4"/><path d="M4 22A11 11 0 0 1 15 11"/><circle cx="4" cy="22" r="2"/>`,
   structural: `<rect x="3" y="3" width="20" height="20"/><path d="M3 3l20 20M13 3v20"/>`,
   echo: `<path d="M13 3L3 23h20z"/><path d="M13 3v20M8 13h10"/>`,
-  lipids: `<circle cx="13" cy="13" r="8"/><circle cx="13" cy="13" r="3"/><path d="M13 2v3M13 21v3M2 13h3M21 13h3"/>`,
+  lipids: `<circle cx="10" cy="15" r="6.5"/><circle cx="19" cy="8.5" r="3.8"/><circle cx="20" cy="19.5" r="2.4"/><path d="M7 13.5a3.5 3.5 0 0 1 3-2.5" stroke-dasharray="1.2 1.6"/>`,
 };
 export const icon = (id: string) => `<svg viewBox="0 0 26 26" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">${ICONS[id] ?? ""}</svg>`;
 
