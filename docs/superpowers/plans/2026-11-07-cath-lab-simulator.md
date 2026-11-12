@@ -110,10 +110,10 @@ export interface LabEngineLike {
   Task 6 declares `class LabEngine implements LabEngineLike`; Tasks 3 to 8 import their types from `types.ts` instead of defining them.
 - Produces in `stub.ts`: `class StubLabEngine implements LabEngineLike` that follows a scripted demo (access, guide to LM, wire down the LAD, balloon, stent) on a built-in simple graph, with no physics. Used only for UI development and UI tests.
 
-- [ ] **Step 1: Write failing tests:** `the stub advances a wire along the LAD and reports tipMm increasing`; `the stub emits an inflate event and flags occludesFlow`; `reset returns an empty log`; `the stub satisfies LabEngineLike (type-level)`.
-- [ ] **Step 2: Run to verify they fail.** Run: `npx vitest run tests/labStub.test.ts`. Expected: FAIL.
-- [ ] **Step 3: Implement** `types.ts` by moving the interfaces from Tasks 3 to 8 into it verbatim, and the stub.
-- [ ] **Step 4: Run to verify they pass, then commit and merge this branch's `types.ts` to `main` first** so Cursor's branch starts from it.
+- [x] **Step 1: Write failing tests:** `the stub advances a wire along the LAD and reports tipMm increasing`; `the stub emits an inflate event and flags occludesFlow`; `reset returns an empty log`; `the stub satisfies LabEngineLike (type-level)`.
+- [x] **Step 2: Run to verify they fail.** Run: `npx vitest run tests/labStub.test.ts`. Expected: FAIL.
+- [x] **Step 3: Implement** `types.ts` by moving the interfaces from Tasks 3 to 8 into it verbatim, and the stub.
+- [x] **Step 4: Run to verify they pass, then commit and merge this branch's `types.ts` to `main` first** so Cursor's branch starts from it.
 ```bash
 git add src/lab/types.ts src/lab/stub.ts tests/labStub.test.ts
 git commit -m "Lab: shared types and a stub engine for UI work"
