@@ -16,25 +16,25 @@
 <div class="app" id="app">
 <header id="shell-head"></header>
 
-<div class="lp-title">
-  <h1>Lipid lab</h1>
-  <p>Lipoproteins from the gut and liver to the capillary beds and back, with every apolipoprotein, receptor and enzyme drawn. Pick a patient, turn drugs on alone or together, and watch the particles and the labs settle.</p>
-</div>
+<h1 class="vh">Lipid lab</h1>
 
 <section class="lp-stage" aria-label="Lipoprotein stage">
   <div class="lp-main">
-    <div class="lp-tabs" role="tablist" id="lp-tabs" aria-label="Views"></div>
-    <p class="lp-note" id="lp-note"></p>
-    <figure class="lp-fig">
+    <div class="lp-bar"><div class="lp-tabs" role="tablist" id="lp-tabs" aria-label="Views"></div><div class="lp-opts" id="lp-opts" aria-label="View options"></div></div>
+    <ol class="lp-route" id="lp-route" aria-label="Steps of the journey" hidden></ol>
+    <p class="lp-note" id="lp-note" aria-live="polite"></p>
+    <figure class="lp-fig" id="lp-panel" role="tabpanel">
       <div class="lp-canvas">
         <canvas id="flow" aria-label="Animated lipoprotein simulation of the selected view"></canvas>
         <div id="tip" class="lp-tip" hidden></div>
       </div>
-      <figcaption class="lp-foot"><span id="lp-caption"></span><span class="lp-btns"><button type="button" id="lp-meal">Give a fatty meal</button><button type="button" id="lp-pause">Pause</button></span></figcaption>
+      <figcaption class="lp-foot"><span id="lp-caption"></span><span class="lp-btns"><button type="button" id="lp-pause">Pause</button></span></figcaption>
     </figure>
     <div class="lp-controls">
       <div class="lab">Patient</div><div class="lp-toggles" id="lp-geno"></div>
+      <div class="lab">Meal</div><div class="lp-toggles"><button type="button" id="lp-meal" title="A fatty meal fills the gut and sends chylomicrons into the lymph">Give a fatty meal</button></div>
       <div class="lab">Drugs</div><div class="lp-toggles" id="lp-drugs"></div>
+      <div class="lab">Effect</div><div class="lp-effect" id="lp-effect" aria-live="polite"></div>
     </div>
   </div>
   <aside class="lp-rail" aria-label="Labs and key">
@@ -49,20 +49,28 @@
 
 <section class="lp-sec" aria-labelledby="h-cards">
   <h2 id="h-cards">Lipoprotein cards</h2>
-  <p class="lp-lede">Move through the deck with the arrows, a swipe or the arrow keys. Click the center card, or press Enter, to flip it.</p>
+  <p class="lp-lede">Each class of lipoprotein: its size, density and core on the front, what it does and binds on the back.</p>
   <div class="lp-deck" id="lp-deck"><div class="lp-track" id="lp-track"></div></div>
   <div class="lp-decknav"><button type="button" id="lp-prev" aria-label="Previous card">←</button><span id="lp-count"></span><button type="button" id="lp-next" aria-label="Next card">→</button></div>
   <p class="lp-cap">Figure 2. The lipoprotein classes. Diameters and densities are standard ultracentrifugation ranges; core ratios are approximate.</p>
 </section>
 
+<section class="lp-sec" aria-labelledby="h-acts">
+  <h2 id="h-acts">Enzymes and drugs at work</h2>
+  <p class="lp-lede">Flip a card to watch it act. On a drug card, call which way each lab moves first; the back alternates the untreated patient with the patient on the drug and scores your calls against the model.</p>
+  <div class="lp-deck" id="lp-adeck"><div class="lp-track" id="lp-atrack"></div></div>
+  <div class="lp-decknav"><button type="button" id="lp-aprev" aria-label="Previous card">←</button><span id="lp-acount"></span><button type="button" id="lp-anext" aria-label="Next card">→</button></div>
+  <p class="lp-cap">Figure 3. Enzymes and drugs. Each back is a small simulation, not a measurement: counts and speeds are scaled from the model's rates for a normal patient.</p>
+</section>
+
 <section class="lp-sec" aria-labelledby="h-drugs">
   <h2 id="h-drugs">Drugs and their targets</h2>
   <p class="lp-lede">Each drug on the stage changes one rate in the model, so combinations compound rather than add. The table covers the drugs on the stage and the wider field.</p>
-  <div class="lp-tbl"><table>
-    <caption>Table 1. Lipid drugs, the sign of their class and target, and typical effects in trials. <span class="inv">inv</span> marks investigational agents. Effects are approximate means and regulatory status reflects late 2025.</caption>
+  <div class="lp-tbl"><table aria-labelledby="lp-tcap">
     <thead><tr><th scope="col">Drug</th><th scope="col">Target</th><th scope="col">Mechanism</th><th scope="col" class="num">LDL-C</th><th scope="col" class="num">TG</th><th scope="col" class="num">Lp(a)</th><th scope="col">Status</th></tr></thead>
     <tbody id="lp-drugtable"></tbody>
   </table></div>
+  <p class="lp-cap" id="lp-tcap">Table 1. Lipid drugs, the sign of their class and target, and typical effects in trials. <span class="inv">inv</span> marks investigational agents. Effects are approximate means and regulatory status reflects late 2025.</p>
 </section>
 
 <section class="lp-sec" aria-labelledby="h-glyphs">
@@ -71,11 +79,10 @@
   <details class="lp-ref"><summary>Show all signs</summary>
     <div class="lp-glyphs" id="lp-glyphs"></div>
     <div class="lp-pairs" id="lp-pairs"></div>
+    <p class="lp-cap">Figure 4. The sign set. A drug's class mark sits on its target: an antibody on PCSK9's hook is a PCSK9 antibody.</p>
   </details>
-  <p class="lp-cap">Figure 3. The sign set. A drug's class mark sits on its target: an antibody on PCSK9's hook is a PCSK9 antibody.</p>
 </section>
 
-<p class="fine lp-note-model">The model is a teaching sketch: a few rate equations scaled so that an untreated normal patient reads LDL-C 100 mg/dL, TG 120 and HDL-C 50, with drug effects tuned near typical trial means. Particle counts on the stage are a sample of its concentrations, not to scale. Not for clinical decisions.</p>
 <footer id="shell-foot"></footer>
 </div>
 <script type="module" src="/src/lipids/page.ts"></script>

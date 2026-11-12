@@ -7,7 +7,7 @@ import { APONAME, BACKS, MOLS, molSVG } from "./molecules";
  */
 export function mountDeck(deck: HTMLElement, track: HTMLElement, count: HTMLElement, prev: HTMLButtonElement, next: HTMLButtonElement) {
   const no = (i: number) => `No. ${String(i + 1).padStart(2, "0")}`;
-  track.innerHTML = MOLS.map((m, i) => {
+  mountCards(deck, track, count, prev, next, MOLS.map((m, i) => {
     const b = BACKS[i];
     const hd = `<div class="hd"><span>${no(i)}</span><span>${b.fam}</span></div><h3>${m.name}</h3>`;
     return `<div class="card" data-i="${i}" role="group" aria-roledescription="card" aria-label="${m.name}">
@@ -28,7 +28,15 @@ export function mountDeck(deck: HTMLElement, track: HTMLElement, count: HTMLElem
           <div class="ft"><span>Click to flip back</span><span>${i + 1} / ${MOLS.length}</span></div>
         </div>
       </div></div>`;
-  }).join("");
+  }));
+}
+
+/**
+ * A deck of flip cards from their markup. `onShow` hears which card is in the center and whether it is flipped, so a deck whose
+ * backs animate can run only the one card in view.
+ */
+export function mountCards(deck: HTMLElement, track: HTMLElement, count: HTMLElement, prev: HTMLButtonElement, next: HTMLButtonElement, html: string[], onShow?: (i: number, flipped: boolean) => void) {
+  track.innerHTML = html.join("");
   const cards = Array.from(track.children) as HTMLElement[];
   let idx = 0;
   function layout() {
@@ -42,19 +50,23 @@ export function mountDeck(deck: HTMLElement, track: HTMLElement, count: HTMLElem
       if (off !== 0) c.classList.remove("flipped");
     });
     count.textContent = `${idx + 1} / ${cards.length}`;
+    onShow?.(idx, cards[idx].classList.contains("flipped"));
   }
+  const flip = (i: number) => { cards[i].classList.toggle("flipped"); onShow?.(i, cards[i].classList.contains("flipped")); };
   const go = (i: number) => { idx = (i + cards.length) % cards.length; layout(); };
   prev.addEventListener("click", () => go(idx - 1));
   next.addEventListener("click", () => go(idx + 1));
   track.addEventListener("click", (e) => {
+    if ((e.target as HTMLElement).closest("button, a")) return; // controls on a card do their own thing
     const c = (e.target as HTMLElement).closest<HTMLElement>(".card"); if (!c) return;
-    const i = Number(c.dataset.i); if (i !== idx) go(i); else c.classList.toggle("flipped");
+    const i = Number(c.dataset.i); if (i !== idx) go(i); else flip(i);
   });
   deck.tabIndex = 0;
   deck.addEventListener("keydown", (e) => {
+    if (e.target !== deck) return;
     if (e.key === "ArrowLeft") { go(idx - 1); e.preventDefault(); }
     else if (e.key === "ArrowRight") { go(idx + 1); e.preventDefault(); }
-    else if (e.key === "Enter" || e.key === " ") { cards[idx].classList.toggle("flipped"); e.preventDefault(); }
+    else if (e.key === "Enter" || e.key === " ") { flip(idx); e.preventDefault(); }
   });
   let sx: number | null = null;
   deck.addEventListener("pointerdown", (e) => { sx = e.clientX; });

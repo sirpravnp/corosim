@@ -162,7 +162,7 @@ export function adipocyte(poly: Pt[], seed: number) {
 }
 /** A muscle fiber seen lengthwise: myofibrils with banded sarcomeres, mitochondria between them, nuclei at the edge. */
 export function muscleFiber(x0: number, y0: number, w: number, h: number, seed: number) {
-  const c = P.ctx, R = rnd(seed), outline = new Path2D(); outline.roundRect(x0, y0, w, h, 6);
+  const c = P.ctx, R = rnd(seed), outline = new Path2D(); outline.rect(x0, y0, w, h);
   paint(outline, P.stage2, 1, P.muted, 0.6, 1);
   c.save(); c.clip(outline);
   const rows = Math.max(3, Math.floor(h / 26)), fh = h / rows;

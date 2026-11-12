@@ -2,7 +2,10 @@ import { Delaunay } from "d3-delaunay";
 import { coreColor } from "./glyphs";
 import { rnd } from "./molecules";
 import { Lane, Mover, P, Particle, Ring, feedAll, lerp, moveFlow, nearest, pick, prefillAll, rand } from "./paint";
-import { adipocyte, alpha, blob, collagen, elasticLamina, endothelium, golgi, lobules, microvilli, mito, muscleFiber, nucleus, paint, redCell, roughER, smooth, smoothMuscle, speckle, tube } from "./anatomy";
+import { adipocyte, alpha, blob, collagen, elasticLamina, endothelium, golgi, microvilli, mito, muscleFiber, nucleus, paint, redCell, roughER, smoothMuscle, speckle } from "./anatomy";
+import { bowel, capillaryBed, coilPath, fatPad, fatPath, heart, heartPath, liver, liverPath, lymphatic, muscle, musclePath, vessel } from "./bodyArt";
+import { ramp } from "./glyphs";
+import { setTrial, trial } from "./trials";
 
 /**
  * The six views on the stage. The whole body shows circulation without receptor detail; each zoom view shows one place where
@@ -14,6 +17,12 @@ export interface Scene {
   id: string; name: string; note: string; caption: string; key: string[];
   init(): void; step(dt: number): void; draw(dt: number): void;
   region?(x: number, y: number): string | null;
+  /** The inset map: which region to outline and where to put a dot (fractions of the body), or null for no inset. */
+  mini?(): { hi: string | null; dot?: [number, number] } | null;
+  /** A view that tells a story: its chapters, the current one, a jump, and the sentence for the note above the stage. */
+  route?: string[]; at?(): number; jump?(i: number): void; live?(): string;
+  /** Options shown on the stage for this view (toggles, or a group of exclusive choices sharing a `group`). */
+  opts?(): { id: string; label: string; on: boolean; group?: string }[]; setOpt?(id: string): void;
 }
 
 type Pt = [number, number];
@@ -31,80 +40,72 @@ function moveCells(cs: Cell[], dt: number, y0: number, y1: number) {
 function drawCells(cs: Cell[]) { for (const c of cs) { redCell(c.x, c.y, c.r, c.rot, c.edge); anat(c.x, c.y, c.r, "Red cell, for scale: about 7,500 nm across"); } }
 
 // ================================================================== whole body
-interface Loop { pts: Pt[]; bed?: number[]; liver?: number[]; lymph?: boolean; px: Pt[]; cum: number[]; len: number }
+export interface Loop { pts: Pt[]; bed?: number[]; liver?: number[]; lymph?: boolean; px: Pt[]; cum: number[]; len: number }
+/**
+ * The body in a front view, as in an anatomy atlas: the patient's right is on the viewer's left. The heart's apex points down and
+ * to the viewer's right; the arch sends vessels up and out to the fat (left) and the muscle (right); the descending aorta runs
+ * down to the gut; the portal vein climbs into the liver under the heart; the IVC returns; the thoracic duct drains at the left
+ * venous angle. Coordinates are fractions of the stage.
+ */
 const BODY = {
-  liver: [[0.6, 0.15], [0.68, 0.1], [0.84, 0.075], [0.95, 0.11], [0.965, 0.2], [0.9, 0.3], [0.8, 0.37], [0.7, 0.385], [0.625, 0.33]] as Pt[],
-  heart: [0.47, 0.47] as Pt, adip: [0.12, 0.68, 0.085, 0.14], musc: [0.88, 0.74, 0.085, 0.13],
-  gut: [[0.4, 0.8], [0.44, 0.74], [0.5, 0.76], [0.54, 0.82], [0.5, 0.88], [0.44, 0.86], [0.46, 0.8], [0.52, 0.8], [0.58, 0.86], [0.62, 0.8]] as Pt[],
-  aorta: [0.34, 0.505] as Pt,
+  heart: [0.5, 0.3] as Pt, adip: [0.12, 0.31, 0.085, 0.15], musc: [0.87, 0.31, 0.1, 0.085],
+  aorta: [0.566, 0.5] as Pt,
 };
 const mkLoop = (pts: Pt[], o: Partial<Loop> = {}): Loop => ({ pts, px: [], cum: [], len: 0, ...o });
-const LOOPS: Record<string, Loop> = {
-  adip: mkLoop([[0.47, 0.47], [0.36, 0.5], [0.24, 0.56], [0.15, 0.6], [0.08, 0.68], [0.12, 0.78], [0.2, 0.74], [0.3, 0.62], [0.42, 0.54], [0.47, 0.47]], { bed: [3, 4, 5] }),
-  musc: mkLoop([[0.47, 0.47], [0.58, 0.52], [0.72, 0.6], [0.83, 0.65], [0.93, 0.72], [0.88, 0.82], [0.78, 0.76], [0.64, 0.63], [0.52, 0.54], [0.47, 0.47]], { bed: [3, 4, 5] }),
-  gut: mkLoop([[0.47, 0.47], [0.475, 0.6], [0.47, 0.72], [0.5, 0.78], [0.56, 0.76], [0.62, 0.64], [0.68, 0.48], [0.74, 0.34], [0.8, 0.24], [0.74, 0.16], [0.62, 0.2], [0.53, 0.32], [0.47, 0.47]], { bed: [3], liver: [7, 8, 9] }),
-  lymph: mkLoop([[0.43, 0.84], [0.37, 0.76], [0.33, 0.64], [0.32, 0.46], [0.37, 0.38], [0.44, 0.4], [0.47, 0.47]], { lymph: true }),
+export const LOOPS: Record<string, Loop> = {
+  // artery 0-3, capillary bed 3-6, vein 6 on
+  adip: mkLoop([[0.5, 0.3], [0.48, 0.055], [0.33, 0.13], [0.2, 0.22], [0.08, 0.25], [0.07, 0.36], [0.17, 0.4], [0.3, 0.3], [0.445, 0.11], [0.5, 0.3]], { bed: [3, 4, 5] }),
+  musc: mkLoop([[0.5, 0.3], [0.54, 0.048], [0.68, 0.14], [0.79, 0.275], [0.91, 0.29], [0.91, 0.335], [0.8, 0.345], [0.7, 0.33], [0.565, 0.12], [0.5, 0.3]], { bed: [3, 4, 5] }),
+  // aorta 0-3, gut bed 3-4, portal vein 4-7, liver 7-10, IVC 10 on
+  gut: mkLoop([[0.5, 0.3], [0.552, 0.42], [0.575, 0.6], [0.56, 0.76], [0.5, 0.79], [0.47, 0.72], [0.44, 0.66], [0.41, 0.62], [0.35, 0.57], [0.4, 0.5], [0.455, 0.47], [0.453, 0.42], [0.5, 0.3]], { bed: [3], liver: [7, 8, 9] }),
+  lymph: mkLoop([[0.48, 0.86], [0.52, 0.73], [0.6, 0.64], [0.615, 0.45], [0.605, 0.22], [0.58, 0.115], [0.5, 0.3]], { lymph: true }),
 };
-function layoutLoop(L: Loop) {
+export function layoutLoop(L: Loop) {
   L.px = L.pts.map(([x, y]) => [x * P.W, y * P.H]); L.cum = [0];
   for (let i = 1; i < L.px.length; i++) L.cum.push(L.cum[i - 1] + Math.hypot(L.px[i][0] - L.px[i - 1][0], L.px[i][1] - L.px[i - 1][1]));
   L.len = L.cum[L.cum.length - 1];
 }
-function posOn(L: Loop, s: number) {
+export function posOn(L: Loop, s: number) {
   let i = 1; while (i < L.cum.length - 1 && L.cum[i] < s) i++;
   const t = (s - L.cum[i - 1]) / (L.cum[i] - L.cum[i - 1] || 1), a = L.px[i - 1], b = L.px[i];
   return { x: lerp(a[0], b[0], t), y: lerp(a[1], b[1], t), seg: i - 1, ang: Math.atan2(b[1] - a[1], b[0] - a[0]) };
 }
-/** The heart in outline: base up and to the right, apex down and to the left, as on a chest film. */
-const HEART: Pt[] = [[-0.55, -0.55], [0, -0.72], [0.6, -0.6], [0.86, -0.15], [0.62, 0.35], [0.18, 0.72], [-0.22, 1.02], [-0.6, 0.62], [-0.86, 0.02]];
-function heartPath(x: number, y: number, s: number): Path2D {
-  const p = new Path2D(); p.addPath(smooth(HEART), new DOMMatrix().translate(x, y).rotate(18).scale(s)); return p;
-}
+/** The thermal ramp in 64 steps, for the thermogram's many dots. */
+const HEAT_PAL = Array.from({ length: 64 }, (_, i) => ramp(i / 63));
+/** Where the organs sit, in body fractions; the art itself is in bodyArt. */
+const HEART_S = 0.16, MUSC_ROT = Math.PI / 2;
 function bodyPaths(bx: number, by: number, bw: number, bh: number) {
-  const X = (x: number) => bx + x * bw, Y = (y: number) => by + y * bh, ell = (e: number[]) => { const p = new Path2D(); p.ellipse(X(e[0]), Y(e[1]), e[2] * bw, e[3] * bh, 0, 0, TAU); return p; };
-  return { X, Y, liver: smooth(BODY.liver.map(([x, y]) => [X(x), Y(y)])), adip: ell(BODY.adip), musc: ell(BODY.musc), heart: heartPath(X(BODY.heart[0]), Y(BODY.heart[1]), bh * 0.085) };
+  const X = (x: number) => bx + x * bw, Y = (y: number) => by + y * bh, [ax, ay, arx, ary] = BODY.adip, [mx, my, mrx, mry] = BODY.musc;
+  return {
+    X, Y, liver: liverPath(X, Y), adip: fatPath(X(ax), Y(ay), arx * bw, ary * bh, false), musc: musclePath(X(mx), Y(my), mrx * bw, mry * bh, MUSC_ROT).p,
+    coil: coilPath(X, Y, bw, bh),
+  };
 }
 /** The whole body's anatomy; `mini` draws it small, without tissue texture, as the "where am I" inset of the zoom views. */
 function drawBodyBase(bx: number, by: number, bw: number, bh: number, mini: boolean) {
-  const c = P.ctx, b = bodyPaths(bx, by, bw, bh), { X, Y } = b, k = mini ? 0.32 : 1;
-  // liver: lobules at organ scale, a gallbladder under its edge
-  paint(b.liver, P.stage2, 1, P.muted, 0.6, 1);
+  const X = (x: number) => bx + x * bw, Y = (y: number) => by + y * bh, k = mini ? 0.32 : 1, at = (L: Loop, a: number, b: number) => L.pts.slice(a, b + 1).map(([x, y]) => [X(x), Y(y)] as Pt);
+  const [ax, ay, arx, ary] = BODY.adip, [mx, my, mrx, mry] = BODY.musc;
+  // organs
+  const lv = liver(X, Y, bw, bh, mini);
+  const fp = fatPad(X(ax), Y(ay), arx * bw, ary * bh, mini);
+  const mp = muscle(X(mx), Y(my), mrx * bw, mry * bh, MUSC_ROT, mini);
+  bowel(X, Y, bw, bh, mini);
+  // capillary beds inside the tissue, between each loop's arterial and venous ends
   if (!mini) {
-    lobules(b.liver, X(0.58), Y(0.06), bw * 0.4, bh * 0.34, Math.max(9, bw * 0.014));
-    paint(blob(X(0.74), Y(0.385), bw * 0.018, bh * 0.022, 4), P.stage2, 1, P.muted, 0.6, 1);
+    const A = LOOPS.adip, M = LOOPS.musc, G = LOOPS.gut;
+    capillaryBed(fp, [X(A.pts[3][0]), Y(A.pts[3][1])], [X(A.pts[6][0]), Y(A.pts[6][1])], 31, bw * 0.05);
+    capillaryBed(mp, [X(M.pts[3][0]), Y(M.pts[3][1])], [X(M.pts[6][0]), Y(M.pts[6][1])], 32, bw * 0.045);
+    capillaryBed(lv, [X(G.pts[7][0]), Y(G.pts[7][1])], [X(G.pts[10][0]), Y(G.pts[10][1])], 33, bw * 0.06);
+    const gc = new Path2D(); gc.rect(X(0.41), Y(0.73), bw * 0.25, bh * 0.24); capillaryBed(gc, [X(G.pts[3][0]), Y(G.pts[3][1])], [X(G.pts[4][0]), Y(G.pts[4][1])], 34, bw * 0.03);
   }
-  // capillary beds: packed fat cells, and muscle fibers
-  paint(b.adip, P.stage2, 1, P.muted, 0.55, 1); paint(b.musc, P.stage2, 1, P.muted, 0.55, 1);
-  if (!mini) {
-    c.save(); c.clip(b.adip);
-    const r0 = Math.max(6, bw * 0.009), cx = X(BODY.adip[0]), cy = Y(BODY.adip[1]);
-    for (let i = -8, row = 0; i <= 8; i++, row++) for (let j = -10; j <= 10; j++) {
-      const x = cx + j * r0 * 2 + (row % 2) * r0, y = cy + i * r0 * 1.75, cell = new Path2D(); cell.arc(x, y, r0 * 0.92, 0, TAU);
-      paint(cell, coreColor(0.93), 0.12, P.muted, 0.4, 0.8);
-    }
-    c.restore();
-    c.save(); c.clip(b.musc); c.translate(X(BODY.musc[0]), Y(BODY.musc[1])); c.rotate(-0.5);
-    alpha(0.45, () => { c.strokeStyle = P.muted; c.lineWidth = 1; for (let y = -bh * 0.2; y < bh * 0.2; y += 6) { c.beginPath(); c.moveTo(-bw * 0.12, y); c.lineTo(bw * 0.12, y + Math.sin(y) * 2); c.stroke(); } });
-    c.restore();
-  }
-  // small intestine: a coiled tube with a wall
-  const gut = BODY.gut.map(([x, y]) => [X(x), Y(y)] as Pt);
-  tube(gut, 15 * k, { wall: 1.6 });
-  if (!mini) alpha(0.45, () => { const p = smooth(gut, false); c.strokeStyle = P.muted; c.setLineDash([2, 4]); c.lineWidth = 1; c.stroke(p); c.setLineDash([]); });
-  // vessels as tubes: aorta widest, lymphatics dotted, with two lymph nodes
-  for (const [name, L] of Object.entries(LOOPS)) tube(L.pts.map(([x, y]) => [X(x), Y(y)]), (L.lymph ? 4 : name === "gut" ? 8 : 7) * k, { lymph: L.lymph, wall: mini ? 0.8 : 1.6 });
-  tube([LOOPS.adip.pts[0], LOOPS.adip.pts[1], LOOPS.adip.pts[2]].map(([x, y]) => [X(x), Y(y)]), 10 * k, { wall: mini ? 0.8 : 2 });
-  if (!mini) for (const i of [2, 4]) { const [x, y] = LOOPS.lymph.pts[i]; paint(blob(X(x) + 6, Y(y), 8, 5, 10 + i, 0.12, 0.4), P.stage2, 1, P.muted, 0.6, 1); }
+  // vessels: arteries out to each bed, veins back; the gut's venous blood goes to the liver by the portal vein
+  // (each artery starts at its branch from the arch; the heart's own art draws the arch)
+  for (const L of [LOOPS.adip, LOOPS.musc]) { vessel(at(L, 1, 3), 6 * k, "artery", mini); vessel(at(L, 6, L.pts.length - 1), 7 * k, "vein", mini); }
+  const G = LOOPS.gut;
+  vessel(at(G, 0, 2), 10 * k, "artery", mini); vessel(at(G, 2, 3), 6 * k, "artery", mini); vessel(at(G, 4, 7), 8 * k, "portal", mini); vessel(at(G, 10, G.pts.length - 1), 10 * k, "vein", mini);
+  lymphatic(at(LOOPS.lymph, 0, LOOPS.lymph.pts.length - 1), 4 * k, [2, 4].map((i) => [X(LOOPS.lymph.pts[i][0]) + 7, Y(LOOPS.lymph.pts[i][1])] as Pt), mini);
   // heart over the vessels
-  paint(b.heart, P.stage2, 1, P.muted, 0.7, 1);
-  if (!mini) {
-    const hx = X(BODY.heart[0]), hy = Y(BODY.heart[1]), s = bh * 0.085;
-    speckle(b.heart, hx - s, hy - s, s * 2, s * 2, 140, 7, 0.3);
-    alpha(0.5, () => { c.save(); c.translate(hx, hy); c.rotate((18 * Math.PI) / 180); c.strokeStyle = P.muted; c.lineWidth = 1;
-      c.beginPath(); c.moveTo(-0.7 * s, -0.25 * s); c.quadraticCurveTo(0, -0.05 * s, 0.75 * s, -0.25 * s); c.stroke(); // atrioventricular groove
-      c.beginPath(); c.moveTo(0.05 * s, -0.1 * s); c.quadraticCurveTo(-0.05 * s, 0.4 * s, -0.4 * s, 0.85 * s); c.stroke(); // interventricular groove
-      c.restore(); });
-  }
+  heart(X(BODY.heart[0]), Y(BODY.heart[1]), bh * HEART_S, mini);
 }
 function drawBodyHighlight(bx: number, by: number, bw: number, bh: number, hi: string | null, mini: boolean) {
   if (!hi) return;
@@ -112,7 +113,7 @@ function drawBodyHighlight(bx: number, by: number, bw: number, bh: number, hi: s
   c.save(); c.strokeStyle = P.ink; c.lineWidth = lw;
   if (hi === "liver") c.stroke(b.liver);
   if (hi === "cap") { c.stroke(b.adip); c.stroke(b.musc); }
-  if (hi === "gut") { const p = new Path2D(); BODY.gut.forEach(([x, y], i) => (i ? p.lineTo(b.X(x), b.Y(y)) : p.moveTo(b.X(x), b.Y(y)))); c.lineWidth = (mini ? 6 : 19); c.globalAlpha = 0.35; c.lineJoin = "round"; c.lineCap = "round"; c.stroke(p); }
+  if (hi === "gut") { c.lineWidth = mini ? 6 : 18; c.globalAlpha = 0.35; c.lineJoin = "round"; c.lineCap = "round"; c.stroke(b.coil); }
   if (hi === "plasma") { c.globalAlpha = 0.7; for (const L of Object.values(LOOPS)) { if (L.lymph) continue; const p = new Path2D(); L.pts.forEach(([x, y], i) => (i ? p.lineTo(b.X(x), b.Y(y)) : p.moveTo(b.X(x), b.Y(y)))); c.lineWidth = mini ? 1 : 1.5; c.stroke(p); } }
   c.restore();
   const ax = b.X(BODY.aorta[0]), ay = b.Y(BODY.aorta[1]), as = mini ? 4 : 9;
@@ -124,11 +125,13 @@ export function drawBody(bx: number, by: number, bw: number, bh: number, mini: b
   P.cached("body", () => drawBodyBase(bx, by, bw, bh, false)); drawBodyHighlight(bx, by, bw, bh, hi, false);
 }
 
-class BodyScene implements Scene {
+export class BodyScene implements Scene {
   id = "body"; name = "Whole body";
   note = "Lipoproteins circulating without receptor detail. Click the liver, a capillary bed, the gut, a vessel or the aortic wall marker to zoom in.";
   caption = "Figure 1. The whole body. Chylomicrons leave the gut by the lymph, VLDL leaves the liver, both shrink in the capillary beds, and the liver takes remnants and LDL back.";
   key = ["CM", "CMR", "VLDL", "IDL", "LDL", "LPA", "HDL", "lymph", "artmark"];
+  opts() { return [{ id: "thermo", label: "Thermogram", on: trial("thermo") }]; }
+  setOpt(id: string) { if (id === "thermo") setTrial("thermo"); }
   ps: Particle[] = []; acc: Record<string, number> = {}; rings: Ring[] = []; hover: string | null = null;
   init() {
     for (const L of Object.values(LOOPS)) layoutLoop(L);
@@ -169,20 +172,72 @@ class BodyScene implements Scene {
   draw(dt: number) {
     const { W, H } = P;
     drawBody(0, 0, W, H, false, this.hover);
-    P.label("Liver", W * 0.82, H * 0.2, { a: "center" }); P.label("Heart", W * 0.47 + H * 0.1, H * 0.47 + H * 0.1, { s: 12 });
-    P.label("Adipose capillaries", W * 0.12, H * 0.68 + H * 0.14 + 18, { a: "center", s: 12 }); P.label("Muscle capillaries", W * 0.88, H * 0.74 - H * 0.13 - 8, { a: "center", s: 12 });
-    P.label("Small intestine", W * 0.51, H * 0.95, { a: "center", s: 12 }); P.mono("lymph, thoracic duct", W * 0.3, H * 0.6, { a: "right" });
-    P.mono("portal vein", W * 0.66, H * 0.6); P.mono("hepatic vein", W * 0.56, H * 0.2, { a: "right" }); P.mono("aortic wall", W * BODY.aorta[0] - 12, H * BODY.aorta[1] - 14, { a: "center" });
+    if (trial("thermo")) this.drawHeat();
+    P.label("Liver", W * 0.29, H * 0.555, { a: "center" }); P.label("Heart", W * 0.5 + H * 0.165, H * 0.4, { s: 12 });
+    P.label("Adipose capillaries", W * 0.12, H * 0.5, { a: "center", s: 12 }); P.label("Muscle capillaries", W * 0.87, H * 0.47, { a: "center", s: 12 });
+    P.label("Small intestine", W * 0.395, H * 0.9, { a: "right", s: 12 }); P.mono("thoracic duct (lymph)", W * 0.628, H * 0.56);
+    P.mono("portal vein", W * 0.455, H * 0.735, { a: "right" }); P.mono("inferior vena cava", W * 0.45, H * 0.415, { a: "right" }); P.mono("aortic wall", W * BODY.aorta[0] + 16, H * BODY.aorta[1] + 4);
     P.reg(W * BODY.aorta[0], H * BODY.aorta[1], 10, "artmark", "Aortic wall: click to zoom");
     for (const p of this.ps) P.drawParticle(p, 0.75, false);
     this.rings = P.drawRings(this.rings, dt);
   }
+  // ---- thermogram (trial feature): each organ and vessel stippled on the thermal ramp by its lipid flux in the model
+  private heat: { k: string; sets: Record<string, { x: number; y: number; u: number; j: number }[]> } | null = null;
+  private heatSets() {
+    const { W, H } = P, k = `${W}x${H}`;
+    if (this.heat?.k === k) return this.heat.sets;
+    // tested on a scratch context, so a camera transform on the stage cannot skew the sampling
+    const c = document.createElement("canvas").getContext("2d")!, d = 1, b = bodyPaths(0, 0, W, H), R = rnd(401);
+    const area = (path: Path2D, x0: number, y0: number, x1: number, y1: number, n: number, stroke = 0) => {
+      const out: { x: number; y: number; u: number; j: number }[] = [];
+      c.save(); c.lineWidth = stroke;
+      for (let i = 0; i < n; i++) { const x = (x0 + R() * (x1 - x0)) * W, y = (y0 + R() * (y1 - y0)) * H; if (stroke ? c.isPointInStroke(path, x * d, y * d) : c.isPointInPath(path, x * d, y * d)) out.push({ x, y, u: R(), j: R() - 0.5 }); }
+      c.restore(); return out;
+    };
+    const line = (L: Loop, a: number, z: number, w: number, n: number) => {
+      const out: { x: number; y: number; u: number; j: number }[] = [];
+      for (let i = a; i < Math.min(z, L.pts.length - 1); i++) { const [x0, y0] = L.pts[i], [x1, y1] = L.pts[i + 1]; for (let q = 0; q < n; q++) { const t = R(); out.push({ x: (x0 + (x1 - x0) * t) * W + (R() - 0.5) * w, y: (y0 + (y1 - y0) * t) * H + (R() - 0.5) * w, u: R(), j: R() - 0.5 }); } }
+      return out;
+    };
+    const ad = BODY.adip, mu = BODY.musc, hp = heartPath(BODY.heart[0] * W, BODY.heart[1] * H, H * HEART_S);
+    const sets = {
+      liver: area(b.liver, 0.2, 0.43, 0.57, 0.68, 9000), fat: area(b.adip, ad[0] - ad[2] * 1.2, ad[1] - ad[3] * 1.2, ad[0] + ad[2] * 1.2, ad[1] + ad[3] * 1.2, 5000),
+      musc: area(b.musc, mu[0] - mu[2] * 1.3, mu[1] - mu[3] * 1.3, mu[0] + mu[2] * 1.3, mu[1] + mu[3] * 1.3, 5000), gut: area(b.coil, 0.42, 0.75, 0.65, 0.95, 9000, 12),
+      heart: area(hp, 0.42, 0.2, 0.6, 0.42, 4000),
+      artery: [...line(LOOPS.adip, 1, 3, 5, 60), ...line(LOOPS.musc, 1, 3, 5, 60), ...line(LOOPS.gut, 0, 3, 7, 70)],
+      vein: [...line(LOOPS.adip, 6, 9, 5, 50), ...line(LOOPS.musc, 6, 9, 5, 50), ...line(LOOPS.gut, 4, 7, 6, 50), ...line(LOOPS.gut, 10, 12, 7, 40)],
+      lymph: line(LOOPS.lymph, 0, 6, 4, 50),
+    };
+    this.heat = { k, sets }; return sets;
+  }
+  /** The flux each site sees, 0 cool to 1 hot, from the snapshot: what passes through and what is taken up or made there. */
+  heatOf() {
+    const s = P.snap, cl = (v: number) => Math.max(0, Math.min(1, v));
+    const chylo = cl(0.12 + 0.85 * Math.min(1, Math.max(0, s.tgChylo - 20) / 200)), tg = Math.min(2.5, s.tg / 120), ln = Math.min(2, s.lipolysis);
+    const blood = cl(0.15 + 0.3 * Math.min(2, s.ldl / 100) + 0.15 * tg);
+    return { gut: chylo, lymph: chylo, fat: cl(0.15 + 0.22 * ln * tg), musc: cl(0.12 + 0.2 * ln * tg), liver: cl(0.2 + 0.22 * Math.min(2, s.uptake) + 0.25 * (s.rates.vldl / 1.6)), heart: cl(0.2 + 0.15 * ln * tg), artery: blood, vein: cl(blood * 0.85) };
+  }
+  private drawHeat() {
+    const c = P.ctx, sets = this.heatSets(), h = this.heatOf();
+    c.save();
+    for (const [k, dots] of Object.entries(sets)) {
+      const v = h[k as keyof typeof h];
+      c.globalAlpha = 0.85;
+      for (const d of dots) { if (d.u > 0.2 + 0.8 * v) continue; c.fillStyle = HEAT_PAL[Math.round(63 * Math.max(0, Math.min(1, v * 0.92 + d.j * 0.16)))]; c.fillRect(d.x, d.y, 1.7, 1.7); }
+    }
+    c.restore();
+    // the scale: cool to hot is low to high lipid flux
+    if (P.sceneId !== "body") return;
+    const x0 = 14, y0 = P.H - 22, w = 96;
+    for (let i = 0; i < 32; i++) { c.fillStyle = ramp(i / 31); c.fillRect(x0 + (i * w) / 32, y0, w / 32 + 0.5, 6); }
+    P.mono("cool", x0, y0 - 5, { s: 10 }); P.mono("hot", x0 + w, y0 - 5, { s: 10, a: "right" }); P.mono("lipid flux through each site", x0 + w + 10, y0 + 6, { s: 10 });
+  }
   region(x: number, y: number): string | null {
     const X = x / P.W, Y = y / P.H, e = (b: number[]) => ((X - b[0]) / b[2]) ** 2 + ((Y - b[1]) / b[3]) ** 2 < 1.2;
     if (Math.hypot(X - BODY.aorta[0], Y - BODY.aorta[1]) < 0.03) return "artery";
-    if (X > 0.6 && X < 0.97 && Y > 0.07 && Y < 0.39) return "liver";
+    if (X > 0.2 && X < 0.57 && Y > 0.43 && Y < 0.68) return "liver";
     if (e(BODY.adip) || e(BODY.musc)) return "cap";
-    if (X > 0.38 && X < 0.64 && Y > 0.72 && Y < 0.92) return "gut";
+    if (X > 0.4 && X < 0.67 && Y > 0.7 && Y < 0.98) return "gut";
     for (const L of Object.values(LOOPS)) for (let i = 1; i < L.px.length; i++) {
       const a = L.px[i - 1], b = L.px[i], t = Math.max(0, Math.min(1, ((x - a[0]) * (b[0] - a[0]) + (y - a[1]) * (b[1] - a[1])) / ((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2 || 1)));
       if (Math.hypot(x - lerp(a[0], b[0], t), y - lerp(a[1], b[1], t)) < 9) return "plasma";
@@ -240,8 +295,8 @@ class PlasmaScene implements Scene, Lane {
     }
     elasticLamina(0, W, g.t - 12); elasticLamina(0, W, g.b + 10);
     endothelium(0, W, g.t, 1, 11, { t: 5, cell: 170 }); endothelium(0, W, g.b, -1, 12, { t: 5, cell: 170 });
-    P.label("Vessel lumen", 12, g.t + 24); P.mono("flow →", W - 12, g.t + 22, { a: "right" });
-    P.mono("smooth muscle (media)", 12, 14); P.mono("internal elastic lamina, endothelium", 12, g.b + 30);
+    P.label("Vessel lumen", 12, g.t + 24); P.tag("flow →", W - 12, g.t + 22, { a: "right" });
+    P.tag("smooth muscle (media)", 12, 14); P.tag("internal elastic lamina, endothelium", 12, g.b + 30);
   }
   draw(dt: number) {
     const g = this.geo(), c = P.ctx, { W } = P;
@@ -265,16 +320,17 @@ class PlasmaScene implements Scene, Lane {
 
 // ================================================================== liver
 interface Slot { x: number; type: "LDLR" | "LRP1" | "SRB1"; away: number }
-class LiverScene implements Scene, Lane {
+export class LiverScene implements Scene, Lane {
   id = "liver"; name = "Liver";
   note = "A sinusoid over a plate of two hepatocytes. Particles small enough pass the fenestrae into the space of Disse, dock on LDLR, LRP1 or SR-B1 on the microvilli, and are taken in. Receptors return to the surface unless PCSK9 rode in with them.";
   caption = "Figure 1. The liver. Docking happens at the rate the model's receptor-mediated uptake sets; the receptors shown follow its surface LDLR.";
-  key = ["LDL", "IDL", "VLDL", "CMR", "LPA", "HDL", "LDLR", "LRP1", "SRB1", "PCSK9", "SREBP2", "HMGCR", "ACL", "MTP", "ABCG58", "fenestra", "mAb", "siRNA", "small"];
+  key = ["LDL", "IDL", "VLDL", "CMR", "LPA", "HDL", "LDLR", "LRP1", "SRB1", "PCSK9", "SREBP2", "HMGCR", "ACL", "MTP", "ABCG58", "fenestra", "droplet", "mAb", "siRNA", "small"];
   flow: Particle[] = []; acc: Record<string, number> = {}; rings: Ring[] = []; anim: Mover[] = []; pc: Mover[] = []; ab: { x: number; y: number; v: number }[] = [];
   slots: Slot[] = []; order: Slot[] = []; gaps: number[] = []; rbc: Cell[] = [];
   geo() {
     const { W, H } = P;
-    return { sT: H * 0.05, sB: H * 0.27, mem: H * 0.37, split: W * 0.56, golgi: { x: W * 0.25, y: H * 0.47 }, er: { x: W * 0.04, y: H * 0.5 }, canal: { x: W * 0.56, y: H * 0.66 } };
+    const mem = H * 0.37, vh = Math.max(12, H * 0.028);
+    return { sT: H * 0.05, sB: H * 0.27, mem, vh, rec: mem - vh - 8, split: W * 0.56, golgi: { x: W * 0.25, y: H * 0.47 }, er: { x: W * 0.04, y: H * 0.5 }, canal: { x: W * 0.56, y: H * 0.66 } };
   }
   /** Each hepatocyte has its own endosome and lysosome. */
   organelles(x: number) { const { W, H } = P; return x < W * 0.56 ? { endo: { x: W * 0.42, y: H * 0.52 }, lyso: { x: W * 0.47, y: H * 0.63 } } : { endo: { x: W * 0.66, y: H * 0.52 }, lyso: { x: W * 0.72, y: H * 0.63 } }; }
@@ -293,7 +349,7 @@ class LiverScene implements Scene, Lane {
   tagged(vis: Slot[], s: Slot) { const i = vis.indexOf(s); return i >= 0 && (i * 0.618) % 1 < P.snap.pcsk9Share; }
   gapNear(x: number) { return this.gaps.reduce((a, b) => (Math.abs(b - x) < Math.abs(a - x) ? b : a), this.gaps[0]); }
   dock(p: Particle, slot: Slot, vis: Slot[]) {
-    const g = this.geo(), gx = this.gapNear(slot.x), tagged = slot.type === "LDLR" && this.tagged(vis, slot), y = g.mem - P.radius(p, 1.15) - 21;
+    const g = this.geo(), gx = this.gapNear(slot.x), tagged = slot.type === "LDLR" && this.tagged(vis, slot), y = g.rec - P.radius(p, 1.15) - 9;
     const { endo, lyso } = this.organelles(slot.x);
     p.gone = true; slot.away = 99;
     this.anim.push(P.mover(p.x, p.y, [{ x: gx, y: g.sB + 4, d: 0.5 }, { x: slot.x, y, d: 0.5 }, { x: slot.x, y, d: 0.35 }, { x: endo.x + rand(-6, 6), y: endo.y + rand(-6, 6), d: 1.0 }], {
@@ -329,7 +385,7 @@ class LiverScene implements Scene, Lane {
       const cand = this.flow.filter((p) => p.c === "HDL" && inReach(p) && p.x < P.W * 0.8), free = this.slots.filter((q) => q.type === "SRB1" && q.away <= 0);
       if (!cand.length || !free.length) continue;
       const p = pick(cand), sl = pick(free), gx = this.gapNear(sl.x); sl.away = 99; p.hold = 999;
-      this.anim.push(P.mover(p.x, p.y, [{ x: gx, y: g.sB + 4, d: 0.5 }, { x: sl.x, y: g.mem - 25, d: 0.5 }, { x: sl.x, y: g.mem - 25, d: 0.5 }, { x: gx, y: g.sB - 10, d: 0.6 }], {
+      this.anim.push(P.mover(p.x, p.y, [{ x: gx, y: g.sB + 4, d: 0.5 }, { x: sl.x, y: g.rec - 12, d: 0.5 }, { x: sl.x, y: g.rec - 12, d: 0.5 }, { x: gx, y: g.sB - 10, d: 0.6 }], {
         p, onWay: (_m, i) => { if (i === 3) this.anim.push(P.mover(sl.x, g.mem + 4, [{ x: sl.x + rand(-20, 20), y: P.H * 0.55, d: 1.2 }], { ce: true })); },
         onEnd: (m) => { sl.away = 0; p.hold = 0; p.x = m.x; p.y = m.y; },
       }));
@@ -346,11 +402,11 @@ class LiverScene implements Scene, Lane {
     }
     // free PCSK9 in the space of Disse follows the model
     const pcT = Math.min(16, Math.round(s.pcsk9 * 9));
-    if (this.pc.length < pcT && Math.random() < 2 * dt) { const ex = P.W * rand(0.1, 0.4); this.pc.push(P.mover(g.golgi.x, g.golgi.y, [{ x: ex, y: g.mem + 8, d: 1.0 }, { x: ex, y: rand(g.sB + 8, g.mem - 30), d: 0.5 }], { drift: rand(-20, 20) })); }
+    if (this.pc.length < pcT && Math.random() < 2 * dt) { const ex = P.W * rand(0.1, 0.4); this.pc.push(P.mover(g.golgi.x, g.golgi.y, [{ x: ex, y: g.mem + 8, d: 1.0 }, { x: ex, y: rand(g.sB + 8, g.rec - 14), d: 0.5 }], { drift: rand(-20, 20) })); }
     if (this.pc.length > pcT && Math.random() < 2 * dt) { const q = this.pc.shift()!; if (s.rates.kab) P.ring(this.rings, q.x, q.y, 4); }
     for (const q of this.pc) { if (!q.done) P.stepMover(q, dt); else { q.x += (q.drift as number) * dt; if (q.x < 10 || q.x > P.W - 10) q.drift = -(q.drift as number); } }
     const abT = s.rates.kab ? 8 : 0;
-    while (this.ab.length < abT) this.ab.push({ x: rand(20, P.W - 20), y: rand(g.sB + 8, g.mem - 30), v: rand(-15, 15) });
+    while (this.ab.length < abT) this.ab.push({ x: rand(20, P.W - 20), y: rand(g.sB + 8, g.rec - 14), v: rand(-15, 15) });
     if (this.ab.length > abT) this.ab.length = abT;
     for (const a of this.ab) { a.x += a.v * dt; if (a.x < 10 || a.x > P.W - 10) a.v *= -1; }
     for (const q of this.slots) if (q.away > 0 && q.away < 50) q.away -= dt;
@@ -359,54 +415,77 @@ class LiverScene implements Scene, Lane {
   }
   /** The static tissue: hepatocyte plate with organelles, space of Disse with a stellate cell, the sinusoid's lining and a Kupffer cell. */
   tissue() {
-    const g = this.geo(), c = P.ctx, { W, H } = P;
-    // the next hepatocyte plate above the sinusoid
+    const g = this.geo(), c = P.ctx, { W, H } = P, R = rnd(31);
+    // the next hepatocyte plate above the sinusoid, its brush border facing down
     const top = new Path2D(); top.rect(0, 0, W, g.sT - 5); paint(top, P.stage2, 1, null, 0); speckle(top, 0, 0, W, g.sT, W * 0.3, 5, 0.25);
-    // two hepatocytes and their lateral membrane
+    microvilli(0, W, g.sT - 6, 5, 9, 1, 2.6); P.line(0, g.sT - 6, W, g.sT - 6, P.muted, 1);
+    // two hepatocytes; neighbors are joined by a pair of membranes that part around the bile canaliculus
     const cells = new Path2D(); cells.rect(0, g.mem, W, H - g.mem); paint(cells, P.stage2, 1, null, 0);
     speckle(cells, 0, g.mem, W, H - g.mem, W * 1.4, 6, 0.2);
-    alpha(0.7, () => { c.strokeStyle = P.muted; c.lineWidth = 1.2; c.beginPath(); for (let y = g.mem; y <= H; y += 6) c.lineTo(g.split + Math.sin(y / 23) * 5, y); c.stroke(); });
+    const lat = (y: number) => g.split + Math.sin(y / 23) * 5;
+    alpha(0.7, () => {
+      c.strokeStyle = P.muted; c.lineWidth = 1;
+      for (const d of [-2.2, 2.2]) { c.beginPath(); let pen = false; for (let y = g.mem; y <= H; y += 4) { if (Math.abs(y - g.canal.y) < 12) { pen = false; continue; } const x = lat(y) + d; if (pen) c.lineTo(x, y); else { c.moveTo(x, y); pen = true; } } c.stroke(); }
+    });
     // bile canaliculus between them, sealed by tight junctions, lined by microvilli
     const cn = new Path2D(); cn.arc(g.canal.x, g.canal.y, 11, 0, TAU); paint(cn, P.stage, 1, P.muted, 0.8, 1.2);
     alpha(0.6, () => { c.strokeStyle = P.muted; c.lineWidth = 1; for (let k = 0; k < 12; k++) { const a = (k / 12) * TAU; c.beginPath(); c.moveTo(g.canal.x + Math.cos(a) * 11, g.canal.y + Math.sin(a) * 11); c.lineTo(g.canal.x + Math.cos(a) * 6.5, g.canal.y + Math.sin(a) * 6.5); c.stroke(); } c.lineWidth = 3; for (const dy of [-16, 16]) { c.beginPath(); c.moveTo(g.canal.x - 2, g.canal.y + dy); c.lineTo(g.canal.x + 2, g.canal.y + dy); c.stroke(); } });
     P.mono("bile canaliculus", g.canal.x + 18, g.canal.y + 26);
+    // glycogen: rosettes of small granules through both cells' cytoplasm
+    alpha(0.4, () => {
+      c.fillStyle = P.muted;
+      for (const [x0, y0, w, h] of [[0.04, 0.6, 0.12, 0.08], [0.33, 0.56, 0.06, 0.1], [0.07, 0.76, 0.14, 0.06], [0.6, 0.58, 0.1, 0.1], [0.75, 0.43, 0.08, 0.06], [0.6, 0.8, 0.12, 0.08]] as const)
+        for (let k = 0; k < 9; k++) { const x = W * (x0 + R() * w), y = H * (y0 + R() * h); for (let j = 0; j < 6; j++) { const a = (j / 6) * TAU + R(); c.fillRect(x + Math.cos(a) * 2.4, y + Math.sin(a) * 2.4, 1.3, 1.3); } }
+    });
     // organelles: rough ER and Golgi (VLDL assembly), mitochondria, endosomes, lysosomes, nuclei, smooth ER (cholesterol synthesis)
     roughER(g.er.x, g.er.y, W * 0.15, 5, 21); P.mono("rough ER", g.er.x, g.er.y + 46);
+    roughER(W * 0.85, H * 0.45, W * 0.12, 4, 22);
     golgi(g.golgi.x, g.golgi.y, W * 0.07, 4); P.mono("Golgi", g.golgi.x, g.golgi.y + 34, { a: "center" });
-    const R = rnd(31);
-    for (const [x, y, a] of [[0.08, 0.72, 0.3], [0.17, 0.66, -0.4], [0.36, 0.47, 0.2], [0.5, 0.76, 1.2], [0.62, 0.44, -0.2], [0.78, 0.47, 0.4], [0.93, 0.56, 1.4], [0.66, 0.84, 0.1], [0.9, 0.9, -0.6], [0.44, 0.88, 0.5]] as const) mito(W * x, H * y, 24 + R() * 6, 7.5, a);
+    golgi(W * 0.62, H * 0.45, W * 0.05, 3);
+    for (const [x, y, a] of [[0.08, 0.72, 0.3], [0.17, 0.66, -0.4], [0.36, 0.47, 0.2], [0.5, 0.76, 1.2], [0.62, 0.44, -0.2], [0.78, 0.47, 0.4], [0.93, 0.56, 1.4], [0.66, 0.84, 0.1], [0.9, 0.9, -0.6], [0.5, 0.94, 0.5], [0.76, 0.56, -1.1], [0.97, 0.7, 0.3], [0.86, 0.6, 1.6], [0.22, 0.55, 0.9]] as const) mito(W * x, H * y, 24 + R() * 6, 7.5, a);
     for (const x of [0.42, 0.66]) { const e = blob(W * x, H * 0.52, 17, 15, (x * 1000) | 0, 0.08); paint(e, P.stage, 0.35, P.muted, 0.7, 1); }
     for (const x of [0.47, 0.72]) { const l = blob(W * x, H * 0.63, 12, 11, (x * 100) | 0, 0.1); paint(l, P.muted, 0.28, P.muted, 0.6, 1); speckle(l, W * x - 12, H * 0.63 - 12, 24, 24, 40, 9, 0.5); }
     P.mono("endosome", W * 0.42, H * 0.52 + 30, { a: "center" }); P.mono("lysosome", W * 0.47, H * 0.63 + 25, { a: "center" });
     nucleus(W * 0.3, H * 0.72, H * 0.075, H * 0.07, 41); nucleus(W * 0.82, H * 0.72, H * 0.075, H * 0.07, 42);
     alpha(0.45, () => { c.strokeStyle = P.muted; c.lineWidth = 1; for (let k = 0; k < 4; k++) { c.beginPath(); for (let x = W * 0.05; x < W * 0.45; x += 6) c.lineTo(x, H * 0.885 + k * 5 + Math.sin(x / 13 + k) * 1.6); c.stroke(); } });
     P.mono("smooth ER", W * 0.05, H * 0.97);
-    // the cell membrane facing the space of Disse, with microvilli
-    microvilli(0, W, g.mem, 8, 9, -1, 3);
+    // space of Disse: collagen and a stellate cell holding vitamin A droplets, under a tall brush border
+    const dTop = g.sB + 6, dBot = g.mem - g.vh - 2, sy = (g.sB + dBot) / 2;
+    collagen(0, dTop, W, dBot - dTop, 14, 51);
+    const st = blob(W * 0.3, sy, 46, 6, 52, 0.15); paint(st, P.stage2, 1, P.muted, 0.6, 1);
+    nucleus(W * 0.3 - 18, sy, 9, 3.5, 53);
+    for (let k = 0; k < 4; k++) P.dot(W * 0.3 + 2 + k * 8, sy, 2.4, coreColor(0.75));
+    // the hepatocyte membrane facing the space of Disse: microvilli of uneven height reaching up toward the endothelium
+    for (const [off, k] of [[0, 1], [4.5, 0.7]] as const) microvilli(off, W, g.mem, g.vh * k, 9, -1, 3);
     P.line(0, g.mem, W, g.mem, P.ink, 1.3);
-    // space of Disse: collagen and a stellate cell holding vitamin A droplets
-    collagen(0, g.sB + 6, W, g.mem - g.sB - 14, 14, 51);
-    const st = blob(W * 0.3, (g.sB + g.mem) / 2 - 2, 46, 6, 52, 0.15); paint(st, P.stage2, 1, P.muted, 0.6, 1);
-    nucleus(W * 0.3 - 18, (g.sB + g.mem) / 2 - 2, 9, 3.5, 53);
-    for (let k = 0; k < 4; k++) P.dot(W * 0.3 + 2 + k * 8, (g.sB + g.mem) / 2 - 2, 2.4, coreColor(0.75));
     // sinusoid lining: fenestrated endothelium on both sides, a Kupffer cell against it
     endothelium(0, W, g.sT, 1, 61, { t: 4, cell: 190, gaps: [], gap: 7 });
     endothelium(0, W, g.sB, -1, 62, { t: 4, cell: 190, gaps: this.gaps, gap: 7 });
     const kx = W * 0.64, ky = g.sB - 15, ku = blob(kx, ky, 34, 12, 71, 0.18); paint(ku, P.stage2, 1, P.muted, 0.7, 1); speckle(ku, kx - 34, ky - 12, 68, 24, 50, 72, 0.4); nucleus(kx - 6, ky, 9, 6, 73);
     P.label("Sinusoid", 12, g.sT + 20); P.mono("portal blood →", W - 12, g.sT + 18, { a: "right" });
-    P.mono("space of Disse", 12, g.sB + 20); P.label("Hepatocyte", 12, g.mem + 26); P.label("Hepatocyte", g.split + 14, g.mem + 26);
+    P.tag("space of Disse", 12, g.sB + 20); P.label("Hepatocyte", 12, g.mem + 26); P.label("Hepatocyte", g.split + 14, g.mem + 26);
+  }
+  /** Triglyceride droplets in the hepatocytes; they swell when MTP is blocked and VLDL cannot carry the fat out. */
+  droplets() {
+    const { W, H } = P, lomi = P.has("lomi"), k = lomi ? 1.9 : 1;
+    for (const [x, y, r] of [[0.13, 0.6, 7], [0.4, 0.79, 6], [0.64, 0.8, 8], [0.93, 0.8, 6.5], [0.71, 0.91, 5.5], [0.35, 0.6, 5]] as const) {
+      const d = blob(W * x, H * y, r * k, r * k, (x * 977) | 0, 0.05);
+      paint(d, coreColor(0.93), 0.55, coreColor(0.7), 0.9, 1.2);
+      P.reg(W * x, H * y, r * k + 2, "droplet", lomi ? "Lipid droplet, swollen: with MTP blocked the liver cannot export its triglyceride as VLDL" : "Lipid droplet: triglyceride stored in the hepatocyte");
+    }
   }
   draw(dt: number) {
     const g = this.geo(), c = P.ctx, { W, H } = P;
     P.cached("liver", () => this.tissue());
+    this.droplets();
     for (const x of this.gaps) P.reg(x, g.sB, 4, "fenestra", "Fenestra, about 100 nm: chylomicrons are too large to pass");
-    anat(W * 0.64, g.sB - 15, 20, "Kupffer cell: the liver's resident macrophage"); anat(W * 0.3, (g.sB + g.mem) / 2, 18, "Stellate cell: stores vitamin A in lipid droplets");
+    anat(W * 0.64, g.sB - 15, 20, "Kupffer cell: the liver's resident macrophage"); anat(W * 0.3, (g.sB + g.mem - g.vh) / 2 - 1, 18, "Stellate cell: stores vitamin A in lipid droplets");
     anat(g.canal.x, g.canal.y, 11, "Bile canaliculus: bile and biliary cholesterol leave here"); anat(g.golgi.x, g.golgi.y, 20, "Golgi: VLDL is finished and secreted");
     drawCells(this.rbc);
     P.sign("ABCG58", g.canal.x - 20, g.canal.y, 15, Math.PI / 2, "ABCG5/G8: sterol out into bile");
     // nucleus signs
-    P.sign("SREBP2", W * 0.82, H * 0.72 - 8, 20, 0, "SREBP-2: low liver sterol switches on the LDLR and PCSK9 genes"); P.mono("LDLR, PCSK9 genes", W * 0.82, H * 0.72 + 14, { a: "center" });
-    if (P.has("incl")) { P.drugMark("siRNA", W * 0.82 + H * 0.075 + 14, H * 0.7, "Inclisiran (siRNA) silences PCSK9 mRNA", 18); P.mono("PCSK9 mRNA cut", W * 0.82, H * 0.72 + H * 0.075 + 16, { a: "center", c: P.ink }); }
+    P.sign("SREBP2", W * 0.82, H * 0.72, 20, 0, "SREBP-2: low liver sterol switches on the LDLR and PCSK9 genes"); P.mono("LDLR, PCSK9 genes", W * 0.82, H * 0.79 + 16, { a: "center" });
+    if (P.has("incl")) { P.drugMark("siRNA", W * 0.82 + H * 0.075 + 14, H * 0.7, "Inclisiran (siRNA) silences PCSK9 mRNA", 18); P.mono("PCSK9 mRNA cut", W * 0.82, H * 0.79 + 30, { a: "center", c: P.ink }); }
     const lomi = P.has("lomi");
     P.sign("MTP", g.er.x + W * 0.075, g.er.y - 10, 18, 0, lomi ? "MTP blocked by lomitapide" : "MTP: loads triglyceride onto ApoB-100 to make VLDL", lomi ? 0.35 : 1);
     if (lomi) P.drugMark("small", g.er.x + W * 0.075 + 12, g.er.y - 20, "Lomitapide blocks MTP");
@@ -424,10 +503,10 @@ class LiverScene implements Scene, Lane {
     for (const s of this.slots) {
       if (s.away > 0 || (s.type === "LDLR" && !vis.includes(s))) continue;
       const tagged = s.type === "LDLR" && this.tagged(vis, s);
-      P.sign(s.type, s.x, g.mem - 13, 17, 0, s.type === "LDLR" ? (tagged ? "LDLR with PCSK9 bound: will be destroyed" : "LDLR: binds ApoB-100 and ApoE") : s.type === "LRP1" ? "LRP1: takes up ApoE-rich remnants" : "SR-B1: takes CE from HDL");
-      if (tagged) P.glyph("PCSK9", s.x + 8, g.mem - 24, 12, 0, P.muted);
+      P.sign(s.type, s.x, g.rec, 17, 0, s.type === "LDLR" ? (tagged ? "LDLR with PCSK9 bound: will be destroyed" : "LDLR: binds ApoB-100 and ApoE") : s.type === "LRP1" ? "LRP1: takes up ApoE-rich remnants" : "SR-B1: takes CE from HDL");
+      if (tagged) P.glyph("PCSK9", s.x + 8, g.rec - 11, 12, 0, P.muted);
     }
-    if (!vis.length) P.mono("no functional LDLR on the surface", W * 0.5, g.mem - 30, { a: "center", c: P.ink });
+    if (!vis.length) P.mono("no functional LDLR on the surface", W * 0.5, g.rec - 16, { a: "center", c: P.ink });
     for (const q of this.pc) P.sign("PCSK9", q.x, q.y, 12, 0, "PCSK9, free", 1, P.muted);
     for (const a of this.ab) P.sign("mAb", a.x, a.y, 13, 0, "PCSK9 antibody");
     for (const p of this.flow) if (!p.hold) P.drawParticle(p, 1.15, true);
@@ -443,7 +522,7 @@ class LiverScene implements Scene, Lane {
 }
 
 // ================================================================== capillary bed
-class CapScene implements Scene, Lane {
+export class CapScene implements Scene, Lane {
   id = "cap"; name = "Capillary bed";
   note = "A capillary between fat and muscle. LPL sits on GPIHBP1 on the endothelial surface and strips triglyceride from chylomicrons and VLDL; the fatty acids cross into the fat cells to be stored and into the muscle fiber to be burned. ANGPTL3, ANGPTL4 and ApoC-III hold LPL back.";
   caption = "Figure 1. A capillary bed. Docking at LPL follows the model's lipolysis; in FCS the LPL is missing. The capillary is drawn wider than life so particles fit.";
@@ -516,8 +595,8 @@ class CapScene implements Scene, Lane {
       f.cx = cx; f.cy = cy;
     });
     muscleFiber(g.split + 6, g.tis + 6, W - g.split - 12, H - g.tis - 12, 120);
-    P.label("Capillary lumen", 12, g.t + 22); P.mono("flow →", W - 12, g.t + 20, { a: "right" });
-    P.mono("pericyte", W * 0.62, g.t - 18, { a: "center" }); P.mono("endothelium, basement membrane", 12, g.b + 22);
+    P.label("Capillary lumen", 12, g.t + 22); P.tag("flow →", W - 12, g.t + 20, { a: "right" });
+    P.tag("pericyte", W * 0.62, g.t - 18, { a: "center" }); P.tag("endothelium, basement membrane", 12, g.b + 22);
     P.label("Adipocytes", 12, g.tis + 18, { s: 12 }); P.label("Muscle fiber", g.split + 14, g.tis + 22, { s: 12 });
   }
   draw(dt: number) {
@@ -538,8 +617,10 @@ class CapScene implements Scene, Lane {
 }
 
 // ================================================================== intestine
-class GutScene implements Scene, Lane {
+export class GutScene implements Scene, Lane {
   id = "gut"; name = "Intestine";
+  /** Hosted by the Follow the fat story, which tells its own meal. */
+  story = false;
   note = "Enterocytes lining a villus. NPC1L1 at the brush border takes cholesterol from bile micelles, ABCG5/G8 pumps some back, and MTP builds chylomicrons on ApoB-48 in the ER and Golgi. They leave from the base of the cell and enter the lacteal, a lymphatic. Give a meal to fill the lumen.";
   caption = "Figure 1. The small intestine. A meal fills the lumen with micelles and sends chylomicrons into the lymph.";
   key = ["micelle", "NPC1L1", "ABCG58", "MTP", "apoB48", "CM", "small"];
@@ -617,12 +698,12 @@ class GutScene implements Scene, Lane {
     for (const a of this.chol) P.dot(a.x, a.y, 2.3, coreColor(0.1));
     for (const a of this.anim) { const p = a.p as Particle; p.x = a.x; p.y = a.y; p.tg = 0.92; P.drawParticle(p, 0.55 + Math.min(1, a.i * 0.35 + a.t) * 0.55, true); }
     for (const p of this.flow) P.drawParticle(p, 1.0, true);
-    if (P.model.meal < 0.05) P.mono("fasting: few chylomicrons", W * 0.5, (g.lac + g.lacB) / 2 + 4, { a: "center" });
+    if (P.model.meal < 0.05 && !this.story) P.mono("fasting: few chylomicrons", W * 0.5, (g.lac + g.lacB) / 2 + 4, { a: "center" });
   }
 }
 
 // ================================================================== artery wall
-class ArteryScene implements Scene, Lane {
+export class ArteryScene implements Scene, Lane {
   id = "artery"; name = "Artery wall";
   note = "The wall of a large artery: endothelium, the intima, the internal elastic lamina and the smooth muscle of the media. ApoB particles cross the endothelium and are held by proteoglycans; oxidized ones are taken up by a macrophage, and ABCA1 hands its cholesterol to pre-β HDL. A teaching view, not a plaque model.";
   caption = "Figure 1. The arterial intima. The number of ApoB particles held in the wall follows LDL-C and Lp(a). The intima is drawn thicker than in a healthy artery.";
@@ -695,7 +776,7 @@ class ArteryScene implements Scene, Lane {
     // endothelium over a monocyte rolling on it
     endothelium(0, W, g.e, -1, 184, { t: 5, cell: 160 });
     const mo = blob(W * 0.86, g.e - 15, 15, 13, 185, 0.12); paint(mo, P.stage2, 1, P.muted, 0.7, 1); nucleus(W * 0.86 - 2, g.e - 15, 8, 6, 186);
-    P.label("Arterial lumen", 12, g.t + 20); P.mono("flow →", W - 12, g.t + 18, { a: "right" }); P.label("Intima", 12, g.e + 28);
+    P.label("Arterial lumen", 12, g.t + 20); P.tag("flow →", W - 12, g.t + 18, { a: "right" }); P.label("Intima", 12, g.e + 28);
     P.mono("internal elastic lamina", 12, g.iel - 8); P.label("Media", 12, g.iel + 30);
   }
   draw(dt: number) {

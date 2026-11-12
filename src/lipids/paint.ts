@@ -116,6 +116,13 @@ class Painter {
   mono(t: string, x: number, y: number, o: { s?: number; c?: string; a?: CanvasTextAlign } = {}) {
     const c = this.ctx; c.font = `${o.s ?? 11}px "JetBrains Mono", ui-monospace, monospace`; c.fillStyle = o.c ?? this.muted; c.textAlign = o.a ?? "left"; c.fillText(t, x, y); c.textAlign = "left";
   }
+  /** Mono text on a stage-colored backing, for labels that sit over textured tissue. */
+  tag(t: string, x: number, y: number, o: { s?: number; c?: string; a?: CanvasTextAlign } = {}) {
+    const c = this.ctx, s = o.s ?? 11; c.font = `${s}px "JetBrains Mono", ui-monospace, monospace`;
+    const w = c.measureText(t).width, x0 = o.a === "right" ? x - w : o.a === "center" ? x - w / 2 : x;
+    c.save(); c.fillStyle = this.stage; c.globalAlpha = 0.82; c.fillRect(x0 - 3, y - s, w + 6, s + 5); c.restore();
+    this.mono(t, x, y, o);
+  }
   line(x1: number, y1: number, x2: number, y2: number, color = this.ink, w = 1) { const c = this.ctx; c.strokeStyle = color; c.lineWidth = w; c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke(); }
   arrow(x1: number, y1: number, x2: number, y2: number, color = this.muted) {
     const c = this.ctx; this.line(x1, y1, x2, y2, color);

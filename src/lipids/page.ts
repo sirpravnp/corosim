@@ -6,6 +6,7 @@ import { DRUG_TABLE } from "./drugTable";
 import { LipidModel } from "./model";
 import { mountStage } from "./stage";
 import { mountDeck } from "./deck";
+import { mountActionDeck } from "./actions";
 
 /**
  * The lipid lab: lipoprotein metabolism as a live stage (whole body plus five organ views on one model), the lipoprotein card
@@ -16,6 +17,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 mountShell({ page: "lipids", root: "../", share: false });
 mountStage(new LipidModel());
 mountDeck($("lp-deck"), $("lp-track"), $("lp-count"), $<HTMLButtonElement>("lp-prev"), $<HTMLButtonElement>("lp-next"));
+mountActionDeck($("lp-adeck"), $("lp-atrack"), $("lp-acount"), $<HTMLButtonElement>("lp-aprev"), $<HTMLButtonElement>("lp-anext"));
 
 $("lp-drugtable").innerHTML = DRUG_TABLE.map(([n, cls, tgt, mech, ldl, tg, lpa, st]) => {
   const inv = st === "inv";
