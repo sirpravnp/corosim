@@ -94,6 +94,13 @@ button.dd-btn[aria-expanded="true"]::after { transform: translateY(2px) rotate(-
 .rate input { width: 140px; accent-color: var(--range); }
 .rate output { font: 13px var(--font-data); min-width: 6ch; }
 .rate[hidden] { display: none; }
+.drug { display: inline-flex; align-items: center; gap: 8px; }
+.drug span { color: var(--muted); font-size: 13px; letter-spacing: 0; font-weight: 600; }
+.drug .dd { min-width: 160px; }
+.drug button { border-radius: var(--sh-radius); }
+.drug[hidden] { display: none; }
+.drugnote { margin: 4px 0 0; font-size: 13px; letter-spacing: 0; color: var(--ink); }
+.drugnote .warn { color: var(--warn); }
 .chk { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 
 /* Reading */
@@ -164,5 +171,6 @@ body.embedded .notes { grid-template-columns: 1fr; }
 /* In a chat, the app is just the tracing and its gain: no heart, readings, title, or the other controls */
 body.embedded main { grid-template-columns: minmax(0, 1fr); }
 body.embedded .heart, body.embedded .titlebar, body.embedded #read, body.embedded .hidden-read,
-body.embedded .toolbar .rate, body.embedded .toolbar .chk, body.embedded #pause { display: none; }
+body.embedded .toolbar .rate, body.embedded .toolbar .chk, body.embedded #pause,
+body.embedded #drugWrap, body.embedded #drugNote { display: none; }
 body.embedded .toolbar { justify-content: flex-start; }

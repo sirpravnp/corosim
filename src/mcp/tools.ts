@@ -12,6 +12,7 @@ import { buildTree } from "../anatomy/tree";
 import { CATEGORIES, PRESETS, EkgPreset, findPreset, resolveSpec } from "../ekg/presets";
 import { EkgSpec, measure } from "../ekg/engine";
 import { CustomEkg, TERRITORIES, buildCustom, encodeCustom } from "../ekg/custom";
+import { ANTIARRHYTHMICS, applyDrug } from "../ekg/drugs";
 import { patientProperties, displaySchema } from "../sim/registry";
 import { intervene } from "../sim/valves";
 import type { Intervention } from "../sim/valves";
@@ -378,7 +379,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "corosim_ekg_show", title: "Show any EKG rhythm or 12-lead pattern", readOnly: true, stateless: true, viewer: "ekg",
-    description: `Show any heart rhythm or EKG pattern (arrhythmia, block, ischemia, STEMI mimic, electrolyte or drug effect) as a simulated 12-lead right here in the chat. Use this for any request to see, draw, show or practise a rhythm or EKG: torsades, VT, VF, flutter, SVT, heart block, hyperkalemia and so on. It displays the tracing writing itself on paper, and a 3D heart with every lead drawn as an axis through it and the heart's electrical vector moving in real time, so the learner sees why each lead looks as it does. Returns the measurements (rates, PR, QRS, QTc, axis, ST by lead) taken from the waveform, so you can check what was drawn, and the teaching notes. Either name a library preset (an id from corosim_ekg_list or a common name: "afib", "torsades", "de winter", "inferior stemi"), or build any other tracing with custom: a rhythm, its conduction and what the complexes look like by territory (e.g. sinus 110 with LBBB and 3 mm inferior ST elevation; AF at 180 with a delta wave; Wenckebach 3:2 with anterior Q waves), optionally starting from a preset with custom.base. It does not change the patient; the library presets are the same rhythms the patient can run, and the result's applyToPatient says how to put this one on the patient (corosim_adjust patient.rhythm) when its effect on blood pressure or output matters (use corosim_show to see the patient). quiz: true hides the name on screen and returns the answer as answerKey: do not reveal it until the learner has read the tracing and committed. ${NOT_CLINICAL}`,
+    description: `Show any heart rhythm or EKG pattern (arrhythmia, block, ischemia, STEMI mimic, electrolyte or drug effect) as a simulated 12-lead right here in the chat. Use this for any request to see, draw, show or practise a rhythm or EKG: torsades, VT, VF, flutter, SVT, heart block, hyperkalemia and so on. It displays the tracing writing itself on paper, and a 3D heart with every lead drawn as an axis through it and the heart's electrical vector moving in real time, so the learner sees why each lead looks as it does. Returns the measurements (rates, PR, QRS, QTc, axis, ST by lead) taken from the waveform, so you can check what was drawn, and the teaching notes. Either name a library preset (an id from corosim_ekg_list or a common name: "afib", "torsades", "de winter", "inferior stemi"), or build any other tracing with custom: a rhythm, its conduction and what the complexes look like by territory (e.g. sinus 110 with LBBB and 3 mm inferior ST elevation; AF at 180 with a delta wave; Wenckebach 3:2 with anterior Q waves), optionally starting from a preset with custom.base. It does not change the patient; the library presets are the same rhythms the patient can run, and the result's applyToPatient says how to put this one on the patient (corosim_adjust patient.rhythm) when its effect on blood pressure or output matters (use corosim_show to see the patient). You can show a tracing with an antiarrhythmic (adenosine, flecainide, …) via drug. quiz: true hides the name on screen and returns the answer as answerKey: do not reveal it until the learner has read the tracing and committed. ${NOT_CLINICAL}`,
     inputSchema: {
       type: "object", properties: {
         preset: { type: "string", description: "Preset id or common name. Omit with quiz: true for a random tracing, or use custom instead." },
@@ -427,6 +428,7 @@ export const TOOLS: ToolDef[] = [
         quiz: { type: "boolean", description: "Hide the answer on screen; the result's answerKey is for you, not to be read out before the learner commits." },
         rate: { type: "number", minimum: 20, maximum: 240, description: "Override the rate (bpm) of a preset (sinus, AF ventricular response, junctional, SVT, VT, paced)." },
         lead: { type: "string", description: "Lead to highlight first, e.g. 'V2' or 'aVR'." },
+        drug: { type: "string", description: "Antiarrhythmic applied to the tracing after any rate override: adenosine, flecainide, procainamide, lidocaine, amiodarone, sotalol, diltiazem or metoprolol. Does not change the patient. Adenosine unmasks flutter and terminates AVNRT; flecainide in flutter can convert 2:1 to 1:1; AV-nodal drugs in WPW-AF are dangerous." },
       },
     },
     run({ appUrl }, a) {
@@ -443,17 +445,28 @@ export const TOOLS: ToolDef[] = [
       let spec: EkgSpec = resolveSpec(p);
       const rate = !custom && typeof a.rate === "number" && Number.isFinite(a.rate) && "rate" in spec.rhythm && spec.rhythm.kind !== "torsades" ? Math.min(240, Math.max(20, Math.round(a.rate))) : undefined;
       if (rate) spec = { ...spec, rhythm: { ...spec.rhythm, rate } as EkgSpec["rhythm"] };
+      let drug: (typeof ANTIARRHYTHMICS)[number] | undefined, notes: string[] | undefined, events: string[] | undefined;
+      if (typeof a.drug === "string") {
+        const given = a.drug;
+        const id = ANTIARRHYTHMICS.find((d) => d === given.toLowerCase());
+        if (!id) throw new Error(`Unknown antiarrhythmic "${given}". Use one of: ${ANTIARRHYTHMICS.join(", ")}.`);
+        drug = id;
+        const dr = applyDrug(spec, id, { rateBpm: rate ?? ("rate" in spec.rhythm ? spec.rhythm.rate : undefined) });
+        spec = dr.spec; notes = dr.notes; events = dr.events; warnings = [...warnings, ...dr.warnings];
+      }
       const m = measure(spec);
       const tracing = {
         name: p.name, category: custom ? "Custom" : p.category, summary: p.summary,
         measurements: { ventricularRateBpm: m.ventricularRate, atrialRate: m.atrialRate, regular: m.regular, prMs: m.prMs, pr: m.prPattern, qrsMs: m.qrsMs, qtcMs: m.qtcMs, axisDeg: m.axisDeg, stMm: m.stMm, stElevation: m.stElevation, stDepression: m.stDepression, meetsStemiCriteria: m.meetsStemiCriteria },
         lookFor: p.features, teachingPoints: p.pearls, alsoLooksLike: p.mimics ?? [], next: p.next ?? null, leadsToLookAt: p.leads ?? [],
         model: p.coronary ? "ST vector from the simulator's coronary model (this lesion, settled)." : custom ? "Built from your description on the dipole model; check the measurements against what you intended." : "Dipole model; morphology set for this pattern.",
+        ...(drug ? { drug } : {}),
       };
       const lead = typeof a.lead === "string" ? a.lead : undefined;
       return {
-        ekg: { preset: p.id, custom, quiz, rate, lead }, // what the in-chat EKG viewer draws
-        ...(warnings.length ? { warnings } : {}),
+        ekg: { preset: p.id, custom, quiz, rate, lead, drug }, // what the in-chat EKG viewer draws
+        ...(drug ? { notes, events } : {}),
+        ...(warnings.length || drug ? { warnings } : {}),
         shown: quiz
           ? "A simulated 12-lead is displayed with its name hidden. Ask the learner to read it in order (rate, rhythm, axis, intervals, P/QRS/ST/T) and commit to an answer before revealing answerKey."
           : "The 12-lead and the 3D lead view are displayed in the chat. Describe what to notice briefly; do not paste a link.",
