@@ -56,12 +56,35 @@ class Painter {
   /** Redraw request for when the loop is paused (a glyph image finished loading, the theme changed). */
   redraw: () => void = () => {};
   private imgs = new Map<string, HTMLImageElement>();
+  private layers = new Map<string, { k: string; cv: HTMLCanvasElement }>();
+  private gen = 0;
+  /** Forget cached anatomy (theme or fonts changed). */
+  invalidate() { this.gen++; }
+
+  /**
+   * Draw a static layer (a view's anatomy) from an offscreen canvas, building it only when the size, theme or fonts change.
+   * Hit registrations made while building are discarded; views register what can be hovered on every frame.
+   */
+  cached(key: string, build: () => void) {
+    const k = `${this.W}x${this.H}@${this.dpr}#${this.gen}`;
+    let l = this.layers.get(key);
+    if (!l || l.k !== k) {
+      const cv = l?.cv ?? document.createElement("canvas");
+      cv.width = Math.max(1, Math.round(this.W * this.dpr)); cv.height = Math.max(1, Math.round(this.H * this.dpr));
+      const prev = this.ctx, hits = this.hits;
+      this.ctx = cv.getContext("2d")!; this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); this.ctx.clearRect(0, 0, this.W, this.H);
+      try { build(); } finally { this.ctx = prev; this.hits = hits; }
+      l = { k, cv }; this.layers.set(key, l);
+    }
+    this.ctx.drawImage(l.cv, 0, 0, this.W, this.H);
+  }
 
   attach(cv: HTMLCanvasElement) { this.cv = cv; this.ctx = cv.getContext("2d")!; this.readTheme(); }
   readTheme() {
     const cs = getComputedStyle(document.documentElement), g = (n: string) => cs.getPropertyValue(n).trim();
     this.ink = g("--ink") || this.ink; this.muted = g("--muted") || this.muted; this.rule = g("--rule") || this.rule;
     this.stage = g("--stage") || this.stage; this.stage2 = g("--stage-2") || this.stage2; this.soft = g("--rule-light") || this.soft;
+    this.invalidate();
   }
   resize() { this.dpr = Math.min(2, window.devicePixelRatio || 1); const r = this.cv.getBoundingClientRect(); this.W = r.width; this.H = r.height; this.cv.width = Math.round(this.W * this.dpr); this.cv.height = Math.round(this.H * this.dpr); }
   has(d: string) { return this.model.drugs.has(d as never); }

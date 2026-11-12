@@ -169,6 +169,7 @@ export function mountStage(model: LipidModel) {
   let lastW = 0;
   new ResizeObserver(() => { P.resize(); if (Math.abs(P.W - lastW) > 2) { lastW = P.W; scene.init(); } P.redraw(); }).observe(cv);
 
+  document.fonts?.ready.then(() => { P.invalidate(); P.redraw(); });
   P.resize(); lastW = P.W;
   setScene("body"); updateLabs(true);
   if (running) requestAnimationFrame(loop);
